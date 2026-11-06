@@ -160,6 +160,7 @@ desktop test that drives the tool.
 | **F8** | **Visibility of forms by view direction and detail level** (ROADMAP's M item): Visibility/Graphics of a form (Coarse, Medium, Fine; plan and RCP, front/back, left/right), and symbolic lines in plan replacing a form's outline. | M | F4 |
 | **F9** | **Sections cut family forms** (ROADMAP's S item): poché where a section passes through a component's or an opening's form, from the pieces already built. | S | none |
 | **F10** | **The exit test**: a parametric window drawn from blank in the document, with reference planes, dimensions labelled Width and Height, an extruded frame and a void, then placed, flexed through its types, scheduled and exported to IFC (IfcOpenShell checks it). This scripted test is 0.8's exit criteria. | S | F5 to F8 |
+| **F11** | **Shape by Code** (suggested by dansity on #267): a form whose shape is a short script over the family's parameters and materials, written in a code box opened from a button in the family document, where a sketch-based form would be drawn. The script produces the 3D solid and the plan's 2D lines, and it flexes with the types like any form. It suits very complex families (a window covering every reveal, shading and opening). It builds far faster than sketches and booleans, and agents write it more easily than sketches. ArchiCAD's GDL is the precedent; we aim for a more modern language. **Research first:** which language and syntax (JavaScript, or an embeddable Rust one such as Rhai or Lua), and how it runs safely (sandboxed, no I/O, capped steps, memory and triangles, never crashing on hostile code). The result goes on #267 as a proposal before code. | L | F2, F3 |
 
 Not in this plan: nested and shared families, type catalogs, hosted families on faces, and adaptive parity. Each is its
 own roadmap item and builds on F2.
@@ -185,6 +186,7 @@ planes, sketches and IFC.
 | F8 visibility per view and detail level | **Emiliano** | View-side drawing |
 | F9 sections cut family forms | **Emiliano** | Section drawing; independent, can start now |
 | F10 the exit test | **both** | Last, together |
+| F11 Shape by Code | **to be decided** | Research and a proposal on #267 first; not part of 0.8's exit test |
 | CW-04 adaptive panels, adaptive parity | **Cristiano** | Goes on alongside, on F2's planes |
 
 **How the two lines run side by side:**
