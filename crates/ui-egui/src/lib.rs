@@ -1529,12 +1529,18 @@ impl BimApp {
         self.poll_updates(&ctx);
         self.poll_revit(&ctx);
         self.poll_autosave(&ctx);
-        self.keys(&ctx);
+        if !self.family_doc() {
+            self.keys(&ctx);
+        }
         self.os_requests(&ctx);
         self.dialog_answered();
         self.watch_window(&ctx);
-        let view = self.view_title(self.sheet);
-        let title = format!("{}{} · {view} · BIMCraft", self.session.model.name, if self.dirty() { "*" } else { "" });
+        let view = self.family_title().unwrap_or_else(|| self.view_title(self.sheet));
+        let title = if self.family_doc() {
+            format!("{view} · BIMCraft")
+        } else {
+            format!("{}{} · {view} · BIMCraft", self.session.model.name, if self.dirty() { "*" } else { "" })
+        };
         if title != self.title {
             ctx.send_viewport_cmd(ViewportCommand::Title(title.clone()));
             self.title = title;
@@ -1548,6 +1554,14 @@ impl BimApp {
         }
         if ctx.input(|i| i.viewport().close_requested()) && !self.dirty() && !self.installing() {
             self.retire_autosave();
+        }
+        if self.family_doc() {
+            self.family_document_ui(ui);
+            self.keep_settings(&ctx);
+            if self.own_bar() {
+                titlebar::frame(ui);
+            }
+            return;
         }
         if self.home.shown {
             if self.own_bar() {

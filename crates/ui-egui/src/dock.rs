@@ -613,6 +613,13 @@ impl BimApp {
 
     /// A palette's title: the Project Browser's names the project, as Revit's does.
     fn palette_title(&self, p: Palette) -> String {
+        if self.family_doc() {
+            return match p {
+                Palette::Properties => t("Properties").to_string(),
+                Palette::Browser => t("Project Browser").to_string(),
+                Palette::Tools => t(p.label()).to_string(),
+            };
+        }
         match p {
             Palette::Properties | Palette::Tools => t(p.label()).to_string(),
             Palette::Browser => format!("{} · {}", t(p.label()), self.session.model.name),
@@ -621,6 +628,21 @@ impl BimApp {
 
     /// What a palette shows, under its title: as wide as where it's docked, its scroll bar at the edge.
     pub(crate) fn palette_body(&mut self, ui: &mut Ui, p: Palette) {
+        if self.family_doc() {
+            match p {
+                Palette::Properties => {
+                    egui::ScrollArea::vertical().id_salt("family-properties").show(ui, |ui| self.family_properties(ui));
+                }
+                Palette::Browser => {
+                    egui::ScrollArea::vertical()
+                        .id_salt("family-browser")
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| self.family_browser(ui));
+                }
+                Palette::Tools => {}
+            }
+            return;
+        }
         // No wider than the palette: what is wider is cut, never pushes the card past its side (off the window, docked right).
         let scroll = egui::ScrollArea::vertical().auto_shrink([false, false]).min_scrolled_height(0.0).max_width(ui.available_width());
         match p {

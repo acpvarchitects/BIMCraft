@@ -86,9 +86,19 @@ name: a triangle's face is read from its winding, so every solid emits triangles
 `Image::face` says which face a pixel is on. Favorites (`favorites.rs`) are a file of the user's own (`default_path`:
 `BIMCRAFT_FAVORITES`, else the configuration folder) with materials and their pictures, families and their materials; they change
 a project only through the `favorite` command (`load` never overwrites without `replace`). The desktop's Family Editor
-(`editor.rs`) edits text (`FormText`, `ParamText`, ...) and changes the project's family only through a `family` command; its
-preview is a scratch `Session` of its own, and it says what's wrong inside the window (the status box, over the view's corner, would lie on its
-buttons).
+(`editor.rs`, `editor/document.rs`) opens conventional families in a document occupying the window, with a family ribbon,
+docked Properties and Project Browser, and a 3D preview. Forms and Symbols are edited in Properties; Family Types and
+Family Category and Parameters open dialogs. Form creation tools that need sketch workflows remain disabled placeholders.
+The editor keeps text drafts (`FormText`, `ParamText`, ...) and changes the project's family only when Load into Project
+or Load into Project and Close runs a `family` command. Close Family discards the draft. Save Family and Add to Favorites
+prepare a private `Session`, so saving never implicitly loads the draft into the project. The preview is a scratch
+`Session` of its own; errors appear inside the document or its dialog. Connectors, reference planes and lines, form hosts,
+parameter metadata and symbols remain in the draft even when their dedicated tools are not yet available.
+
+Expression-valued form and symbol properties offer `=` (`editor/association.rs`). The association dialog lists family
+parameters of the property's kind and can create a new compatible type or instance parameter. A bound field shows its
+evaluated value and is read-only. Choosing `<None>` removes the association while retaining that evaluated value.
+Cancel leaves the property unchanged; parameter creation stays in the family draft until the family is loaded.
 
 A type of a category or of a family is renamed with `rename_type` (`Model::move_entry` moves it in its map, and `rename_entry` the
 library entry and every reference `Model::lib_refs_mut` visits, so it keeps its GUID). A type or a family goes with `delete_type` (one entry, refused while an element uses it, and for the last type of a category or of a family: a

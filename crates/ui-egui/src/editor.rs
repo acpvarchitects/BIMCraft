@@ -4,6 +4,9 @@
 
 use crate::popup::Modal;
 
+mod association;
+mod document;
+
 use bimcraft_i18n::msg;
 
 use std::collections::BTreeMap;
@@ -18,8 +21,8 @@ use bimcraft_core::family::{
 use bimcraft_core::model::{Model, Operation};
 use bimcraft_core::view3d::{AZIMUTH, ELEVATION, Scene};
 use egui::{
-    Align, CollapsingHeader, Color32, ColorImage, ComboBox, Context, Grid, Id as UiId, Layout, PointerButton, Rect, RichText, ScrollArea,
-    Sense, Stroke, StrokeKind, TextEdit, TextureHandle, TextureOptions, Ui, WidgetInfo, WidgetType, pos2, vec2,
+    Align, CollapsingHeader, Color32, ColorImage, ComboBox, Context, Grid, Id as UiId, Layout, PointerButton, Rect, RichText, Sense,
+    TextEdit, TextureHandle, TextureOptions, Ui, WidgetInfo, WidgetType, pos2, vec2,
 };
 use serde_json::{Value, json};
 
@@ -92,7 +95,7 @@ enum Shape {
 }
 
 /// A form as typed.
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 struct FormText {
     /// What it was: what the editor doesn't edit (a mesh's triangles) stays as it was.
     original: Form,
@@ -182,7 +185,7 @@ impl FormText {
 }
 
 /// A parameter as typed.
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 struct ParamText {
     /// What it was, whose group, shared GUID, reporting and `of` the editor keeps as they are.
     original: Parameter,
@@ -292,7 +295,7 @@ enum Part {
 
 /// A symbol as typed. `centre` is an arc's or a dot's centre or a label's point; `radius` an arc's or a dot's radius or a
 /// label's height.
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 struct SymbolText {
     /// Its id and GUID, which it keeps wherever it's moved to in the list.
     ident: (bimcraft_core::model::Id, bimcraft_core::model::Guid),
@@ -406,12 +409,11 @@ pub(crate) struct FamilyEditor {
     preview: Option<(u64, TextureHandle)>,
     /// Why the family can't be tried or made: shown under the preview.
     problem: Option<String>,
+    document: document::State,
 }
 
 #[derive(Clone, Copy, PartialEq)]
 enum Tab {
-    Parameters,
-    Types,
     Forms,
     Symbols,
 }
@@ -440,11 +442,12 @@ impl FamilyEditor {
             ifc: f.ifc.clone(),
             operation: f.operation,
             options: f.options_json(),
-            tab: Tab::Parameters,
+            tab: Tab::Forms,
             picked: 0,
             look: (AZIMUTH, ELEVATION),
             preview: None,
             problem: None,
+            document: Default::default(),
         }
     }
 
@@ -570,6 +573,7 @@ impl FamilyEditor {
 
     /// The preview, drawn again when what it shows or how it's looked at changes.
     fn refresh(&mut self, ctx: &Context, base: &Model) {
+        let ground = crate::canvas::color(bimcraft_core::render::PAPER);
         let result = self.family().and_then(|f| {
             let key = {
                 let mut h = DefaultHasher::new();
@@ -579,6 +583,8 @@ impl FamilyEditor {
                     self.name.trim(),
                     self.look.0.to_bits(),
                     self.look.1.to_bits(),
+                    self.document.preview_size,
+                    ground.to_array(),
                 )
                     .hash(&mut h);
                 (base.materials.len(), base.images.len()).hash(&mut h);
@@ -589,10 +595,12 @@ impl FamilyEditor {
             }
             let model = self.scratch(base, &f)?;
             let scene = Scene::new(&model);
-            let (w, h) = (360_u32, 300_u32);
-            let cam = scene.fit(self.look.0, self.look.1, w, h);
-            let image = scene.render(&cam, &[]);
-            let ground = Color32::from_rgb(pal().panel.r(), pal().panel.g(), pal().panel.b());
+            let [w, h] = self.document.preview_size;
+            let mut graphics = bimcraft_core::graphics::Graphics::default();
+            graphics.categories.insert("level".into(), bimcraft_core::graphics::Override { hidden: true, ..Default::default() });
+            let look = bimcraft_core::graphics::Look::with(&model, &graphics);
+            let cam = scene.fit_in(self.look.0, self.look.1, w, h, &look);
+            let image = scene.render_in(&cam, &[], &look);
             let pixels = image
                 .rgba
                 .as_chunks::<4>()
@@ -811,7 +819,8 @@ fn types_tab(ed: &mut FamilyEditor, ui: &mut Ui, materials: &[String]) {
 }
 
 /// One form's fields.
-fn form_fields(ui: &mut Ui, f: &mut FormText, i: usize, options: &[String]) {
+fn form_fields(ui: &mut Ui, f: &mut FormText, i: usize, options: &[String], links: &mut association::Controls) {
+    use association::{Slot, Target};
     let n = i + 1;
     // The datums, by the planes they are; a form on a plane of the family's own keeps it until a datum is picked.
     let planes = [
@@ -852,7 +861,14 @@ fn form_fields(ui: &mut Ui, f: &mut FormText, i: usize, options: &[String]) {
                 ui.label(t("Circle centre and radius"));
                 ui.horizontal(|ui| {
                     for (k, what) in [msg!("Form Circle X"), msg!("Form Circle Y"), msg!("Form Circle Radius")].into_iter().enumerate() {
-                        field(ui, format!("{} {n}", t(what)), &mut f.circle[k], 80.0);
+                        links.field(
+                            ui,
+                            format!("{} {n}", t(what)),
+                            &mut f.circle[k],
+                            80.0,
+                            Holds::Length,
+                            Target::Form(i, Slot::Circle(k)),
+                        );
                     }
                 });
             }
@@ -866,25 +882,46 @@ fn form_fields(ui: &mut Ui, f: &mut FormText, i: usize, options: &[String]) {
                     for (k, what) in
                         [msg!("Form Axis X1"), msg!("Form Axis Y1"), msg!("Form Axis X2"), msg!("Form Axis Y2")].into_iter().enumerate()
                     {
-                        field(ui, format!("{} {n}", t(what)), &mut f.axis[k], 60.0);
+                        links.field(ui, format!("{} {n}", t(what)), &mut f.axis[k], 60.0, Holds::Length, Target::Form(i, Slot::Axis(k)));
                     }
                 });
                 ui.end_row();
             }
             ui.label(if f.revolve { t("From (degrees)") } else { t("From") });
-            field(ui, format!("{} {n}", t("Form From")), &mut f.from, 200.0);
+            links.field(
+                ui,
+                format!("{} {n}", t("Form From")),
+                &mut f.from,
+                120.0,
+                if f.revolve { Holds::Angle } else { Holds::Length },
+                Target::Form(i, Slot::From),
+            );
             ui.end_row();
             ui.label(if f.revolve { t("To (degrees)") } else { t("To") });
-            field(ui, format!("{} {n}", t("Form To")), &mut f.to, 200.0);
+            links.field(
+                ui,
+                format!("{} {n}", t("Form To")),
+                &mut f.to,
+                120.0,
+                if f.revolve { Holds::Angle } else { Holds::Length },
+                Target::Form(i, Slot::To),
+            );
             ui.end_row();
         }
         ui.label(t("Material"));
-        if let Some(m) = pick(ui, format!("{} {n}", t("Form Material")), &f.material, options) {
-            f.material = m;
+        if links.bound(&f.material, Holds::Material) {
+            links.field(ui, format!("{} {n}", t("Form Material")), &mut f.material, 120., Holds::Material, Target::Form(i, Slot::Material));
+        } else {
+            ui.horizontal(|ui| {
+                if let Some(m) = pick(ui, format!("{} {n}", t("Form Material")), &f.material, options) {
+                    f.material = m;
+                }
+                links.button(ui, format!("{} {n}", t("Form Material")), &f.material, Holds::Material, Target::Form(i, Slot::Material));
+            });
         }
         ui.end_row();
         ui.label(t("Visible when"));
-        field(ui, format!("{} {n}", t("Form Visible")), &mut f.visible, 200.0);
+        links.field(ui, format!("{} {n}", t("Form Visible")), &mut f.visible, 120.0, Holds::YesNo, Target::Form(i, Slot::Visible));
         ui.end_row();
         ui.label(t("Void"));
         let r = ui.checkbox(&mut f.void, t("cuts the forms listed above it"));
@@ -898,11 +935,12 @@ fn forms_tab(ed: &mut FamilyEditor, ui: &mut Ui, materials: &[String]) {
     let mut options = vec![String::new()];
     options.extend(ed.params.iter().filter(|p| p.kind == Holds::Material).map(|p| p.name.clone()));
     options.extend(materials.iter().cloned());
+    let mut links = association::Controls::new(ed);
     let mut act: Option<(usize, i8)> = None;
     for i in 0..ed.forms.len() {
         let heading = format!("{}. {}", i + 1, ed.forms[i].describe());
         CollapsingHeader::new(heading).id_salt(("fe-form", i)).default_open(ed.forms.len() == 1).show(ui, |ui| {
-            form_fields(ui, &mut ed.forms[i], i, &options);
+            form_fields(ui, &mut ed.forms[i], i, &options, &mut links);
             ui.horizontal(|ui| {
                 if ui.add_enabled(i > 0, egui::Button::new(t("Move Up"))).clicked() {
                     act = Some((i, -1));
@@ -915,6 +953,9 @@ fn forms_tab(ed: &mut FamilyEditor, ui: &mut Ui, materials: &[String]) {
                 }
             });
         });
+    }
+    if links.request.is_some() {
+        ed.document.association = links.request;
     }
     match act {
         Some((i, -1)) => ed.forms.swap(i, i - 1),
@@ -949,6 +990,8 @@ fn forms_tab(ed: &mut FamilyEditor, ui: &mut Ui, materials: &[String]) {
 }
 
 fn symbols_tab(ed: &mut FamilyEditor, ui: &mut Ui) {
+    use association::{Slot, Target};
+    let mut links = association::Controls::new(ed);
     ui.label(
         RichText::new(t("Symbols are what the plan draws of the family besides its forms: lines, arcs, labels and dots."))
             .color(pal().muted),
@@ -976,20 +1019,41 @@ fn symbols_tab(ed: &mut FamilyEditor, ui: &mut Ui) {
                     ui.label(t(if y.part == Part::Text { msg!("Middle of the text") } else { msg!("Centre") }));
                     ui.horizontal(|ui| {
                         for (k, what) in [msg!("Symbol Centre X"), msg!("Symbol Centre Y")].into_iter().enumerate() {
-                            field(ui, format!("{} {n}", t(what)), &mut y.centre[k], 170.0);
+                            links.field(
+                                ui,
+                                format!("{} {n}", t(what)),
+                                &mut y.centre[k],
+                                90.0,
+                                Holds::Length,
+                                Target::Symbol(i, Slot::Circle(k)),
+                            );
                         }
                     });
                     ui.end_row();
                     let size = if y.part == Part::Text { msg!("Height") } else { msg!("Radius") };
                     ui.label(t(size));
-                    field(ui, format!("{} {n}", t(msg!("Symbol Radius"))), &mut y.radius, 200.0);
+                    links.field(
+                        ui,
+                        format!("{} {n}", t(msg!("Symbol Radius"))),
+                        &mut y.radius,
+                        120.0,
+                        Holds::Length,
+                        Target::Symbol(i, Slot::Radius),
+                    );
                     ui.end_row();
                     if y.part == Part::Arc {
                         for (label, what, text) in
                             [("From (degrees)", msg!("Symbol From"), &mut y.from), ("To (degrees)", msg!("Symbol To"), &mut y.to)]
                         {
                             ui.label(t(label));
-                            field(ui, format!("{} {n}", t(what)), text, 200.0);
+                            links.field(
+                                ui,
+                                format!("{} {n}", t(what)),
+                                text,
+                                120.0,
+                                Holds::Angle,
+                                Target::Symbol(i, if what == "Symbol From" { Slot::From } else { Slot::To }),
+                            );
                             ui.end_row();
                         }
                     }
@@ -1009,7 +1073,14 @@ fn symbols_tab(ed: &mut FamilyEditor, ui: &mut Ui) {
                     }
                 }
                 ui.label(t("Visible when"));
-                field(ui, format!("{} {n}", t("Symbol Visible")), &mut y.visible, 200.0);
+                links.field(
+                    ui,
+                    format!("{} {n}", t("Symbol Visible")),
+                    &mut y.visible,
+                    120.0,
+                    Holds::YesNo,
+                    Target::Symbol(i, Slot::Visible),
+                );
                 ui.end_row();
                 // Drawn in a subcategory a view hides or restyles apart (a door's swing in Doors > Opening), or the category.
                 if !subs.is_empty() || !y.subcategory.is_empty() {
@@ -1029,6 +1100,9 @@ fn symbols_tab(ed: &mut FamilyEditor, ui: &mut Ui) {
                 remove = Some(i);
             }
         });
+    }
+    if links.request.is_some() {
+        ed.document.association = links.request;
     }
     if let Some(i) = remove {
         ed.symbols.remove(i);
@@ -1074,165 +1148,9 @@ impl BimApp {
         selected.or_else(|| if matches!(self.tool, Tool::Component | Tool::Fixture(_)) { self.placing().map(|(f, _)| f) } else { None })
     }
 
-    /// The Family Editor, while it's open.
+    /// Only the family document's modal dialogs; the document itself is drawn in the main window.
     pub(crate) fn family_editor_window(&mut self, ctx: &Context) {
-        let Some(mut ed) = self.family_editor.take() else { return };
-        let base = Arc::clone(&self.session.model);
-        ed.refresh(ctx, &base);
-        let materials: Vec<String> = base.materials.keys().cloned().collect();
-        let (mut apply, mut ok, mut cancel, mut save, mut favorite, mut load) = (false, false, false, false, false, false);
-        let r = Modal::new(UiId::new("family-editor"), t("Family Editor")).width(1000.0).show(ctx, |ui| {
-            crate::popup::body(ui, |ui| {
-                ui.add_space(4.0);
-                Grid::new("fe-head").num_columns(4).spacing(vec2(12.0, 6.0)).show(ui, |ui| {
-                    let l = ui.label(t("Family name"));
-                    ui.add_sized([220.0, ui.spacing().interact_size.y], TextEdit::singleline(&mut ed.name)).labelled_by(l.id);
-                    let l = ui.label(t("Category"));
-                    let c =
-                        ComboBox::from_id_salt("fe-category").selected_text(category_label(ed.category)).width(150.0).show_ui(ui, |ui| {
-                            for c in CATEGORIES {
-                                if ui.selectable_label(ed.category == c, category_label(c)).clicked() {
-                                    ed.category = c;
-                                }
-                            }
-                        });
-                    c.response.labelled_by(l.id);
-                    ui.end_row();
-                    if ed.category.hosted() {
-                        let l = ui.label(t("Operation"));
-                        let shown = ed.operation.map_or(t("(none)"), |op| t(op.label()));
-                        let c = ComboBox::from_id_salt("fe-operation").selected_text(shown).width(220.0).show_ui(ui, |ui| {
-                            if ui.selectable_label(ed.operation.is_none(), t("(none)")).clicked() {
-                                ed.operation = None;
-                            }
-                            for op in Operation::ALL {
-                                if ui.selectable_label(ed.operation == Some(op), t(op.label())).clicked() {
-                                    ed.operation = Some(op);
-                                }
-                            }
-                        });
-                        c.response.labelled_by(l.id);
-                        ui.end_row();
-                    }
-                });
-                ui.add_space(6.0);
-                // What the tabs leave of the screen, to the buttons below: a small one scrolls them.
-                let room = (ctx.content_rect().height() - 330.0).clamp(160.0, 470.0);
-                ui.horizontal_top(|ui| {
-                    ui.vertical(|ui| {
-                        ui.set_width(620.0);
-                        ui.horizontal(|ui| {
-                            for (tab, label) in [
-                                (Tab::Parameters, msg!("Parameters")),
-                                (Tab::Types, msg!("Types")),
-                                (Tab::Forms, msg!("Forms")),
-                                (Tab::Symbols, msg!("Symbols")),
-                            ] {
-                                if ui.selectable_label(ed.tab == tab, t(label)).clicked() {
-                                    ed.tab = tab;
-                                }
-                            }
-                        });
-                        ui.separator();
-                        ScrollArea::vertical().max_height(room).min_scrolled_height(room).auto_shrink([false, false]).show(
-                            ui,
-                            |ui| match ed.tab {
-                                Tab::Parameters => parameters_tab(&mut ed, ui, &materials),
-                                Tab::Types => types_tab(&mut ed, ui, &materials),
-                                Tab::Forms => forms_tab(&mut ed, ui, &materials),
-                                Tab::Symbols => symbols_tab(&mut ed, ui),
-                            },
-                        );
-                    });
-                    ui.add_space(8.0);
-                    ui.vertical(|ui| {
-                        ui.set_width(340.0);
-                        ui.label(RichText::new(t("Preview")).strong());
-                        let (rect, response) = ui.allocate_exact_size(vec2(340.0, 283.0), Sense::drag());
-                        if let Some((_, tile)) = &ed.preview {
-                            ui.painter().image(tile.id(), rect, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
-                        }
-                        ui.painter().rect_stroke(rect, 2.0, Stroke::new(1.0, pal().border), StrokeKind::Inside);
-                        if response.dragged_by(PointerButton::Primary) {
-                            let d = response.drag_delta();
-                            ed.look = (ed.look.0 - f64::from(d.x) * 0.5, (ed.look.1 + f64::from(d.y) * 0.5).clamp(-89.0, 89.0));
-                        }
-                        ui.label(RichText::new(t("Drag the picture to turn it.")).color(pal().muted));
-                        let names: Vec<String> = ed.types.iter().map(|(n, _)| n.clone()).collect();
-                        let now = names.get(ed.picked).cloned().unwrap_or_default();
-                        ui.horizontal(|ui| {
-                            ui.label(t("Previewing"));
-                            if let Some(n) = pick(ui, t("Preview Type").to_string(), &now, &names)
-                                && let Some(i) = names.iter().position(|x| *x == n)
-                            {
-                                ed.picked = i;
-                            }
-                        });
-                        if let Some(p) = &ed.problem {
-                            ui.label(RichText::new(p).color(pal().error));
-                        }
-                    });
-                });
-            });
-            crate::popup::footer(ui, |ui| {
-                ui.horizontal(|ui| {
-                    load = ui.button(t("Load Family…")).clicked();
-                    save = ui.button(t("Save Family…")).clicked();
-                    favorite = ui.button(t("Add to Favorites")).clicked();
-                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        ok = ui.button(t("OK")).clicked();
-                        cancel = ui.button(t("Cancel")).clicked();
-                        apply = ui.button(t("Apply")).clicked();
-                    });
-                });
-            });
-        });
-        if load {
-            let dialog = rfd::AsyncFileDialog::new().add_filter(t("BIMCraft family"), &["json"]);
-            self.ask_file(ctx, dialog, false, |app, path| match read_family_file(&path) {
-                Ok((name, f)) => {
-                    // Closed meanwhile, the editor has nothing to load into.
-                    if let Some(open) = app.family_editor.as_mut() {
-                        *open = FamilyEditor::of(&name, &f);
-                        open.original = None;
-                    }
-                }
-                Err(text) => app.status = Status { text, error: true },
-            });
-        }
-        // Made the project's: Apply and OK do it, and so do saving to a file or to the Favorites, which keep what's in the project.
-        let mut made = false;
-        if apply || ok || save || favorite {
-            match ed.command(&base) {
-                Ok(p) => {
-                    if self.run("family", p).is_some() {
-                        ed.original = Some(ed.name.trim().to_string());
-                        made = true;
-                    } else {
-                        // Said in the window; the box over the view's corner would lie on its buttons.
-                        ed.problem = Some(std::mem::take(&mut self.status).text);
-                    }
-                }
-                Err(e) => ed.problem = Some(e),
-            }
-        }
-        let name = ed.name.trim().to_string();
-        if made && save {
-            let dialog = rfd::AsyncFileDialog::new().add_filter(t("BIMCraft family"), &["json"]).set_file_name(format!("{name}.json"));
-            let family = name.clone();
-            self.ask_file(ctx, dialog, true, move |app, path| {
-                app.run("family", json!({"name": family, "save": path.to_string_lossy()}));
-            });
-        }
-        if made && favorite {
-            let p = self.favorite_params("save", "family", &name);
-            if self.run("favorite", p).is_some() {
-                self.status = Status { text: tf("Saved {} to your Favorites", &[&name]), error: false };
-            }
-        }
-        if !(cancel || (ok && made) || r.should_close()) {
-            self.family_editor = Some(ed);
-        }
+        self.family_document_dialogs(ctx);
     }
 }
 
