@@ -10428,6 +10428,8 @@ fn family_reload(mut incoming: crate::family::Family, old: &crate::family::Famil
     crate::library::keep_parts(&mut old.forms, &mut incoming.forms);
     crate::library::keep_parts(&mut old.symbols, &mut incoming.symbols);
     crate::library::keep_parts(&mut old.connectors, &mut incoming.connectors);
+    crate::library::keep_parts(&mut old.planes, &mut incoming.planes);
+    crate::library::keep_parts(&mut old.lines, &mut incoming.lines);
     incoming
 }
 
@@ -10462,7 +10464,7 @@ fn family(s: &mut Session, p: &Value) -> R {
         let name = p.get("name").filter(|v| !v.is_null()).cloned().or_else(|| fields.remove("name")).unwrap_or(json!(stem));
         // Only the family it holds: what a file says to rename or delete isn't for it to say.
         let mut family: Map<String, Value> =
-            ["category", "kind", "ifc", "parameters", "types", "forms", "symbols", "operation", "connectors"]
+            ["category", "kind", "ifc", "parameters", "types", "forms", "symbols", "operation", "connectors", "planes", "lines"]
                 .into_iter()
                 .filter_map(|k| fields.remove(k).map(|v| (k.to_string(), v)))
                 .collect();
@@ -10491,10 +10493,10 @@ fn family(s: &mut Session, p: &Value) -> R {
                 family = serde_json::from_value(serde_json::to_value(reloaded).map_err(|e| bad(c, e))?).map_err(|e| bad(c, e))?;
             }
         }
-        // Its planes and lines, as the command takes them.
-        for (k, key) in [("planes", "ref_planes"), ("lines", "ref_lines")] {
-            if let Some(v) = fields.remove(k) {
-                family.insert(key.into(), v);
+        // A file holds the definition's names; translate only after applying its reload policy.
+        for (field, command) in [("planes", "ref_planes"), ("lines", "ref_lines")] {
+            if let Some(value) = family.remove(field) {
+                family.insert(command.into(), value);
             }
         }
         family.insert("name".into(), name);
