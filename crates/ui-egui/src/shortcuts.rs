@@ -191,10 +191,7 @@ pub fn resolve_action(desc: &str) -> Option<&'static str> {
     if d.is_empty() {
         return None;
     }
-    ACTIONS
-        .iter()
-        .copied()
-        .find(|act| words(act) == d || Lang::ALL.iter().any(|l| translated_in(*l, act).is_some_and(|w| words(w) == d)))
+    ACTIONS.iter().copied().find(|act| words(act) == d || Lang::ALL.iter().any(|l| translated_in(*l, act).is_some_and(|w| words(w) == d)))
 }
 
 /// An XML attribute's text with its entities decoded, once (`&amp;lt;` is the text `&lt;`).
@@ -709,7 +706,10 @@ mod tests {
     fn revit_shortcut_items_are_read_with_their_entities_decoded() {
         let line = r#"  <ShortcutItem CommandName="Cut &amp; &quot;Fill&quot; &lt;1&gt; &apos;x&apos;" CommandId="ID_X" Shortcuts="zq#Ctrl+Q" Paths="Massing &amp; Site&gt;Modify" />"#;
         let read = parse_shortcuts_file(line);
-        assert_eq!(read, [("ZQ".to_string(), "Cut & \"Fill\" <1> 'x'".to_string()), ("CTRL+Q".to_string(), "Cut & \"Fill\" <1> 'x'".to_string())]);
+        assert_eq!(
+            read,
+            [("ZQ".to_string(), "Cut & \"Fill\" <1> 'x'".to_string()), ("CTRL+Q".to_string(), "Cut & \"Fill\" <1> 'x'".to_string())]
+        );
         // Entities are decoded once: what was written `&amp;lt;` is the text `&lt;`.
         let read = parse_shortcuts_file(r#"<ShortcutItem CommandName="A &amp;lt; B" Shortcuts="ZQ" />"#);
         assert_eq!(read, [("ZQ".to_string(), "A &lt; B".to_string())]);
