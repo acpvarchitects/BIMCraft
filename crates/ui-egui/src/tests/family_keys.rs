@@ -168,15 +168,8 @@ fn each_key_does_the_family_documents_command_and_never_the_projects() {
     assert_ne!(h.state().sheet, Sheet::View3D);
     project_untouched(&h, "3D");
     // ZF, ZE, ZX and ZA: the view control bar's Zoom to Fit.
-    let camera = bimcraft_core::view3d::Camera {
-        azimuth: 1.0,
-        elevation: 0.5,
-        scale: 1.0,
-        target: [0.0; 3],
-        width: 400,
-        height: 300,
-        lens: None,
-    };
+    let camera =
+        bimcraft_core::view3d::Camera { azimuth: 1.0, elevation: 0.5, scale: 1.0, target: [0.0; 3], width: 400, height: 300, lens: None };
     for keys in ["ZF", "ZE", "ZX", "ZA"] {
         editor_mut(&mut h).modeller.camera = Some(camera);
         shortcut(&mut h, keys);
