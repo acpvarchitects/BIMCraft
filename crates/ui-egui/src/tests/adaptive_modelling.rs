@@ -622,3 +622,92 @@ fn pick_takes_a_points_plane_even_with_a_reference_plane_in_front_of_it_as_in_re
         bimcraft_core::adaptive::WorkPlane::Plane(bimcraft_core::family::PlaneRef::Plane(bimcraft_core::family::CENTER_FRONT_BACK))
     );
 }
+
+#[test]
+fn family_ortho_shift_constrains_move_on_horizontal_and_vertical_3d_work_planes() {
+    use bimcraft_core::family::{CENTER_FRONT_BACK, PlaneRef, REF_LEVEL};
+    for (plane, target) in [(REF_LEVEL, [650.0, 200.0, 0.0]), (CENTER_FRONT_BACK, [650.0, 0.0, 200.0])] {
+        let mut h = modelling();
+        tool(&mut h, "Line");
+        click_model(&mut h, [0.0, 0.0, 0.0], Modifiers::NONE);
+        click_model(&mut h, [1000.0, 0.0, 0.0], Modifiers::NONE);
+        h.key_press(Key::Enter);
+        h.run();
+        tool(&mut h, "Modify");
+        let d = definition(&h);
+        let node = d.nodes.iter().find(|n| matches!(n.operation, Operation::Line { .. })).unwrap();
+        let a = match &node.operation {
+            Operation::Line { a, .. } => a.clone(),
+            other => panic!("{other:?}"),
+        };
+        let ed = h.state_mut().active_family_mut().unwrap();
+        ed.modeller.selection = vec![node.id.clone()];
+        ed.modeller.work_plane = bimcraft_core::adaptive::WorkPlane::Plane(PlaneRef::Plane(plane));
+        h.run();
+        tool(&mut h, "Move");
+        click_model(&mut h, [0.0, 0.0, 0.0], Modifiers::NONE);
+        h.event(Event::ModifiersChanged(Modifiers::SHIFT));
+        h.run();
+        click_model(&mut h, target, Modifiers::SHIFT);
+        let d = definition(&h);
+        let moved = d.evaluate(&Default::default(), &d.preview).origin(&a).unwrap();
+        assert!((0..3).all(|i| (moved[i] - [650.0, 0.0, 0.0][i]).abs() < 20.0), "{plane:?}: constrained move: {moved:?}");
+    }
+}
+
+#[test]
+fn family_ortho_shift_draws_past_an_existing_off_axis_point_without_moving_it() {
+    let mut h = modelling();
+    tool(&mut h, "Point");
+    click_model(&mut h, [0.0, 0.0, 0.0], Modifiers::NONE);
+    click_model(&mut h, [650.0, 200.0, 0.0], Modifiers::NONE);
+    let before = definition(&h);
+    let off_axis = before.nodes.last().unwrap().id.clone();
+    tool(&mut h, "Line");
+    click_model(&mut h, [0.0, 0.0, 0.0], Modifiers::NONE);
+    h.event(Event::ModifiersChanged(Modifiers::SHIFT));
+    h.run();
+    click_model(&mut h, [650.0, 200.0, 0.0], Modifiers::SHIFT);
+    h.key_press(Key::Enter);
+    h.run();
+    let d = definition(&h);
+    let line = d.nodes.iter().find(|n| matches!(n.operation, Operation::Line { .. })).unwrap();
+    let (a, b) = match &line.operation {
+        Operation::Line { a, b } => (a, b),
+        other => panic!("{other:?}"),
+    };
+    let r = d.evaluate(&Default::default(), &d.preview);
+    let p = r.origin(b).unwrap();
+    assert!((p[1] - r.origin(a).unwrap()[1]).abs() < 1e-6, "Shift must keep the new line horizontal: {p:?}");
+    assert_ne!(b, &off_axis, "an off-axis point must not replace the constrained endpoint");
+    let original = r.origin(&off_axis).unwrap();
+    assert!((original[1] - 200.0).abs() < 20.0, "the existing point stays where it was: {original:?}");
+}
+
+#[test]
+fn family_ortho_shift_drag_moves_a_point_without_orbiting() {
+    let mut h = modelling();
+    tool(&mut h, "Point");
+    click_model(&mut h, [0.0, 0.0, 0.0], Modifiers::NONE);
+    let point = definition(&h).nodes.last().unwrap().id.clone();
+    let d = definition(&h);
+    let initial = d.evaluate(&Default::default(), &d.preview).origin(&point).unwrap();
+    tool(&mut h, "Modify");
+    let ed = h.state().active_family().unwrap();
+    let a = ed.modeller.screen([0.0, 0.0, 0.0]);
+    let b = ed.modeller.screen([650.0, 200.0, 0.0]);
+    h.event(Event::ModifiersChanged(Modifiers::SHIFT));
+    h.hover_at(a);
+    h.run();
+    h.event(Event::PointerButton { pos: a, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::SHIFT });
+    h.run();
+    for t in [0.25, 0.5, 0.75, 1.0] {
+        h.hover_at(a + (b - a) * t);
+        h.run();
+    }
+    h.event(Event::PointerButton { pos: b, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::SHIFT });
+    h.run();
+    let d = definition(&h);
+    let p = d.evaluate(&Default::default(), &d.preview).origin(&point).unwrap();
+    assert!((p[0] - 650.0).abs() < 20.0 && (p[1] - initial[1]).abs() < 1e-6, "Shift primary drag should move horizontally: {p:?}");
+}
