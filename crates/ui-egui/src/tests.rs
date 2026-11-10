@@ -6991,3 +6991,5 @@ mod family_work_plane;
 mod highlight3d;
 mod nested_families;
 mod preview_visibility;
+
+mod select_instances;
