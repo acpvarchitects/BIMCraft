@@ -39,6 +39,8 @@ icon_names! {
     Fit,
     ZoomIn,
     ZoomOut,
+    ZoomRegion,
+    ZoomPrevious,
     ThinLines,
     Schedule,
     CloseInactive,
@@ -329,6 +331,19 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
         Icon::ZoomOut => {
             g.line(&[(15.0, 15.0), (21.0, 21.0)]);
             g.line(&[(7.0, 10.0), (13.0, 10.0)]);
+            g.circle((10.0, 10.0), 7.0);
+        }
+        Icon::ZoomRegion => {
+            // The lens over a rectangle: Zoom In Region.
+            g.line(&[(15.0, 15.0), (21.0, 21.0)]);
+            g.closed(&[(7.0, 7.5), (13.0, 7.5), (13.0, 12.5), (7.0, 12.5)]);
+            g.circle((10.0, 10.0), 7.0);
+        }
+        Icon::ZoomPrevious => {
+            // The lens over an arrow turned back: Previous Pan/Zoom.
+            g.line(&[(15.0, 15.0), (21.0, 21.0)]);
+            g.line(&[(13.0, 10.0), (7.0, 10.0)]);
+            g.line(&[(9.5, 7.5), (7.0, 10.0), (9.5, 12.5)]);
             g.circle((10.0, 10.0), 7.0);
         }
         Icon::ThinLines => {

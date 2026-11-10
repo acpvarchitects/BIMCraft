@@ -12,7 +12,7 @@ use bimcraft_core::family::DimKind;
 
 /// Revit's default keys for the family editor's commands, each to the name of its action in `shortcuts::ACTIONS`. A key the
 /// project has too means the same command here (`the_family_table_gives_no_project_key_another_meaning`); the others (DD, AN,
-/// WP, WW, FA, AA, PL, FG, CG, ZX) are the family's alone.
+/// WP, WW, FA, AA, PL, FG, CG, ZX, and FE-3's ZR, ZZ, ZO, ZV, ZP, ZC) are the family's alone.
 pub(crate) const FAMILY_SHORTCUTS: &[(&str, &str)] = &[
     ("MD", "Modify"),
     ("PP", "Properties"),
@@ -42,6 +42,12 @@ pub(crate) const FAMILY_SHORTCUTS: &[(&str, &str)] = &[
     ("ZF", "Zoom to Fit"),
     ("ZX", "Zoom to Fit"),
     ("ZA", "Zoom to Fit"),
+    ("ZR", "Zoom In Region"),
+    ("ZZ", "Zoom In Region"),
+    ("ZO", "Zoom Out (2x)"),
+    ("ZV", "Zoom Out (2x)"),
+    ("ZP", "Previous Pan/Zoom"),
+    ("ZC", "Previous Pan/Zoom"),
     ("HH", "Temporary Hide Element"),
     ("HC", "Temporary Hide Category"),
     ("HI", "Temporary Isolate Element"),
@@ -186,9 +192,12 @@ impl BimApp {
                 ed.cancel_form_sketch();
                 said = Some(Ok(()));
             }
-            // The family's own {3D}, and the view control bar's Zoom to Fit.
+            // The family's own {3D}, and the view control bar's zoom commands, in the view shown (`zoom.rs`).
             "3D View" => ed.views.show(None),
             "Zoom to Fit" => ed.zoom_to_fit(),
+            "Zoom In Region" => ed.zoom_region_tool(),
+            "Zoom Out (2x)" => ed.zoom_out(),
+            "Previous Pan/Zoom" => ed.previous_zoom(),
             _ => return in_family(action),
         }
         match said {

@@ -166,12 +166,6 @@ impl FamilyEditor {
         self.views.dim = None;
     }
 
-    /// The view control bar's Zoom to Fit (ZF, ZE, ZX, ZA): the modelling view's camera fitted afresh, and {3D}'s.
-    pub(crate) fn zoom_to_fit(&mut self) {
-        self.modeller.camera = None;
-        self.orbit.fit();
-    }
-
     /// The draft as it is now, for `saved_as` once it has been saved.
     pub(super) fn draft(&self) -> Draft {
         Draft::of(self)
@@ -1224,6 +1218,8 @@ impl BimApp {
         } else {
             self.family_3d(ui, &mut ed, pane);
         }
+        // Zoom In Region's drag, over the view (`zoom.rs`).
+        ed.zoom_region_drag(ui, pane);
         // The window's tabs, the project's and each family document's, over the view's top left corner.
         let card = crate::style::card([true, false, true, false]).inner_margin(Margin::same(2));
         let mut over = ui.new_child(UiBuilder::new().id_salt("family-view-tabs").max_rect(pane));
@@ -1255,6 +1251,16 @@ impl BimApp {
                 ui.label(RichText::new(t("Shaded")).color(pal().muted));
                 if icon_button(ui, Icon::Fit, "Zoom to Fit").clicked() {
                     ed.zoom_to_fit();
+                }
+                // FE-3: the rest of Revit's zoom commands, beside it.
+                if icon_button(ui, Icon::ZoomRegion, "Zoom In Region").clicked() {
+                    ed.zoom_region_tool();
+                }
+                if icon_button(ui, Icon::ZoomOut, "Zoom Out (2x)").clicked() {
+                    ed.zoom_out();
+                }
+                if icon_button(ui, Icon::ZoomPrevious, "Previous Pan/Zoom").clicked() {
+                    ed.previous_zoom();
                 }
                 // Revit's Preview Visibility: the family as placed, the forms its type hides left out rather than ghosted.
                 if ed.adaptive.is_none() {
@@ -1456,6 +1462,11 @@ impl BimApp {
             return;
         }
         let Some(ed) = self.active_family_mut() else { return };
+        // Zoom In Region armed: Escape gives it up, and nothing else.
+        if ed.zoom.region.is_some() && ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape)) {
+            ed.zoom.region = None;
+            return;
+        }
         // Sketch mode: Escape lets the shape's points go, then its tool; Delete takes the lines picked away; Ctrl+Z takes back
         // the sketch's own last change. The document's history waits for Finish.
         if let Some(s) = ed.sketch.as_mut() {

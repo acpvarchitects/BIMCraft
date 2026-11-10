@@ -136,12 +136,24 @@ pub const ACTIONS: &[&str] = &[
     msg!("Pick Lines"),
     msg!("Finish Edit Mode"),
     msg!("Cancel Edit Mode"),
+    msg!("Zoom In Region"),
+    msg!("Zoom Out (2x)"),
+    msg!("Previous Pan/Zoom"),
 ];
 
 /// The actions of `ACTIONS` only a family document does (`editor::keys`): a key for one does nothing on a project's tab, and
 /// Find, which runs actions on the project, doesn't list them.
-pub(crate) const FAMILY_ONLY: &[&str] =
-    &["Work Plane", "Load Family", "Angular Dimension", "Pick Lines", "Finish Edit Mode", "Cancel Edit Mode"];
+pub(crate) const FAMILY_ONLY: &[&str] = &[
+    "Work Plane",
+    "Load Family",
+    "Angular Dimension",
+    "Pick Lines",
+    "Finish Edit Mode",
+    "Cancel Edit Mode",
+    "Zoom In Region",
+    "Zoom Out (2x)",
+    "Previous Pan/Zoom",
+];
 
 /// Whether `action` is a family document's alone.
 pub(crate) fn family_only(action: &str) -> bool {

@@ -1210,6 +1210,17 @@ commands only a family has (Work Plane, Load Family, Angular Dimension, Pick Lin
 `shortcuts::ACTIONS`, so the dialog and a file can give them keys, and in `shortcuts::FAMILY_ONLY`: on a project's tab their keys
 do nothing, and Find leaves them out. Tests: `tests/family_keys.rs`.
 
+## Zooming the family's views (FE-3)
+
+Revit's zoom commands work in each of the document's views, plans, the ceiling plan, elevations and {3D} (an adaptive family's
+modelling view or the preview), on the view shown and never on the project's (`editor/zoom.rs`, over the window's own
+`zoom.rs`): Zoom to Fit (ZF, ZE, ZX, ZA) fits the view shown afresh; Zoom Out (2x) (ZO, ZV) halves it about its middle; Zoom In
+Region (ZR, ZZ) arms a drag over the view, drawn over it so the view's own drag neither turns, pans nor selects, and the view fits
+the rectangle let go (Escape gives it up); Previous Pan/Zoom (ZP, ZC) steps back through a short history each view keeps, a step
+left by each of those commands and none by the wheel or the middle button. The view control bar has the three beside Zoom to
+Fit. Their names are in `shortcuts::ACTIONS` and `FAMILY_ONLY` (the project has no such commands yet). Tests:
+`tests/family_zoom.rs`.
+
 ## Where the code lives
 
 Moved from the root `CLAUDE.md`'s module map, which names the files and points here for what each owns.
@@ -1237,6 +1248,7 @@ In `crates/ui-egui`, the Family Editor:
 - `editor/exists.rs`: Family Already Exists. `editor/types_dialog.rs`: Family Types.
 - `editor/temp_hide.rs`: the document's Temporary Hide/Isolate. `editor/views.rs`: its plans and elevations.
 - `editor/keys.rs`: the document's two-letter keys (`FAMILY_SHORTCUTS`) and what each does (`BimApp::family_action`).
+- `editor/zoom.rs`: the zoom commands in the document's views and their Previous Pan/Zoom history, over the window's `zoom.rs`.
 - `editor/sketch.rs`: sketch mode. `editor/dimensions.rs`: their dimensions and Align.
 - `editor/work_plane.rs`: its Work Plane dialog and Go To View.
 - `editor/options.rs`: the family's options (Family Category and Parameters, Properties' Other).
