@@ -25,8 +25,8 @@ const CLOSEST: (f64, f64) = (0.05, 50.0);
 /// What the zoom commands keep of the document's views.
 #[derive(Default)]
 pub(crate) struct Zoom {
-    /// Zoom In Region, armed: and where its drag began, once it has.
-    pub(crate) region: Option<Option<Pos2>>,
+    /// Zoom In Region, armed: the view it was armed in (another view shown gives it up), and where its drag began, once it has.
+    region: Option<(Option<Which>, Option<Pos2>)>,
     /// Each view's steps back ({3D} under none).
     previous: BTreeMap<Option<Which>, Previous<Look>>,
 }
@@ -52,6 +52,8 @@ impl FamilyEditor {
             }
             (None, Look::Round(cam)) if self.adaptive.is_some() => self.modeller.camera = cam,
             (None, Look::Round(cam)) => {
+                // A fit still being worked out would come back over it.
+                self.orbit.cancel_fit();
                 self.orbit.camera = cam;
                 self.orbit.fitted = None;
             }
@@ -93,7 +95,17 @@ impl FamilyEditor {
 
     /// Zoom In Region (ZR, ZZ): the next drag in the view shown is a rectangle it fits. Escape gives it up.
     pub(crate) fn zoom_region_tool(&mut self) {
-        self.zoom.region = Some(None);
+        self.zoom.region = Some((self.views.shown, None));
+    }
+
+    /// Whether Zoom In Region is armed in the view shown.
+    pub(crate) fn zoom_region_armed(&self) -> bool {
+        self.zoom.region.is_some_and(|(view, _)| view == self.views.shown)
+    }
+
+    /// Zoom In Region given up (Escape).
+    pub(crate) fn cancel_zoom_region(&mut self) {
+        self.zoom.region = None;
     }
 
     /// Previous Pan/Zoom (ZP, ZC): the view shown as it was before its last zoom command; nothing with none before.
@@ -106,7 +118,12 @@ impl FamilyEditor {
     /// While Zoom In Region is armed, its drag over the view in `pane`, drawn over the view after it (so the view's own drag
     /// doesn't take it); let go, the view fits the rectangle and the command is done. A click leaves it armed.
     pub(crate) fn zoom_region_drag(&mut self, ui: &Ui, pane: Rect) {
-        let Some(from) = self.zoom.region.as_mut() else { return };
+        if !self.zoom_region_armed() {
+            // Another view shown since it was armed: given up.
+            self.zoom.region = None;
+            return;
+        }
+        let Some((_, from)) = self.zoom.region.as_mut() else { return };
         if let Some(r) = zoom::drag(ui, pane, from)
             && let Some(look) = self.region(r)
         {

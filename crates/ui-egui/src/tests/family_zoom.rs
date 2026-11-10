@@ -307,14 +307,83 @@ fn a_family_zoom_never_touches_the_projects_views_nor_a_projects_key_the_familys
     same(look(&h), family, "no region was armed from the project's tab");
 }
 
-/// The new buttons in the view control bar and a region being dragged, in the plan and in {3D}, saved where
+/// What the status bar says while Zoom In Region is armed.
+const PROMPT: &str = "Zoom In Region: drag a rectangle over the view to fit it. Esc cancels.";
+
+fn prompted(h: &Harness<BimApp>) -> bool {
+    h.query_all_by_label_contains(PROMPT).next().is_some()
+}
+
+#[test]
+fn the_status_bar_asks_for_the_rectangle_while_the_region_is_armed() {
+    let mut h = open();
+    for which in VIEWS {
+        view(&mut h, which);
+        assert!(!prompted(&h), "{which:?}: not armed");
+        shortcut(&mut h, "ZR");
+        assert!(prompted(&h), "{which:?}: armed, the status bar says so");
+        key(&mut h, Key::Escape);
+        assert!(!prompted(&h), "{which:?}: Escape, and it no longer does");
+    }
+    // Done by its drag, the same.
+    view(&mut h, Some(Which::Plan));
+    let (a, b) = rectangle(&h);
+    region(&mut h, "ZR", a, b);
+    assert!(!prompted(&h), "fitted");
+}
+
+#[test]
+fn another_view_shown_gives_the_region_up() {
+    let mut h = open();
+    view(&mut h, Some(Which::Plan));
+    shortcut(&mut h, "ZR");
+    assert!(prompted(&h));
+    view(&mut h, Some(Which::Elevation(Side::Front)));
+    assert!(!prompted(&h), "the elevation shown: no region");
+    let (a, b) = rectangle(&h);
+    let elevation = look(&h);
+    drag_screen(&mut h, a, b, PointerButton::Primary);
+    same(look(&h), elevation, "a drag in the elevation zooms nothing");
+    // Given up, not set aside: back in the plan, a drag is the plan's own again.
+    view(&mut h, Some(Which::Plan));
+    assert!(!prompted(&h), "back in the plan: no region either");
+    let plan = look(&h);
+    drag_screen(&mut h, a, b, PointerButton::Primary);
+    same(look(&h), plan, "a drag in the plan zooms nothing");
+    // {3D} too.
+    shortcut(&mut h, "ZR");
+    view(&mut h, None);
+    settle(&mut h);
+    assert!(!prompted(&h), "{{3D}} shown: no region");
+}
+
+#[test]
+fn previous_while_a_fit_of_3d_is_still_to_come_keeps_the_camera_it_went_back_to() {
+    let mut h = open();
+    view(&mut h, None);
+    settle(&mut h);
+    shortcut(&mut h, "ZO");
+    settle(&mut h);
+    let out = editor(&h).orbit.camera.expect("{3D} drawn");
+    // Zoom to Fit asks for a fit, which comes back frames later; Previous before it does.
+    {
+        let ed = h.state_mut().active_family_mut().expect("a family open");
+        ed.zoom_to_fit();
+        ed.previous_zoom();
+    }
+    settle(&mut h);
+    assert_eq!(editor(&h).orbit.camera, Some(out), "Previous wins over the fit it went back from");
+}
+
+/// The new buttons in the view control bar and a region being dragged in the plan, saved where
 /// `BIMCRAFT_FE3_DUMP` says (only then).
 #[test]
 fn family_zoom_screenshots() {
     let Ok(folder) = std::env::var("BIMCRAFT_FE3_DUMP") else { return };
     std::fs::create_dir_all(&folder).unwrap();
     let mut h = open();
-    for (name, which) in [("plan", Some(Which::Plan)), ("3d", None)] {
+    // {3D}'s are `gpu::zoom_out_and_a_region_change_the_box_in_the_3d_picture`'s.
+    for (name, which) in [("plan", Some(Which::Plan))] {
         view(&mut h, which);
         settle(&mut h);
         shortcut(&mut h, "ZR");
@@ -340,4 +409,108 @@ fn family_zoom_screenshots() {
         h.run();
     }
     h.render().unwrap().save(std::path::Path::new(&folder).join("fe3-bar.png")).unwrap();
+}
+
+/// The view control bar's zoom icons beside Zoom In, Zoom Out and Undo, at 18 points as the bar paints them, once at one pixel a
+/// point and once at four, saved where `BIMCRAFT_FE3_DUMP` says (only then).
+#[test]
+fn zoom_icons_screenshot() {
+    use crate::icons::Icon;
+    let Ok(folder) = std::env::var("BIMCRAFT_FE3_DUMP") else { return };
+    std::fs::create_dir_all(&folder).unwrap();
+    let icons = [Icon::Fit, Icon::ZoomRegion, Icon::ZoomOut, Icon::ZoomPrevious, Icon::ZoomIn, Icon::Undo];
+    for ppp in [1.0, 4.0] {
+        let mut h = Harness::builder().with_size([icons.len() as f32 * 26.0 + 8.0, 32.0]).with_pixels_per_point(ppp).build_ui(|ui| {
+            ui.painter().rect_filled(ui.max_rect().expand(8.0), 0.0, egui::Color32::WHITE);
+            for (k, icon) in icons.iter().enumerate() {
+                let at = egui::Rect::from_min_size(pos2(4.0 + 26.0 * k as f32 + 4.0, 7.0), vec2(18.0, 18.0));
+                crate::icons::paint(ui.painter(), *icon, at, egui::Color32::from_gray(40));
+            }
+        });
+        h.run();
+        h.render().unwrap().save(std::path::Path::new(&folder).join(format!("fe3-icons-x{ppp}.png"))).unwrap();
+    }
+}
+
+/// Rendered as the window shows it (egui's renderer, on a real adapter, as `family_views::gpu` does): {3D}'s pixels show the box
+/// smaller after Zoom Out (2x) and larger after a region round it, saved where `BIMCRAFT_FE3_DUMP` says. Without an adapter,
+/// nothing.
+mod gpu {
+    use super::*;
+
+    /// The family's {3D}, the pointer out of the way; none where nothing renders.
+    fn rendered() -> Option<Harness<'static, BimApp>> {
+        let mut h = open();
+        view(&mut h, None);
+        h.hover_at(pos2(2.0, 2.0));
+        settle(&mut h);
+        h.render().ok()?;
+        Some(h)
+    }
+
+    /// The picture of the view shown, and how many of its pixels are not the background's: the box's.
+    fn boxed(h: &mut Harness<BimApp>) -> (image::RgbaImage, usize) {
+        let picture = h.render().unwrap();
+        let pane = h.state().view_rect.shrink2(vec2(60.0, 70.0));
+        let ppp = h.ctx.pixels_per_point();
+        let px = |q: Pos2| picture.get_pixel((q.x * ppp) as u32, (q.y * ppp) as u32).0;
+        let background = px(pane.left_bottom() + vec2(10.0, -10.0));
+        let mut n = 0;
+        for y in (pane.top() as u32..pane.bottom() as u32).step_by(2) {
+            for x in (pane.left() as u32..pane.right() as u32).step_by(2) {
+                let c = px(pos2(x as f32, y as f32));
+                if (0..3).map(|k| c[k].abs_diff(background[k]) as u32).sum::<u32>() > 30 {
+                    n += 1;
+                }
+            }
+        }
+        (picture, n)
+    }
+
+    #[test]
+    fn zoom_out_and_a_region_change_the_box_in_the_3d_picture() {
+        let Some(mut h) = rendered() else { return };
+        let folder = std::env::var("BIMCRAFT_FE3_DUMP").ok();
+        let save = |name: &str, picture: &image::RgbaImage| {
+            if let Some(folder) = &folder {
+                std::fs::create_dir_all(folder).unwrap();
+                picture.save(std::path::Path::new(folder).join(format!("fe3-3d-{name}.png"))).unwrap();
+            }
+        };
+        let (picture, fitted) = boxed(&mut h);
+        save("1-fitted", &picture);
+        shortcut(&mut h, "ZO");
+        h.hover_at(pos2(2.0, 2.0));
+        settle(&mut h);
+        let (picture, out) = boxed(&mut h);
+        save("2-zoom-out", &picture);
+        assert!(out * 3 < fitted && out * 6 > fitted, "half as close, about a quarter of the pixels: {fitted} then {out}");
+        // A region round the box as it is now, a little wider than it.
+        let (a, b) = [A, B, [400.0, 0.0, 0.0], [0.0, 300.0, 600.0], [0.0, 0.0, 600.0], [400.0, 300.0, 0.0]]
+            .map(|q| on_screen(&h, q))
+            .into_iter()
+            .fold((pos2(f32::MAX, f32::MAX), pos2(f32::MIN, f32::MIN)), |(lo, hi), p| (lo.min(p), hi.max(p)));
+        let (a, b) = (a - vec2(30.0, 30.0), b + vec2(30.0, 30.0));
+        shortcut(&mut h, "ZR");
+        h.hover_at(a);
+        h.run();
+        h.event(Event::PointerButton { pos: a, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::NONE });
+        h.run();
+        for t in [0.5, 1.0] {
+            h.hover_at(a + (b - a) * t);
+            h.run();
+        }
+        save("3-region-dragged", &h.render().unwrap());
+        h.event(Event::PointerButton { pos: b, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE });
+        h.run();
+        h.hover_at(pos2(2.0, 2.0));
+        settle(&mut h);
+        let (picture, zoomed) = boxed(&mut h);
+        save("4-region-fitted", &picture);
+        // As close as the box's height lets it, from half as close as fitted: over three times the pixels, and more than fitted.
+        assert!(
+            zoomed > out * 3 && zoomed > fitted,
+            "the region round the box fills the view with it: {fitted} fitted, {out} out, {zoomed} now"
+        );
+    }
 }

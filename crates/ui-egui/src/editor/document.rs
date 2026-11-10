@@ -1383,6 +1383,10 @@ impl BimApp {
     /// What the family document's status bar asks for: an adaptive family's modelling view's tool, or how another's preview turns.
     pub(crate) fn family_prompt(&self) -> Option<&'static str> {
         let ed = self.active_family()?;
+        // Zoom In Region armed (FE-3), over whatever else is in hand.
+        if ed.zoom_region_armed() {
+            return Some(msg!("Zoom In Region: drag a rectangle over the view to fit it. Esc cancels."));
+        }
         if let Some(s) = ed.sketch.as_ref() {
             // Align on the sketch's lines (F7b).
             if ed.views.aligning.is_some() {
@@ -1463,8 +1467,8 @@ impl BimApp {
         }
         let Some(ed) = self.active_family_mut() else { return };
         // Zoom In Region armed: Escape gives it up, and nothing else.
-        if ed.zoom.region.is_some() && ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape)) {
-            ed.zoom.region = None;
+        if ed.zoom_region_armed() && ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape)) {
+            ed.cancel_zoom_region();
             return;
         }
         // Sketch mode: Escape lets the shape's points go, then its tool; Delete takes the lines picked away; Ctrl+Z takes back

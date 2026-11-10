@@ -1216,8 +1216,8 @@ Revit's zoom commands work in each of the document's views, plans, the ceiling p
 modelling view or the preview), on the view shown and never on the project's (`editor/zoom.rs`, over the window's own
 `zoom.rs`): Zoom to Fit (ZF, ZE, ZX, ZA) fits the view shown afresh; Zoom Out (2x) (ZO, ZV) halves it about its middle; Zoom In
 Region (ZR, ZZ) arms a drag over the view, drawn over it so the view's own drag neither turns, pans nor selects, and the view fits
-the rectangle let go (Escape gives it up); Previous Pan/Zoom (ZP, ZC) steps back through a short history each view keeps, a step
-left by each of those commands and none by the wheel or the middle button. The view control bar has the three beside Zoom to
+the rectangle let go; while it is armed the status bar asks for the rectangle, and Escape or another view shown gives it up; Previous Pan/Zoom (ZP, ZC) steps back through a short history each view keeps, a step
+left by each of those commands and none by the wheel or the middle button. Previous in {3D} gives up a fit still being worked out (`Orbit::cancel_fit`), so the fit never comes back over the camera it restored. The view control bar has the three beside Zoom to
 Fit. Their names are in `shortcuts::ACTIONS` and `FAMILY_ONLY` (the project has no such commands yet). Tests:
 `tests/family_zoom.rs`.
 
