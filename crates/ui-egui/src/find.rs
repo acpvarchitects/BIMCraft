@@ -80,7 +80,9 @@ impl BimApp {
                 })
                 .collect::<Vec<_>>()
         });
-        actions.chain(plugin_commands).chain(views).filter(|(label, ..)| matches(label, query)).take(MOST).collect()
+        // Find runs an action on the project, so not one only a family document does (`shortcuts::FAMILY_ONLY`).
+        let on_project = |f: &Found| !matches!(f, Found::Action(a) if crate::shortcuts::family_only(a));
+        actions.chain(plugin_commands).chain(views).filter(|(label, _, f)| on_project(f) && matches(label, query)).take(MOST).collect()
     }
 
     /// What Find lists on a family tab: the family document's commands, then its views.

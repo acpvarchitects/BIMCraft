@@ -11,7 +11,7 @@ fn kept(file: &std::path::Path) -> Value {
 }
 
 /// A shortcut made in the dialog as a user makes it: Add Shortcut, its keys typed, its action picked, Add.
-fn add_in_the_dialog(h: &mut Harness<BimApp>, keys: &str, action: &str) {
+pub(super) fn add_in_the_dialog(h: &mut Harness<BimApp>, keys: &str, action: &str) {
     shortcut(h, "KS");
     assert!(h.state().show_shortcuts);
     press(h, "Add Shortcut");

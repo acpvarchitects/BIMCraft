@@ -151,6 +151,27 @@ impl FamilyEditor {
         Ok(())
     }
 
+    /// The Select panel's Modify (MD): every tool put down and the selection let go.
+    pub(crate) fn modify_tool(&mut self) {
+        self.modeller.tool = Draw::Modify;
+        self.modeller.picking_plane = false;
+        self.form = None;
+        self.symbol = None;
+        self.connector = None;
+        self.views.drawing = None;
+        self.views.picking = None;
+        self.views.plane = None;
+        self.views.dimensioning = None;
+        self.views.aligning = None;
+        self.views.dim = None;
+    }
+
+    /// The view control bar's Zoom to Fit (ZF, ZE, ZX, ZA): the modelling view's camera fitted afresh, and {3D}'s.
+    pub(crate) fn zoom_to_fit(&mut self) {
+        self.modeller.camera = None;
+        self.orbit.fit();
+    }
+
     /// The draft as it is now, for `saved_as` once it has been saved.
     pub(super) fn draft(&self) -> Draft {
         Draft::of(self)
@@ -776,17 +797,7 @@ impl BimApp {
         ribbon::panel(ui, msg!("Select"), |ui| {
             let tip = msg!("Modify (MD): select elements");
             if big_button(ui, Icon::Modify, "Modify", ed.modeller.tool == Draw::Modify && ed.views.drawing.is_none(), tip).clicked() {
-                ed.modeller.tool = Draw::Modify;
-                ed.modeller.picking_plane = false;
-                ed.form = None;
-                ed.symbol = None;
-                ed.connector = None;
-                ed.views.drawing = None;
-                ed.views.picking = None;
-                ed.views.plane = None;
-                ed.views.dimensioning = None;
-                ed.views.aligning = None;
-                ed.views.dim = None;
+                ed.modify_tool();
             }
         });
         let shown = self.docking.shown(Palette::Properties);
@@ -1243,8 +1254,7 @@ impl BimApp {
                 }
                 ui.label(RichText::new(t("Shaded")).color(pal().muted));
                 if icon_button(ui, Icon::Fit, "Zoom to Fit").clicked() {
-                    ed.modeller.camera = None;
-                    ed.orbit.fit();
+                    ed.zoom_to_fit();
                 }
                 // Revit's Preview Visibility: the family as placed, the forms its type hides left out rather than ghosted.
                 if ed.adaptive.is_none() {
@@ -1536,6 +1546,10 @@ impl BimApp {
         // Letters typed, but not while a menu has the keys.
         if !egui::Popup::is_any_open(ctx) {
             self.family_typed(ctx);
+        }
+        // Keyboard Shortcuts, opened over the document (KS), has the keys: Escape and Delete are not the document's then.
+        if self.show_shortcuts {
+            return;
         }
         let Some(ed) = self.active_family_mut() else { return };
         // Sketch mode: Escape lets the shape's points go, then its tool; Delete takes the lines picked away; Ctrl+Z takes back
@@ -1847,7 +1861,7 @@ fn draw_panel(ui: &mut Ui, ed: &mut FamilyEditor) {
         ui.vertical(|ui| {
             ui.horizontal(|ui| {
                 let line = matches!(ed.modeller.tool, Draw::Line(_));
-                let tip = msg!("Line (LI): click points, or the work plane, in turn; the first again closes a profile");
+                let tip = msg!("Line: click points, or the work plane, in turn; the first again closes a profile");
                 if crate::small_button(ui, Icon::Line, "Line", line, tip).clicked() {
                     ed.modeller.tool = Draw::Line(Vec::new());
                 }

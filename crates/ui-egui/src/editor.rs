@@ -9,6 +9,7 @@ pub(crate) mod dimensions;
 pub(crate) mod document;
 pub(crate) mod exists;
 mod extrusion;
+pub(crate) mod keys;
 pub(crate) mod lit3d;
 mod nested;
 pub(crate) mod options;

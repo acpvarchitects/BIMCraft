@@ -538,10 +538,12 @@ frame, since its first lays out every tool (`a_tool_with_choices_of_its_own_open
 Keyboard Shortcuts. Manage > Shortcuts (or KS) opens `shortcuts_window` (`shortcuts.rs`): every shortcut by what it does, from `shortcuts()`
 (`SHORTCUTS`, the fixtures' letters, the commands' aliases), with Add, Edit and Load File. A shortcut is two letters or digits, all that `typed` holds,
 and a custom one is tried before the defaults. Each name in `ACTIONS` is a tool or command the window runs (`execute_shortcut_action`), and a key never
-carries Revit's name for a tool BIMCraft lacks (Sun Settings, Detail and Model Line, Split Face, Brace, Beam System, Reference Plane, the duct tools): it waits
-for the tool. Load File reads JSON (`{"WA": "Wall"}`), Revit's `<Shortcut CommandName=… Shortcuts="WA#W1">` lines, or `KEY - Name` lines, up to 64 KiB;
-a description is an action only by its whole name in one of the interface's languages (`resolve_action`), and a key that is not two characters, names no action or
-is another action's is skipped and counted in the message. Custom shortcuts are kept in `settings.json` (`shortcuts`: key to the action's English name, as `Settings::shortcuts`), written when one is added, edited or loaded and
+carries Revit's name for a tool BIMCraft lacks (Sun Settings, Detail and Model Line, Split Face, Brace, Beam System, the duct tools): it waits
+for the tool. The family document's own commands are there too (`FAMILY_ONLY`; a family tab's keys are its own table's: [families](families.md#the-family-documents-keys-fe-13)).
+Load File reads JSON (`{"WA": "Wall"}`), Revit's export of its keyboard shortcuts (`<ShortcutItem CommandName=… CommandId=… Shortcuts="WA#W1" Paths=…/>`, its
+entities decoded, Revit's names for BIMCraft's actions in `REVIT_NAMES`), or `KEY - Name` lines, up to 1 MiB (Revit's export is about 300 KiB);
+a description is an action only by its whole name in one of the interface's languages, whatever the punctuation between its words (`resolve_action`), and a key that
+is not two characters, names no action or is another action's is skipped and counted in the message. Custom shortcuts are kept in `settings.json` (`shortcuts`: key to the action's English name, as `Settings::shortcuts`), written when one is added, edited or loaded and
 read into `BimApp::custom_shortcuts` at startup (`use_settings`), so they last past the window; Restore Defaults is kept too, as an empty object, and New and Open keep them.
 `Settings::from_json` keeps only what the dialog could have made (a key of two letters or digits, in upper case whatever its case in the file, and a name in `ACTIONS`),
 at most `MAX_SHORTCUTS`; a value that isn't an object leaves what the window had. Tests: `tests/shortcuts_kept.rs`. Match Properties (MA) is the `match_properties`
