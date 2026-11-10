@@ -3714,10 +3714,9 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
         Element::Dimension3D(d) => {
             extra.insert("length".into(), json!(hundredth(crate::dims3d::length(d))));
         }
-        // Where it stands: on its host's level.
-        Element::Part(_) => {
-            extra.insert("level".into(), json!(m.level_of(e)));
-        }
+        // What it is of its host now: its level, its layer, what it is made of, its thickness, its net area and volume, the
+        // heritage set by the names it is shown by, and its conflict when its recipe no longer applies.
+        Element::Part(p) => crate::parts::json(m, id, p, &mut extra),
         Element::Circuit(c) => {
             extra.insert("panel_id".into(), json!(m.elements.id(c.panel)));
             extra.insert("device_ids".into(), json!(c.devices.iter().filter_map(|g| m.elements.id(*g)).collect::<Vec<Id>>()));

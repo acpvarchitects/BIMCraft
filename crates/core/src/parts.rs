@@ -18,6 +18,12 @@ use serde::{Deserialize, Serialize};
 
 use crate::model::{Element, Elements, Guid, Id, MAX_TEXT, Model};
 
+pub mod solid;
+mod state;
+
+pub use state::PartState;
+pub(crate) use state::json;
+
 /// The categories of element that may have parts.
 pub const HOSTS: [&str; 5] = ["wall", "floor", "roof", "ceiling", "component"];
 
@@ -296,6 +302,53 @@ impl BuildingPart {
             params: BTreeMap::new(),
         }
     }
+}
+
+/// The parts element `host` has that were made straight from it, and those it lacks: a part for each layer of its type
+/// that has some thickness (a thermal one's starting as IFC's INSULATION), or one of all of it where its type has no
+/// layers or it has no type of layers at all, as a component. An error for an element that has no parts to make, or
+/// that has a part of all of it standing where its layers' parts would.
+pub fn missing(m: &Model, host: Id) -> Result<(Vec<Id>, Vec<BuildingPart>), String> {
+    let e = m.elements.get(host).ok_or_else(|| format!("no element {host}"))?;
+    if !HOSTS.contains(&e.category()) {
+        return Err(format!("{} {host} has no parts to make; a wall, a floor, a roof, a ceiling or a component has", e.category()));
+    }
+    let guid = m.guid(host);
+    let layers: &[crate::model::Layer] = match e {
+        Element::Wall(w) => m.type_layers("wall", &w.type_name),
+        Element::Floor(f) => m.type_layers("floor", &f.type_name),
+        Element::Roof(r) => m.type_layers("roof", &r.type_name),
+        Element::Ceiling(c) => m.type_layers("ceiling", &c.type_name),
+        _ => &[],
+    };
+    let mut wanted: Vec<BuildingPart> = layers
+        .iter()
+        .filter(|l| l.thickness > 0.0 && !l.guid.is_nil())
+        .map(|l| BuildingPart {
+            predefined_type: if l.function == crate::model::Function::Thermal { PartType::Insulation } else { PartType::NotDefined },
+            ..BuildingPart::new(guid, Source::Layer(l.guid))
+        })
+        .collect();
+    if wanted.is_empty() {
+        wanted.push(BuildingPart::new(guid, Source::Whole));
+    }
+    let has: Vec<(Id, Source)> = m
+        .parts_of(host)
+        .into_iter()
+        .filter_map(|id| match m.elements.get(id) {
+            Some(Element::Part(p)) if p.parent.is_none() => Some((id, p.source)),
+            _ => None,
+        })
+        .collect();
+    let by_layer = wanted.iter().any(|w| !w.source.is_whole());
+    if let Some((whole, _)) = has.iter().find(|(_, source)| by_layer && source.is_whole()) {
+        return Err(format!(
+            "{} {host} has a part of all of it, part {whole}, where its layers' parts would stand: delete that one first",
+            e.category()
+        ));
+    }
+    wanted.retain(|w| !has.iter().any(|(_, source)| *source == w.source));
+    Ok((has.into_iter().map(|(id, _)| id).collect(), wanted))
 }
 
 /// What [`Model::check`] asks of part `id`, `p`: a host that may have parts, a parent that is another part of the same

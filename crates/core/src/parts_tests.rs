@@ -445,3 +445,451 @@ fn a_file_is_read_kindly_whatever_its_parts_key_holds() {
     inline["elements"][id.to_string()]["category"] = json!("part");
     assert_eq!(Model::read(&inline.to_string()).unwrap().0.elements, s.model.elements);
 }
+
+// ---------- what a part is of its host now ----------
+
+use crate::parts::solid;
+use crate::view3d::P3;
+
+/// The box round a solid's corners: its lowest and its highest, each way.
+fn extent(tris: &[[P3; 3]]) -> ([f64; 3], [f64; 3]) {
+    tris.iter().flatten().fold(([f64::INFINITY; 3], [f64::NEG_INFINITY; 3]), |(lo, hi), p| {
+        (std::array::from_fn(|k| lo[k].min(p[k])), std::array::from_fn(|k| hi[k].max(p[k])))
+    })
+}
+
+fn near(a: f64, b: f64) -> bool {
+    (a - b).abs() <= 1e-6 * (1.0 + b.abs())
+}
+
+/// Part `id` as `elements` lists it.
+fn shown(s: &mut Session, id: Id) -> Value {
+    let listed = run(s, "elements", json!({"category": "part"}));
+    listed["elements"].as_array().unwrap().iter().find(|e| e["id"] == id).unwrap_or_else(|| panic!("no part {id} listed")).clone()
+}
+
+/// The three parts of the historic wall, exterior plaster first, put in the project.
+fn three(s: &mut Session, wall: Id) -> [Id; 3] {
+    [0, 1, 2].map(|k| put(s, |m| layer_part(m, wall, k)))
+}
+
+/// Part `id`'s solid, which it must have, checked to be closed; with its net area and its volume.
+fn measured(m: &Model, id: Id) -> (Vec<[P3; 3]>, f64, f64) {
+    let p = part(m, id);
+    let tris = m.part_solid(p).unwrap_or_else(|e| panic!("part {id}: {e}"));
+    assert!(solid::closed(&tris), "part {id}'s solid is closed");
+    let (area, volume) = m.part_quantities(p).unwrap();
+    assert!(near(volume, solid::volume(&tris)));
+    (tris, area.unwrap_or(f64::NAN), volume)
+}
+
+#[test]
+fn a_walls_part_is_its_layer_between_the_layers_faces() {
+    let (mut s, wall) = historic();
+    let [outer, core, inner] = three(&mut s, wall);
+    let whole = put(&mut s, |m| BuildingPart::new(m.guid(wall), Source::Whole));
+    let m = &s.model;
+    // The wall runs east, so its exterior side is north: 250 mm from its centre line, the plaster's first 20 of them.
+    for (id, (y0, y1), thick) in [(outer, (230.0, 250.0), 20.0), (core, (-230.0, 230.0), 460.0), (inner, (-250.0, -230.0), 20.0)] {
+        let (tris, area, volume) = measured(m, id);
+        let (lo, hi) = extent(&tris);
+        assert!(near(lo[1], y0) && near(hi[1], y1), "part {id} lies from {} to {} across the wall", lo[1], hi[1]);
+        assert_eq!(([lo[0], lo[2]], [hi[0], hi[2]]), ([0.0, 0.0], [4000.0, 3000.0]));
+        assert!(near(volume, 4000.0 * 3000.0 * thick), "{volume}");
+        assert!(near(area, 4000.0 * 3000.0), "its face toward the exterior: {area}");
+        assert_eq!(m.part_thickness(part(m, id)), Some(thick));
+    }
+    assert_eq!(m.part_material(part(m, outer)), Some("Lime Plaster"));
+    assert_eq!(m.part_material(part(m, core)), Some("Rubble Masonry"));
+    // All of it: the wall's own thickness, the material of its structure, the sum of its layers.
+    let (tris, area, volume) = measured(m, whole);
+    assert_eq!(extent(&tris), ([0.0, -250.0, 0.0], [4000.0, 250.0, 3000.0]));
+    assert!(near(volume, 4000.0 * 3000.0 * 500.0) && near(area, 4000.0 * 3000.0));
+    assert_eq!((m.part_thickness(part(m, whole)), m.part_material(part(m, whole))), (Some(500.0), Some("Rubble Masonry")));
+    let state = m.part_state(core).unwrap();
+    assert_eq!(
+        (state.layer, state.material.as_str(), state.thickness),
+        (Some((1, crate::model::Function::Structure)), "Rubble Masonry", Some(460.0))
+    );
+    assert_eq!((state.net_area.map(f64::round), state.net_volume.round(), state.conflict), (Some(12e6), 5.52e9, None));
+    assert_eq!(m.part_state(wall), None, "a wall is no part");
+    assert_eq!(m.parts_of(wall), [outer, core, inner, whole]);
+    // Triangles turned out: a corner of the exterior plaster's north face, its normal north.
+    let (tris, ..) = measured(m, outer);
+    let north = tris.iter().filter(|t| t.iter().all(|p| near(p[1], 250.0))).count();
+    assert_eq!(north, 2, "its exterior face is two triangles");
+    assert!(near(solid::facing(&tris, &solid::Facing::Along(vec![[0.0, 1.0, 0.0]])), 12e6));
+}
+
+#[test]
+fn a_walls_parts_are_cut_by_its_doors_and_windows_and_measure_net_of_them() {
+    let (mut s, wall) = historic();
+    let ids = three(&mut s, wall);
+    run(&mut s, "type", json!({"category": "window", "name": "W 1000x1200", "width": 1000, "height": 1200, "sill": 900}));
+    run(&mut s, "type", json!({"category": "door", "name": "D 900x2100", "width": 900, "height": 2100}));
+    run(&mut s, "window", json!({"at": [1500, 0], "type": "W 1000x1200"}));
+    run(&mut s, "door", json!({"at": [3000, 0], "type": "D 900x2100"}));
+    let net = 4000.0 * 3000.0 - 1000.0 * 1200.0 - 900.0 * 2100.0;
+    for (id, thick) in ids.into_iter().zip([20.0, 460.0, 20.0]) {
+        let (_, area, volume) = measured(&s.model, id);
+        assert!(near(area, net), "part {id}: {area}");
+        assert!(near(volume, net * thick), "part {id}: {volume}");
+    }
+    // The window's reveals are faces of the masonry that look along the wall, not toward its exterior.
+    let (tris, ..) = measured(&s.model, ids[1]);
+    let along = solid::facing(&tris, &solid::Facing::Along(vec![[1.0, 0.0, 0.0]]));
+    assert!(near(along, 460.0 * (3000.0 + 1200.0 + 2100.0)), "{along}");
+    // Taken out again, the parts are whole again: nothing was stored.
+    let openings: Vec<Id> =
+        s.model.elements.iter().filter(|(_, e)| matches!(e, Element::Door(_) | Element::Window(_))).map(|(id, _)| *id).collect();
+    run(&mut s, "delete", json!({"ids": openings}));
+    assert!(near(measured(&s.model, ids[0]).1, 12e6));
+}
+
+#[test]
+fn a_part_follows_its_wall_when_it_moves_stretches_or_its_layers_change() {
+    let (mut s, wall) = historic();
+    let [outer, core, _] = three(&mut s, wall);
+    let before = part(&s.model, outer).clone();
+    // Moved: its solid is where the wall is.
+    run(&mut s, "move", json!({"ids": [wall], "by": [1000, 2000]}));
+    let (tris, area, _) = measured(&s.model, outer);
+    assert_eq!(extent(&tris), ([1000.0, 2230.0, 0.0], [5000.0, 2250.0, 3000.0]));
+    assert!(near(area, 12e6));
+    // Stretched and raised: as long and as tall as it is now.
+    run(&mut s, "modify", json!({"id": wall, "end": [7000, 2000], "height": 3500}));
+    let (_, area, volume) = measured(&s.model, outer);
+    assert!(near(area, 6000.0 * 3500.0) && near(volume, 6000.0 * 3500.0 * 20.0));
+    // Its type's layers changed where they are: a thicker plaster, a thinner wall behind it.
+    run(
+        &mut s,
+        "type",
+        json!({"category": "wall", "name": "Historic - 500mm", "layers": [
+            {"function": "finish", "material": "Lime Plaster", "thickness": 35},
+            {"function": "structure", "material": "Rubble Masonry", "thickness": 400},
+            {"function": "finish", "material": "Lime Plaster", "thickness": 20},
+        ]}),
+    );
+    assert_eq!(s.model.part_thickness(part(&s.model, outer)), Some(35.0));
+    assert!(near(measured(&s.model, outer).2, 6000.0 * 3500.0 * 35.0));
+    assert!(near(measured(&s.model, core).2, 6000.0 * 3500.0 * 400.0));
+    // The part itself is as it was: a recipe, with nothing of the wall's shape in it.
+    assert_eq!(*part(&s.model, outer), before);
+    run(&mut s, "undo", json!({"count": 3}));
+    assert!(near(measured(&s.model, outer).2, 4000.0 * 3000.0 * 20.0));
+}
+
+#[test]
+fn walls_that_join_give_their_parts_their_ends_and_curved_ones_their_bow() {
+    let (mut s, wall) = historic();
+    // A second wall of the type from the first's end, turning north-west: a mitre.
+    let other = run(&mut s, "wall", json!({"points": [[4000, 0], [2000, 3000]], "type": "Historic - 500mm", "height": 3000}))["ids"][0]
+        .as_u64()
+        .unwrap();
+    // And a curved one on its own.
+    let bow =
+        run(&mut s, "wall", json!({"points": [[0, 8000], [4000, 8000]], "arc": 90, "type": "Historic - 500mm", "height": 3000}))["ids"][0]
+            .as_u64()
+            .unwrap();
+    for host in [wall, other, bow] {
+        let outline = crate::geom::area(&crate::walls::outline(&s.model, host)).abs();
+        let parts = three(&mut s, host);
+        let whole = put(&mut s, |m| BuildingPart::new(m.guid(host), Source::Whole));
+        let layers: f64 = parts.iter().map(|id| measured(&s.model, *id).2).sum();
+        let (_, _, all) = measured(&s.model, whole);
+        assert!((layers - all).abs() <= 1e-6 * all, "wall {host}: its layers hold {layers}, all of it {all}");
+        assert!((all - outline * 3000.0).abs() <= 1e-6 * all, "wall {host}: {all} is its outline, {outline} mm², swept up");
+    }
+    // At the mitre the first wall's exterior face (north, inside the corner) is shorter than its interior one.
+    let (_, outer, _) = measured(&s.model, s.model.parts_of(wall)[0]);
+    assert!(outer < 12e6 - 1e5, "{outer}");
+    // The curved wall's exterior plaster: its face is the arc at its exterior side, a little short of it in flat pieces.
+    let w = s.model.wall(bow).unwrap();
+    let axis = crate::walls::Axis::of(w);
+    let (radius, sweep) = (axis.radius().unwrap(), 90f64.to_radians());
+    let (_, area, volume) = measured(&s.model, s.model.parts_of(bow)[0]);
+    let face = (radius - 250.0) * sweep * 3000.0;
+    assert!(area <= face && area > 0.999 * face, "{area} of {face}");
+    let ring = (radius - 240.0) * sweep * 20.0 * 3000.0;
+    assert!((volume - ring).abs() < 0.002 * ring, "{volume} of {ring}");
+}
+
+#[test]
+fn a_wall_under_a_roof_gives_its_parts_its_top() {
+    let mut s = Session::new();
+    s.script(
+        r#"wall {"points": [[0, 0], [8000, 0], [8000, 6000], [0, 6000]], "closed": true}
+           roof {"gable": true}"#,
+    )
+    .unwrap();
+    let (gable_wall, roof) = (100003, 100006);
+    assert!(matches!(s.model.elements.get(roof), Some(Element::Roof(_))));
+    run(&mut s, "modify", json!({"id": gable_wall, "attach_top": roof}));
+    let id = put(&mut s, |m| BuildingPart::new(m.guid(gable_wall), Source::Whole));
+    let (tris, area, volume) = measured(&s.model, id);
+    let prisms: f64 = crate::walls::prisms(&s.model, gable_wall, true)
+        .iter()
+        .map(|p| {
+            let c = crate::geom::centroid(&p.ring);
+            crate::geom::area(&p.ring).abs() * (p.top.at(c) - p.bottom.at(c))
+        })
+        .sum();
+    assert!((volume - prisms).abs() <= 1e-6 * prisms, "{volume} of {prisms}");
+    // Taller in the middle than at its ends, its side a pentagon.
+    let (_, hi) = extent(&tris);
+    assert!(hi[2] > 4000.0, "{hi:?}");
+    assert!(area > 6000.0 * 3000.0 && area < 6000.0 * hi[2], "{area}");
+}
+
+/// A floor of a type of three layers (20 mm finish, 60 mm screed, 200 mm slab), 5 by 4 m with a hole a metre square, on
+/// Level 1: the session, and the floor's id.
+fn slab(more: Value) -> (Session, Id) {
+    let mut s = Session::new();
+    run(&mut s, "material", json!({"name": "Cocciopesto", "color": "#b5651d"}));
+    run(
+        &mut s,
+        "type",
+        json!({"category": "floor", "name": "Historic Floor", "layers": [
+            {"function": "finish", "material": "Cocciopesto", "thickness": 20},
+            {"function": "substrate", "thickness": 60},
+            {"function": "structure", "thickness": 200},
+        ]}),
+    );
+    let mut p = json!({"boundary": [[0, 0], [5000, 0], [5000, 4000], [0, 4000]], "type": "Historic Floor",
+        "openings": [[[1000, 1000], [2000, 1000], [2000, 2000], [1000, 2000]]]});
+    p.as_object_mut().unwrap().extend(more.as_object().cloned().unwrap_or_default());
+    let floor = run(&mut s, "floor", p)["id"].as_u64().unwrap();
+    (s, floor)
+}
+
+/// A part of layer `k` of floor `floor`'s type, put in the project.
+fn floor_part(s: &mut Session, floor: Id, k: usize) -> Id {
+    put(s, |m| {
+        let Some(Element::Floor(f)) = m.elements.get(floor) else { panic!("no floor {floor}") };
+        BuildingPart::new(m.guid(floor), Source::Layer(m.types.floor[&f.type_name].layers[k].guid))
+    })
+}
+
+#[test]
+fn a_floors_part_is_its_layer_from_the_top_down_less_its_openings_and_shafts() {
+    let (mut s, floor) = slab(json!({}));
+    let ids = [0, 1, 2].map(|k| floor_part(&mut s, floor, k));
+    let plan = 5000.0 * 4000.0 - 1000.0 * 1000.0;
+    for (id, (z0, z1)) in ids.into_iter().zip([(-20.0, 0.0), (-80.0, -20.0), (-280.0, -80.0)]) {
+        let (tris, area, volume) = measured(&s.model, id);
+        let (lo, hi) = extent(&tris);
+        assert!(near(lo[2], z0) && near(hi[2], z1), "part {id} lies from {} to {}", lo[2], hi[2]);
+        assert!(near(area, plan) && near(volume, plan * (z1 - z0)), "part {id}: {area} mm², {volume} mm³");
+    }
+    assert_eq!(s.model.part_material(part(&s.model, ids[0])), Some("Cocciopesto"));
+    assert_eq!(s.model.part_material(part(&s.model, ids[2])), None, "its layer names no material");
+    // A shaft from the level up only meets its top, and cuts nothing of it.
+    let shaft = run(&mut s, "shaft", json!({"boundary": [[3000, 2500], [4000, 2500], [4000, 3500], [3000, 3500]]}))["id"].as_u64().unwrap();
+    assert!(near(measured(&s.model, ids[1]).1, plan));
+    // One that reaches into it, be it only into its finish, cuts all of it: its plan out of every layer.
+    run(&mut s, "modify", json!({"id": shaft, "base_offset": -10}));
+    let (_, area, volume) = measured(&s.model, ids[1]);
+    assert!(near(area, plan - 1e6) && near(volume, (plan - 1e6) * 60.0), "{area} mm², {volume} mm³");
+    // All of it holds what the floor does.
+    let whole = put(&mut s, |m| BuildingPart::new(m.guid(floor), Source::Whole));
+    let Some(Element::Floor(f)) = s.model.elements.get(floor) else { panic!() };
+    assert!(near(measured(&s.model, whole).2, s.model.floor_volume(f)));
+    assert_eq!(s.model.part_thickness(part(&s.model, whole)), Some(280.0));
+}
+
+#[test]
+fn a_sloped_floors_part_measures_its_top_along_the_slope() {
+    let (mut s, floor) = slab(json!({"slope": 10, "arrow": [[0, 0], [5000, 0]]}));
+    let finish = floor_part(&mut s, floor, 0);
+    let plan = 5000.0 * 4000.0 - 1000.0 * 1000.0;
+    let cos = 10f64.to_radians().cos();
+    let (tris, area, volume) = measured(&s.model, finish);
+    assert!(near(area, plan / cos), "{area}");
+    // 20 mm across its slope, so more than that plumb.
+    assert!(near(volume, plan * 20.0 / cos), "{volume}");
+    let (lo, hi) = extent(&tris);
+    assert!(near(hi[2], 5000.0 * 10f64.to_radians().tan()) && lo[2] < 0.0, "{lo:?} {hi:?}");
+}
+
+#[test]
+fn over_a_variable_layer_a_shaped_floors_parts_follow_its_top_and_its_level_underside() {
+    let mut s = Session::new();
+    run(
+        &mut s,
+        "type",
+        json!({"category": "floor", "name": "Terrace", "layers": [
+            {"function": "finish", "thickness": 10},
+            {"function": "substrate", "thickness": 60, "variable": true},
+            {"function": "structure", "thickness": 200},
+        ]}),
+    );
+    let floor =
+        run(&mut s, "floor", json!({"boundary": [[0, 0], [4000, 0], [4000, 4000], [0, 4000]], "type": "Terrace"}))["id"].as_u64().unwrap();
+    run(&mut s, "edit_shape", json!({"id": floor, "points": [{"at": [2000, 2000], "z": -30}]}));
+    let [finish, screed, slab] = [0, 1, 2].map(|k| floor_part(&mut s, floor, k));
+    let plan = 4000.0 * 4000.0;
+    // A funnel 30 mm deep at its middle: a pyramid's worth of screed less, and all of the slab under it.
+    let (_, _, v) = measured(&s.model, slab);
+    assert!(near(v, plan * 200.0), "{v}");
+    let (tris, area, v) = measured(&s.model, screed);
+    assert!(near(v, plan * 60.0 - plan * 30.0 / 3.0), "{v}");
+    assert!(area > plan && area < plan * 1.001, "its top, folded: {area}");
+    assert!(near(extent(&tris).0[2], -270.0 + 200.0));
+    // The finish follows the top, 10 mm plumb all over.
+    let (tris, area, v) = measured(&s.model, finish);
+    assert!(near(v, plan * 10.0) && area > plan, "{v}, {area}");
+    assert!(near(extent(&tris).0[2], -40.0) && near(extent(&tris).1[2], 0.0));
+    let Some(Element::Floor(f)) = s.model.elements.get(floor) else { panic!() };
+    let all: f64 = [finish, screed, slab].iter().map(|id| measured(&s.model, *id).2).sum();
+    assert!(near(all, s.model.floor_volume(f)), "{all}");
+}
+
+#[test]
+fn a_roofs_a_ceilings_and_a_components_part_have_their_solids_too() {
+    let mut s = Session::new();
+    s.script(
+        r#"wall {"points": [[0, 0], [8000, 0], [8000, 6000], [0, 6000]], "closed": true}
+           type {"category": "roof", "name": "Tiled", "layers": [{"function": "finish", "thickness": 50}, {"function": "structure", "thickness": 150}]}
+           roof {"type": "Tiled", "slope": 30}
+           type {"category": "ceiling", "name": "Lath and Plaster", "layers": [{"function": "structure", "thickness": 25}, {"function": "finish", "thickness": 15}]}
+           ceiling {"boundary": [[100, 100], [7900, 100], [7900, 5900], [100, 5900]], "type": "Lath and Plaster"}
+           component {"family": "WC", "at": [2000, 2000]}"#,
+    )
+    .unwrap();
+    let find = |s: &Session, cat: &str| *s.model.elements.iter().find(|(_, e)| e.category() == cat).unwrap().0;
+    let (roof, ceiling, wc) = (find(&s, "roof"), find(&s, "ceiling"), find(&s, "component"));
+    // A hipped roof's tiles and its structure: together all of it, each its share, its top the four slopes.
+    let layer = |m: &Model, cat: &str, name: &str, k: usize| m.type_layers(cat, name)[k].guid;
+    let tiles = put(&mut s, |m| BuildingPart::new(m.guid(roof), Source::Layer(layer(m, "roof", "Tiled", 0))));
+    let boards = put(&mut s, |m| BuildingPart::new(m.guid(roof), Source::Layer(layer(m, "roof", "Tiled", 1))));
+    let all = put(&mut s, |m| BuildingPart::new(m.guid(roof), Source::Whole));
+    let (_, top, v_tiles) = measured(&s.model, tiles);
+    let (_, _, v_boards) = measured(&s.model, boards);
+    let (_, top_all, v_all) = measured(&s.model, all);
+    assert!(near(v_tiles + v_boards, v_all) && near(v_boards, 3.0 * v_tiles), "{v_tiles} + {v_boards} of {v_all}");
+    let Some(Element::Roof(r)) = s.model.elements.get(roof) else { panic!() };
+    let plan = crate::geom::area(&s.model.roof_outline(r)).abs();
+    assert!(near(top, plan / 30f64.to_radians().cos()) && near(top_all, top), "{top} over {plan}");
+    // A ceiling's plaster: its lower 15 mm, its top its plan.
+    let plaster = put(&mut s, |m| BuildingPart::new(m.guid(ceiling), Source::Layer(layer(m, "ceiling", "Lath and Plaster", 1))));
+    let (tris, area, v) = measured(&s.model, plaster);
+    assert!(near(area, 7800.0 * 5800.0) && near(v, 7800.0 * 5800.0 * 15.0));
+    assert!(near(extent(&tris).0[2], 2600.0) && near(extent(&tris).1[2], 2615.0));
+    // A component is all of itself: its family's forms where it stands, a volume and no face to name.
+    let fixture = put(&mut s, |m| BuildingPart::new(m.guid(wc), Source::Whole));
+    let p = part(&s.model, fixture);
+    let tris = s.model.part_solid(p).unwrap();
+    let (lo, hi) = extent(&tris);
+    assert!(lo[0] < 2000.0 && hi[0] > 2000.0 && lo[2] >= -1e-6 && hi[2] > 100.0, "{lo:?} {hi:?}");
+    let (area, volume) = s.model.part_quantities(p).unwrap();
+    assert!(area.is_none() && volume > 1e6, "{volume}");
+    assert_eq!((s.model.part_thickness(p), s.model.part_prisms(p).unwrap().is_none()), (None, true));
+    assert!(s.model.part_prisms(part(&s.model, tiles)).unwrap().is_some_and(|prisms| !prisms.is_empty()));
+}
+
+#[test]
+fn a_part_whose_recipe_no_longer_applies_is_in_conflict_and_says_what_to_fix() {
+    let (mut s, wall) = historic();
+    let [outer, core, inner] = three(&mut s, wall);
+    let patch = put(&mut s, |m| BuildingPart { parent: Some(m.guid(inner)), ..layer_part(m, wall, 2) });
+    assert!([outer, core, inner, patch].iter().all(|id| s.model.part_state(*id).unwrap().conflict.is_none()));
+    // The wall given another type: its parts are layers of the type it was of.
+    run(&mut s, "modify", json!({"id": wall, "type": "Generic - 200mm"}));
+    assert_eq!(s.model.check(), Ok(()), "a conflict is the part's to report, never the model's to refuse");
+    let state = s.model.part_state(core).unwrap();
+    let said = state.conflict.clone().unwrap();
+    assert_eq!(
+        said,
+        format!(
+            "it is layer 2 of wall type Historic - 500mm, and wall {wall} is of wall type `Generic - 200mm` now, which has no such \
+             layer: delete it and make the wall's parts again with `create_parts`, or give the wall its type back"
+        )
+    );
+    assert_eq!((state.layer, state.thickness, state.net_area, state.net_volume), (None, None, None, 0.0));
+    assert_eq!(s.model.part_solid(part(&s.model, core)), Err(said.clone()));
+    assert_eq!(s.model.part_conflict(part(&s.model, core)), Some(said));
+    // What was divided from a part in conflict is in conflict with it.
+    let said = s.model.part_conflict(part(&s.model, patch)).unwrap();
+    assert!(said.starts_with(&format!("part {inner}, which it was divided from, is in conflict: it is layer 3 of wall type")), "{said}");
+    // A part of all of the wall has no layer to lose.
+    let whole = put(&mut s, |m| BuildingPart::new(m.guid(wall), Source::Whole));
+    assert!(near(measured(&s.model, whole).2, 4000.0 * 3000.0 * 200.0));
+    // Its type given back, they are what they were.
+    run(&mut s, "modify", json!({"id": wall, "type": "Historic - 500mm"}));
+    assert!(near(measured(&s.model, core).2, 4000.0 * 3000.0 * 460.0));
+    assert_eq!(s.model.part_conflict(part(&s.model, patch)), None);
+    // The type losing its last layer: the part of it is in conflict, the others follow the two that stay.
+    run(
+        &mut s,
+        "type",
+        json!({"category": "wall", "name": "Historic - 500mm", "layers": [
+            {"function": "finish", "material": "Lime Plaster", "thickness": 20},
+            {"function": "structure", "material": "Rubble Masonry", "thickness": 480},
+        ]}),
+    );
+    assert!(near(measured(&s.model, core).2, 4000.0 * 3000.0 * 480.0));
+    let said = s.model.part_conflict(part(&s.model, inner)).unwrap();
+    assert_eq!(
+        said,
+        format!(
+            "the layer it was made of is gone from wall type `Historic - 500mm`, which wall {wall} is of: delete it and make the \
+             wall's parts again with `create_parts`"
+        )
+    );
+    // A layer as thin as nothing (a membrane) has nothing to it.
+    run(
+        &mut s,
+        "type",
+        json!({"category": "wall", "name": "Historic - 500mm", "layers": [
+            {"function": "membrane", "thickness": 0},
+            {"function": "structure", "material": "Rubble Masonry", "thickness": 500},
+        ]}),
+    );
+    let said = s.model.part_conflict(part(&s.model, outer)).unwrap();
+    assert!(said.starts_with("layer 1 of its type has no thickness, so there is nothing of it"), "{said}");
+    assert_eq!(s.model.check(), Ok(()));
+}
+
+#[test]
+fn a_listing_shows_what_a_part_is_now_beside_what_it_holds() {
+    let (mut s, wall) = historic();
+    let heritage = Heritage {
+        su_code: "USR 3".into(),
+        historical_period: "18th century".into(),
+        decay_pathology: Some(Decay::BiologicalColonization),
+        decay_severity: Some(2),
+        intervention_type: "Cleaning".into(),
+    };
+    let id = put(&mut s, |m| BuildingPart { heritage, ..layer_part(m, wall, 0) });
+    let core = put(&mut s, |m| layer_part(m, wall, 1));
+    let listed = run(&mut s, "elements", json!({"category": "part"}));
+    let one = &listed["elements"][0];
+    assert_eq!(one["id"], id);
+    assert_eq!((&one["host_category"], &one["layer"], &one["function"]), (&json!("wall"), &json!(1), &json!("finish")));
+    assert_eq!((&one["material"], &one["own_material"], &one["thickness"]), (&json!("Lime Plaster"), &json!(false), &json!(20.0)));
+    assert_eq!((&one["area_m2"], &one["volume_m3"]), (&json!(12.0), &json!(0.24)));
+    assert_eq!(
+        [&one["SU_Code"], &one["Historical_Period"], &one["Decay_Pathology"], &one["Decay_Severity"], &one["Intervention_Type"]],
+        [&json!("USR 3"), &json!("18th century"), &json!("Biological colonization"), &json!(2), &json!("Cleaning")]
+    );
+    assert!(one.get("conflict").is_none());
+    // What it holds is there as it is held, for `modify` to change: its heritage set, by its fields.
+    assert_eq!(one["heritage"]["decay_pathology"], "biological-colonization");
+    let other = &listed["elements"][1];
+    assert_eq!((&other["id"], &other["volume_m3"]), (&json!(core), &json!(5.52)));
+    assert!(other.get("SU_Code").is_none() && other.get("Decay_Severity").is_none(), "nothing said, nothing shown");
+    // `modify` changes a part as any element: its own material, which the listing then shows as what it is made of.
+    run(&mut s, "modify", json!({"id": core, "material": "Lime Plaster", "heritage": {"su_code": "USM 1", "decay_severity": 5}}));
+    let one = shown(&mut s, core);
+    assert_eq!(
+        (&one["material"], &one["own_material"], &one["SU_Code"], &one["Decay_Severity"]),
+        (&json!("Lime Plaster"), &json!(true), &json!("USM 1"), &json!(5))
+    );
+    let e = fails(&mut s, "modify", json!({"id": core, "heritage": {"decay_severity": 6}}));
+    assert!(e.contains("Decay_Severity is 1 (slight) to 5 (the worst), not 6"), "{e}");
+    // In conflict, it says so, and measures nothing.
+    run(&mut s, "modify", json!({"id": wall, "type": "Generic - 200mm"}));
+    let one = shown(&mut s, id);
+    assert!(one["conflict"].as_str().unwrap().contains("which has no such layer"), "{one}");
+    assert!(one.get("area_m2").is_none() && one["volume_m3"] == 0.0 && one.get("layer").is_none(), "{one}");
+}
