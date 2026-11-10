@@ -1193,6 +1193,23 @@ The follow-ups it left open, done after it: Pick Lines' Lock and Trim/Extend to 
 `host_void_tests`). What they found: in a plan or an elevation, Pick Lines put a line where a plane is drawn rather than where
 the type previewed puts it, as the view shows it; it takes the one shown now.
 
+## The family document's keys (FE-13)
+
+A family tab has two-letter keys of its own (`editor/keys.rs`): `FAMILY_SHORTCUTS`, Revit's default keys for the family editor's
+commands. The project's keys stay blocked on a family tab (`BimApp::keys` returns for one), so no project action runs from it, and
+the family's table never reads the project's `SHORTCUTS` or the commands' aliases; a key both have means the same command in each
+(`the_family_table_gives_no_project_key_another_meaning`). Each key does what its ribbon button does in the family, where the button
+is enabled, and nothing where it is greyed or not on the ribbon: MD Modify (while sketching, the sketch's Modify), PP and VP
+Properties (and Ctrl+1), CM Component (once a family is loaded), RP Reference Plane, WP and WW Work Plane's Set (the Work Plane
+dialog; the sketch's while sketching), FA Load Family, DI and DD Aligned Dimension and AN Angular (in a plan or an elevation, not
+sketching), TX Annotate's Text, AL and AA Align, MV, CO and RO Move, Copy and Rotate (an adaptive family's, with something
+selected), DE Delete (as the Delete key), TR, PL, FG and CG the sketch's Trim/Extend to Corner, Pick Lines, Finish and Cancel Edit
+Mode, KS Keyboard Shortcuts, 3D the family's own {3D}, ZE, ZF, ZX and ZA the view control bar's Zoom to Fit, and HH, HC, HI, IC
+and HR Temporary Hide/Isolate. A key made in Keyboard Shortcuts is tried first when it names a command the family has. The
+commands only a family has (Work Plane, Load Family, Angular Dimension, Pick Lines, Finish and Cancel Edit Mode) are in
+`shortcuts::ACTIONS`, so the dialog and a file can give them keys, and in `shortcuts::FAMILY_ONLY`: on a project's tab their keys
+do nothing, and Find leaves them out. Tests: `tests/family_keys.rs`.
+
 ## Where the code lives
 
 Moved from the root `CLAUDE.md`'s module map, which names the files and points here for what each owns.
@@ -1219,6 +1236,7 @@ In `crates/ui-egui`, the Family Editor:
 - `editor/association.rs`: parameter associations. `editor/extrusion.rs`: a selected form's Properties.
 - `editor/exists.rs`: Family Already Exists. `editor/types_dialog.rs`: Family Types.
 - `editor/temp_hide.rs`: the document's Temporary Hide/Isolate. `editor/views.rs`: its plans and elevations.
+- `editor/keys.rs`: the document's two-letter keys (`FAMILY_SHORTCUTS`) and what each does (`BimApp::family_action`).
 - `editor/sketch.rs`: sketch mode. `editor/dimensions.rs`: their dimensions and Align.
 - `editor/work_plane.rs`: its Work Plane dialog and Go To View.
 - `editor/options.rs`: the family's options (Family Category and Parameters, Properties' Other).

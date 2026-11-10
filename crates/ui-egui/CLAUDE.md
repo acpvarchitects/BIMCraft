@@ -8,7 +8,8 @@ startup, tags) is [the desktop](../../docs/areas/desktop.md).
 ## Adding to the window
 
 - **A tool or a button runs a command.** A new one is a command first (core), then a ribbon button or a tool that passes its
-  parameters; its Revit shortcut goes in `SHORTCUTS` (`lib.rs`) and so in Keyboard Shortcuts (KS).
+  parameters; its Revit shortcut goes in `SHORTCUTS` (`lib.rs`) and so in Keyboard Shortcuts (KS). A family document's command
+  has its key in `editor::keys::FAMILY_SHORTCUTS` instead, and its name in `shortcuts::ACTIONS`.
 - **Labels use English source messages**, translated through `lang::t`, `lang::tf` or `lang::tc`. Mark indirectly selected labels
   with `bimcraft_i18n::msg!`; run `cargo i18n update` after changing messages. Translations live in `translations/ui/*.po`;
   unfinished entries fall back to English. See [translations](../../docs/areas/translations.md).
