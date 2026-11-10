@@ -110,6 +110,8 @@ fn element_lines(m: &Model, e: &Element) -> Vec<Line> {
         | Element::View3D(_)
         | Element::PlanView(_) => Vec::new(),
         Element::Room(_) | Element::Spot(_) | Element::Tag(_) | Element::Rebar(_) => Vec::new(),
+        // A part has no edges of its own to align yet: it is drawn in no plan.
+        Element::Part(_) => Vec::new(),
     }
 }
 

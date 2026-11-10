@@ -2114,6 +2114,11 @@ macro_rules! visit_refs {
                 f(& $($m)? rb.level);
                 if let Some(g) = & $($m)? rb.host { f(g) }
             }
+            // Its layer is a part of a type, no element: it is no reference.
+            Element::Part(p) => {
+                f(& $($m)? p.host);
+                if let Some(g) = & $($m)? p.parent { f(g) }
+            }
         }
     }};
 }
@@ -2186,6 +2191,9 @@ pub enum Element {
     PointCloud(PointCloud),
     /// A CAD drawing placed in the model.
     CadImport(CadImport),
+    /// A part of a wall, a floor, a roof, a ceiling or a component: a layer of it, or all of it, as an element of its own;
+    /// of Revit's Parts.
+    Part(crate::parts::BuildingPart),
 }
 
 impl Element {
@@ -2207,7 +2215,8 @@ impl Element {
             | Element::Component(Component { params, .. })
             | Element::Stair(Stair { params, .. })
             | Element::Ramp(Ramp { params, .. })
-            | Element::Railing(Railing { params, .. }) => Some(params),
+            | Element::Railing(Railing { params, .. })
+            | Element::Part(crate::parts::BuildingPart { params, .. }) => Some(params),
             _ => None,
         }
     }
@@ -2230,7 +2239,8 @@ impl Element {
             | Element::Component(Component { params, .. })
             | Element::Stair(Stair { params, .. })
             | Element::Ramp(Ramp { params, .. })
-            | Element::Railing(Railing { params, .. }) => Some(params),
+            | Element::Railing(Railing { params, .. })
+            | Element::Part(crate::parts::BuildingPart { params, .. }) => Some(params),
             _ => None,
         }
     }
@@ -2405,6 +2415,7 @@ impl Element {
             Element::Ramp(_) => "ramp",
             Element::Railing(_) => "railing",
             Element::Roof(_) => "roof",
+            Element::Part(_) => "part",
         }
     }
 }
@@ -2642,7 +2653,7 @@ pub struct ProjectParameter {
 pub const MAX_PROJECT_PARAMETERS: usize = 256;
 
 /// The categories project parameters are for.
-pub const PARAMETER_CATEGORIES: [&str; 25] = [
+pub const PARAMETER_CATEGORIES: [&str; 26] = [
     "wall",
     "floor",
     "ceiling",
@@ -2668,6 +2679,7 @@ pub const PARAMETER_CATEGORIES: [&str; 25] = [
     "downconductor",
     "groundconductor",
     "cable",
+    "part",
 ];
 
 impl ProjectParameter {
@@ -3213,7 +3225,8 @@ impl Model {
         params.iter().filter(|(k, _)| f.material_parameter(k)).filter_map(|(_, v)| v.as_str()).collect()
     }
 
-    /// What names material `name` besides the types' layers: a family, or a component of one.
+    /// What names material `name` besides the types' layers: a family, a component of one, the paint of an element, or a
+    /// part made of it in place of its layer's.
     pub fn material_user(&self, name: &str) -> Option<String> {
         if let Some((n, _)) = self.families.iter().find(|(_, f)| f.materials().contains(&name)) {
             return Some(format!("family `{n}`"));
@@ -3223,6 +3236,9 @@ impl Model {
         };
         if let Some((id, e)) = self.elements.iter().find(|(_, e)| painted(e)) {
             return Some(format!("the paint of {} {id}", e.category()));
+        }
+        if let Some((id, _)) = self.elements.iter().find(|(_, e)| matches!(e, Element::Part(p) if p.material.as_deref() == Some(name))) {
+            return Some(format!("part {id}"));
         }
         self.elements.iter().find(|(_, e)| self.component_materials(e).contains(&name)).map(|(id, _)| format!("component {id}"))
     }
@@ -3248,13 +3264,19 @@ impl Model {
         Ok(())
     }
 
-    /// Material `from`, renamed `to` in the families and their components.
+    /// Material `from`, renamed `to` in the families and their components, and in what else names it of the elements: their
+    /// paint, and a part's own material.
     pub fn rename_material_in_families(&mut self, from: &str, to: &str) {
         for f in self.families.values_mut() {
             f.rename_material(from, to);
         }
         let Model { families, elements, .. } = self;
         for e in elements.values_mut() {
+            if let Element::Part(p) = e
+                && p.material.as_deref() == Some(from)
+            {
+                p.material = Some(to.to_string());
+            }
             // Paint of it, on any face.
             if let Some(serde_json::Value::Object(paint)) = e.params_mut().and_then(|p| p.get_mut(crate::paint::KEY)) {
                 for v in paint.values_mut().filter(|v| v.as_str() == Some(from)) {
@@ -3391,10 +3413,19 @@ impl Model {
                         return Err(format!("{} {id} points at element {n} by its id, not its GUID", e.category()));
                     }
                     Some(n) => return Err(format!("{} {id} points at element {n}, which the project hasn't", e.category())),
-                    None if !self.elements.contains_key(g) => {
-                        return Err(format!("{} {id} points at {g}, which no element of the project is", e.category()));
-                    }
-                    None => {}
+                    None => match self.elements.get(g) {
+                        None => return Err(format!("{} {id} points at {g}, which no element of the project is", e.category())),
+                        // Until a file holds its parts among its elements (`parts::file_text`): an older BIMCraft leaves the
+                        // parts out of one, and would then find this pointing at nothing, and refuse the file.
+                        Some(Element::Part(_)) if !matches!(e, Element::Part(_)) => {
+                            return Err(format!(
+                                "{} {id} points at part {}; nothing but a part points at a part yet",
+                                e.category(),
+                                self.shown(g)
+                            ));
+                        }
+                        Some(_) => {}
+                    },
                 }
             }
         }
@@ -3422,6 +3453,8 @@ impl Model {
         if format < 4 {
             pens_from_pixels(&mut v);
         }
+        // Its parts, which a file keeps apart from its other elements for now (`parts::file_text`), are elements as the rest.
+        crate::parts::from_file(&mut v);
         let mut left_out = Vec::new();
         // An element is an internally tagged enum, which serde reads whole: each is looked into as its category's struct.
         let mut elements = v.get_mut("elements").map_or(Value::Null, Value::take);
@@ -4295,6 +4328,8 @@ impl Model {
             Element::Roof(r) => Some(r.level),
             Element::Door(o) | Element::Window(o) => wall_level(o),
             Element::Tag(t) => self.elements.get(t.host).filter(|h| !matches!(h, Element::Tag(_))).and_then(|h| self.level_of(h)),
+            // A part stands where its host does.
+            Element::Part(p) => self.elements.get(p.host).filter(|h| !matches!(h, Element::Part(_))).and_then(|h| self.level_of(h)),
             // Notes and spot elevations in a level's plan.
             Element::Text(Note { view, .. })
             | Element::Spot(Spot { view, .. })
@@ -7384,6 +7419,7 @@ impl Model {
                 }
                 point(&format!("{who} offset"), t.offset)?;
             }
+            Element::Part(p) => crate::parts::check(self, &who, id, p)?,
         }
         Ok(())
     }

@@ -86,6 +86,9 @@ mod openings_past_top_tests;
 #[cfg(test)]
 mod oracle_tests;
 pub mod paint;
+pub mod parts;
+#[cfg(test)]
+mod parts_tests;
 pub mod pat;
 pub mod pdf;
 pub mod pen;

@@ -1418,6 +1418,12 @@ impl crate::model::Element {
                     sc.fields.iter_mut().map(|x| &mut x.name).chain(sc.sort.iter_mut().map(|x| &mut x.field)).collect();
                 rules_refs(&mut fields, &mut sc.filters, f);
             }
+            // The material it is made of in place of its layer's.
+            Element::Part(p) => {
+                if let Some(material) = &mut p.material {
+                    f(&Kind::Material, material);
+                }
+            }
             _ => {}
         }
         if let Some(g) = crate::graphics::graphics_mut(self) {
@@ -1566,7 +1572,7 @@ impl Model {
             }
         });
         m.rekey_params(&|n| lib.guid(&Kind::Parameter, n).map(|g| g.to_string()));
-        serde_json::to_string_pretty(&m).map_err(|e| e.to_string())
+        crate::parts::file_text(m).map_err(|e| e.to_string())
     }
 
     /// What a file's GUIDs name, named again, and what has no id and GUID given them: what [`Model::to_json`] did, undone.
