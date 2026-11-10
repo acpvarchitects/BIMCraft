@@ -2997,6 +2997,8 @@ impl BimApp {
             (self.sheet, self.front) = (sheet, sheet);
             if let Some(ed) = self.family_of_mut(id) {
                 ed.views.shown = view;
+                // What changed while another tab was in front goes from its selection.
+                ed.prune_selection();
             }
             return;
         }
