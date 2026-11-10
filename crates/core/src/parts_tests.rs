@@ -261,7 +261,7 @@ fn two_parts_of_one_layer_of_a_host_are_refused() {
     let plaster = layer_part(&s.model, wall, 0);
     let first = put(&mut s, |_| plaster.clone());
     let e = checked(&s, plaster.clone()).unwrap_err();
-    assert!(e.contains(&format!("part {first} is that of wall {wall} already; delete one of them")), "{e}");
+    assert!(e.ends_with(&format!("part {first}: part {} is that of wall {wall} too; delete one of them", first + 1)), "{e}");
     // The other layers, and what is divided from it, are other things.
     assert_eq!(checked(&s, layer_part(&s.model, wall, 1)), Ok(()));
     assert_eq!(checked(&s, layer_part(&s.model, wall, 2)), Ok(()));
@@ -892,4 +892,176 @@ fn a_listing_shows_what_a_part_is_now_beside_what_it_holds() {
     let one = shown(&mut s, id);
     assert!(one["conflict"].as_str().unwrap().contains("which has no such layer"), "{one}");
     assert!(one.get("area_m2").is_none() && one["volume_m3"] == 0.0 && one.get("layer").is_none(), "{one}");
+}
+
+// ---------- a part's values by name ----------
+
+use crate::schedule::{self, Filter, Kind, Op};
+
+/// The historic wall and a plain one beside it, each taken apart, and the survey's word on the first one's parts: the
+/// session, the historic wall's three parts, exterior plaster first, and the plain wall's one.
+fn surveyed() -> (Session, Id, [Id; 3], Id) {
+    let (mut s, wall) = historic();
+    let plain = run(&mut s, "wall", json!({"points": [[0, 5000], [4000, 5000]], "type": "Generic - 200mm"}))["ids"][0].as_u64().unwrap();
+    let ids = three(&mut s, wall);
+    let whole = put(&mut s, |m| BuildingPart::new(m.guid(plain), Source::Whole));
+    let say = |s: &mut Session, id: Id, heritage: Heritage| {
+        run(s, "modify", json!({"id": id, "heritage": heritage}));
+    };
+    say(
+        &mut s,
+        ids[0],
+        Heritage {
+            su_code: "USR 3".into(),
+            historical_period: "18th century".into(),
+            decay_pathology: Some(Decay::Efflorescence),
+            decay_severity: Some(4),
+            intervention_type: "Cleaning".into(),
+        },
+    );
+    say(
+        &mut s,
+        ids[1],
+        Heritage { su_code: "USM 1".into(), historical_period: "Late medieval".into(), decay_severity: Some(2), ..Heritage::default() },
+    );
+    say(&mut s, ids[2], Heritage { decay_pathology: Some(Decay::Custom("Lacuna in the fresco".into())), ..Heritage::default() });
+    (s, wall, ids, whole)
+}
+
+#[test]
+fn a_parts_values_are_fields_read_by_name_as_any_elements() {
+    let (s, wall, ids, whole) = surveyed();
+    let m = &s.model;
+    let fields = schedule::fields(m, "part");
+    let names: Vec<&str> = fields.iter().map(|(n, _)| n.as_str()).collect();
+    assert_eq!(
+        names,
+        [
+            "Id",
+            "Host",
+            "Host Category",
+            "Host Type",
+            "Level",
+            "Layer",
+            "Function",
+            "Material",
+            "Thickness",
+            "Net Area",
+            "Net Volume",
+            "Predefined Type",
+            "Object Type",
+            "Excluded",
+            "SU_Code",
+            "Historical_Period",
+            "Decay_Pathology",
+            "Decay_Severity",
+            "Intervention_Type",
+            "Conflict",
+            "Count",
+            "Phase Created",
+            "Phase Demolished",
+            "Design Option",
+        ]
+    );
+    let kind = |name: &str| fields.iter().find(|(n, _)| n == name).unwrap().1;
+    assert_eq!(
+        [kind("SU_Code"), kind("Decay_Severity"), kind("Net Area"), kind("Net Volume"), kind("Thickness"), kind("Excluded")],
+        [Kind::Text, Kind::Number, Kind::Area, Kind::Number, Kind::Length, Kind::YesNo]
+    );
+    // The heritage set's names are the ones it is shown by everywhere.
+    assert!(Heritage::NAMES.iter().all(|n| names.contains(n)));
+    // Each value as a schedule would show it; none where the part has none.
+    let text = |id: Id, name: &str| schedule::field_text(m, id, name);
+    let of = |id: Id, names: &[&str]| -> Vec<Option<String>> { names.iter().map(|n| text(id, n)).collect() };
+    let some = |values: &[&str]| -> Vec<Option<String>> { values.iter().map(|v| Some(v.to_string())).collect() };
+    assert_eq!(
+        of(ids[0], &["SU_Code", "Historical_Period", "Decay_Pathology", "Decay_Severity", "Intervention_Type"]),
+        some(&["USR 3", "18th century", "Efflorescence", "4", "Cleaning"])
+    );
+    assert_eq!(
+        of(ids[0], &["Host", "Host Category", "Host Type", "Level", "Layer", "Function", "Material"]),
+        some(&[&wall.to_string(), "wall", "Historic - 500mm", "Level 1", "1", "finish", "Lime Plaster"])
+    );
+    assert_eq!(
+        of(ids[0], &["Thickness", "Net Area", "Net Volume", "Predefined Type", "Excluded"]),
+        some(&["20", "12.00", "0.24", "notdefined", "No"])
+    );
+    assert_eq!(of(ids[0], &["Object Type", "Conflict", "Phase Demolished"]), [None, None, None]);
+    assert_eq!(text(ids[2], "Decay_Pathology").as_deref(), Some("Lacuna in the fresco"));
+    assert_eq!(of(ids[2], &["SU_Code", "Decay_Severity", "Intervention_Type"]), [None, None, None], "nobody said: none, never 0");
+    // A part of all of a plain wall: no layer, no function, no material its type names.
+    assert_eq!(
+        of(whole, &["Layer", "Function", "Material", "Thickness", "Net Volume"]),
+        [None, None, None, Some("200".into()), Some("2.4".into())]
+    );
+    assert_eq!(text(wall, "SU_Code"), None, "a wall has no such field");
+    // A name a part has of its own is no name for a project parameter of parts.
+    let mut t = s.clone();
+    let e = fails(&mut t, "parameter", json!({"name": "SU_Code", "categories": ["part"]}));
+    assert!(e.contains("parts have a `SU_Code` of their own; name it otherwise"), "{e}");
+    // There is no schedule of parts yet: only their values by name.
+    assert!(!schedule::categories().contains(&"part") && !schedule::built().contains(&"part"));
+}
+
+#[test]
+fn rules_pick_parts_by_what_the_survey_says_of_them() {
+    let (mut s, wall, ids, whole) = surveyed();
+    let parts = ["part".to_string()];
+    let rule = |field: &str, op: Op, value: Value| Filter { field: field.into(), op, value };
+    let picked = |m: &Model, rules: &[Filter]| -> Vec<Id> { schedule::picks(m, &parts, rules).into_iter().collect() };
+    let m = &s.model;
+    assert_eq!(picked(m, &[]), [ids[0], ids[1], ids[2], whole]);
+    assert_eq!(picked(m, &[rule("Decay_Pathology", Op::Equals, json!("efflorescence"))]), [ids[0]]);
+    assert_eq!(picked(m, &[rule("Decay_Pathology", Op::HasValue, Value::Null)]), [ids[0], ids[2]]);
+    assert_eq!(picked(m, &[rule("Decay_Severity", Op::GreaterOrEqual, json!(3))]), [ids[0]]);
+    assert_eq!(picked(m, &[rule("Decay_Severity", Op::HasNoValue, Value::Null)]), [ids[2], whole]);
+    assert_eq!(picked(m, &[rule("Historical_Period", Op::Contains, json!("medieval"))]), [ids[1]]);
+    assert_eq!(picked(m, &[rule("SU_Code", Op::BeginsWith, json!("US")), rule("Net Area", Op::Greater, json!(10))]), [ids[0], ids[1]]);
+    assert_eq!(picked(m, &[rule("Host", Op::Equals, json!(wall)), rule("Function", Op::Equals, json!("structure"))]), [ids[1]]);
+    assert_eq!(picked(m, &[rule("Thickness", Op::Less, json!(100))]), [ids[0], ids[2]]);
+    assert_eq!(picked(m, &[rule("Conflict", Op::HasValue, Value::Null)]), Vec::<Id>::new());
+    // Sound rules name a part's fields and compare what they hold.
+    assert_eq!(schedule::check_rules(m, &parts, &[rule("Decay_Severity", Op::Greater, json!(2))]), Ok(()));
+    let e = schedule::check_rules(m, &parts, &[rule("Decay", Op::Equals, json!("crack"))]).unwrap_err();
+    assert!(e.contains("`Decay` isn't a field of parts; there are: Id, Host, Host Category"), "{e}");
+    let e = schedule::check_rules(m, &parts, &[rule("Decay_Severity", Op::Contains, json!("4"))]).unwrap_err();
+    assert!(e.contains("it holds a number, and only text contains, begins or ends"), "{e}");
+    // The wall given another type: its parts are in conflict, and a rule finds them by it.
+    run(&mut s, "modify", json!({"id": wall, "type": "Generic - 200mm"}));
+    assert_eq!(picked(&s.model, &[rule("Conflict", Op::HasValue, Value::Null)]), ids);
+    assert_eq!(picked(&s.model, &[rule("Net Area", Op::HasValue, Value::Null)]), [whole]);
+    assert!(schedule::field_text(&s.model, ids[0], "Conflict").is_some_and(|c| c.contains("which has no such layer")));
+}
+
+#[test]
+fn filter_on_a_selection_groups_parts_by_their_values_and_a_part_reads_its_hosts_phase() {
+    let (mut s, wall, ids, whole) = surveyed();
+    let all = json!([ids[0], ids[1], ids[2], whole]);
+    let by = run(&mut s, "filter_selection", json!({"ids": all, "by": "Historical_Period"}));
+    assert_eq!(
+        by["groups"],
+        json!([
+            {"value": "18th century", "count": 1, "ids": [ids[0]]},
+            {"value": "Late medieval", "count": 1, "ids": [ids[1]]},
+            {"value": "", "count": 2, "ids": [ids[2], whole]},
+        ])
+    );
+    assert!(by["fields"].as_array().unwrap().contains(&json!("Decay_Pathology")));
+    let kept = run(&mut s, "filter_selection", json!({"ids": all, "by": "Material", "keep": ["Lime Plaster"]}));
+    assert_eq!(kept["ids"], json!([ids[0], ids[2]]));
+    // With their wall, what they share with it: its level, a thickness, and its phases.
+    let mixed = run(&mut s, "filter_selection", json!({"ids": [wall, ids[0]]}));
+    assert_eq!(mixed["fields"], json!(["Category", "Id", "Level", "Thickness", "Phase Created", "Phase Demolished", "Design Option"]));
+    // A part with no phase of its own reads its host's, as a door its wall's; its own, once it has one.
+    run(&mut s, "modify", json!({"id": wall, "params": {"Phase Demolished": "New Construction"}}));
+    assert_eq!(schedule::field_text(&s.model, ids[0], "Phase Demolished").as_deref(), Some("New Construction"));
+    assert_eq!(schedule::field_text(&s.model, whole, "Phase Demolished"), None);
+    assert_eq!(schedule::field_text(&s.model, ids[0], "Phase Created").as_deref(), Some("Existing"));
+    // A project parameter for parts is a field of theirs too.
+    run(&mut s, "parameter", json!({"name": "Surveyed By", "categories": ["parts"]}));
+    run(&mut s, "modify", json!({"id": ids[1], "params": {"Surveyed By": "A. Rossi"}}));
+    assert_eq!(schedule::field_text(&s.model, ids[1], "Surveyed By").as_deref(), Some("A. Rossi"));
+    let picked =
+        schedule::picks(&s.model, &["part".to_string()], &[Filter { field: "Surveyed By".into(), op: Op::HasValue, value: Value::Null }]);
+    assert_eq!(picked.into_iter().collect::<Vec<_>>(), [ids[1]]);
 }

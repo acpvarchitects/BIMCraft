@@ -336,13 +336,29 @@ impl Model {
 }
 
 /// What a listing shows of part `id`, `p`, beside its own fields (`element_json`): the level it stands on, its host's
-/// category, its layer's place in its host's type (from 1, as a type's layers are numbered) and what the layer does, what
-/// it is made of, how thick it is, its net area and volume, the heritage set's values under the names they are shown by
-/// ([`Heritage::NAMES`]), and its conflict, when it is in one.
+/// category and type, its layer's place in its host's type (from 1, as a type's layers are numbered) and what the layer
+/// does, what it is made of, how thick it is, its net area and volume, what kind of part it is, the heritage set's values
+/// under the names they are shown by ([`Heritage::NAMES`]), and its conflict, when it is in one. These are what a part's
+/// values are read from by name (`schedule::fields` of `part`): by a view filter's rules, a schedule's fields, Filter on
+/// a selection and a tag.
 pub(crate) fn json(m: &Model, id: Id, p: &BuildingPart, extra: &mut Map<String, Value>) {
     let Some(state) = m.part_state(id) else { return };
     extra.insert("level".into(), json!(m.elements.get(id).and_then(|e| m.level_of(e))));
-    extra.insert("host_category".into(), json!(m.elements.get(p.host).map(Element::category)));
+    let host = m.elements.get(p.host);
+    extra.insert("host_category".into(), json!(host.map(Element::category)));
+    let host_type = match host {
+        Some(Element::Wall(w)) => Some(&w.type_name),
+        Some(Element::Floor(f)) => Some(&f.type_name),
+        Some(Element::Roof(r)) => Some(&r.type_name),
+        Some(Element::Ceiling(c)) => Some(&c.type_name),
+        Some(Element::Component(c)) => Some(&c.type_name),
+        _ => None,
+    };
+    if let Some(name) = host_type {
+        extra.insert("host_type".into(), json!(name));
+    }
+    // What kind of part it is, said even where it is none of IFC's: its own field is left out then.
+    extra.insert("predefined_type".into(), json!(p.predefined_type.name()));
     if let Some((k, function)) = state.layer {
         extra.insert("layer".into(), json!(k + 1));
         extra.insert("function".into(), json!(function));
