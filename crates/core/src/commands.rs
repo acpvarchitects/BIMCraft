@@ -2855,10 +2855,9 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
         Element::Dimension3D(d) => {
             extra.insert("length".into(), json!(hundredth(crate::dims3d::length(d))));
         }
-        // Where it stands: on its host's level.
-        Element::Part(_) => {
-            extra.insert("level".into(), json!(m.level_of(e)));
-        }
+        // What it is of its host now: its level, its layer, what it is made of, its thickness, its net area and volume, the
+        // heritage set by the names it is shown by, and its conflict when its recipe no longer applies.
+        Element::Part(p) => crate::parts::json(m, id, p, &mut extra),
         Element::Grid(_) | Element::Schedule(_) | Element::View3D(_) | Element::PlanView(_) => {}
     }
     let mut v = serde_json::to_value(e).unwrap_or_default();
