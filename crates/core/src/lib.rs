@@ -155,6 +155,9 @@ pub mod panel_schedule;
 #[cfg(test)]
 mod parameter_tests;
 pub mod parameters;
+pub mod parts;
+#[cfg(test)]
+mod parts_tests;
 pub mod pat;
 pub mod pdf;
 pub mod pen;

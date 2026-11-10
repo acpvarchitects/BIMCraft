@@ -2005,7 +2005,8 @@ other_files(
         &["DE"],
         "{ids: [id,…], keep_finishes?} deleting a wall deletes its doors and windows, deleting those their tags; a view takes its notes and \
          spot elevations, and what a spot elevation reads takes it; dimensions lose what's deleted. A room takes the floor and \
-         the ceiling connected to it (see `room_finish`), unless `keep_finishes`: then they stay, as ordinary ones",
+         the ceiling connected to it (see `room_finish`), unless `keep_finishes`: then they stay, as ordinary ones; an element takes its \
+         parts (`create_parts`), and a part the parts divided from it",
         delete,
     ),
     edit(
@@ -3712,6 +3713,10 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
         }
         Element::Dimension3D(d) => {
             extra.insert("length".into(), json!(hundredth(crate::dims3d::length(d))));
+        }
+        // Where it stands: on its host's level.
+        Element::Part(_) => {
+            extra.insert("level".into(), json!(m.level_of(e)));
         }
         Element::Circuit(c) => {
             extra.insert("panel_id".into(), json!(m.elements.id(c.panel)));
@@ -16633,6 +16638,11 @@ pub(crate) fn transform(c: &str, m: &Model, mut e: Element, id: Id, mo: &Motion,
         Element::Tag(_) => {}
         // A circuit has no place: it follows its board and its devices.
         Element::Circuit(_) => {}
+        // A part has no place of its own: it is where its host is.
+        Element::Part(p) if within(p.host) => {}
+        Element::Part(_) => {
+            return Err(bad(c, format!("part {id} is where the element it is a part of is; move, copy, turn or mirror that")));
+        }
         Element::Section(v) | Element::Elevation(v) => {
             (v.start, v.end, v.mark) = (f(v.start), f(v.end), v.mark.map(|q| micron(f(q))));
             // A mirror image of it looks the mirrored way round: to the left of its line again.
@@ -18602,6 +18612,7 @@ fn delete_indexed(s: &mut Session, p: &Value) -> R {
                 Some(Element::Railing(r)) => r.host.is_some_and(|h| gone.contains(&h)),
                 Some(Element::Rebar(rb)) => rb.host.is_some_and(|h| gone.contains(&h)),
                 Some(Element::Component(cp)) => cp.host.is_some_and(|h| gone.contains(&h.host.guid())),
+                Some(Element::Part(p)) => gone.contains(&p.host) || p.parent.is_some_and(|g| gone.contains(&g)),
                 Some(Element::PlanView(v)) => gone.contains(&v.level) || v.parent.is_some_and(|p| gone.contains(&p)),
                 Some(Element::Tag(t)) => gone.contains(&t.host) || t.view.is_some_and(|v| gone.contains(&v)),
                 Some(Element::Dimension(d)) => d.view.is_some_and(|v| gone.contains(&v)),
@@ -18759,6 +18770,9 @@ fn delete_from_scratch(s: &mut Session, p: &Value) -> R {
                         Element::Circuit(x) => gone.contains(&x.panel),
                         // A panel schedule hangs on its board, as its viewports hang on it.
                         Element::PanelSchedule(v) => gone.contains(&v.panel),
+                        // A part goes with the element it is a part of, as Revit's parts go with the original, and with
+                        // the part it was divided from.
+                        Element::Part(p) => gone.contains(&p.host) || p.parent.is_some_and(|g| gone.contains(&g)),
                         // A plan view goes with its level and its parent; what is annotated in a view goes with it.
                         Element::PlanView(v) => gone.contains(&v.level) || v.parent.is_some_and(|p| gone.contains(&p)),
                         Element::Tag(t) => gone.contains(&t.host) || t.view.is_some_and(|v| gone.contains(&v)),

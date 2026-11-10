@@ -1556,6 +1556,12 @@ impl crate::model::Element {
                     sc.fields.iter_mut().map(|x| &mut x.name).chain(sc.sort.iter_mut().map(|x| &mut x.field)).collect();
                 rules_refs(&mut fields, &mut sc.filters, f);
             }
+            // The material it is made of in place of its layer's.
+            Element::Part(p) => {
+                if let Some(material) = &mut p.material {
+                    f(&Kind::Material, material);
+                }
+            }
             _ => {}
         }
         if let Some(g) = crate::graphics::graphics_mut(self) {
