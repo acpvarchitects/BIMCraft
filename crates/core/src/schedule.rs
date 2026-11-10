@@ -18,6 +18,7 @@ use crate::commands::{category, element_json_with};
 use crate::family::{self, MAX_FORMULA};
 use crate::language::Language;
 use crate::model::{Element, Id, MAX_COORD, MAX_TEXT, Model, ParameterKind, Schedule};
+use crate::parts::Heritage;
 use crate::phasing;
 use crate::rooms::Rooms;
 use crate::units::Units;
@@ -183,6 +184,9 @@ enum From {
     /// Its element's own category's field of the same name, holding the same; for an area, a wall's length by its
     /// height, a door's or a window's width by its height, a roof's plan area.
     Shared,
+    /// What its element's JSON holds under a key, whatever it holds, and no value where it holds none: a number that may
+    /// not be there (a part's severity, which nobody gave; its area, which a part in conflict hasn't) is none, never 0.
+    Held(&'static str),
 }
 
 type Own = (&'static str, Kind, From);
@@ -514,6 +518,38 @@ const MORE: &[(&str, usize, &[Own])] = &[
     ("elevation", 0, &[NAME]),
     ("sheet", 0, &[("Number", Kind::Text, From::Key("number")), NAME]),
     ("viewport", 0, &[(ui_msg!("Title"), Kind::Text, From::Key("title"))]),
+    // A part of a building element (`parts.rs`): what it is of its host now, the heritage set under the names it is shown
+    // by, and its conflict, each read by name from what `parts::json` works out. No schedule of parts yet.
+    (
+        "part",
+        0,
+        &[
+            ID,
+            ("Host", Kind::Number, From::Ref("host")),
+            ("Host Category", Kind::Text, From::Key("host_category")),
+            ("Host Type", Kind::Text, From::Key("host_type")),
+            LEVEL,
+            ("Layer", Kind::Number, From::Held("layer")),
+            ("Function", Kind::Text, From::Key("function")),
+            (msg!("Material"), Kind::Text, From::Key("material")),
+            ("Thickness", Kind::Length, From::Held("thickness")),
+            ("Net Area", Kind::Area, From::Held("area_m2")),
+            ("Net Volume", Kind::Number, From::Held("volume_m3")),
+            ("Predefined Type", Kind::Text, From::Key("predefined_type")),
+            ("Object Type", Kind::Text, From::Key("object_type")),
+            ("Excluded", Kind::YesNo, From::Flag("excluded")),
+            (Heritage::NAMES[0], Kind::Text, From::Key(Heritage::NAMES[0])),
+            (Heritage::NAMES[1], Kind::Text, From::Key(Heritage::NAMES[1])),
+            (Heritage::NAMES[2], Kind::Text, From::Key(Heritage::NAMES[2])),
+            (Heritage::NAMES[3], Kind::Number, From::Held(Heritage::NAMES[3])),
+            (Heritage::NAMES[4], Kind::Text, From::Key(Heritage::NAMES[4])),
+            ("Conflict", Kind::Text, From::Key("conflict")),
+            COUNT,
+            PHASE_CREATED,
+            PHASE_DEMOLISHED,
+            DESIGN_OPTION,
+        ],
+    ),
 ];
 
 /// The categories schedules are of, as `OWN` lists them.
@@ -917,6 +953,11 @@ impl Row<'_> {
                 From::Category => Value::String(self.e.category().to_string()),
                 From::Material => self.material(),
                 From::Shared => self.shared(name, *kind),
+                From::Held(k) => match j.get(k) {
+                    Some(Value::String(s)) if s.is_empty() => Value::Null,
+                    Some(v) => v.clone(),
+                    None => Value::Null,
+                },
             };
         }
         if let Some(p) = m.parameters.get(name).filter(|p| p.categories.iter().any(|c| c == cat)) {

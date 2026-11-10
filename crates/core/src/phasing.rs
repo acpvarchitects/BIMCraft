@@ -178,11 +178,12 @@ pub fn index(m: &Model, name: &str) -> Option<usize> {
 }
 
 /// The value of built-in parameter `key` an element has: its own, or a door's or window's none, its
-/// wall's.
+/// wall's, and a part's none, that of the element it is a part of.
 pub fn value<'a>(m: &'a Model, e: &'a Element, key: &str) -> Option<&'a str> {
     let own = e.params().and_then(|p| p.get(key)).and_then(Value::as_str);
     own.or_else(|| match e {
         Element::Door(o) | Element::Window(o) => m.wall(o.host)?.params.get(key)?.as_str(),
+        Element::Part(p) => m.elements.get(p.host)?.params()?.get(key)?.as_str(),
         _ => None,
     })
 }

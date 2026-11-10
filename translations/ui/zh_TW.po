@@ -739,8 +739,8 @@ msgstr "弧長："
 msgid "Architecture"
 msgstr "建築"
 
-#: crates/core/src/schedule.rs:194
-#: crates/core/src/schedule.rs:233
+#: crates/core/src/schedule.rs:198
+#: crates/core/src/schedule.rs:237
 msgid "Area"
 msgstr "面積"
 
@@ -1256,7 +1256,7 @@ msgstr "類別"
 msgid "Categories not overridden are drawn as Object Styles sets them."
 msgstr "未替換的類別按對像樣式的設定繪製。"
 
-#: crates/core/src/schedule.rs:224
+#: crates/core/src/schedule.rs:228
 #: crates/ui-egui/src/editor.rs:1037
 #: crates/ui-egui/src/objectstyles.rs:55
 #: crates/ui-egui/src/properties.rs:2063
@@ -2241,7 +2241,7 @@ msgstr "無法開啟 {}：{}"
 msgid "Couldn't save the setting: {}"
 msgstr "無法儲存設置：{}"
 
-#: crates/core/src/schedule.rs:206
+#: crates/core/src/schedule.rs:210
 #: crates/ui-egui/src/filter.rs:84
 #: crates/ui-egui/src/linestyles/creator.rs:178
 #: crates/ui-egui/src/reinforce.rs:50
@@ -2789,7 +2789,7 @@ msgstr "門"
 msgid "Door (DR): click a wall"
 msgstr "門 (DR)：單擊一面牆"
 
-#: crates/core/src/schedule.rs:119
+#: crates/core/src/schedule.rs:120
 msgid "Door Schedule"
 msgstr "門明細表"
 
@@ -3265,7 +3265,7 @@ msgstr "族"
 msgid "Families of parallel lines: drafting ones mm on paper, the same at any scale; model ones mm in the building."
 msgstr "平行線組：繪圖圖案以圖紙上的毫米計，在任何比例下都相同；模型圖案以建築中的毫米計。"
 
-#: crates/core/src/schedule.rs:192
+#: crates/core/src/schedule.rs:196
 msgid "Family"
 msgstr "族"
 
@@ -3567,7 +3567,7 @@ msgstr "樓層平面：{}"
 msgid "Floor Plans"
 msgstr "樓層平面"
 
-#: crates/core/src/schedule.rs:122
+#: crates/core/src/schedule.rs:123
 msgid "Floor Schedule"
 msgstr "樓板明細表"
 
@@ -3854,7 +3854,7 @@ msgstr "網格捕捉"
 msgid "Grids start at 0, 0 in each view and rotate together."
 msgstr "網格在每個視圖中都從 0, 0 開始，並一起旋轉。"
 
-#: crates/core/src/schedule.rs:486
+#: crates/core/src/schedule.rs:490
 msgid "Gross Floor Area"
 msgstr "建築面積"
 
@@ -4453,7 +4453,7 @@ msgstr "標高高程"
 msgid "Level Marker Symbol:"
 msgstr "標高符號:"
 
-#: crates/core/src/schedule.rs:123
+#: crates/core/src/schedule.rs:124
 msgid "Level Schedule"
 msgstr "標高明細表"
 
@@ -4841,7 +4841,8 @@ msgstr "符合屬性：已選擇源類型“{}”。選擇目標元素並再次�
 msgid "Matched properties: applied type '{}' to {} element(s)"
 msgstr "已符合屬性：將類型“{}”應用於 {} 個元素"
 
-#: crates/core/src/schedule.rs:234
+#: crates/core/src/schedule.rs:238
+#: crates/core/src/schedule.rs:534
 #: crates/ui-egui/src/editor.rs:805
 #: crates/ui-egui/src/properties.rs:2130
 #: crates/ui-egui/src/properties.rs:2245
@@ -5240,7 +5241,7 @@ msgstr "新類型"
 msgid "New {}"
 msgstr "新建{}"
 
-#: crates/core/src/schedule.rs:1191
+#: crates/core/src/schedule.rs:1232
 msgid "No"
 msgstr "否"
 
@@ -5420,7 +5421,7 @@ msgstr "沒有未導入的內容。"
 msgid "Nothing yet."
 msgstr ""
 
-#: crates/core/src/schedule.rs:251
+#: crates/core/src/schedule.rs:255
 msgid "Number"
 msgstr "編號"
 
@@ -5478,7 +5479,7 @@ msgstr "關閉時，智能體只能讀取項目：它們可以查看項目、讀
 msgid "Off: no agent can reach this window"
 msgstr "關閉：沒有智能體能連接到此視窗"
 
-#: crates/core/src/schedule.rs:201
+#: crates/core/src/schedule.rs:205
 #: crates/ui-egui/src/linestyles/creator.rs:76
 #: crates/ui-egui/src/sketch.rs:729
 #: crates/ui-egui/src/sketch.rs:963
@@ -5584,7 +5585,7 @@ msgstr "開啟 GitHub 上的發佈頁面。此副本無法自行更新。"
 msgid "Open…"
 msgstr "開啟…"
 
-#: crates/core/src/schedule.rs:203
+#: crates/core/src/schedule.rs:207
 #: crates/ui-egui/src/editor.rs:1049
 msgid "Operation"
 msgstr "開啟方式"
@@ -5831,7 +5832,7 @@ msgstr "筆 {}，比例 {}"
 msgid "Performance"
 msgstr "性能"
 
-#: crates/core/src/schedule.rs:255
+#: crates/core/src/schedule.rs:259
 msgid "Perimeter"
 msgstr "周長"
 
@@ -6298,7 +6299,7 @@ msgstr "純色"
 msgid "Plan"
 msgstr "平面"
 
-#: crates/core/src/schedule.rs:311
+#: crates/core/src/schedule.rs:315
 msgid "Plan Area"
 msgstr "平面面積"
 
@@ -7007,11 +7008,11 @@ msgstr "功能區"
 msgid "Right"
 msgstr "靠右"
 
-#: crates/core/src/schedule.rs:447
+#: crates/core/src/schedule.rs:451
 msgid "Riser Height"
 msgstr "踢面高度"
 
-#: crates/core/src/schedule.rs:446
+#: crates/core/src/schedule.rs:450
 msgid "Risers"
 msgstr "踢面"
 
@@ -7072,15 +7073,15 @@ msgstr "房間面積計算：測量房間面積的位置；目前為{}"
 msgid "Room Bounding"
 msgstr "房間邊界"
 
-#: crates/core/src/schedule.rs:212
+#: crates/core/src/schedule.rs:216
 msgid "Room Name"
 msgstr ""
 
-#: crates/core/src/schedule.rs:211
+#: crates/core/src/schedule.rs:215
 msgid "Room Number"
 msgstr ""
 
-#: crates/core/src/schedule.rs:118
+#: crates/core/src/schedule.rs:119
 msgid "Room Schedule"
 msgstr "房間明細表"
 
@@ -7614,7 +7615,7 @@ msgstr "邊數："
 msgid "Silhouettes"
 msgstr "輪廓線"
 
-#: crates/core/src/schedule.rs:273
+#: crates/core/src/schedule.rs:277
 msgid "Sill"
 msgstr "窗台"
 
@@ -7688,7 +7689,7 @@ msgstr "推拉門"
 msgid "Sliding Window"
 msgstr "推拉窗"
 
-#: crates/core/src/schedule.rs:310
+#: crates/core/src/schedule.rs:314
 #: crates/ui-egui/src/properties.rs:1304
 #: crates/ui-egui/src/properties.rs:1366
 #: crates/ui-egui/src/reinforce.rs:111
@@ -7992,7 +7993,7 @@ msgstr ""
 msgid "Straight"
 msgstr "直線"
 
-#: crates/core/src/schedule.rs:296
+#: crates/core/src/schedule.rs:300
 msgid "Structural"
 msgstr "結構"
 
@@ -8124,7 +8125,7 @@ msgstr "符號"
 msgid "Symbols are what the plan draws of the family besides its forms: lines, arcs, labels and dots."
 msgstr "符號是平面圖中除形狀之外為該族繪製的內容：線、圓弧、標籤和點。"
 
-#: crates/core/src/schedule.rs:200
+#: crates/core/src/schedule.rs:204
 msgid "System"
 msgstr "系統"
 
@@ -8692,7 +8693,7 @@ msgstr "圖塊寬度"
 msgid "Timber"
 msgstr "木材"
 
-#: crates/core/src/schedule.rs:516
+#: crates/core/src/schedule.rs:520
 msgid "Title"
 msgstr "標題"
 
@@ -8803,7 +8804,7 @@ msgstr "透明度"
 msgid "Transparent"
 msgstr "透明"
 
-#: crates/core/src/schedule.rs:448
+#: crates/core/src/schedule.rs:452
 msgid "Tread"
 msgstr "踏板"
 
@@ -8923,7 +8924,7 @@ msgstr "類型"
 msgid "UP"
 msgstr "上"
 
-#: crates/core/src/schedule.rs:257
+#: crates/core/src/schedule.rs:261
 #: crates/ui-egui/src/properties.rs:167
 msgid "Unbounded Height"
 msgstr "無界限高度"
@@ -9277,7 +9278,7 @@ msgstr "電壓 {} 標稱值"
 msgid "Voltages"
 msgstr "電壓"
 
-#: crates/core/src/schedule.rs:213
+#: crates/core/src/schedule.rs:217
 msgid "Volume"
 msgstr "體積"
 
@@ -9309,7 +9310,7 @@ msgstr "條形基礎"
 msgid "Wall Footing (FW): click its start and its end, or a chain of clicks, under a wall"
 msgstr "條形基礎 (FW)：在牆下單擊起點和終點，或連續單擊"
 
-#: crates/core/src/schedule.rs:121
+#: crates/core/src/schedule.rs:122
 msgid "Wall Schedule"
 msgstr "牆明細表"
 
@@ -9349,7 +9350,7 @@ msgstr "洗手盆"
 msgid "Wave"
 msgstr "波浪"
 
-#: crates/core/src/schedule.rs:363
+#: crates/core/src/schedule.rs:367
 msgid "Weight"
 msgstr "重量"
 
@@ -9454,7 +9455,7 @@ msgstr "窗"
 msgid "Window (WN): click a wall"
 msgstr "窗 (WN)：單擊一面牆"
 
-#: crates/core/src/schedule.rs:120
+#: crates/core/src/schedule.rs:121
 msgid "Window Schedule"
 msgstr "窗明細表"
 
@@ -9568,7 +9569,7 @@ msgstr "X"
 msgid "Y"
 msgstr "Y"
 
-#: crates/core/src/schedule.rs:1191
+#: crates/core/src/schedule.rs:1232
 msgid "Yes"
 msgstr "是"
 
@@ -10187,7 +10188,7 @@ msgstr "{}（未載入）"
 msgid "{} (primary)"
 msgstr "{}（主選項）"
 
-#: crates/core/src/schedule.rs:1181
+#: crates/core/src/schedule.rs:1222
 msgid "{} ({})"
 msgstr "{}（{}）"
 

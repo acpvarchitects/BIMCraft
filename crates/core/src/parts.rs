@@ -421,14 +421,20 @@ pub(crate) fn check(m: &Model, who: &str, id: Id, p: &BuildingPart) -> Result<()
         return Err(format!("{who}: {} is {} (slight) to {} (the worst), not {s}", Heritage::NAMES[3], SEVERITY.start(), SEVERITY.end()));
     }
     text(Heritage::NAMES[4], &h.intervention_type)?;
-    // One part for each thing: two of the same would be counted, and exported, twice.
-    let twin = m.lookup().referrers(&p.host).find(|other| {
-        *other < id
-            && matches!(m.elements.get(*other), Some(Element::Part(o)) if o.host == p.host && o.source == p.source && o.parent == p.parent)
-    });
+    // One part for each thing: two of the same would be counted, and exported, twice. Said the same whichever of the two
+    // is asked: by the one of the lower id.
+    let twin = m
+        .lookup()
+        .referrers(&p.host)
+        .filter(|other| {
+            *other != id
+                && matches!(m.elements.get(*other), Some(Element::Part(o)) if o.host == p.host && o.source == p.source && o.parent == p.parent)
+        })
+        .min();
     if let Some(other) = twin {
         let host = m.elements.get(p.host).map_or("element", Element::category);
-        return Err(format!("{who}: part {other} is that of {host} {} already; delete one of them", m.shown(p.host)));
+        let (first, second) = (id.min(other), id.max(other));
+        return Err(format!("part {first}: part {second} is that of {host} {} too; delete one of them", m.shown(p.host)));
     }
     Ok(())
 }
