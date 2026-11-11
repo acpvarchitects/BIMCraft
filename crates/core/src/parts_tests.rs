@@ -632,6 +632,10 @@ fn walls_that_join_give_their_parts_their_ends_and_curved_ones_their_bow() {
     assert!(area <= face && area > 0.999 * face, "{area} of {face}");
     let ring = (radius - 240.0) * sweep * 20.0 * 3000.0;
     assert!((volume - ring).abs() < 0.002 * ring, "{volume} of {ring}");
+    // Its interior plaster is measured on the interior face, the arc on the other side of the wall.
+    let (_, area, _) = measured(&s.model, s.model.parts_of(bow)[2]);
+    let face = (radius + 250.0) * sweep * 3000.0;
+    assert!(area <= face && area > 0.999 * face, "{area} of {face}");
 }
 
 #[test]
@@ -793,6 +797,15 @@ fn a_roofs_a_ceilings_and_a_components_part_have_their_solids_too() {
     let (tris, area, v) = measured(&s.model, plaster);
     assert!(near(area, 7800.0 * 5800.0) && near(v, 7800.0 * 5800.0 * 15.0));
     assert!(near(extent(&tris).0[2], 2600.0) && near(extent(&tris).1[2], 2615.0));
+    // Measured on the face it shows, the underside, as a wall's interior plaster is on the wall's interior face; the
+    // laths above it, the structure, on their top.
+    let lath = put(&mut s, |m| BuildingPart::new(m.guid(ceiling), Source::Layer(layer(m, "ceiling", "Lath and Plaster", 0))));
+    let face = |m: &Model, id: Id| match m.elements.get(id) {
+        Some(Element::Part(p)) => m.part_facing(p).unwrap(),
+        _ => panic!("part {id} is gone"),
+    };
+    assert_eq!(face(&s.model, plaster), Some(solid::Facing::Along(vec![[0.0, 0.0, -1.0]])));
+    assert_eq!(face(&s.model, lath), Some(solid::Facing::Along(vec![[0.0, 0.0, 1.0]])));
     // A component is all of itself: its family's forms where it stands, a volume and no face to name.
     let fixture = put(&mut s, |m| BuildingPart::new(m.guid(wc), Source::Whole));
     let p = part(&s.model, fixture);
@@ -1615,4 +1628,32 @@ fn a_materials_weight_and_heat_are_numbers_above_nothing_and_within_reason() {
         x.conductivity = Some(f64::NAN);
     }
     assert_eq!(m.check().unwrap_err(), "material `Lime Plaster`: conductivity is W/(m·K), above 0 and at most 10000, not NaN");
+}
+
+/// A wall's part is measured on its own side of the wall: a layer outside the wall's structure on its exterior face, one
+/// inside it on its interior face, and the structure, as a single layer is, on its exterior face. Round a room's corner
+/// the interior plaster's face is the shorter by the wall's thickness.
+#[test]
+fn a_wall_part_is_measured_on_the_face_of_its_own_side() {
+    let mut s = Session::new();
+    run(
+        &mut s,
+        "type",
+        json!({"category": "wall", "name": "Three", "layers": [
+            {"function": "finish", "thickness": 20}, {"function": "structure", "thickness": 460}, {"function": "finish", "thickness": 15}
+        ]}),
+    );
+    // Drawn clockwise, so each wall's exterior, its left, is outside the room.
+    let walls = made(&run(
+        &mut s,
+        "wall",
+        json!({"points": [[0, 0], [0, 6000], [8000, 6000], [8000, 0]], "closed": true, "type": "Three", "height": 3000}),
+    ));
+    let west = walls[0];
+    run(&mut s, "create_parts", json!({"ids": [west]}));
+    let listed = run(&mut s, "parts", json!({"host": west}));
+    let areas: Vec<f64> = listed["parts"].as_array().unwrap().iter().map(|p| p["area_m2"].as_f64().unwrap()).collect();
+    // 6 m between the axes' corners, the wall 495 mm thick: outside 6.495 m long, its masonry's outer face 6.455 m, the
+    // room's face 5.505 m.
+    assert_eq!(areas, [19.485, 19.365, 16.515]);
 }
