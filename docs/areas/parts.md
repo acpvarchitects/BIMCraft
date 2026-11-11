@@ -119,8 +119,14 @@ rather than leaving the parts out and dropping them when it saves. A project par
 Builds of the heritage fork kept parts under a top-level `parts` key in a file of 18; that key is one this BIMCraft doesn't
 know, so it leaves it out and names it (`left_out`).
 
+## In views
+
+A view draws an element whole, as its parts, or both: Revit's Parts Visibility (`graphics {view, parts_visibility: original |
+parts | both}`, Properties' Parts Visibility), Show Original unless it says. How a plan, a section, an elevation and the 3D
+view draw and pick a part, what stands for what, and what is left for later are in
+[views and graphics](views-and-graphics.md#parts-in-views).
+
 ## Next
 
-Divide Parts in the desktop (a sketch on the part's face), parts in plans, sections and the 3D view with Parts Visibility (Show
-Original, Show Parts, Show Both) and colours by `Decay_Pathology` or `Historical_Period`, schedules and tags of parts, the
-desktop's tools (the material's weight and heat among them), and parts and a material's values to IFC and back.
+Divide Parts in the desktop (a sketch on the part's face), schedules and tags of parts, the desktop's tools (the material's
+weight and heat among them), and parts and a material's values to IFC and back.
