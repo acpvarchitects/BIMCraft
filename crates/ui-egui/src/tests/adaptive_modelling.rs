@@ -711,3 +711,27 @@ fn family_ortho_shift_drag_moves_a_point_without_orbiting() {
     let p = d.evaluate(&Default::default(), &d.preview).origin(&point).unwrap();
     assert!((p[0] - 650.0).abs() < 20.0 && (p[1] - initial[1]).abs() < 1e-6, "Shift primary drag should move horizontally: {p:?}");
 }
+
+#[test]
+fn family_ortho_shift_drag_on_empty_space_keeps_existing_navigation() {
+    let mut h = modelling();
+    tool(&mut h, "Modify");
+    let m = &h.state().active_family().unwrap().modeller;
+    let before = m.camera.map(|c| (c.azimuth, c.elevation));
+    let start = m.rect.center() + vec2(200.0, 100.0);
+    let end = start + vec2(80.0, 40.0);
+    h.event(Event::ModifiersChanged(Modifiers::SHIFT));
+    h.hover_at(start);
+    h.run();
+    h.event(Event::PointerButton { pos: start, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::SHIFT });
+    h.run();
+    for t in [0.25, 0.5, 0.75, 1.0] {
+        h.hover_at(start + (end - start) * t);
+        h.run();
+    }
+    h.event(Event::PointerButton { pos: end, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::SHIFT });
+    h.run();
+    let after = h.state().active_family().unwrap().modeller.camera.map(|c| (c.azimuth, c.elevation));
+    assert_ne!(after, before, "Shift-drag away from a point keeps the existing orbit gesture");
+    assert!(definition(&h).nodes.is_empty());
+}

@@ -372,15 +372,17 @@ pub(crate) fn show(
         // Else the view's navigation turns or pans it (below).
         m.drag = match (primary && !on_cube, m.tool == Draw::Modify, on_arrow) {
             (true, true, Some((id, k, o))) => Some(Drag::Axis(id, k, origin, o)),
-            (true, true, None) => Some(match hidden.seen(&r).pick(&|p| screen_of(&cam, p), px(origin)) {
+            (true, true, None) => match hidden.seen(&r).pick(&|p| screen_of(&cam, p), px(origin)) {
                 Some(Picked::Point(id)) if movable(d, &id) => {
                     m.selection = vec![id.clone()];
                     let start = r.origin(&id).unwrap_or_default();
-                    Drag::Plane(id, start)
+                    Some(Drag::Plane(id, start))
                 }
                 // On empty space, as Revit's: a selection box.
-                _ => Drag::Box(origin),
-            }),
+                _ if !mods.shift => Some(Drag::Box(origin)),
+                // Shift away from a movable point keeps the existing view-navigation gesture.
+                _ => None,
+            },
             _ => None,
         };
     }
