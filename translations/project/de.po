@@ -39,7 +39,7 @@ msgstr "Ziegel"
 msgid "Brick 225 x 75"
 msgstr "Ziegel 225 x 75"
 
-#: crates/core/src/commands.rs:4278
+#: crates/core/src/commands.rs:4403
 msgid "Camera"
 msgstr "Kamera"
 
@@ -55,7 +55,7 @@ msgstr ""
 msgid "Ceiling Luminaire"
 msgstr "Deckenleuchte"
 
-#: crates/core/src/render.rs:3052
+#: crates/core/src/render.rs:3082
 msgid "Ceiling Plan"
 msgstr "Deckenspiegel"
 
@@ -99,7 +99,7 @@ msgstr "Anzahl"
 msgid "Crosshatch"
 msgstr "Schraffur"
 
-#: crates/core/src/render.rs:3644
+#: crates/core/src/render.rs:3674
 msgid "DN"
 msgstr "AB"
 
@@ -115,7 +115,7 @@ msgstr "Strich-Punkt"
 msgid "Data Outlet"
 msgstr "Datenanschluss"
 
-#: crates/core/src/commands.rs:9956
+#: crates/core/src/commands.rs:10133
 msgid "Dependent"
 msgstr "Abhängig"
 
@@ -179,20 +179,20 @@ msgstr "Osten"
 msgid "Elbow 90"
 msgstr "Bogen 90"
 
-#: crates/core/src/graphics.rs:936
+#: crates/core/src/graphics.rs:975
 msgid "Electrical Ceiling"
 msgstr "Elektro Decke"
 
-#: crates/core/src/graphics.rs:935
+#: crates/core/src/graphics.rs:974
 msgid "Electrical Lighting"
 msgstr "Elektro Beleuchtung"
 
-#: crates/core/src/graphics.rs:934
+#: crates/core/src/graphics.rs:973
 msgid "Electrical Power"
 msgstr "Elektro Energie"
 
-#: crates/core/src/commands.rs:9740
-#: crates/core/src/commands.rs:12325
+#: crates/core/src/commands.rs:9917
+#: crates/core/src/commands.rs:12502
 msgid "Elevation"
 msgstr "Ansicht"
 
@@ -309,7 +309,7 @@ msgstr "Beinbreite"
 msgid "Length"
 msgstr "Länge"
 
-#: crates/core/src/commands.rs:6489
+#: crates/core/src/commands.rs:6666
 #: crates/core/src/model.rs:3200
 msgid "Level"
 msgstr "Geschoss"
@@ -334,7 +334,7 @@ msgstr "Marke"
 msgid "Masking"
 msgstr "Maskierung"
 
-#: crates/core/src/commands.rs:7748
+#: crates/core/src/commands.rs:7925
 msgid "Mass"
 msgstr "Volumenkörper"
 
@@ -359,7 +359,7 @@ msgstr "Metall"
 msgid "Mounting Height"
 msgstr "Montagehöhe"
 
-#: crates/core/src/render.rs:2883
+#: crates/core/src/render.rs:2909
 msgid "NOT ENCLOSED"
 msgstr "NICHT UMSCHLOSSEN"
 
@@ -423,11 +423,11 @@ msgstr "Putz"
 msgid "Porcelain"
 msgstr "Porzellan"
 
-#: crates/core/src/commands.rs:2965
+#: crates/core/src/commands.rs:3006
 msgid "Project"
 msgstr "Projekt"
 
-#: crates/core/src/render.rs:2883
+#: crates/core/src/render.rs:2909
 msgid "REDUNDANT"
 msgstr "REDUNDANT"
 
@@ -451,7 +451,7 @@ msgstr "Steigungen"
 msgid "Roof tiles"
 msgstr "Dachziegel"
 
-#: crates/core/src/commands.rs:7973
+#: crates/core/src/commands.rs:8150
 msgid "Room"
 msgstr "Raum"
 
@@ -487,8 +487,8 @@ msgstr "Estrich"
 msgid "Seat Height"
 msgstr "Sitzhöhe"
 
-#: crates/core/src/commands.rs:9717
-#: crates/core/src/commands.rs:12324
+#: crates/core/src/commands.rs:9894
+#: crates/core/src/commands.rs:12501
 msgid "Section"
 msgstr "Schnitt"
 
@@ -604,7 +604,7 @@ msgstr "Auftritt"
 msgid "Type"
 msgstr "Typ"
 
-#: crates/core/src/render.rs:3644
+#: crates/core/src/render.rs:3674
 msgid "UP"
 msgstr "AUF"
 
@@ -612,7 +612,7 @@ msgstr "AUF"
 msgid "Unbounded Height"
 msgstr "Unbegrenzte Höhe"
 
-#: crates/core/src/commands.rs:10097
+#: crates/core/src/commands.rs:10274
 msgid "Unnamed"
 msgstr "Unbenannt"
 
@@ -683,6 +683,11 @@ msgstr "bath"
 #: crates/core/src/loads.rs:79
 msgid "bwc"
 msgstr "bwc"
+
+#: crates/core/src/commands.rs:4658
+#: crates/core/src/render/parts.rs:191
+msgid "not set"
+msgstr ""
 
 #: crates/core/src/loads.rs:79
 msgid "wc"

@@ -86,9 +86,9 @@ msgstr "<不可見線>"
 #: crates/ui-egui/src/display.rs:25
 #: crates/ui-egui/src/fillpatterns.rs:357
 #: crates/ui-egui/src/fillpatterns.rs:359
-#: crates/ui-egui/src/graphics.rs:610
-#: crates/ui-egui/src/graphics.rs:1417
-#: crates/ui-egui/src/graphics.rs:1419
+#: crates/ui-egui/src/graphics.rs:625
+#: crates/ui-egui/src/graphics.rs:1432
+#: crates/ui-egui/src/graphics.rs:1434
 #: crates/ui-egui/src/phasing.rs:439
 #: crates/ui-egui/src/phasing.rs:481
 #: crates/ui-egui/src/templates.rs:214
@@ -101,7 +101,7 @@ msgstr "<無>"
 msgid "<None>: the view follows no template, and its settings are its own."
 msgstr "<無>：視圖不跟隨任何樣板，其設置由自己決定。"
 
-#: crates/ui-egui/src/graphics.rs:1126
+#: crates/ui-egui/src/graphics.rs:1141
 msgid "<Pick>"
 msgstr "<拾取>"
 
@@ -133,7 +133,7 @@ msgstr "從上一點出發的方向會吸附到該角度的整數倍（相對於
 msgid "A door or a window needs lengths named Width and Height; its formulas can read Wall Thickness, the wall's."
 msgstr "門或窗需要名為 Width 和 Height 的長度參數；其公式可以讀取 Wall Thickness（牆的厚度）。"
 
-#: crates/ui-egui/src/graphics.rs:1133
+#: crates/ui-egui/src/graphics.rs:1148
 msgid "A filter is made in View > Filters"
 msgstr "過濾器在“視圖”>“過濾器”中創建"
 
@@ -370,7 +370,7 @@ msgstr "添加比例："
 msgid "Add Segment"
 msgstr "添加線段"
 
-#: crates/ui-egui/src/graphics.rs:1192
+#: crates/ui-egui/src/graphics.rs:1207
 msgid "Add Selected"
 msgstr "添加所選"
 
@@ -429,7 +429,7 @@ msgstr "添加導線類型"
 msgid "Add at End"
 msgstr "添加到末尾"
 
-#: crates/ui-egui/src/graphics.rs:1124
+#: crates/ui-egui/src/graphics.rs:1139
 msgid "Add filter:"
 msgstr "添加過濾器："
 
@@ -950,7 +950,7 @@ msgstr "背景顏色"
 #: crates/ui-egui/src/background_grid.rs:98
 #: crates/ui-egui/src/footer.rs:435
 #: crates/ui-egui/src/graphics.rs:125
-#: crates/ui-egui/src/graphics.rs:597
+#: crates/ui-egui/src/graphics.rs:612
 #: crates/ui-egui/src/templates.rs:701
 msgid "Background Grids"
 msgstr "背景網格"
@@ -1129,7 +1129,7 @@ msgstr ""
 msgid "By Category"
 msgstr "按類別"
 
-#: crates/ui-egui/src/graphics.rs:910
+#: crates/ui-egui/src/graphics.rs:925
 msgid "By View"
 msgstr "按視圖"
 
@@ -1176,7 +1176,7 @@ msgstr "計算值…"
 msgid "Came in: {}"
 msgstr "已導入：{}"
 
-#: crates/core/src/commands.rs:1775
+#: crates/core/src/commands.rs:1786
 #: crates/ui-egui/src/camera.rs:38
 #: crates/ui-egui/src/lib.rs:4027
 #: crates/ui-egui/src/properties.rs:266
@@ -1196,7 +1196,7 @@ msgstr "相機：單擊視點所在位置，再單擊其注視的目標：由該
 #: crates/ui-egui/src/electrical.rs:502
 #: crates/ui-egui/src/filter.rs:115
 #: crates/ui-egui/src/graphics.rs:391
-#: crates/ui-egui/src/graphics.rs:1013
+#: crates/ui-egui/src/graphics.rs:1028
 #: crates/ui-egui/src/inquiry.rs:143
 #: crates/ui-egui/src/linestyles.rs:307
 #: crates/ui-egui/src/lineweights.rs:151
@@ -1252,7 +1252,7 @@ msgstr "櫥櫃"
 msgid "Categories"
 msgstr "類別"
 
-#: crates/ui-egui/src/graphics.rs:1097
+#: crates/ui-egui/src/graphics.rs:1112
 msgid "Categories not overridden are drawn as Object Styles sets them."
 msgstr "未替換的類別按對像樣式的設定繪製。"
 
@@ -1264,7 +1264,7 @@ msgstr "未替換的類別按對像樣式的設定繪製。"
 msgid "Category"
 msgstr "類別"
 
-#: crates/ui-egui/src/graphics.rs:1047
+#: crates/ui-egui/src/graphics.rs:1062
 msgid "Category name search:"
 msgstr "類別名稱搜索："
 
@@ -1421,7 +1421,7 @@ msgstr "外接多邊形"
 msgid "Circumscribed Polygon: click its centre, then the middle of a side; Sides on the Options Bar"
 msgstr "外接多邊形：單擊中心，然後單擊一條邊的中點；邊數在選項欄中設置"
 
-#: crates/ui-egui/src/graphics.rs:999
+#: crates/ui-egui/src/graphics.rs:1014
 msgid "Clear Overrides"
 msgstr "清除替換"
 
@@ -1979,7 +1979,7 @@ msgstr "關閉 {}"
 msgid "Closed polyline, {} points"
 msgstr ""
 
-#: crates/core/src/graphics.rs:231
+#: crates/core/src/graphics.rs:236
 msgid "Coarse"
 msgstr "粗略"
 
@@ -2368,7 +2368,7 @@ msgstr "自定義"
 msgid "Cut"
 msgstr "剖切"
 
-#: crates/ui-egui/src/graphics.rs:722
+#: crates/ui-egui/src/graphics.rs:737
 msgid "Cut Lines"
 msgstr "剖切線"
 
@@ -2376,7 +2376,7 @@ msgstr "剖切線"
 msgid "Cut Pattern"
 msgstr "剖面填充圖案"
 
-#: crates/ui-egui/src/graphics.rs:723
+#: crates/ui-egui/src/graphics.rs:738
 msgid "Cut Patterns"
 msgstr "剖切圖案"
 
@@ -2393,7 +2393,7 @@ msgstr "剖切面"
 msgid "Cylinder"
 msgstr "圓柱體"
 
-#: crates/core/src/render.rs:3644
+#: crates/core/src/render.rs:3674
 msgid "DN"
 msgstr "下"
 
@@ -2417,7 +2417,7 @@ msgstr "劃線"
 msgid "Dash Dot"
 msgstr "點劃線"
 
-#: crates/ui-egui/src/graphics.rs:1451
+#: crates/ui-egui/src/graphics.rs:1466
 msgid "Dashed"
 msgstr "虛線"
 
@@ -2555,7 +2555,7 @@ msgstr "已拆除"
 msgid "Demolition"
 msgstr "拆除"
 
-#: crates/core/src/commands.rs:9956
+#: crates/core/src/commands.rs:10133
 msgid "Dependent"
 msgstr "相關"
 
@@ -2608,7 +2608,7 @@ msgid "Detail Group: click to place the group on the Options Bar"
 msgstr "詳圖組：單擊以放置選項欄中的組"
 
 #: crates/ui-egui/src/graphics.rs:576
-#: crates/ui-egui/src/graphics.rs:827
+#: crates/ui-egui/src/graphics.rs:842
 #: crates/ui-egui/src/templates.rs:682
 msgid "Detail Level"
 msgstr "詳細程度"
@@ -2807,7 +2807,7 @@ msgstr "老虎窗：在屋頂坡面上單擊其前牆的位置；屋頂在其下
 msgid "Dot"
 msgstr "點"
 
-#: crates/ui-egui/src/graphics.rs:1452
+#: crates/ui-egui/src/graphics.rs:1467
 msgid "Dotted"
 msgstr "點線"
 
@@ -2827,7 +2827,7 @@ msgstr "雙扇平開"
 msgid "Double-clicking a tab's name does the same; a click on a tab then shows its tools until one is picked"
 msgstr "雙擊選項卡名稱也有同樣效果；之後單擊選項卡會顯示其工具，直到選取其中一個"
 
-#: crates/ui-egui/src/graphics.rs:1156
+#: crates/ui-egui/src/graphics.rs:1171
 #: crates/ui-egui/src/linestyles/creator.rs:166
 msgid "Down"
 msgstr "下移"
@@ -2973,7 +2973,7 @@ msgstr "東"
 msgid "Edit"
 msgstr "編輯"
 
-#: crates/ui-egui/src/graphics.rs:599
+#: crates/ui-egui/src/graphics.rs:614
 msgid "Edit Background Grids"
 msgstr "編輯背景網格"
 
@@ -3023,7 +3023,7 @@ msgstr "編輯類型"
 msgid "Edit the type"
 msgstr "編輯類型"
 
-#: crates/ui-egui/src/graphics.rs:621
+#: crates/ui-egui/src/graphics.rs:636
 #: crates/ui-egui/src/properties.rs:2070
 #: crates/ui-egui/src/templates.rs:657
 msgid "Edit {}"
@@ -3033,8 +3033,8 @@ msgstr "編輯 {}"
 msgid "Editing"
 msgstr "編輯"
 
-#: crates/ui-egui/src/graphics.rs:598
-#: crates/ui-egui/src/graphics.rs:620
+#: crates/ui-egui/src/graphics.rs:613
+#: crates/ui-egui/src/graphics.rs:635
 #: crates/ui-egui/src/properties.rs:2068
 #: crates/ui-egui/src/templates.rs:659
 msgid "Edit…"
@@ -3048,7 +3048,7 @@ msgstr "90° 彎頭"
 msgid "Electrical"
 msgstr "電氣"
 
-#: crates/core/src/graphics.rs:936
+#: crates/core/src/graphics.rs:975
 msgid "Electrical Ceiling"
 msgstr ""
 
@@ -3060,11 +3060,11 @@ msgstr "電氣設備"
 msgid "Electrical Equipment (EE): a distribution board, where you click on the wall; Space turns it"
 msgstr "電氣設備 (EE)：在牆上單擊處放置配電箱；按空格鍵旋轉"
 
-#: crates/core/src/graphics.rs:935
+#: crates/core/src/graphics.rs:974
 msgid "Electrical Lighting"
 msgstr ""
 
-#: crates/core/src/graphics.rs:934
+#: crates/core/src/graphics.rs:973
 msgid "Electrical Power"
 msgstr ""
 
@@ -3077,7 +3077,7 @@ msgstr "電氣設置"
 msgid "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
 msgstr "電氣設置：迴路和配電箱所引用的電壓、配電系統和導線類型；截面積以 mm² 計"
 
-#: crates/core/src/commands.rs:2224
+#: crates/core/src/commands.rs:2265
 msgid "Elements"
 msgstr "圖元"
 
@@ -3343,7 +3343,7 @@ msgstr "填充樣式"
 msgid "Fill Patterns: the patterns filled regions and materials fill with, simple or made from lines drawn"
 msgstr "填充樣式：填充區域和材質所用的圖案，可以是簡單線條，也可以由繪製的線創建"
 
-#: crates/ui-egui/src/graphics.rs:1398
+#: crates/ui-egui/src/graphics.rs:1413
 msgid "Fill color"
 msgstr "填充顏色"
 
@@ -3446,7 +3446,7 @@ msgstr "找到 {}。"
 msgid "Finds {}; nothing has these: {}"
 msgstr "找到 {}；以下沒有對應的圖元：{}"
 
-#: crates/core/src/graphics.rs:233
+#: crates/core/src/graphics.rs:238
 msgid "Fine"
 msgstr "精細"
 
@@ -3599,7 +3599,7 @@ msgstr "樓板：在牆內單擊，為其創建樓板"
 msgid "Focal Length"
 msgstr "焦距"
 
-#: crates/ui-egui/src/graphics.rs:861
+#: crates/ui-egui/src/graphics.rs:876
 msgid "Fold"
 msgstr "折疊"
 
@@ -3871,7 +3871,7 @@ msgid "Gypsum board"
 msgstr "石膏板"
 
 #: crates/core/src/lines.rs:202
-#: crates/ui-egui/src/graphics.rs:1319
+#: crates/ui-egui/src/graphics.rs:1334
 msgid "Hairline"
 msgstr "髮絲線"
 
@@ -3879,9 +3879,9 @@ msgstr "髮絲線"
 msgid "Half"
 msgstr "一半"
 
-#: crates/ui-egui/src/graphics.rs:823
-#: crates/ui-egui/src/graphics.rs:900
-#: crates/ui-egui/src/graphics.rs:1300
+#: crates/ui-egui/src/graphics.rs:838
+#: crates/ui-egui/src/graphics.rs:915
+#: crates/ui-egui/src/graphics.rs:1315
 msgid "Halftone"
 msgstr "半色調"
 
@@ -3923,7 +3923,7 @@ msgstr "受尺寸標注約束"
 msgid "Hidden"
 msgstr "隱藏"
 
-#: crates/core/src/graphics.rs:261
+#: crates/core/src/graphics.rs:266
 msgid "Hidden Line"
 msgstr "隱藏線"
 
@@ -4211,7 +4211,7 @@ msgstr "界面縮放"
 msgid "Intersection"
 msgstr "交點"
 
-#: crates/ui-egui/src/graphics.rs:1029
+#: crates/ui-egui/src/graphics.rs:1044
 msgid "Invert"
 msgstr "反選"
 
@@ -4347,7 +4347,7 @@ msgstr "稍後"
 msgid "Layers"
 msgstr "構造層"
 
-#: crates/ui-egui/src/graphics.rs:1216
+#: crates/ui-egui/src/graphics.rs:1231
 msgid "Layers this view shows of each drawing"
 msgstr "此視圖顯示的各圖紙圖層"
 
@@ -4489,7 +4489,7 @@ msgstr "界限偏移"
 msgid "Line"
 msgstr "線"
 
-#: crates/ui-egui/src/graphics.rs:730
+#: crates/ui-egui/src/graphics.rs:745
 msgid "Line Graphics"
 msgstr "線圖形"
 
@@ -4538,11 +4538,11 @@ msgstr "線寬"
 msgid "Line Weights: what each pen draws on paper, the model's at each scale and the annotation's at any"
 msgstr "線寬：每支筆在圖紙上畫出的寬度，模型的按各比例設定，註釋的在任何比例下都相同"
 
-#: crates/ui-egui/src/graphics.rs:1361
+#: crates/ui-egui/src/graphics.rs:1376
 msgid "Line color"
 msgstr "線顏色"
 
-#: crates/ui-egui/src/graphics.rs:1383
+#: crates/ui-egui/src/graphics.rs:1398
 msgid "Line dash"
 msgstr "線型虛實"
 
@@ -4558,7 +4558,7 @@ msgstr "線對線"
 msgid "Line to neutral"
 msgstr "線對中性線"
 
-#: crates/ui-egui/src/graphics.rs:1367
+#: crates/ui-egui/src/graphics.rs:1382
 msgid "Line weight"
 msgstr "線寬"
 
@@ -4578,7 +4578,7 @@ msgstr "線性"
 msgid "Linear Dimension: pick endpoints (wall ends and corners, line ends, grid ends), then click where it goes: horizontal or vertical as the cursor lies"
 msgstr "線性尺寸標註：拾取端點（牆端和牆角、線端、軸網端），然後單擊放置位置：按游標位置為水平或垂直"
 
-#: crates/ui-egui/src/graphics.rs:710
+#: crates/ui-egui/src/graphics.rs:725
 #: crates/ui-egui/src/titleblocks.rs:22
 msgid "Lines"
 msgstr "線"
@@ -4891,7 +4891,7 @@ msgstr "最大值"
 msgid "Maximum Riser Height"
 msgstr "最大踢面高度"
 
-#: crates/core/src/commands.rs:1885
+#: crates/core/src/commands.rs:1926
 msgid "Measure"
 msgstr "測量"
 
@@ -4899,7 +4899,7 @@ msgstr "測量"
 msgid "Measure (ME): click two points; their length and angle read beside the ruler between them"
 msgstr "測量 (ME)：單擊兩點；其長度和角度顯示在兩點之間的標尺旁"
 
-#: crates/core/src/graphics.rs:232
+#: crates/core/src/graphics.rs:237
 msgid "Medium"
 msgstr "中等"
 
@@ -5109,7 +5109,7 @@ msgstr "NBR 17068：延伸 2 至 3 mm"
 msgid "NBR 6492: Target in plan (±0.00), equilateral triangle in section"
 msgstr "NBR 6492：平面採用圓環靶心 (±0.00)，剖面採用等邊三角形"
 
-#: crates/core/src/render.rs:2883
+#: crates/core/src/render.rs:2909
 msgid "NOT ENCLOSED"
 msgstr "未封閉"
 
@@ -5253,7 +5253,7 @@ msgstr ""
 msgid "No Clip"
 msgstr "不剪裁"
 
-#: crates/ui-egui/src/graphics.rs:1089
+#: crates/ui-egui/src/graphics.rs:1104
 msgid "No category has that name."
 msgstr "沒有類別叫這個名稱。"
 
@@ -5261,7 +5261,7 @@ msgstr "沒有類別叫這個名稱。"
 msgid "No design option sets yet: New Set makes one."
 msgstr "尚無設計選項集：點擊“新建選項集”創建一個。"
 
-#: crates/ui-egui/src/graphics.rs:1183
+#: crates/ui-egui/src/graphics.rs:1198
 msgid "No element is hidden or overridden here: select some and Add Selected."
 msgstr "此處沒有被隱藏或替換的圖元：請選擇一些圖元，然後點擊“添加所選”。"
 
@@ -5277,7 +5277,7 @@ msgstr "尚無收藏的材質：請通過“管理”>“材質”儲存一個�
 msgid "No fill"
 msgstr "無填充"
 
-#: crates/ui-egui/src/graphics.rs:1118
+#: crates/ui-egui/src/graphics.rs:1133
 msgid "No filters applied."
 msgstr "未應用任何過濾器。"
 
@@ -5434,7 +5434,7 @@ msgstr "編號"
 #: crates/ui-egui/src/electrical.rs:503
 #: crates/ui-egui/src/filter.rs:116
 #: crates/ui-egui/src/graphics.rs:392
-#: crates/ui-egui/src/graphics.rs:1014
+#: crates/ui-egui/src/graphics.rs:1029
 #: crates/ui-egui/src/inquiry.rs:144
 #: crates/ui-egui/src/linestyles.rs:308
 #: crates/ui-egui/src/lineweights.rs:152
@@ -5462,7 +5462,7 @@ msgstr "對像樣式"
 msgid "Object Styles: the pen each category draws in, seen and cut, in every view"
 msgstr "對像樣式：每個類別在所有視圖中所用的筆，可見線和剖切線各一支"
 
-#: crates/ui-egui/src/graphics.rs:1098
+#: crates/ui-egui/src/graphics.rs:1113
 msgid "Object Styles…"
 msgstr "對像樣式…"
 
@@ -5675,7 +5675,7 @@ msgstr "按圖元替換圖形"
 msgid "Override Graphics by Element (EO): draw the selected elements their own way in this view"
 msgstr "按圖元替換圖形 (EO)：在此視圖中以自定義方式繪製所選圖元"
 
-#: crates/ui-egui/src/graphics.rs:879
+#: crates/ui-egui/src/graphics.rs:894
 msgid "Override…"
 msgstr "替換…"
 
@@ -5757,6 +5757,10 @@ msgstr "半橢圓"
 msgid "Partial Ellipse: click the ends of its axis, then how far it bulges"
 msgstr "半橢圓：單擊軸的兩端，然後單擊其凸出的距離"
 
+#: crates/ui-egui/src/graphics.rs:597
+msgid "Parts Visibility"
+msgstr ""
+
 #: crates/ui-egui/src/assistant.rs:123
 #: crates/ui-egui/src/assistant.rs:184
 msgid "Passphrase:"
@@ -5784,7 +5788,7 @@ msgstr "圖案"
 msgid "Pattern Angle (°)"
 msgstr "圖案角度 (°)"
 
-#: crates/ui-egui/src/graphics.rs:731
+#: crates/ui-egui/src/graphics.rs:746
 msgid "Pattern Graphics"
 msgstr "圖案圖形"
 
@@ -5796,11 +5800,11 @@ msgstr "圖案名稱"
 msgid "Pattern preview"
 msgstr "圖案預覽"
 
-#: crates/ui-egui/src/graphics.rs:711
+#: crates/ui-egui/src/graphics.rs:726
 msgid "Patterns"
 msgstr "圖案"
 
-#: crates/ui-egui/src/graphics.rs:991
+#: crates/ui-egui/src/graphics.rs:1006
 msgid "Patterns appear in plans, ceiling plans, section cuts and filled regions."
 msgstr "圖案顯示在平面圖、天花板平面圖、剖面切割和填充區域中。"
 
@@ -6449,7 +6453,7 @@ msgid "Presets"
 msgstr "模板"
 
 #: crates/ui-egui/src/editor.rs:1099
-#: crates/ui-egui/src/graphics.rs:1432
+#: crates/ui-egui/src/graphics.rs:1447
 #: crates/ui-egui/src/linestyles/creator.rs:104
 msgid "Preview"
 msgstr "預覽"
@@ -6462,7 +6466,7 @@ msgstr "預覽類型"
 msgid "Previewing"
 msgstr "正在預覽"
 
-#: crates/ui-egui/src/graphics.rs:1249
+#: crates/ui-egui/src/graphics.rs:1264
 msgid "Primary ({})"
 msgstr "主選項（{}）"
 
@@ -6532,7 +6536,7 @@ msgstr "項目規模："
 msgid "Projection"
 msgstr "投影"
 
-#: crates/ui-egui/src/graphics.rs:719
+#: crates/ui-egui/src/graphics.rs:734
 msgid "Projection Lines"
 msgstr "投影線"
 
@@ -6540,7 +6544,7 @@ msgstr "投影線"
 msgid "Projection Method:"
 msgstr "投影方法:"
 
-#: crates/ui-egui/src/graphics.rs:720
+#: crates/ui-egui/src/graphics.rs:735
 msgid "Projection Patterns"
 msgstr "投影圖案"
 
@@ -6548,7 +6552,7 @@ msgstr "投影圖案"
 msgid "Projection Pen"
 msgstr "投影筆號"
 
-#: crates/ui-egui/src/graphics.rs:804
+#: crates/ui-egui/src/graphics.rs:819
 msgid "Projection/Surface"
 msgstr "投影/表面"
 
@@ -6597,7 +6601,7 @@ msgstr "將一個視圖放到此圖紙上：尚未上圖紙的視圖"
 msgid "Quadrant"
 msgstr "象限點"
 
-#: crates/core/src/render.rs:2883
+#: crates/core/src/render.rs:2909
 msgid "REDUNDANT"
 msgstr "冗餘"
 
@@ -6728,7 +6732,7 @@ msgstr "重做 {} 步"
 msgid "Redraw views in the background"
 msgstr "在後台重繪視圖"
 
-#: crates/core/src/graphics.rs:126
+#: crates/core/src/graphics.rs:131
 msgid "Reference"
 msgstr "參照"
 
@@ -6787,8 +6791,8 @@ msgstr ""
 
 #: crates/ui-egui/src/favorites.rs:142
 #: crates/ui-egui/src/favorites.rs:165
-#: crates/ui-egui/src/graphics.rs:1144
-#: crates/ui-egui/src/graphics.rs:1199
+#: crates/ui-egui/src/graphics.rs:1159
+#: crates/ui-egui/src/graphics.rs:1214
 #: crates/ui-egui/src/properties.rs:2827
 #: crates/ui-egui/src/properties.rs:3170
 #: crates/ui-egui/src/properties.rs:3323
@@ -6887,7 +6891,7 @@ msgstr "以文字替換："
 msgid "Replace imported by same name"
 msgstr "替換同名的導入圖案"
 
-#: crates/ui-egui/src/graphics.rs:1308
+#: crates/ui-egui/src/graphics.rs:1323
 #: crates/ui-egui/src/lineweights.rs:146
 #: crates/ui-egui/src/objectstyles.rs:72
 msgid "Reset"
@@ -7085,7 +7089,7 @@ msgstr ""
 msgid "Room Schedule"
 msgstr "房間明細表"
 
-#: crates/core/src/graphics.rs:127
+#: crates/core/src/graphics.rs:132
 msgid "Room Separation Lines"
 msgstr "房間分隔線"
 
@@ -7432,7 +7436,7 @@ msgstr "設置"
 msgid "Settings…"
 msgstr "設置…"
 
-#: crates/core/src/graphics.rs:260
+#: crates/core/src/graphics.rs:265
 msgid "Shaded"
 msgstr "著色"
 
@@ -7526,6 +7530,10 @@ msgstr "顯示環境陰影"
 msgid "Show Border"
 msgstr "顯示邊框"
 
+#: crates/core/src/graphics/parts.rs:52
+msgid "Show Both"
+msgstr ""
+
 #: crates/ui-egui/src/draw.rs:347
 msgid "Show Centre"
 msgstr "顯示中心"
@@ -7553,6 +7561,14 @@ msgstr "顯示體量 (MH)：在此視圖中隱藏體量，或再次顯示"
 #: crates/core/src/phasing.rs:131
 msgid "Show New"
 msgstr "顯示新建"
+
+#: crates/core/src/graphics/parts.rs:50
+msgid "Show Original"
+msgstr ""
+
+#: crates/core/src/graphics/parts.rs:51
+msgid "Show Parts"
+msgstr ""
 
 #: crates/core/src/phasing.rs:132
 msgid "Show Previous + Demolished"
@@ -7789,7 +7805,7 @@ msgstr "沙發"
 msgid "Soft shadows where faces meet inside a corner"
 msgstr "面在內角相交處的柔和陰影"
 
-#: crates/ui-egui/src/graphics.rs:1450
+#: crates/ui-egui/src/graphics.rs:1465
 msgid "Solid"
 msgstr "實線"
 
@@ -8064,7 +8080,7 @@ msgstr "建議單位:"
 msgid "Surface Pattern"
 msgstr "表面填充圖案"
 
-#: crates/ui-egui/src/graphics.rs:732
+#: crates/ui-egui/src/graphics.rs:747
 msgid "Surface Transparency"
 msgstr "表面透明度"
 
@@ -8462,11 +8478,11 @@ msgstr ""
 msgid "The project changed while this window was open: Cancel, and open it again."
 msgstr "此視窗開啟期間項目已更改：請取消並重新開啟。"
 
-#: crates/ui-egui/src/graphics.rs:1213
+#: crates/ui-egui/src/graphics.rs:1228
 msgid "The project has no CAD drawings: Insert > Import CAD brings one in."
 msgstr "項目中沒有 CAD 圖紙：插入 > 導入 CAD 可導入。"
 
-#: crates/ui-egui/src/graphics.rs:1243
+#: crates/ui-egui/src/graphics.rs:1258
 msgid "The project has no design options: Manage > Design Options makes them."
 msgstr "項目沒有設計選項：可通過“管理”>“設計選項”創建。"
 
@@ -8794,8 +8810,8 @@ msgstr "總計"
 msgid "Total selected items: {}"
 msgstr "選中圖元總數：{}"
 
-#: crates/ui-egui/src/graphics.rs:981
-#: crates/ui-egui/src/graphics.rs:1302
+#: crates/ui-egui/src/graphics.rs:996
+#: crates/ui-egui/src/graphics.rs:1317
 #: crates/ui-egui/src/properties.rs:2274
 msgid "Transparency"
 msgstr "透明度"
@@ -8920,7 +8936,7 @@ msgstr "類型："
 msgid "Types"
 msgstr "類型"
 
-#: crates/core/src/render.rs:3644
+#: crates/core/src/render.rs:3674
 msgid "UP"
 msgstr "上"
 
@@ -8929,7 +8945,7 @@ msgstr "上"
 msgid "Unbounded Height"
 msgstr "無界限高度"
 
-#: crates/ui-egui/src/graphics.rs:989
+#: crates/ui-egui/src/graphics.rs:1004
 msgid "Unchecked layers inherit; <None> hides a layer."
 msgstr "未勾選的圖層繼承原始圖案；<無>隱藏圖層。"
 
@@ -8972,7 +8988,7 @@ msgstr "復原 {}"
 msgid "Undo {} steps"
 msgstr "復原 {} 步"
 
-#: crates/ui-egui/src/graphics.rs:861
+#: crates/ui-egui/src/graphics.rs:876
 msgid "Unfold"
 msgstr "展開"
 
@@ -9016,7 +9032,7 @@ msgstr ""
 msgid "Unlock alignment"
 msgstr "解鎖對齊"
 
-#: crates/core/src/commands.rs:10097
+#: crates/core/src/commands.rs:10274
 msgid "Unnamed"
 msgstr "未命名"
 
@@ -9032,7 +9048,7 @@ msgstr "未編輯形狀的頂面"
 msgid "Untitled project"
 msgstr "未命名項目"
 
-#: crates/ui-egui/src/graphics.rs:1150
+#: crates/ui-egui/src/graphics.rs:1165
 #: crates/ui-egui/src/linestyles/creator.rs:161
 msgid "Up"
 msgstr "上移"
@@ -9152,8 +9168,8 @@ msgstr "視圖比例"
 msgid "View Scale (1 : n)"
 msgstr "視圖比例（1 : n）"
 
-#: crates/ui-egui/src/graphics.rs:609
-#: crates/ui-egui/src/graphics.rs:613
+#: crates/ui-egui/src/graphics.rs:624
+#: crates/ui-egui/src/graphics.rs:628
 msgid "View Template"
 msgstr "視圖樣板"
 
@@ -9190,7 +9206,7 @@ msgstr "視圖（全部）"
 msgid "Views following it: {}"
 msgstr "跟隨它的視圖：{}"
 
-#: crates/ui-egui/src/graphics.rs:802
+#: crates/ui-egui/src/graphics.rs:817
 msgid "Visibility"
 msgstr "可見性"
 
@@ -9211,8 +9227,8 @@ msgstr "可見性/圖形"
 msgid "Visibility/Graphics (VV): what this view hides, and how it draws the rest, by category, filter and element"
 msgstr "可見性/圖形 (VV)：此視圖隱藏什麼，以及如何繪製其餘內容，按類別、過濾器和圖元設置"
 
-#: crates/ui-egui/src/graphics.rs:619
-#: crates/ui-egui/src/graphics.rs:621
+#: crates/ui-egui/src/graphics.rs:634
+#: crates/ui-egui/src/graphics.rs:636
 msgid "Visibility/Graphics Overrides"
 msgstr "可見性/圖形替換"
 
@@ -9499,7 +9515,7 @@ msgstr "導線類型名稱"
 msgid "Wire type:"
 msgstr "導線類型："
 
-#: crates/core/src/graphics.rs:262
+#: crates/core/src/graphics.rs:267
 msgid "Wireframe"
 msgstr "線框"
 
@@ -9948,6 +9964,11 @@ msgstr "西北"
 msgid "not defined"
 msgstr ""
 
+#: crates/core/src/commands.rs:4658
+#: crates/core/src/render/parts.rs:191
+msgid "not set"
+msgstr ""
+
 #: crates/ui-egui/src/canvas.rs:2171
 #: crates/ui-egui/src/canvas.rs:2848
 msgid "offset: `{}` is not a distance"
@@ -10128,11 +10149,11 @@ msgstr "有兩個類型都名為 `{}`"
 msgid "type the elevation first"
 msgstr "請先輸入高程"
 
-#: crates/core/src/graphics.rs:959
+#: crates/core/src/graphics.rs:998
 msgid "view filter"
 msgstr "視圖過濾器"
 
-#: crates/core/src/graphics.rs:963
+#: crates/core/src/graphics.rs:1002
 msgid "view template"
 msgstr "視圖樣板"
 
