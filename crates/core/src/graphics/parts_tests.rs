@@ -290,9 +290,9 @@ fn a_view_template_that_holds_a_parts_visibility_sets_it_for_its_views() {
     assert!(Look::of(&s.model, level).shows(wall) && !Look::of(&s.model, level).shows(plaster));
     assert_eq!(run(&mut s, "graphics", json!({"view": level}))["parts_visibility"], "original");
     let e = s.execute("graphics", &json!({"view": level, "parts_visibility": "both"})).unwrap_err();
-    assert!(e.contains("parts visibility follows view template `Survey`"), "{e}");
+    assert!(e.contains("parts visibility and theme follow view template `Survey`"), "{e}");
     let e = s.execute("modify", &json!({"id": level, "graphics": {"template": "Survey", "parts_visibility": "both"}})).unwrap_err();
-    assert!(e.contains("parts visibility follows view template `Survey`"), "{e}");
+    assert!(e.contains("parts visibility and theme follow view template `Survey`"), "{e}");
     run(&mut s, "template", json!({"name": "Survey", "parts_visibility": "parts"}));
     assert!(!Look::of(&s.model, level).shows(wall) && Look::of(&s.model, level).shows(plaster));
     // Unfollowing and changing in one call is fine; and a template made from a view that shows parts takes it.
@@ -302,4 +302,142 @@ fn a_view_template_that_holds_a_parts_visibility_sets_it_for_its_views() {
     // With null it leaves it to each view again.
     let t = run(&mut s, "template", json!({"name": "Both", "parts_visibility": null}));
     assert_eq!(t["parts_visibility"], json!(null));
+}
+
+/// What `theme` replies of `view` after `p`, which it must take.
+fn theme(s: &mut Session, p: serde_json::Value) -> serde_json::Value {
+    run(s, "theme", p)
+}
+
+fn rgb(c: [u8; 3]) -> Rgb {
+    Rgb(c[0], c[1], c[2])
+}
+
+fn colour_of(row: &serde_json::Value) -> [u8; 3] {
+    let c: Vec<u8> = row["color"].as_array().unwrap().iter().map(|v| v.as_u64().unwrap() as u8).collect();
+    [c[0], c[1], c[2]]
+}
+
+#[test]
+fn a_theme_fills_each_part_in_the_colour_of_what_it_holds_where_the_view_shows_parts() {
+    let (mut s, wall, [plaster, masonry]) = historic();
+    run(&mut s, "part", json!({"id": plaster, "decay_pathology": "detachment"}));
+    let level = level(&s.model);
+    // A view that shows the originals colours nothing, and says so.
+    let r = theme(&mut s, json!({"view": level, "by": "Decay_Pathology"}));
+    assert_eq!(r["parts_visibility"], "original");
+    assert!(r["note"].as_str().unwrap().contains("set `parts_visibility` to parts or both"), "{r}");
+    assert_eq!(pixel(&plan(&s), P2(2000.0, 0.0)), POCHE);
+    assert!(!owned(&plan(&s), wall).is_empty());
+    // Showing parts, the plaster is filled in Detachment's colour, the masonry, which holds no decay, in grey.
+    showing_parts(&mut s);
+    let r = theme(&mut s, json!({"view": level}));
+    let rows = r["rows"].as_array().unwrap();
+    assert_eq!(rows.len(), 2, "{r}");
+    assert_eq!((&rows[0]["value"], &rows[0]["count"], &rows[0]["area_m2"]), (&json!("Detachment"), &json!(1), &json!(12.0)));
+    assert_eq!((&rows[1]["value"], &rows[1]["count"]), (&json!(null), &json!(1)));
+    let detachment = colour_of(&rows[0]);
+    assert_eq!(colour_of(&rows[1]), super::parts::NOT_SET);
+    assert_ne!(detachment, super::parts::NOT_SET);
+    let d = plan(&s);
+    assert_eq!(pixel(&d, P2(2000.0, 230.0)), rgb(detachment));
+    assert_eq!(pixel(&d, P2(2000.0, 0.0)), rgb(super::parts::NOT_SET));
+    // The same in every run and every project that names the decay: by its place in the list, not by what else there is.
+    let (mut other, _, [p2, _]) = historic();
+    run(&mut other, "part", json!({"id": p2, "decay_pathology": "detachment"}));
+    showing_parts(&mut other);
+    let lv = other.model.levels()[0].0;
+    let again = theme(&mut other, json!({"view": lv, "by": "Decay_Pathology"}));
+    assert_eq!(colour_of(&again["rows"][0]), detachment);
+    // A colour of the view's own, for a value and for the parts that hold none; null gives the automatic one back.
+    theme(&mut s, json!({"view": level, "colors": {"Detachment": "#ff0000", "": [0, 0, 255]}}));
+    let d = plan(&s);
+    assert_eq!((pixel(&d, P2(2000.0, 230.0)), pixel(&d, P2(2000.0, 0.0))), (Rgb(255, 0, 0), Rgb(0, 0, 255)));
+    theme(&mut s, json!({"view": level, "colors": {"Detachment": null}}));
+    assert_eq!(pixel(&plan(&s), P2(2000.0, 230.0)), rgb(detachment));
+    // A section cuts them in the same colours.
+    let section = run(&mut s, "section", json!({"start": [2000, 1500], "end": [2000, -1500]}))["id"].as_u64().unwrap();
+    run(&mut s, "scale", json!({"view": section, "scale": 10}));
+    run(&mut s, "graphics", json!({"view": section, "parts_visibility": "parts"}));
+    theme(&mut s, json!({"view": section, "by": "Decay_Pathology"}));
+    let view = View { scale: 0.5, cx: 1500.0, cy: 1500.0, width: 800, height: 600 };
+    let d = render::section(&s.model, section, view);
+    assert_eq!(pixel(&d, P2(1270.0, 1500.0)), rgb(detachment));
+    // The 3D view fills the plaster's faces with it, over its material: red where the view chooses red.
+    run(&mut s, "graphics", json!({"view": "{3D}", "parts_visibility": "parts"}));
+    theme(&mut s, json!({"view": "{3D}", "by": "Decay_Pathology"}));
+    let look = Look::of_3d(&s.model);
+    assert_eq!(look.paint.get(&plaster).and_then(|o| o.projection.fill), Some(detachment));
+    assert_eq!(look.paint.get(&masonry).and_then(|o| o.projection.fill), Some(super::parts::NOT_SET));
+    theme(&mut s, json!({"view": "{3D}", "colors": {"Detachment": "#ff0000"}}));
+    let scene = Scene::new(&s.model);
+    let img = scene.render_in(&scene.fit(60.0, 30.0, 480, 360), &[], &Look::of_3d(&s.model));
+    let red = img.rgba.chunks(4).filter(|c| c[0] > c[1].saturating_add(80) && c[0] > c[2].saturating_add(80)).count();
+    assert!(red > 2000, "{red} red pixels");
+    // Taken away, the parts are drawn as their layers again.
+    theme(&mut s, json!({"view": level, "off": true}));
+    assert_eq!(pixel(&plan(&s), P2(3000.0, 230.0)), LIGHT_POCHE);
+}
+
+#[test]
+fn a_themes_legend_counts_the_parts_the_view_draws_and_is_drawn_in_its_corner() {
+    let (mut s, _, [plaster, masonry]) = historic();
+    run(&mut s, "part", json!({"id": plaster, "historical_period": "18th century"}));
+    run(&mut s, "part", json!({"id": masonry, "historical_period": "Roman"}));
+    let level = showing_parts(&mut s);
+    let r = theme(&mut s, json!({"view": level, "by": "Historical_Period"}));
+    assert_eq!((&r["parts"], &r["area_m2"]), (&json!(2), &json!(24.0)), "{r}");
+    let values: Vec<&str> = r["rows"].as_array().unwrap().iter().map(|row| row["value"].as_str().unwrap()).collect();
+    assert_eq!(values, ["18th century", "Roman"]);
+    // Not drawn until asked; then a key over the paper in the top left corner, each value's swatch in its colour.
+    let at_px = |d: &Drawing, x: f32, y: f32| {
+        let pm = tiny_skia::Pixmap::decode_png(&render::png(d).unwrap()).unwrap();
+        let c = pm.pixel(x as u32, y as u32).unwrap();
+        Rgb(c.red(), c.green(), c.blue())
+    };
+    let blank = plan(&s);
+    assert_eq!(at_px(&blank, 30.0, 40.0), render::PAPER);
+    theme(&mut s, json!({"view": level, "legend": true}));
+    let d = plan(&s);
+    let first = colour_of(&r["rows"][0]);
+    let k = d.k.clamp(1.0, 2.0);
+    // The first row's swatch: the key 12 px in, padded 8, the swatch 22 by 12 and a row 18 tall, under the heading.
+    let swatch = (12.0 * k + 8.0 * k + 11.0 * k, 12.0 * k + 8.0 * k + 18.0 * k * 1.5);
+    assert_eq!(at_px(&d, swatch.0, swatch.1), rgb(first));
+}
+
+#[test]
+fn a_theme_that_is_not_one_is_refused_and_leaves_the_view_as_it_was() {
+    let (mut s, _, _) = historic();
+    let level = showing_parts(&mut s);
+    for (bad, says) in [
+        (json!({"view": level, "by": "Colour"}), "parts aren't coloured by \"Colour\""),
+        (json!({"view": level, "legend": true}), "a theme needs `by`"),
+        (json!({"view": level, "by": "Decay_Pathology", "colors": {"Detachment": "red"}}), "the colour of `Detachment`"),
+        (json!({"view": level, "by": "Decay_Pathology", "colors": {"Detachment": [0, 0, 300]}}), "the colour of `Detachment`"),
+        (json!({"view": level, "by": "x".repeat(10_000)}), "parts aren't coloured by"),
+    ] {
+        let before = s.model.clone();
+        let e = s.execute("theme", &bad).unwrap_err();
+        assert!(e.contains(says), "{bad}: {e}");
+        assert_eq!(*s.model, *before);
+    }
+}
+
+/// A decay map is read by its colours: every two named decays, whichever a survey uses, are told apart at a glance, and
+/// none looks like the grey of a part with no decay.
+#[test]
+fn the_named_decays_colours_are_far_apart_and_far_from_not_set() {
+    let theme = super::parts::Theme { by: "Decay_Pathology".into(), ..Default::default() };
+    let (s, _, _) = historic();
+    let colours = theme.colours(&s.model, std::iter::empty());
+    let named: Vec<[u8; 3]> = crate::parts::Decay::NAMED.iter().map(|d| colours[d.label()]).collect();
+    let apart = |a: [u8; 3], b: [u8; 3]| (0..3).map(|k| (f64::from(a[k]) - f64::from(b[k])).powi(2)).sum::<f64>().sqrt();
+    for (i, a) in named.iter().enumerate() {
+        assert!(apart(*a, super::parts::NOT_SET) >= 80.0, "{:?} is near the grey of no decay", &crate::parts::Decay::NAMED[i]);
+        for (j, b) in named.iter().enumerate().skip(i + 1) {
+            let (x, y) = (&crate::parts::Decay::NAMED[i], &crate::parts::Decay::NAMED[j]);
+            assert!(apart(*a, *b) >= 40.0, "{x:?} {a:?} and {y:?} {b:?} are {} apart", apart(*a, *b));
+        }
+    }
 }

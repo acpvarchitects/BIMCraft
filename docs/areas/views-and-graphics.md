@@ -810,6 +810,21 @@ is the part's own, so `Drawing::pick`, a 3D pick and a selection's highlight are
 the parts lie over the original (Tab cycles to it), in 3D the original's faces are the ones seen where the two coincide (it
 is drawn first).
 
+The theme: decay maps and maps of periods. A view that shows parts may colour them by a value they hold (`Graphics::theme`,
+`graphics::parts::Theme`, set by `theme {view, by, colors?, legend?, off?}` and held by a template that holds a Parts
+Visibility): `by` is one of the heritage set (`Decay_Pathology`, `Historical_Period`, `Decay_Severity`, `Intervention_Type`,
+`SU_Code`), `Material` or a project parameter of parts (`Theme::names`). `Look::parts` fills each part it draws, cut and seen,
+in the colour of what it holds, over its host's look and the view's filters, so a plan, a section, an elevation and the 3D
+view agree. The colours are the same in every view and run (`Theme::colours`): a named decay's its own of `DECAYS`, by
+its place in `Decay::NAMED` (26 colours picked each the farthest in CIELAB from those before it and from the grey of none, so
+any two decays a survey uses are told apart; a test holds them 40 apart in RGB), `Decay_Severity` a ramp from pale yellow (1)
+to dark red (5), any other value a slot of a palette of 24 hues in three lightnesses by its own text's hash (FNV-1a), the next
+free where two of a project's values meet; a part with none is grey (`NOT_SET`); `colors` chooses others by value (`""`: the parts with none), and a new
+`by` forgets them. The legend (`parts::legend`: a row for each value among the parts the view draws, `drawn_in`, with its
+colour, count and net area, named decays in the list's order, numbers by value, the rest in order, none last) is what
+`theme` replies, and with `legend: true` a key in the drawing's top left corner (`render::parts::key`, the view's own, so a
+sheet prints it; a plan, a section or an elevation, not a ceiling plan).
+
 What is approximate, or left for later: a plan doesn't hide what a seen part covers; a part that is all of a layered host
 is poché, not its layers; a part can't be hidden or overridden on its own in a view (nothing but a part may point at a part
 until the file format takes its step), only by a view filter or by excluding it; parts aren't snapped to or dimensioned;

@@ -37,6 +37,7 @@ use crate::{font, massing, sheet, stairs};
 mod dimensions;
 mod parts;
 use dimensions::dimension;
+pub(crate) use parts::in_plan as parts_in_plan;
 mod regions;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -2402,6 +2403,7 @@ fn section_finish_cancellable(m: &Model, id: Id, mut d: Drawing, cancelled: &(dy
     d.by_category(|o| style_of(m, o));
     look.dress(&mut d);
     d.weigh(|o| annotates(m, o));
+    parts::key(&mut d, m, id);
     let at = (24.0 + font::width(&v.name, 16.0) / 2.0, view.height as f32 - 26.0);
     d.text_turned(&v.name, at, 16.0, 0.0, INK);
     (!cancelled()).then_some(d)
@@ -3070,6 +3072,10 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
         linework(&mut d, m, &g.linework);
     }
     d.weigh(|o| annotates(m, o));
+    // The key of its theme, where it shows one: a floor plan's.
+    if let Some(id) = m.elements.id(key).filter(|_| !up) {
+        parts::key(&mut d, m, id);
+    }
     if titled {
         let mut title = m.view_name(key).map_or_else(String::new, str::to_string);
         if up {

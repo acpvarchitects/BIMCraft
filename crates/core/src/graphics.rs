@@ -27,7 +27,7 @@ pub mod parts;
 #[cfg(test)]
 mod parts_tests;
 
-pub use parts::PartsVisibility;
+pub use parts::{PartsVisibility, Theme};
 
 /// The categories a plan, a section or a 3D view draws, and so may hide and override: those of the
 /// model, then those of the annotation. A family component is of its family's category (see [`COMPONENTS`]); `component`, which
@@ -550,6 +550,10 @@ pub struct Graphics {
     /// view's. A view template that says one sets it for the views that follow it, Show Original too.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub parts_visibility: Option<PartsVisibility>,
+    /// What it colours the parts it shows by ([`Theme`]): how each has decayed, when it was built. A view template that
+    /// holds a Parts Visibility holds the theme of its views with it, one or none.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub theme: Option<Theme>,
 }
 
 /// An edge of `element` as the view draws it, from `from` to `to` (mm in the view's terms), in line style `style` instead
@@ -606,12 +610,14 @@ impl Graphics {
         }
         if t.graphics.parts_visibility.is_some() {
             g.parts_visibility = t.graphics.parts_visibility;
+            g.theme = t.graphics.theme.clone();
         }
         std::borrow::Cow::Owned(g)
     }
 
-    /// The view template it follows, when that says which of an element and its parts its views draw: a template that
-    /// holds a Parts Visibility controls it, and one that holds none leaves it to each view.
+    /// The view template it follows, when that says which of an element and its parts its views draw, and the theme they
+    /// colour parts by: a template that holds a Parts Visibility controls both, and one that holds none leaves them to
+    /// each view.
     pub fn parts_controlled_by(&self, m: &Model) -> Option<&str> {
         let name = self.template.as_deref()?;
         m.view_templates.get(name)?.graphics.parts_visibility.map(|_| name)
@@ -759,6 +765,9 @@ impl Graphics {
         {
             return Err(format!("there's no phase filter `{f}`{}", known(m.phase_filters.keys())));
         }
+        if let Some(t) = &self.theme {
+            t.check()?;
+        }
         if let Some(n) = self.scale
             && !SCALES.contains(&n)
         {
@@ -807,15 +816,25 @@ impl ViewFilter {
     }
 }
 
+/// The categories a view filter picks from: those schedules are of, and the parts of building elements (`parts.rs`), by
+/// their fields (`schedule::fields`), so a view hides or overrides parts by what they hold.
+pub fn filterable() -> Vec<&'static str> {
+    let mut all = schedule::categories();
+    if !all.contains(&"part") {
+        all.push("part");
+    }
+    all
+}
+
 impl ViewFilter {
     /// Whether it is sound: categories there are schedules of, and rules every one of them has.
     pub fn check(&self, m: &Model) -> Result<(), String> {
         if self.categories.is_empty() {
-            return Err(format!("it needs categories, one or more of: {}", schedule::categories().join(", ")));
+            return Err(format!("it needs categories, one or more of: {}", filterable().join(", ")));
         }
         for c in &self.categories {
-            if !schedule::categories().contains(&c.as_str()) {
-                return Err(format!("`{c}` isn't a category filters pick from; there are: {}", schedule::categories().join(", ")));
+            if !filterable().contains(&c.as_str()) {
+                return Err(format!("`{c}` isn't a category filters pick from; there are: {}", filterable().join(", ")));
             }
         }
         schedule::check_rules(m, &self.categories, &self.rules)
@@ -1006,8 +1025,10 @@ pub fn check_followed(m: &Model, old: &Element, new: &Element) -> Result<(), Str
     follows(Group::Detail, a.detail == b.detail, "detail level")?;
     follows(Group::Style, a.style == b.style, "visual style")?;
     follows(Group::BackgroundGrid, a.background_grid == b.background_grid, "background grids")?;
-    if t.graphics.parts_visibility.is_some() && a.parts_visibility != b.parts_visibility {
-        return Err(format!("its parts visibility follows view template `{name}`; change the template, or unfollow it (`template: null`)"));
+    if t.graphics.parts_visibility.is_some() && (a.parts_visibility, &a.theme) != (b.parts_visibility, &b.theme) {
+        return Err(format!(
+            "its parts visibility and theme follow view template `{name}`; change the template, or unfollow it (`template: null`)"
+        ));
     }
     if let (Element::Level(x), Element::Level(y)) = (old, new) {
         follows(Group::Range, x.view_range == y.view_range, "view range")?;

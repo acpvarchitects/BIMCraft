@@ -144,3 +144,81 @@ pub(super) fn layer(d: &mut Drawing, m: &Model, id: Id, ring: &[P2], along: Opti
     };
     cut_layer(d, m, &layer, ring, u, room);
 }
+
+/// The parts plan `plan` draws, of those `look` shows: those its cut plane cuts or sees (inside its crop, where it is
+/// cropped), and the parts of the components it sees. What its theme's legend counts.
+pub(crate) fn in_plan(m: &Model, plan: Id, look: &Look) -> std::collections::BTreeSet<Id> {
+    let key = m.guid(plan);
+    let r = m.shown_range(key);
+    let crop = m.shown_crop(key);
+    let inside = |ring: &[P2]| match (crop, bounds(ring)) {
+        (Some([lo, hi]), Some((a, b))) => a.0 <= hi.0 && lo.0 <= b.0 && a.1 <= hi.1 && lo.1 <= b.1,
+        (None, _) => true,
+        (Some(_), None) => false,
+    };
+    let mut geometry = crate::component_geometry::Components::new(m);
+    let mut out = std::collections::BTreeSet::new();
+    for (id, e) in &m.elements {
+        let Element::Part(p) = e else { continue };
+        if !look.shows(*id) {
+            continue;
+        }
+        let seen = match m.elements.get(p.host) {
+            Some(Element::Component(c)) => {
+                let (bottom, top) = geometry.heights(c);
+                bottom < r.cut && top > r.depth && crop.is_none_or(|_| inside(&geometry.outlines(c)))
+            }
+            _ => {
+                let (cut, seen) = pieces(m, p, &r, false);
+                cut.iter().chain(seen.iter().map(|(ring, _)| ring)).any(|ring| inside(ring))
+            }
+        };
+        if seen {
+            out.insert(*id);
+        }
+    }
+    out
+}
+
+/// The key of the view's theme (`graphics::parts::legend`), where the view asks for it and has parts to show: in the
+/// drawing's top left corner, over the paper, a row for each value with its colour, how many parts hold it and their net
+/// area. The view's own, so a sheet keeps it with the view; laid out as annotation is, no smaller than on paper and no
+/// more than twice that, so a canvas zoomed far in or out still reads it.
+pub(super) fn key(d: &mut Drawing, m: &Model, view: Id) {
+    let Some(legend) = crate::graphics::parts::legend(m, view).filter(|l| l.drawn && !l.rows.is_empty()) else { return };
+    let k = d.k.clamp(1.0, 2.0);
+    let (pad, text, pitch, swatch) = (8.0 * k, 10.0 * k, 18.0 * k, (22.0 * k, 12.0 * k));
+    let unset = m.language.word(bimcraft_i18n::msg!("not set")).to_string();
+    let rows: Vec<(Rgb, String, String)> = legend
+        .rows
+        .iter()
+        .map(|r| {
+            let (area, unit) = m.units.area(r.area);
+            let [red, green, blue] = r.color;
+            (Rgb(red, green, blue), r.value.clone().unwrap_or_else(|| unset.clone()), format!("{}  {area:.2} {unit}", r.count))
+        })
+        .collect();
+    let widest = |texts: &mut dyn Iterator<Item = &str>| texts.map(|t| font::width(t, text)).fold(0.0, f32::max);
+    let (names, amounts) = (widest(&mut rows.iter().map(|r| r.1.as_str())), widest(&mut rows.iter().map(|r| r.2.as_str())));
+    let width = (swatch.0 + pad + names + 2.0 * pad + amounts).max(font::width(&legend.by, text)) + 2.0 * pad;
+    let height = 2.0 * pad + pitch * (rows.len() + 1) as f32;
+    let (x, y) = (12.0 * k, 12.0 * k);
+    let frame = vec![(x, y), (x + width, y), (x + width, y + height), (x, y + height)];
+    d.owner = Some(view);
+    d.part(Part::Projection);
+    d.push(Prim::Fill { rings: vec![frame.clone()], color: PAPER });
+    d.push(Prim::Line { pts: frame, width: k, color: INK, dash: None, closed: true });
+    // Lettering is laid out about its middle: each text from its left end.
+    let left = |d: &mut Drawing, t: &str, x: f32, y: f32| d.text(t, (x + font::width(t, text) / 2.0, y), text, INK);
+    left(d, &legend.by, x + pad, y + pad + pitch / 2.0);
+    for (n, (color, name, amount)) in rows.iter().enumerate() {
+        let mid = y + pad + pitch * (n as f32 + 1.5);
+        let (sx, sy) = (x + pad, mid - swatch.1 / 2.0);
+        let ring = vec![(sx, sy), (sx + swatch.0, sy), (sx + swatch.0, sy + swatch.1), (sx, sy + swatch.1)];
+        d.push(Prim::Fill { rings: vec![ring.clone()], color: *color });
+        d.push(Prim::Line { pts: ring, width: k, color: INK, dash: None, closed: true });
+        left(d, name, sx + swatch.0 + pad, mid);
+        left(d, amount, x + width - pad - font::width(amount, text), mid);
+    }
+    d.owner = None;
+}

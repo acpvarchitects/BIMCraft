@@ -1708,7 +1708,7 @@ other_files(
          …], show?: […], hide_elements?: [id, …], show_elements?: […], categories?: {category: override | null, …}, elements?: \
          {id: override | null, …}, filters?: [{filter, hidden?, projection?, cut?, halftone?, transparency?}, …], phase?: name \
          | null, phase_filter?: name | null, options?: {set: option | null, …}, layers?: {drawing: [layer, …] | null, …}, template?: name | null, \
-         parts_visibility?: original | parts | both | null, \
+         parts_visibility?: original | parts | both | null, theme?: {by, colors?, legend?} | null, \
          background_grid?: {visible?, main?: {enabled?, color?: [r,g,b], pen?: 0..16}, sub?: {enabled?, color?, pen?}, \
          spacing?: [X,Y] (mm), divisions?: [X,Y] (1..1000), rotation?: degrees (-360..360)} | null, \
          reset?: true} what a view hides and how it draws the rest, as Revit's Visibility/Graphics does; with \
@@ -1741,7 +1741,9 @@ other_files(
          design option, its category and the element itself not hidden), as the cut of its solid in a plan and a section and \
          its solid in a 3D view, made of its material, and is picked by its own id. One excluded, one in conflict and one \
          divided into other parts are not drawn; an element with a part in conflict stays whole, so nothing of it goes \
-         missing. A view filter that picks parts hides or overrides them as it does any element",
+         missing. A view filter that picks parts (category `part`, rules on its fields: Decay_Severity, Material…) hides or \
+         overrides them as it does any element. `theme` colours the parts the view shows by a value they hold (see `theme`, \
+         which also returns its legend); null takes it away",
         view_graphics,
     ),
     edit(
@@ -1822,6 +1824,32 @@ other_files(
         view_filter,
     ),
     edit(
+        "theme",
+        "Parts Theme",
+        &[],
+        "{view?: a level's, section's or elevation's name or id, or {3D} (the lowest level's plan unless given), by?: \
+         Decay_Pathology | Historical_Period | Decay_Severity | Intervention_Type | SU_Code | Material | a project \
+         parameter of parts, colors?: {value: colour | null, …} | null, legend?: true | false, off?: true} a view's theme: \
+         the parts it shows, each filled in the colour of what it holds of one value, which makes a thematic drawing of the \
+         view (a decay map by `Decay_Pathology`, the building's periods by `Historical_Period`); and its legend. The \
+         colour fills a part where a plan or a section cuts it, where a plan sees it from above, its faces in an elevation \
+         and in the 3D view, over whatever the view's categories and filters say. It shows only in a view whose \
+         `parts_visibility` is parts or both (`graphics`), on the parts that view draws. The colours are the same in every \
+         view and every run: each named decay has its own, by its place in the list; Decay_Severity runs from pale \
+         yellow (1) to dark red (5); any other value takes the colour its own text comes to, so it keeps it as the survey \
+         grows (two values of the project that come to one colour: the later in order takes the next free); a part with \
+         no value is a neutral grey. `colors` chooses others, by value ([r, g, b] or \"#rrggbb\"; \"\" is the parts with \
+         no value; null gives a value its automatic colour back, and `colors: null` all of them); a new `by` forgets \
+         them. `legend: true` draws the legend on the view, a key in its top left corner (a plan's, a section's or an \
+         elevation's, so a sheet the view is placed on prints it). `off: true` takes the theme away. With `view` alone \
+         it reads. Replies with `theme` (null for none), the view's `parts_visibility`, `available` (what parts can be \
+         coloured by) and the legend, `rows`: for each value among the parts the view draws (a plan: those it cuts or \
+         sees, in its crop; a section or an elevation: those from its line to its far clip, hidden behind others or \
+         not; a 3D view: all it shows, in its section box) its `value` (null: not set), `label`, `color`, `count` and \
+         `area_m2`, the net area of their main faces together; and `parts` and `area_m2`, their totals",
+        view_theme,
+    ),
+    edit(
         "template",
         "View Template",
         &[],
@@ -1829,7 +1857,7 @@ other_files(
          kind?: plan | section | 3d | null, rename?, controls?: [categories, filters, range, \
          phase, options, scale, detail, style, background_grid], view_range?: {top?, cut?, bottom?, depth?}, phase?, phase_filter?, options?, \
          scale?: 1 | … | 100000, detail?: coarse | medium | fine, visual_style?: shaded | hidden_line | wireframe, \
-         parts_visibility?: original | parts | both | null, \
+         parts_visibility?: original | parts | both | null, theme?: {by, colors?, legend?} | null, \
          background_grid?: grid settings as in graphics, hide?, show?, categories?, filters?, reset?, delete?: true} a view template, as Revit's: settings under a name for \
          views to follow with `graphics {template}`. `kind` is the views it is for (plans, elevations and sections, or 3D \
          views; null, any), which `from` sets; `like` makes a new one a copy of another (Duplicate); `rename` names it anew, \
@@ -1841,7 +1869,8 @@ other_files(
          `phase`, `phase_filter`, `options`, `scale`, `detail`, `visual_style`, `background_grid` and `reset` change it as they change a view; \
          `view_range` merges into its range. `parts_visibility` (see `graphics`) is no group of `controls`: a template that \
          holds one sets it for the views that follow it, Show Original too, and with null it leaves it to each view (as a \
-         template starts, unless `from` is a view that shows parts). Changed, every view following it follows. Gone, they \
+         template starts, unless `from` is a view that shows parts). Its `theme` (see `theme`) goes with it: a template \
+         that holds a Parts Visibility sets its views' theme too, one or none. Changed, every view following it follows. Gone, they \
          keep their own settings. `name` alone reads one",
         view_template,
     ),
@@ -3835,11 +3864,16 @@ fn edit_graphics(c: &str, m: &Model, p: &Value, g: &mut Graphics, of_template: b
             }
         }
     }
-    if !flag(c, p, "reset")? && p.get("parts_visibility").is_some() && controlled.is_some_and(|t| t.graphics.parts_visibility.is_some()) {
+    if !flag(c, p, "reset")?
+        && (p.get("parts_visibility").is_some() || p.get("theme").is_some())
+        && controlled.is_some_and(|t| t.graphics.parts_visibility.is_some())
+    {
         let t = template_then.clone().unwrap_or_default();
         return Err(bad(
             c,
-            format!("its parts visibility follows view template `{t}`; change the template, or `template: null` to stop following it"),
+            format!(
+                "its parts visibility and theme follow view template `{t}`; change the template, or `template: null` to stop following it"
+            ),
         ));
     }
     if flag(c, p, "reset")? {
@@ -3857,6 +3891,62 @@ fn edit_graphics(c: &str, m: &Model, p: &Value, g: &mut Graphics, of_template: b
             g.parts_visibility = Some(v).filter(|v| of_template || v.shows_parts());
         }
         Some(v) => return Err(bad(c, format!("`parts_visibility` is original, parts or both, or null, not {v}"))),
+    }
+    // The theme it colours its parts by: what it goes by, the colours it chooses and whether it draws its key, merged
+    // into the one it has; null, none.
+    match p.get("theme") {
+        None => {}
+        Some(Value::Null) => g.theme = None,
+        Some(Value::Object(o)) => {
+            if let Some(k) = o.keys().find(|k| !["by", "colors", "legend"].contains(&k.as_str())) {
+                return Err(bad(c, format!("`theme` is {{by, colors?, legend?}}; it has no `{k}`")));
+            }
+            let mut t = g.theme.clone().unwrap_or_default();
+            if let Some(by) = o.get("by") {
+                let names = graphics::Theme::names(m);
+                let key = |n: &str| n.chars().filter(|c| c.is_alphanumeric()).flat_map(char::to_lowercase).collect::<String>();
+                let found = by
+                    .as_str()
+                    .and_then(|given| names.iter().find(|n| key(n) == key(given)))
+                    .ok_or_else(|| bad(c, format!("`theme`: parts aren't coloured by {by}; they are by one of: {}", names.join(", "))))?;
+                if *found != t.by {
+                    t.colors.clear();
+                }
+                t.by = found.clone();
+            }
+            if t.by.is_empty() {
+                return Err(bad(c, "a theme needs `by`, what it colours parts by: Decay_Pathology, Historical_Period…"));
+            }
+            match o.get("colors") {
+                None => {}
+                Some(Value::Null) => t.colors.clear(),
+                Some(Value::Object(chosen)) if chosen.len() <= graphics::parts::MAX_COLOURS => {
+                    for (value, given) in chosen {
+                        if given.is_null() {
+                            t.colors.remove(value);
+                        } else {
+                            let rgb = colour(given).ok_or_else(|| {
+                                bad(
+                                    c,
+                                    format!(
+                                        "`theme`: the colour of `{value}` is [r, g, b], each 0 to 255, or \"#rrggbb\", or null, not {given}"
+                                    ),
+                                )
+                            })?;
+                            t.colors.insert(value.clone(), rgb);
+                        }
+                    }
+                }
+                Some(v) => return Err(bad(c, format!("`theme`: `colors` is {{value: colour | null, …}}, or null, not {v}"))),
+            }
+            match o.get("legend") {
+                None => {}
+                Some(Value::Bool(b)) => t.legend = *b,
+                Some(v) => return Err(bad(c, format!("`theme`: `legend` is true or false, not {v}"))),
+            }
+            g.theme = Some(t);
+        }
+        Some(v) => return Err(bad(c, format!("`theme` is {{by, colors?, legend?}}, or null, not {v}"))),
     }
     if let Some(patch) = p.get("background_grid") {
         if patch.is_null() {
@@ -4022,7 +4112,7 @@ fn graphics_reply(g: &Graphics) -> Value {
         "phase": g.phase, "phase_filter": g.phase_filter, "options": g.options,
         "scale": g.scale, "detail": g.detail, "visual_style": g.style,
         "background_grid": g.background_grid,
-        "parts_visibility": g.parts_visibility,
+        "parts_visibility": g.parts_visibility, "theme": g.theme,
     })
 }
 
@@ -4423,6 +4513,7 @@ fn view_template(s: &mut Session, p: &Value) -> R {
         "visual_style",
         "background_grid",
         "parts_visibility",
+        "theme",
     ];
     let makes = keys.iter().any(|k| !absent(p.get(k))) || p.get("template").is_some();
     if was.is_none() && !makes {
@@ -4468,6 +4559,7 @@ fn view_template(s: &mut Session, p: &Value) -> R {
             style: resolved.style,
             background_grid: resolved.background_grid,
             parts_visibility: resolved.parts_visibility,
+            theme: resolved.parts_visibility.and(resolved.theme.clone()),
             ..Graphics::default()
         };
         t.view_range = match m.elements.get(view) {
@@ -4502,6 +4594,12 @@ fn view_template(s: &mut Session, p: &Value) -> R {
         None => {}
     }
     edit_graphics(c, m, p, &mut t.graphics, true)?;
+    if t.graphics.theme.is_some() && t.graphics.parts_visibility.is_none() {
+        return Err(bad(
+            c,
+            "a template's theme goes with its `parts_visibility`: give it one (parts or both), or the theme shows in no view",
+        ));
+    }
     if let Some(scale) = scale_param(c, p)? {
         t.graphics.scale = Some(scale);
     }
@@ -4540,6 +4638,48 @@ fn view_template(s: &mut Session, p: &Value) -> R {
     Ok(reply)
 }
 
+/// A view's theme, set as `graphics {theme}` sets it, and its legend.
+fn view_theme(s: &mut Session, p: &Value) -> R {
+    let c = "theme";
+    let mut patch = serde_json::Map::new();
+    if let Some(v) = p.get("view") {
+        patch.insert("view".into(), v.clone());
+    }
+    let given: serde_json::Map<String, Value> =
+        ["by", "colors", "legend"].iter().filter_map(|k| Some(((*k).to_string(), p.get(*k)?.clone()))).collect();
+    if flag(c, p, "off")? {
+        patch.insert("theme".into(), Value::Null);
+    } else if !given.is_empty() {
+        patch.insert("theme".into(), Value::Object(given));
+    }
+    let r = view_graphics(s, &Value::Object(patch)).map_err(|e| e.replacen("graphics", c, 1))?;
+    let m = &s.model;
+    let legend = r["view"].as_u64().and_then(|view| graphics::parts::legend(m, view));
+    let unset = m.language.word(msg!("not set"));
+    // To the square centimetre, as a part's own area is listed.
+    let m2 = |mm2: f64| (mm2 / 1e2).round() / 1e4;
+    let rows: Vec<Value> = legend
+        .iter()
+        .flat_map(|l| &l.rows)
+        .map(|row| {
+            json!({
+                "value": row.value, "label": row.value.as_deref().unwrap_or(unset), "color": row.color,
+                "count": row.count, "area_m2": m2(row.area),
+            })
+        })
+        .collect();
+    let (count, area) = legend.iter().flat_map(|l| &l.rows).fold((0, 0.0), |(n, a), row| (n + row.count, a + row.area));
+    let mut reply = json!({
+        "view": r["view"], "name": r["name"], "parts_visibility": r["parts_visibility"], "theme": r["theme"],
+        "available": graphics::Theme::names(m), "rows": rows, "parts": count, "area_m2": m2(area),
+    });
+    if !r["theme"].is_null() && r["parts_visibility"] == "original" {
+        reply["note"] =
+            json!("the view shows the originals, so its theme colours nothing: set `parts_visibility` to parts or both (`graphics`)");
+    }
+    Ok(reply)
+}
+
 fn view_filter(s: &mut Session, p: &Value) -> R {
     let c = "filter";
     let name = string(c, p, "name")?.map(|n| n.trim().to_string()).filter(|n| !n.is_empty()).ok_or_else(|| bad(c, "`name` is required"))?;
@@ -4572,12 +4712,12 @@ fn view_filter(s: &mut Session, p: &Value) -> R {
                 .map(|v| {
                     let given = v.as_str().ok_or_else(|| bad(c, format!("`categories`: {v} is not a category")))?;
                     let name = category(given);
-                    if schedule::categories().contains(&name.as_str()) {
+                    if graphics::filterable().contains(&name.as_str()) {
                         Ok(name)
                     } else {
                         Err(bad(
                             c,
-                            format!("`{given}` isn't a category filters pick from; there are: {}", schedule::categories().join(", ")),
+                            format!("`{given}` isn't a category filters pick from; there are: {}", graphics::filterable().join(", ")),
                         ))
                     }
                 })
