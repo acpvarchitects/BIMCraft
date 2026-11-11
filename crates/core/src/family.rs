@@ -24,6 +24,7 @@ pub mod forms;
 pub mod nested;
 mod options;
 mod planes;
+pub mod select;
 pub mod sketch;
 mod validate;
 pub mod views;
