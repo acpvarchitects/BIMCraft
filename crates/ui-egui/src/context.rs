@@ -20,10 +20,16 @@ pub(crate) enum InstanceScope {
 
 /// Shared submenu for canvas selections and Project Browser types.
 pub(crate) fn instances_menu(ui: &mut egui::Ui, enabled: bool) -> Option<InstanceScope> {
+    instances_menu_in(ui, enabled, msg!("In Entire Project"))
+}
+
+/// The submenu, its second item `whole`: what the whole document is called, In Entire Project, or In Entire Family in a
+/// family document (FE-20), which has no project to take instances from.
+pub(crate) fn instances_menu_in(ui: &mut egui::Ui, enabled: bool, whole: &'static str) -> Option<InstanceScope> {
     let mut chosen = None;
     ui.add_enabled_ui(enabled, |ui| {
         ui.menu_button(t(msg!("Select All Instances")), |ui| {
-            for (scope, label) in [(InstanceScope::View, msg!("Visible in View")), (InstanceScope::Project, msg!("In Entire Project"))] {
+            for (scope, label) in [(InstanceScope::View, msg!("Visible in View")), (InstanceScope::Project, whole)] {
                 let mut button = Button::new(t(label));
                 if scope == InstanceScope::View {
                     button = button.shortcut_text("SA");

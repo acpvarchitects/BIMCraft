@@ -58,7 +58,7 @@ pub(crate) const FAMILY_SHORTCUTS: &[(&str, &str)] = &[
     ("PR", "Select Previous"),
     ("ID", "Select by ID"),
     ("SA", "Select All Instances"),
-    ("SV", "Select All Instances in Entire Project"),
+    ("SV", "Select All Instances: In Entire Family"),
     ("BF", "Select Elements by Face"),
 ];
 
@@ -224,7 +224,7 @@ impl BimApp {
             "Select Previous" => ed.select_previous(),
             "Select by ID" => ed.open_select_by_id(),
             "Select All Instances" => ed.select_instances(true),
-            "Select All Instances in Entire Project" => ed.select_instances(false),
+            "Select All Instances: In Entire Family" => ed.select_instances(false),
             _ => return in_family(action),
         }
         match said {

@@ -777,8 +777,10 @@ of the document's history, and nothing reaches the project.
   and is found by its GUID, which a plane and a dimension drawn there and a form sketched there are given as they are made; a
   symbol, a connector and a nested instance made since have neither yet, and nothing names them.
 - **Select All Instances** takes the nested instances of the family and type of those selected (`select::instances`): SA those
-  the view in front shows (Visible in View, which SA means in the project), SV all of them (In Entire Project, here the whole
-  family). What a view shows is `views::nested_shown`: an instance a piece of which the view draws by its Visibility Settings
+  the view in front shows (Visible in View, which SA means in the project), SV all of them (In Entire Family: the project's
+  In Entire Project, named for what it takes here, since a family document has no project to take them from; the command
+  is Select All Instances: In Entire Family, and the Project Browser's menu on a nested family's type says In Entire
+  Family too, `context::instances_menu_in`). What a view shows is `views::nested_shown`: an instance a piece of which the view draws by its Visibility Settings
   (F8: the instance's over its family's forms', in that view at the document's Detail Level, a plan's cut plane counted), and
   in a plan one whose family's plan symbols are drawn there, so an instance of a family of symbols alone, which builds
   nothing, is found in a plan and in no elevation; one its `visible` leaves out is in no view. Where the view shows none of
@@ -1422,10 +1424,10 @@ sketching), TX Annotate's Text, AL and AA Align, MV, CO and RO Move, Copy and Ro
 selected), DE Delete (as the Delete key), TR, PL, FG and CG the sketch's Trim/Extend to Corner, Pick Lines, Finish and Cancel Edit
 Mode, KS Keyboard Shortcuts, 3D the family's own {3D}, ZE, ZF, ZX and ZA the view control bar's Zoom to Fit, and HH, HC, HI, IC
 and HR Temporary Hide/Isolate; FF Filter, PR Select Previous, ID Select by ID, SA and SV Select All Instances (Visible in
-View and In Entire Project) and BF Select Elements by Face (FE-20, above). A key made in Keyboard Shortcuts is tried first
+View and In Entire Family) and BF Select Elements by Face (FE-20, above). A key made in Keyboard Shortcuts is tried first
 when it names a command the family has. The
 commands only a family has (Work Plane, Load Family, Angular Dimension, Pick Lines, Finish and Cancel Edit Mode, FE-3's zoom
-commands, and FE-20's Filter Selection, Select Previous, Select by ID, Select All Instances in Entire Project and Select
+commands, and FE-20's Filter Selection, Select Previous, Select by ID, Select All Instances: In Entire Family and Select
 Elements by Face) are in
 `shortcuts::ACTIONS`, so the dialog and a file can give them keys, and in `shortcuts::FAMILY_ONLY`: on a project's tab their keys
 do nothing, and Find leaves them out. Tests: `tests/family_keys.rs`.

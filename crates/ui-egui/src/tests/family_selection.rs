@@ -347,7 +347,7 @@ fn sa_and_sv_select_the_nested_instances_of_the_selected_ones_family_and_type() 
     // none of its instances selected.
     for (scope, found) in [
         ("Visible in View", vec![Picked::Nested(0), Picked::Nested(2)]),
-        ("In Entire Project", vec![Picked::Nested(0), Picked::Nested(1), Picked::Nested(2)]),
+        ("In Entire Family", vec![Picked::Nested(0), Picked::Nested(1), Picked::Nested(2)]),
     ] {
         click_family(&mut h, [700.0, 400.0, 0.0]);
         h.get_by_label("Short").scroll_to_me();
@@ -355,13 +355,15 @@ fn sa_and_sv_select_the_nested_instances_of_the_selected_ones_family_and_type() 
         let at = h.get_by_label("Short").rect().center();
         right_click_at(&mut h, at);
         choose_item(&mut h, "Select All Instances");
+        // The whole of it is the family: there is no project here to take them from.
+        assert!(h.query_by_label("In Entire Project").is_none(), "no In Entire Project in a family");
         choose_item(&mut h, scope);
         assert_eq!(selected(&h), found, "the browser's {scope}");
     }
     let at = h.get_by_label("Long").rect().center();
     right_click_at(&mut h, at);
     choose_item(&mut h, "Select All Instances");
-    choose_item(&mut h, "In Entire Project");
+    choose_item(&mut h, "In Entire Family");
     assert_eq!(selected(&h), vec![Picked::Nested(3)], "the other type's");
     // In {3D} and an elevation too: the keys are the document's, not a view's.
     for which in [None, Some(Which::Elevation(Side::Front))] {
@@ -388,7 +390,7 @@ fn each_of_the_selections_keys_can_be_given_another_in_keyboard_shortcuts() {
         ("PR", "Select Previous"),
         ("ID", "Select by ID"),
         ("SA", "Select All Instances"),
-        ("SV", "Select All Instances in Entire Project"),
+        ("SV", "Select All Instances: In Entire Family"),
         ("BF", "Select Elements by Face"),
     ] {
         assert!(FAMILY_SHORTCUTS.contains(&(keys, action)), "{keys} is {action} in the family's table");
@@ -421,7 +423,7 @@ fn each_of_the_selections_keys_can_be_given_another_in_keyboard_shortcuts() {
         assert_eq!(project(&h), before, "{keys} on the project's tab");
         assert_eq!(h.state().tool, Tool::Modify, "{keys}");
     }
-    for name in ["Filter Selection", "Select Previous", "Select by ID", "Select All Instances in Entire Project"] {
+    for name in ["Filter Selection", "Select Previous", "Select by ID", "Select All Instances: In Entire Family"] {
         assert!(h.state().find_matches(name).iter().all(|(label, ..)| label != name), "Find lists {name} on the project");
     }
 }
@@ -725,7 +727,7 @@ fn sa_takes_what_the_view_in_front_shows_and_keeps_the_selection_where_it_shows_
     let at = h.get_by_label("Long").rect().center();
     right_click_at(&mut h, at);
     choose_item(&mut h, "Select All Instances");
-    choose_item(&mut h, "In Entire Project");
+    choose_item(&mut h, "In Entire Family");
     assert_eq!(selected(&h), vec![Picked::Nested(3)], "no Long is placed: the selection stays");
     assert_eq!(project(&h), before, "nothing of it reaches the project");
 }

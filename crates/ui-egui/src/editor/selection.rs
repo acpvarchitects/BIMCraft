@@ -12,7 +12,7 @@
 //!   what names nothing is said as it is typed. **IDs of Selection** beside it shows what names each thing selected, to
 //!   read or copy: the only place a family document shows an id. A part made since the family was last loaded into a
 //!   project has no id yet, and one the document made without a GUID none of that either.
-//! - **Select All Instances** (SA, Visible in View, as the project's SA; SV, In Entire Project, here the whole family; the
+//! - **Select All Instances** (SA, Visible in View, as the project's SA; SV, In Entire Family, the whole family; the
 //!   Project Browser's menu on a nested family's type): every nested instance of the family and type of those selected.
 //!   Visible in View is what the view in front shows (`views::nested_shown`: its Visibility Settings there, a family of
 //!   symbols alone in a plan); where it shows none, the selection stays.
@@ -208,7 +208,7 @@ impl FamilyEditor {
         }
     }
 
-    /// Select All Instances (SA with `shown`, Visible in View; SV without, In Entire Project): every nested instance of the
+    /// Select All Instances (SA with `shown`, Visible in View; SV without, In Entire Family): every nested instance of the
     /// family and type of those selected is the selection. Nothing with no nested instance selected.
     pub(crate) fn select_instances(&mut self, shown: bool) {
         if self.can_select_instances() {

@@ -142,7 +142,7 @@ pub const ACTIONS: &[&str] = &[
     msg!("Filter Selection"),
     msg!("Select Previous"),
     msg!("Select by ID"),
-    msg!("Select All Instances in Entire Project"),
+    msg!("Select All Instances: In Entire Family"),
     msg!("Select Elements by Face"),
 ];
 
@@ -161,7 +161,7 @@ pub(crate) const FAMILY_ONLY: &[&str] = &[
     "Filter Selection",
     "Select Previous",
     "Select by ID",
-    "Select All Instances in Entire Project",
+    "Select All Instances: In Entire Family",
     "Select Elements by Face",
 ];
 
