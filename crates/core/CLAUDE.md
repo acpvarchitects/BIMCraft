@@ -14,7 +14,10 @@ is in the root `CLAUDE.md`; the write-ups by area are in `docs/areas/`, which th
   nothing, and one undo step (`script_atomic` is a script in one; `script_dry_run` runs one and takes it back, and says what it
   would have made, changed and removed).
 - **A new kind of element** is a variant of `Element` and its arms in the places that match on it (`category`, `params`,
-  `level_of`, `element_json`, copy and delete, IFC, import, the schedules' `OWN` table): the compiler lists them.
+  `level_of`, `element_json`, copy and delete, IFC, import, the schedules' `OWN` table): the compiler lists them. A part of
+  an element (`Element::Part`, `parts.rs`) is one: it points at its host and at the part it was divided from by GUID
+  (`visit_refs!`), names its own material as a library entry (`Element::lib_refs_mut`), and holds its layer by the layer's
+  own GUID (a `HasPart` GUID, which is no element reference).
 - **References hold GUIDs**, never ids (`ids.rs`, the root rules); library entries are named in memory and held by GUID in a file. The detail is in *Ids and GUIDs* below.
 - **A change to what a file holds** that an older version would misread (not just a field it can do without) bumps `FORMAT` and
   adds its step to `Model::migrate`. `Model::read` leaves out what this version doesn't know (`lenient.rs` walks a file as the
@@ -58,7 +61,14 @@ changes. A copy is a new element: a new id and a new GUID. IFC writes the GUID a
 | Families, forms, materials, textures, paint, favorites | [families](../../docs/areas/families.md) |
 | Beams, columns, footings, pipes, conduits, fixtures | [structure and MEP](../../docs/areas/structure-and-mep.md), [disciplines](../../docs/disciplines.md) |
 | IFC export or import | [looking at the result](../../docs/areas/looking-at-results.md): the IfcOpenShell checks |
+| Parts of elements, the heritage set, a part's solid and quantities | [parts](../../docs/areas/parts.md) |
 | Autosave and recovery | [autosave](../../docs/autosave.md) |
+
+## What four sizing commands follow
+
+Moved from the root's module map, word for word: `hydrant_size` follows IT 22/2025's Tabelas 1 to 3, Hazen-Williams; `demand`,
+CPFL's GED 13; Enel's ET 1569 and Celesc's N-321.0001 by installed load; `dps_check` says when, where, connection, currents;
+`storm_size` uses Manning, the downpipe abacuses.
 
 ## Testing
 

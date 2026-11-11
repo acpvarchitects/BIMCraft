@@ -42,6 +42,11 @@ Moved from the root `CLAUDE.md`, word for word: the root keeps the rules and the
   `ifcopenshell.validate.validate(f, logger, express_rules=True)` (needs pytest installed), then build every product's shape
   with `ifcopenshell.geom.create_shape` and compare wall and roof volumes with a hand calculation. `python ci/validate_ifc.py x.ifc`
   does the first two, as CI's IFC job does on the sample and on `ci/ifc-coverage.txt` (add a line there for a new kind of element).
+- Parts: after touching `parts.rs` or how a part goes to IFC, take a compound wall with a window and a floor apart (`create_parts`), say
+  something of a part (`part`), `--save` the IFC, validate it with `ci/validate_ifc.py`, then with IfcOpenShell build each
+  `IfcBuildingElementPart`'s shape in world coordinates and compare its volume with its `NetVolume` (`BIMCraft_PartQuantities`), and
+  check that its host has no `Body` and is the sum of its parts (`IsDecomposedBy`); `parts {}` lists the same numbers. See
+  [parts](parts.md).
 - Structure: after touching `runs.rs` or how a run, a footing or a structural column goes to IFC, export beams (level, sloped, round), footings, a strip
   footing, columns and a structural floor, validate with IfcOpenShell (`express_rules=True`), and compare each product's volume and bounding box
   with a hand calculation (a round section is a polygon in IfcOpenShell's tessellation: a fraction of a percent short). Read the material profile

@@ -1512,3 +1512,23 @@ pub(crate) fn sweep_payloads(s: &mut Session) -> (Vec<Value>, Vec<(&'static str,
     ];
     (general, targeted)
 }
+
+#[test]
+fn a_part_is_found_by_its_id_its_guid_and_its_ifc_globalid_and_shown_where_its_host_stands() {
+    let (mut s, wall) = historic();
+    let ids = made(&run(&mut s, "create_parts", json!({"id": wall})));
+    let guid = s.model.guid(ids[1]);
+    let global = crate::ifc::compress(guid.as_u128());
+    for text in [ids[1].to_string(), guid.to_string(), global] {
+        let found = run(&mut s, "select_by_id", json!({"text": text}));
+        assert_eq!(found["ids"], json!([ids[1]]), "{text}");
+    }
+    // Selected with its wall and filtered by category, it is one of the parts.
+    let by = run(&mut s, "filter_selection", json!({"ids": [wall, ids[0], ids[1]]}));
+    assert_eq!(by["groups"], json!([{"value": "part", "count": 2, "ids": [ids[0], ids[1]]}, {"value": "wall", "count": 1, "ids": [wall]}]));
+    // No plan draws it yet, and none breaks over it: the plan is the wall's, as it was.
+    let level = s.model.levels()[0].0;
+    let with = crate::render::svg(&crate::render::plan(&s.model, level, 400, 300));
+    run(&mut s, "delete", json!({"ids": ids}));
+    assert_eq!(crate::render::svg(&crate::render::plan(&s.model, level, 400, 300)), with);
+}
