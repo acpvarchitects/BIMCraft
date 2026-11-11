@@ -79,9 +79,10 @@ pub(crate) struct MoveDrag {
 }
 
 /// The drag's way in the view, from where the button went down (the view's millimetres): what the selection moves by.
-/// FE-2 (#7) hook: Shift = Ortho goes here (`bimcraft_core::snap::orthogonal_step`), once that is merged; nothing else
-/// reads the pointer for a move.
-pub(super) fn delta(from: P2, to: P2) -> P2 {
+/// With Shift held it is square to the view's axes (FE-2's Ortho, `bimcraft_core::snap::orthogonal_step`), from where the
+/// drag began; nothing else reads the pointer for a move.
+pub(super) fn delta(from: P2, to: P2, shift: bool) -> P2 {
+    let to = if shift { bimcraft_core::snap::orthogonal_step(from, to).0 } else { to };
     P2(to.0 - from.0, to.1 - from.1)
 }
 
