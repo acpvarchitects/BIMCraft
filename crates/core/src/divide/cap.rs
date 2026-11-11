@@ -120,7 +120,51 @@ pub(crate) fn fill(pts: &[P2], rings: &[Vec<u32>], work: &mut Work) -> Result<Ve
     }
     // A triangle on a bridge walked there and straight back has a corner twice: its two edges match each other.
     out.retain(|t| t[0] != t[1] && t[1] != t[2] && t[2] != t[0]);
+    unflatten(pts, &mut out, work)?;
     Ok(out)
+}
+
+/// The triangles with no area turned into ones that have: where a ring that touches itself left the ears no choice, a
+/// triangle may have its three corners in a line. The one across its longest edge is then cut at the corner between,
+/// and takes the flat one's place: the same edges, each still matched.
+fn unflatten(pts: &[P2], tris: &mut Vec<[u32; 3]>, work: &mut Work) -> Result<(), DivideError> {
+    let mut k = 0;
+    let mut tries = 0;
+    while k < tris.len() && tries < 4 * tris.len() + 16 {
+        tries += 1;
+        let t = tris[k];
+        let [a, b, c] = t.map(|i| at(pts, i));
+        let longest = (b - a).length().max((c - b).length()).max((a - c).length());
+        if turn(a, b, c).abs() > 1e-7 * longest * longest {
+            k += 1;
+            continue;
+        }
+        // Its longest edge runs from `u` to `v`, the third corner `m` between them.
+        let e = (0..3)
+            .max_by(|&i, &j| {
+                (at(pts, t[i]) - at(pts, t[(i + 1) % 3])).length().total_cmp(&(at(pts, t[j]) - at(pts, t[(j + 1) % 3])).length())
+            })
+            .unwrap_or(0);
+        let (u, v, m) = (t[e], t[(e + 1) % 3], t[(e + 2) % 3]);
+        work.spend(tris.len())?;
+        let twin = tris.iter().position(|o| (0..3).any(|i| o[i] == v && o[(i + 1) % 3] == u));
+        let Some(j) = twin.filter(|&j| j != k) else {
+            k += 1;
+            continue;
+        };
+        let o = tris[j];
+        let x = o.iter().copied().find(|&i| i != u && i != v).unwrap_or(u);
+        tris[k] = [v, m, x];
+        tris[j] = [m, u, x];
+        if x == m {
+            // The two lay on each other: neither is left.
+            let (hi, lo) = (k.max(j), k.min(j));
+            tris.swap_remove(hi);
+            tris.swap_remove(lo);
+        }
+        k = 0;
+    }
+    Ok(())
 }
 
 /// `a`, `b`, `c` turning left: positive.

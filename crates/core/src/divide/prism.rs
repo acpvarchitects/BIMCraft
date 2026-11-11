@@ -15,6 +15,8 @@ use crate::view3d::dot;
 
 /// How near, mm, points of the plane are one where an outline is divided.
 const NEAR: f64 = 1e-6;
+/// How far to either side of a line, mm, the faces it parts are looked for.
+const BESIDE: f64 = 1e-3;
 /// The most openings a prism has.
 pub const MAX_HOLES: usize = 256;
 
@@ -91,61 +93,165 @@ fn within(ring: &[P2]) -> Option<P2> {
     })
 }
 
-/// A region with the centre it is counted by.
-type Placed = (P2, Region);
+/// One face a line leaves of a region, and the side of the line it lies on: its first, its second, or neither where the
+/// line never touched it.
+struct Face {
+    region: Region,
+    first: Option<bool>,
+}
 
-/// What a line makes of one region, in the line's own frame: the regions on its first side and on its second, each in
-/// the order their keys count them, or why it leaves the region whole.
-fn split(region: &Region, shape: &Shape, thickness: f64) -> Result<(Vec<Region>, Vec<Region>), Conflict> {
-    let (line, closed): (Vec<P2>, bool) = match shape {
-        Shape::Line { line, .. } => (flat::reaching(line), false),
-        Shape::Ring { ring, .. } => (ring.clone(), true),
-        Shape::Plane { .. } => return Err(Conflict::Misses),
-    };
+/// The faces a line leaves of one region, in the line's own frame; or that the line doesn't cross it.
+fn faces(region: &Region, line: &[P2], closed: bool) -> Result<Vec<Face>, Conflict> {
     let around = |ring: &[P2]| geom::ring_edges(ring).collect::<Vec<_>>();
-    let mut segs: Vec<(P2, P2)> = std::iter::once(&region.outer).chain(&region.holes).flat_map(|r| around(r)).collect();
+    let rims: Vec<(P2, P2)> = std::iter::once(&region.outer).chain(&region.holes).flat_map(|r| around(r)).collect();
+    let mut segs = rims.clone();
     if closed {
-        segs.extend(around(&line));
+        segs.extend(around(line));
     } else {
         segs.extend(line.windows(2).map(|w| (w[0], w[1])));
     }
     let all = geom::faces(&segs, NEAR);
     let inside = |p: P2| geom::contains(&region.outer, p) && !region.holes.iter().any(|h| geom::contains(h, p));
-    let (mut a, mut b): (Vec<Placed>, Vec<Placed>) = (Vec::new(), Vec::new());
-    for face in all.iter().filter(|f| geom::area(f) > NEAR) {
+    // The face a point is in: the smallest that holds it.
+    let face_at = |p: P2| {
+        let holding = all.iter().enumerate().filter(|(_, f)| geom::area(f) > NEAR && geom::contains(f, p));
+        holding.min_by(|x, y| geom::area(x.1).total_cmp(&geom::area(y.1))).map(|(i, _)| i)
+    };
+    // Which faces the line has on its left, and on its right: wherever a stretch of it runs inside the region, the face
+    // just to either side of it. The same face on both sides was not cut through there: the line stops short in it, or
+    // ends in an opening it closes round.
+    let mut sides: Vec<(bool, bool)> = vec![(false, false); all.len()];
+    if !closed {
+        for s in line.windows(2) {
+            let (from, to) = (s[0], s[1]);
+            let mut stops = vec![0.0, 1.0];
+            for &(p, q) in &rims {
+                stops.extend(geom::crossing(from, to, p, q));
+                stops.extend(
+                    [p, q].iter().filter(|e| geom::dist_to_segment(**e, from, to) <= NEAR).map(|e| geom::param_on_segment(*e, from, to)),
+                );
+            }
+            stops.sort_by(f64::total_cmp);
+            for w in stops.windows(2) {
+                let mid = from + (to - from) * ((w[0] + w[1]) / 2.0);
+                if (w[1] - w[0]) * from.dist(to) <= 4.0 * BESIDE || !inside(mid) {
+                    continue;
+                }
+                let off = (to - from).unit().perp() * BESIDE;
+                let (left, right) =
+                    (face_at(mid + off).filter(|_| inside(mid + off)), face_at(mid + off * -1.0).filter(|_| inside(mid + off * -1.0)));
+                if left.is_some() && left == right {
+                    return Err(Conflict::DoesNotCross);
+                }
+                if let Some(side) = left.and_then(|i| sides.get_mut(i)) {
+                    side.0 = true;
+                }
+                if let Some(side) = right.and_then(|i| sides.get_mut(i)) {
+                    side.1 = true;
+                }
+            }
+        }
+    }
+    let mut out = Vec::new();
+    for (i, face) in all.iter().enumerate().filter(|(_, f)| geom::area(f) > NEAR) {
         let Some(probe) = within(face).filter(|p| inside(*p)) else { continue };
         let Some(part) = geom::region_in(&all, probe, NEAR) else { continue };
-        let (held, centre) = measure(&part);
-        let around = geom::perimeter(&part.outer) + part.holes.iter().map(|h| geom::perimeter(h)).sum::<f64>();
-        if held * thickness < MIN_VOLUME || 2.0 * held * thickness < THIN * (2.0 * held + around * thickness) {
-            continue;
-        }
         let first = if closed {
-            geom::contains(&line, probe)
+            Some(geom::contains(line, probe))
         } else {
-            // The face is on the left of each of its edges: one that runs the way the line does has the line's left.
-            let (mut left, mut right) = (false, false);
-            for (p, q) in geom::ring_edges(face) {
-                let mid = (p + q) * 0.5;
-                for s in line.windows(2) {
-                    if geom::dist_to_segment(mid, s[0], s[1]) <= 1e-5 && geom::dist_to_segment(p, s[0], s[1]) <= 1e-5 {
-                        *(if (q - p).dot(s[1] - s[0]) > 0.0 { &mut left } else { &mut right }) = true;
-                    }
-                }
-            }
-            match (left, right) {
+            match sides.get(i).copied().unwrap_or_default() {
                 (true, true) => return Err(Conflict::DoesNotCross),
-                (true, false) => true,
-                (false, true) => false,
-                (false, false) => {
-                    let nearest = line
-                        .windows(2)
-                        .min_by(|s, t| geom::dist_to_segment(probe, s[0], s[1]).total_cmp(&geom::dist_to_segment(probe, t[0], t[1])));
-                    nearest.is_none_or(|s| (s[1] - s[0]).cross(probe - s[0]) >= 0.0)
-                }
+                (true, false) => Some(true),
+                (false, true) => Some(false),
+                (false, false) => None,
             }
         };
-        (if first { &mut a } else { &mut b }).push((centre, part));
+        out.push(Face { region: part, first });
+    }
+    Ok(out)
+}
+
+/// A lump with the centre it is counted by.
+type Placed = (P2, Vec<Region>);
+/// The lumps on a line's first side, and on its second: each the regions it is made of.
+type Sides = (Vec<Vec<Region>>, Vec<Vec<Region>>);
+
+/// What a line makes of a piece's regions, in the line's own frame: the lumps on its first side and on its second, each
+/// in the order their keys count them, or why it leaves the piece whole. Faces of one side that touch at a corner are
+/// one lump, as their solids' surfaces would share that corner; a face the line never touched goes with what it
+/// touches, or by itself to the side of the line it lies on.
+fn split(regions: &[Region], shape: &Shape, thickness: f64, work: &mut Work) -> Result<Result<Sides, Conflict>, DivideError> {
+    let (line, closed): (Vec<P2>, bool) = match shape {
+        Shape::Line { line, .. } => (flat::reaching(line), false),
+        Shape::Ring { ring, .. } => (ring.clone(), true),
+        Shape::Plane { .. } => return Ok(Err(Conflict::Misses)),
+    };
+    let mut all: Vec<Face> = Vec::new();
+    for region in regions {
+        match faces(region, &line, closed) {
+            Ok(found) => all.extend(found),
+            Err(conflict) => return Ok(Err(conflict)),
+        }
+    }
+    // The faces that touch: every corner with its face, in order across the plane, each joined to those beside it.
+    let mut corners: Vec<(P2, usize)> = all
+        .iter()
+        .enumerate()
+        .flat_map(|(i, f)| std::iter::once(&f.region.outer).chain(&f.region.holes).flatten().map(move |p| (*p, i)))
+        .collect();
+    corners.sort_by(|a, b| a.0.0.total_cmp(&b.0.0).then(a.0.1.total_cmp(&b.0.1)).then(a.1.cmp(&b.1)));
+    let mut root: Vec<usize> = (0..all.len()).collect();
+    fn find(root: &mut [usize], mut x: usize) -> usize {
+        while let Some(&up) = root.get(x).filter(|&&up| up != x) {
+            x = up;
+        }
+        x
+    }
+    for (n, &(p, i)) in corners.iter().enumerate() {
+        for &(q, j) in corners.iter().skip(n + 1).take_while(|(q, _)| q.0 - p.0 <= NEAR) {
+            work.spend(1)?;
+            let sides = (all.get(i).and_then(|f| f.first), all.get(j).and_then(|f| f.first));
+            let apart = matches!(sides, (Some(a), Some(b)) if a != b);
+            if i != j && !apart && p.dist(q) <= NEAR {
+                let (a, b) = (find(&mut root, i), find(&mut root, j));
+                if let Some(slot) = root.get_mut(a.max(b)) {
+                    *slot = a.min(b);
+                }
+            }
+        }
+    }
+    let mut lumps: std::collections::BTreeMap<usize, Vec<usize>> = std::collections::BTreeMap::new();
+    for i in 0..all.len() {
+        lumps.entry(find(&mut root, i)).or_default().push(i);
+    }
+    let (mut a, mut b): (Vec<Placed>, Vec<Placed>) = (Vec::new(), Vec::new());
+    for members in lumps.values() {
+        let of = |i: &usize| all.get(*i);
+        let on = |side: bool| members.iter().filter_map(of).any(|f| f.first == Some(side));
+        let (mut held, mut rim, mut sum) = (0.0, 0.0, P2(0.0, 0.0));
+        for f in members.iter().filter_map(of) {
+            let (area, centre) = measure(&f.region);
+            held += area;
+            sum = sum + centre * area;
+            rim += geom::perimeter(&f.region.outer) + f.region.holes.iter().map(|h| geom::perimeter(h)).sum::<f64>();
+        }
+        let centre = if held > 0.0 { sum * (1.0 / held) } else { sum };
+        let first = match (on(true), on(false)) {
+            // A face the line never touched, touching both sides of it at corners: the line runs through a pinch.
+            (true, true) => return Ok(Err(Conflict::DoesNotCross)),
+            (true, false) => true,
+            (false, true) => false,
+            (false, false) => {
+                let nearest = line
+                    .windows(2)
+                    .min_by(|s, t| geom::dist_to_segment(centre, s[0], s[1]).total_cmp(&geom::dist_to_segment(centre, t[0], t[1])));
+                nearest.is_none_or(|s| (s[1] - s[0]).cross(centre - s[0]) >= 0.0)
+            }
+        };
+        if held * thickness < MIN_VOLUME || 2.0 * held * thickness < THIN * (2.0 * held + rim * thickness) {
+            continue;
+        }
+        (if first { &mut a } else { &mut b }).push((centre, members.iter().filter_map(of).map(|f| f.region.clone()).collect()));
     }
     let order = |v: &mut Vec<Placed>| {
         v.sort_by(|(p, _), (q, _)| {
@@ -159,12 +265,12 @@ fn split(region: &Region, shape: &Shape, thickness: f64) -> Result<(Vec<Region>,
     order(&mut b);
     let none = if closed { [Conflict::Misses, Conflict::HoldsAll] } else { [Conflict::Misses; 2] };
     if a.is_empty() {
-        return Err(none[0]);
+        return Ok(Err(none[0]));
     }
     if b.is_empty() {
-        return Err(none[1]);
+        return Ok(Err(none[1]));
     }
-    Ok((a.into_iter().map(|x| x.1).collect(), b.into_iter().map(|x| x.1).collect()))
+    Ok(Ok((a.into_iter().map(|x| x.1).collect(), b.into_iter().map(|x| x.1).collect())))
 }
 
 /// [`divide`] for a prism. A recipe of lines drawn on its face, or on a plane level with it, that cut through it with
@@ -183,7 +289,7 @@ pub fn divide_prism(prism: &Prism, recipe: &Recipe) -> Result<Outcome, DivideErr
     }
     let mut work = Work::new();
     let held = measure(&whole).0 * prism.thickness;
-    let mut parts: Vec<(PieceKey, Region)> = vec![(PieceKey::default(), whole)];
+    let mut parts: Vec<(PieceKey, Vec<Region>)> = vec![(PieceKey::default(), vec![whole])];
     for (k, d) in recipe.cuts.iter().enumerate() {
         let shape = Shape::of(&d.cut).map_err(|e| DivideError::Input(format!("cut {k}: {e}")))?;
         if d.of.as_ref().is_some_and(|key| key.0.len() > MAX_CUTS) {
@@ -196,33 +302,36 @@ pub fn divide_prism(prism: &Prism, recipe: &Recipe) -> Result<Outcome, DivideErr
         let sides = d.cut.sides();
         let mut next = Vec::with_capacity(parts.len() + 1);
         let (mut met, mut any, mut why) = (false, false, Conflict::Misses);
-        for (key, region) in &parts {
+        for (key, regions) in &parts {
             if d.of.as_ref().is_some_and(|of| !key.is_of(of)) {
-                next.push((key.clone(), region.clone()));
+                next.push((key.clone(), regions.clone()));
                 continue;
             }
             met = true;
-            work.spend(region.outer.len() + region.holes.iter().map(Vec::len).sum::<usize>())?;
-            let seen = Region { outer: there(&region.outer), holes: region.holes.iter().map(|h| there(h)).collect() };
-            match split(&seen, &shape, prism.thickness) {
+            work.spend(regions.iter().map(|r| r.outer.len() + r.holes.iter().map(Vec::len).sum::<usize>()).sum())?;
+            let seen: Vec<Region> =
+                regions.iter().map(|r| Region { outer: there(&r.outer), holes: r.holes.iter().map(|h| there(h)).collect() }).collect();
+            match split(&seen, &shape, prism.thickness, &mut work)? {
                 Ok((a, b)) => {
                     any = true;
-                    for (side, regions) in [(sides[0], a), (sides[1], b)] {
-                        for (n, r) in regions.into_iter().enumerate() {
+                    for (side, lumps) in [(sides[0], a), (sides[1], b)] {
+                        for (n, lump) in lumps.into_iter().enumerate() {
                             let mut key = key.clone();
                             key.0.push(Step { cut: k as u32, side, lump: n as u32 });
-                            next.push((key, Region { outer: back(&r.outer), holes: r.holes.iter().map(|h| back(h)).collect() }));
+                            let here = lump
+                                .iter()
+                                .map(|r| Region { outer: back(&r.outer), holes: r.holes.iter().map(|h| back(h)).collect() })
+                                .collect();
+                            next.push((key, here));
                         }
                     }
                 }
+                Err(Conflict::DoesNotCross) => return Err(DivideError::Conflict { at: Stage::Cut(k), conflict: Conflict::DoesNotCross }),
                 Err(conflict) => {
-                    if conflict == Conflict::DoesNotCross || conflict == Conflict::HoldsAll {
+                    if conflict == Conflict::HoldsAll {
                         why = conflict;
                     }
-                    if conflict == Conflict::DoesNotCross {
-                        return Err(DivideError::Conflict { at: Stage::Cut(k), conflict });
-                    }
-                    next.push((key.clone(), region.clone()));
+                    next.push((key.clone(), regions.clone()));
                 }
             }
         }
@@ -235,8 +344,11 @@ pub fn divide_prism(prism: &Prism, recipe: &Recipe) -> Result<Outcome, DivideErr
         }
     }
     let mut pieces = Vec::with_capacity(parts.len());
-    for (key, region) in parts {
-        let surface = raised(&axes, &region, prism.thickness, &mut work)?;
+    for (key, regions) in parts {
+        let mut surface = Mesh::new();
+        for region in &regions {
+            surface.extend(raised(&axes, region, prism.thickness, &mut work)?);
+        }
         pieces.push(Piece { key, volume: mesh::volume(&surface), closed: mesh::is_closed(&surface), mesh: surface });
     }
     let removed = held - pieces.iter().map(|p| p.volume).sum::<f64>();

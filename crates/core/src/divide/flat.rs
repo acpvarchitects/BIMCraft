@@ -175,15 +175,24 @@ pub(crate) fn slab(pts: &[P3], tris: &[[u32; 3]], n: P3, up: f64, down: f64) -> 
 pub(crate) fn patch(axes: &Axes, outline: &[P2], holes: &[Vec<P2>], work: &mut Work) -> Result<(Vec<P3>, Vec<[u32; 3]>), DivideError> {
     let mut flat: Vec<P2> = Vec::new();
     let mut rings: Vec<Vec<u32>> = Vec::new();
+    // A point met twice (where a ring touches itself, or another) is one corner, so the filling knows it for the same.
+    let mut known: std::collections::HashMap<(u64, u64), u32> = std::collections::HashMap::new();
     for (k, ring) in std::iter::once(outline).chain(holes.iter().map(Vec::as_slice)).enumerate() {
-        let from = flat.len() as u32;
-        // Whichever way it was drawn: an outline counter-clockwise, a hole clockwise.
-        if (geom::area(ring) > 0.0) == (k == 0) {
-            flat.extend_from_slice(ring);
-        } else {
-            flat.extend(ring.iter().rev());
+        let mut numbered: Vec<u32> = Vec::with_capacity(ring.len());
+        for p in ring {
+            let next = flat.len() as u32;
+            let i = *known.entry((p.0.to_bits(), p.1.to_bits())).or_insert(next);
+            if i == next {
+                flat.push(*p);
+            }
+            numbered.push(i);
         }
-        rings.push((from..flat.len() as u32).collect());
+        // Whichever way it was drawn: an outline counter-clockwise, a hole clockwise.
+        if (geom::area(ring) > 0.0) != (k == 0) {
+            numbered.reverse();
+        }
+        numbered.dedup();
+        rings.push(numbered);
     }
     let tris = cap::fill(&flat, &rings, work)?;
     Ok((flat.iter().map(|q| axes.point(*q, 0.0)).collect(), tris))

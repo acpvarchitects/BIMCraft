@@ -115,6 +115,15 @@ pub(crate) fn solid_of(solid: &[[P3; 3]], work: &mut Work) -> Result<Soup, Divid
 
 /// What a partition gives, as a surface mended.
 pub(crate) fn mended(tris: Vec<[P3; 3]>, work: &mut Work) -> Result<Soup, DivideError> {
+    // A partition of a solid of many small faces that aren't in one plane (a finely faceted curve) cuts each face of
+    // the cutter by all of them: past this it is no piece to keep.
+    if tris.len() > 10 * csg::MAX_TRIANGLES {
+        return Err(DivideError::TooMuch(format!(
+            "this cut leaves a piece in {} triangles: the solid has too many small faces for a line or a profile to cut it; \
+             give it fewer faces, or cut it by planes",
+            tris.len()
+        )));
+    }
     work.spend(tris.len())?;
     let mut soup = Soup::weld(&tris);
     soup.mend(work)?;
@@ -391,6 +400,12 @@ fn line_sides(soup: &Soup, axes: &Axes, line: &[P2], gap: f64, work: &mut Work) 
                 (if is_left { &mut a } else { &mut b }).push(lump);
             }
         }
+    }
+    // A line through a pinch of the piece (where two parts of it touch at a corner) leaves what hangs there on both
+    // sides: more than there was. It parts nothing cleanly.
+    let both: f64 = a.iter().chain(&b).map(Soup::volume).sum();
+    if both > soup.volume() * (1.0 + 1e-9) + MIN_VOLUME {
+        return Ok(Cutting::Not(Conflict::DoesNotCross));
     }
     Ok(sides(a, b, axes, [Conflict::Misses; 2]))
 }
