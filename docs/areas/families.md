@@ -769,8 +769,8 @@ step, the pointer read through the view as the drag began; a drag back where it 
 another view or tab shown give it up, everything put back. Handles, grips and padlocks keep their drags, and a drag from nothing
 its box. Over something selected the status bar says a drag moves it. Shift on an element not selected neither moves
 it nor draws a box, as before; on one selected it moves the selection. Known, as Align and a plane's drag have it: an arc a
-constraint turns while what it follows moves is given its turn as a number, its formula lost. Shift (Ortho, FE-2) isn't wired yet: the delta is worked
-out in one place (`drag_move::delta`) for it. Tests: `tests/family_drag_move.rs`, `family_constraint_tests.rs`.
+constraint turns while what it follows moves is given its turn as a number, its formula lost. Shift (Ortho, FE-2) keeps the move
+square to the view's axes, from where the drag began: the delta is worked out in one place (`drag_move::delta`). Tests: `tests/family_drag_move.rs`, `family_constraint_tests.rs`.
 
 FE-4 (`editor/drag_move.rs`, `family/constraints/copying.rs`): Ctrl held as such a drag is let go copies the selection there
 instead, as Revit's Ctrl+drag does: the copies follow the pointer, selected in place of the originals while Ctrl is held (the
@@ -803,7 +803,7 @@ must still solve and build and the family pass `Family::check` (one copy past `M
 the selection are as they were, with no step and no Unsaved mark. Escape, Undo, Redo and another view give it up as they give a
 move up; let go where it began, it makes no copies and leaves no step, saying nothing (Revit would stack them). Only what the
 view shows is copied. Over something selected with Ctrl held, the status bar says a drag copies it, and while copying, that
-letting Ctrl go first moves instead. The drag goes through `drag_move::delta` too, so Shift (Ortho) will apply to both. Tests:
+letting Ctrl go first moves instead. The drag goes through `drag_move::delta` too, so Shift (Ortho) keeps a copy square as it keeps a move. Tests:
 `tests/family_drag_copy.rs`, `family_constraint_tests.rs`.
 
 The Work Plane dialog (T12, `editor/work_plane.rs`), as Revit's: Current Work Plane names the plane as `Planes::listed` does, with Show
@@ -850,7 +850,15 @@ spline or ellipse), Modify (pick, Delete, a picked line's end dragged; Trim/Exte
 to where they meet, each keeping the part clicked, `draw::corner`, F10a) and Work Plane (Set, the Work Plane dialog for the sketch: the plane taken, its lines go with it in the plane's own
 axes; Show). The pointer snaps as a project's view snaps (`snap::among`, the same switches, guides, order and
 markers, `canvas::snap_mark`) to the reference planes' traces across the work plane, where they cross, the other forms' edges
-and their ends seen on it, the reference lines and the sketch's own lines (`Family::sketch_targets`). Chain, on the Options Bar
+and their ends seen on it, the reference lines and the sketch's own lines (`Family::sketch_targets`). Holding Shift constrains
+a line or a chained arc's endpoint horizontally or vertically in the work plane's own axes, including in {3D}; releasing it
+restores free drawing. Other shapes' construction points and an arc's third point stay free.
+The core's `snap::orthogonal_step` also constrains reference-plane drawing and dragging in plans/elevations, and adaptive
+Line, Move/Copy and point dragging. Dragging keeps the press origin across frames and uses the work plane's axes, in the
+parallel plane through that origin; a constrained snap never substitutes an off-axis point. New Line points and their preview
+lie on the work plane even when the chain starts above it; Move/Copy preserves the original normal offset. Shift + middle-button
+orbit remains navigation.
+Chain, on the Options Bar
 for Line and the chained arcs, is kept for the session: off, each starts afresh. A plan or an elevation that doesn't see the work plane flat asks Go To View, offering
 those that do and {3D}: the Work Plane dialog's one Go To View (`FamilyEditor::on_work_plane`, `work_plane::Then`), the sketch
 beginning in the view opened; {3D} draws on the plane where the pointer shows it. The lines are the project's sketch's

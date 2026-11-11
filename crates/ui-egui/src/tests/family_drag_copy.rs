@@ -436,3 +436,17 @@ fn a_forms_copy_goes_right_after_it_so_a_void_after_it_cuts_it_as_it_cuts_the_or
     assert!(!f.forms[1].void && f.forms[2].void, "A's copy after A, B (the void) after it");
     assert_eq!(editor(&h).selection.items(), &[Picked::Form(1)]);
 }
+
+#[test]
+fn shift_and_ctrl_keep_a_copy_square_to_the_view() {
+    let mut h = plan();
+    pick(&mut h, &[Picked::Form(0)]);
+    let a0 = points(&h, 0);
+    let both = Modifiers { ctrl: true, shift: true, ..Modifiers::NONE };
+    let at = press_and_move(&mut h, [300.0, 300.0, 0.0], [100.0, 700.0, 0.0], both);
+    release_with(&mut h, at, both);
+    assert_eq!(family(&h).forms.len(), 3, "{}", status(&h));
+    let d = shift(&a0, &points(&h, 1));
+    assert!(near(d[0], 0.0) && near(d[1], 700.0) && d[0] == 0.0, "{d:?}");
+    assert_eq!(points(&h, 0), a0);
+}

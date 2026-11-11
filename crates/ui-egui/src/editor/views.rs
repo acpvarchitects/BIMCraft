@@ -45,6 +45,8 @@ pub(crate) struct Views {
     /// pointer is read through while it goes on (the view refitting round the plane would otherwise change its scale under
     /// the hand).
     pub(super) drag: Option<(P2, View)>,
+    /// The press origin, retained while Shift constrains a drag across frames.
+    drag_origin: Option<P2>,
     /// A selected extrusion's Start or End (true) being dragged by its handle (F5): where the pointer was, in the view's
     /// millimetres, the normal it moves along, and the view as it was when the drag began, which the pointer is read through
     /// while it goes on (a drag that changes what the view frames would otherwise change its scale under the hand).
@@ -920,6 +922,8 @@ impl FamilyEditor {
         if let Some(Some(first)) = self.views.drawing
             && let Some(hover) = response.hover_pos()
         {
+            let hover =
+                if ui.input(|i| i.modifiers.shift) { screen(bimcraft_core::snap::orthogonal_step(first, at_view(hover)).0) } else { hover };
             painter.line_segment([screen(first), hover], Stroke::new(1.5, PICKED));
         }
         // A selected extrusion's Start and End, where the view sees its plane edge-on: shape handles to drag (F5); one tied to
@@ -1056,6 +1060,7 @@ impl FamilyEditor {
                 match first {
                     None => self.views.drawing = Some(Some(q)),
                     Some(a) => {
+                        let q = if ui.input(|i| i.modifiers.shift) { bimcraft_core::snap::orthogonal_step(a, q).0 } else { q };
                         new_plane = fv::new_plane(&c.staged, which, a, q);
                         self.views.drawing = Some(None);
                     }
@@ -1220,7 +1225,7 @@ impl FamilyEditor {
             && let Some(to) = response.interact_pointer_pos().map(|p| held_at(then, p))
             && response.dragged_by(PointerButton::Primary)
         {
-            let P2(dx, dy) = super::drag_move::delta(from, to);
+            let P2(dx, dy) = super::drag_move::delta(from, to, ui.input(|i| i.modifiers.shift));
             move_by = Some(std::array::from_fn(|k| across[k] * dx + up[k] * dy));
         }
         // A plane of the family's own, selected, dragged square to itself.
@@ -1240,16 +1245,23 @@ impl FamilyEditor {
                 // A plane its pivot holds turns by its grip, never slides (F7d).
                 let own = self.selected_plane().filter(|g| self.planes.iter().any(|q| q.guid == *g && !q.datum() && q.pivot.is_none()));
                 self.views.drag = own.filter(|g| pick_plane(p) == Some(*g)).map(|_| (at_view(p), view));
+                self.views.drag_origin = self.views.drag.map(|(q, _)| q);
             }
             if let (Some((from, then)), Some(g)) = (self.views.drag, self.selected_plane())
                 && let Some(to) = response.interact_pointer_pos().map(|p| held_at(then, p))
             {
+                let to = if ui.input(|i| i.modifiers.shift) {
+                    self.views.drag_origin.map_or(to, |origin| bimcraft_core::snap::orthogonal_step(origin, to).0)
+                } else {
+                    to
+                };
                 moved = Some((g, c.staged.vector(which, P2(to.0 - from.0, to.1 - from.1))));
                 self.views.drag = Some((to, then));
             }
         }
         if response.drag_stopped() {
             self.views.drag = None;
+            self.views.drag_origin = None;
             self.views.end_drag = None;
             self.views.grip = None;
         }

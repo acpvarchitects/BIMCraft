@@ -168,6 +168,23 @@ fn a_selected_form_dragged_in_plan_moves_as_one_step() {
 }
 
 #[test]
+fn shift_keeps_a_move_square_to_the_view() {
+    // FE-2's Ortho: with Shift held the selection moves along the view's axis the drag mostly follows, from where it began.
+    let mut h = plan();
+    pick(&mut h, &[Picked::Form(0)]);
+    let before = points(&h, 0);
+    drag(&mut h, [300.0, 300.0, 0.0], [300.0, 100.0, 0.0], Modifiers::SHIFT);
+    let d = shift(&before, &points(&h, 0));
+    assert!(near(d[0], 300.0) && near(d[1], 0.0), "{d:?} {}", status(&h));
+    assert_eq!(editor(&h).steps(), 1);
+    // Mostly up: only up.
+    let before = points(&h, 0);
+    drag(&mut h, [600.0, 300.0, 0.0], [50.0, 250.0, 0.0], Modifiers::SHIFT);
+    let d = shift(&before, &points(&h, 0));
+    assert!(near(d[0], 0.0) && near(d[1], 250.0), "{d:?} {}", status(&h));
+}
+
+#[test]
 fn a_form_a_plane_and_a_symbol_move_together() {
     let mut h = plan();
     pick(&mut h, &[Picked::Form(0), Picked::Plane(g(EDGE)), Picked::Symbol(0)]);
