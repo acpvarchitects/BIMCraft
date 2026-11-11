@@ -1678,10 +1678,13 @@ other_files(
         "schedule",
         ui_msg!("Schedule"),
         &[],
-        "{name?, category?, categories?, fields?, filters?, sort?, grouped?, path?} a schedule view, as Revit's View > Schedules makes one, \
+        "{name?, category?, categories?, fields?, filters?, sort?, grouped?, starter?, path?} a schedule view, as Revit's View > Schedules makes one, \
          and its table: columns, rows, the `elements` each row lists, and totals (and a .csv file with a path, or an .xlsx workbook for a path ending .xlsx). A new one needs `name` and `category`: rooms, \
          doors, windows, walls, floors, ceilings, roofs, columns, structural columns, footings, beams, strip footings, components, \
-         stairs, ramps, railings or levels, or `multicategory`, as Revit's Multi-Category Schedule: a row for each element of \
+         stairs, ramps, railings, levels or parts (the parts elements were taken apart into, `create_parts`, with their Net \
+         Area in m², Net Volume in m³ and the heritage set: grouped by `Intervention_Type` or `Decay_Pathology` with totals, \
+         the restoration's bill of quantities; excluded parts are left out unless a filter is on `Excluded`, and parts in \
+         conflict are listed with no area or volume and named in `notes`), or `multicategory`, as Revit's Multi-Category Schedule: a row for each element of \
          `categories` ([\"walls\", \"doors\"…]; none, every built one but rooms, levels and masses), with the fields they share \
          (Category, Family, Type, Level, Count, Width, Height, Length, Thickness, Area: a wall's length by its height, a door's \
          width by its height; Material: its type's structure layer's, a run's type's, a family's), each empty where its \
@@ -1695,8 +1698,11 @@ other_files(
          begins-with|not-begins-with|ends-with|not-ends-with|has-value|has-no-value, value}, …], the elements all of them \
          keep (text in any case, numbers as the schedule shows them, an unset yes or no as no). `sort`: [field or {field, descending?}, …], in turn (its first column unless it says; Phase Created \
          and Phase Demolished in the project's order of phases, a phase never demolished after the last); \
-         `grouped`, a row for each set of the sort fields' values: Count and totals summed, and a field whose values differ \
-         left empty. Each one given replaces the last; `fields: []` goes back to its category's",
+         `grouped`, a row for each set of the sort fields' values: Count and totals summed (no value where none of them has \
+         a number), and a field whose values differ left empty. Each one given replaces the last; `fields: []` goes back to \
+         its category's. `starter: restoration-quantities` makes the schedule Restoration Quantities in one go (under `name`, \
+         if given), or reads it once the project has it: the parts by Intervention_Type then Decay_Pathology, grouped, with \
+         SU_Code, Host Type, Material and the totals of Net Area, Net Volume and Count",
         schedule,
         Files::Write,
     ),
@@ -3625,6 +3631,21 @@ fn schedule(s: &mut Session, p: &Value) -> R {
         }
         k => k.map(|k| category(&k)),
     };
+    // A ready-made one: made as it comes unless the project has one of its name, which is read as any other.
+    let starter = match string(c, p, "starter")? {
+        Some(key) => Some(
+            schedule::starter(m, &key)
+                .ok_or_else(|| bad(c, format!("`{key}` isn't a starter schedule; there are: {}", schedule::STARTERS.join(", "))))?,
+        ),
+        None => None,
+    };
+    if let (Some(st), Some(k)) = (&starter, &cat)
+        && *k != category(&st.of)
+    {
+        return Err(bad(c, format!("starter `{}` schedules {}s, not {k}s; leave `category` out", st.name, st.of)));
+    }
+    let name = name.or_else(|| starter.as_ref().map(|st| st.name.clone()));
+    let cat = cat.or_else(|| starter.as_ref().map(|st| category(&st.of)));
     let builtin = schedule::builtin(name.as_deref(), cat.as_deref());
     let found = name.as_deref().and_then(|n| schedule::named(m, n)).or_else(|| builtin.and_then(|(_, n)| schedule::named(m, n)));
     let mut sc = match (found, builtin, &name, &cat) {
@@ -3633,7 +3654,10 @@ fn schedule(s: &mut Session, p: &Value) -> R {
             _ => return Err(bad(c, format!("element {id} isn't a schedule"))),
         },
         (None, Some((of, n)), _, _) => Schedule { name: m.language.word(n).to_string(), of: of.to_string(), ..Schedule::default() },
-        (None, None, Some(n), Some(k)) => Schedule { name: n.clone(), of: k.clone(), ..Schedule::default() },
+        (None, None, Some(n), Some(k)) => match starter {
+            Some(st) => Schedule { name: n.clone(), ..st },
+            None => Schedule { name: n.clone(), of: k.clone(), ..Schedule::default() },
+        },
         (None, None, Some(n), None) => return Err(bad(c, format!("there's no schedule `{n}`; a new one needs `category` too"))),
         (None, None, None, Some(k)) => Schedule { of: k.clone(), ..Schedule::default() },
         (None, None, None, None) => return Err(bad(c, "`name` or `category` is required")),
@@ -3709,7 +3733,7 @@ fn schedule(s: &mut Session, p: &Value) -> R {
     if let Some(totals) = t.totals {
         out["totals"] = json!(totals);
     }
-    Ok(out)
+    Ok(with_notes(out, &t.notes))
 }
 
 /// A list of category names, as `key` gives them: each as views draw it.
