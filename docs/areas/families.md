@@ -550,8 +550,31 @@ lines, a click unlocking one. They are written at Finish (a refusal by the const
 Cancel. An Align padlock, on a finished form and while sketching, sits beside the line it locks, a few pixels off it to the side away from the
 form's inside, slid along it as little as keeps it off every line drawn and every other padlock (`dimensions::padlock_spot`);
 Align's offered padlock too. Edit Extrusion opens the sketch as the type previewed flexes it, and a line that comes back there keeps its formulas
-(`sketch::kept` against the lines shown). Every line gets a GUID of its own at Finish, a new form its GUID at once, so a lock or
-a dimension can name them before the family is loaded.
+(`sketch::kept` against the lines shown). Every line gets a GUID of its own as it is drawn (and any still without one at
+Finish), a new form its GUID at once, so a lock or a dimension can name them before the family is loaded.
+
+FE-12 (`editor/sketch_dims.rs`): while a form is sketched, the contextual tab's Dimension panel (Aligned Dimension, DI and DD,
+Angular, AN, Radial and Diameter) works in a plan or an elevation that sees the sketch's plane flat, as outside sketch mode:
+it picks the sketch's own lines and circles as they are, reference planes, reference lines and other forms' lines, then a
+click places the dimension (`dimensions::pick_reference`, `placing`, `dimension_click`, which both modes share). It is greyed,
+saying why, in {3D}, in a view that sees the plane edge-on and on a sweep's profile (whose lines the constraints don't
+measure, F6d); a sweep's path and a Blend's base and top are measured. What is made, changed or taken off while sketching is
+held with the sketch, as Align's locks are (`FormSketch::dims`, `changed`, `unlocked`, and `params`, the parameters Create
+Parameter… made for a label), and drawn with it with the draft's own dimensions that measure the form's lines (its Align
+locks are the padlocks above). A click selects one ("Modify" first: the Draw panel's shape takes the click otherwise): its
+padlocks lock and unlock, its EQ toggles, the Options Bar gives its Label, and Value for one of one segment with no label,
+taken on Enter; Delete takes it away. The family Finish would make (`sketch_family`: the draft, the form made of the lines as
+they are, `sketched_form`, and those dimensions, `sketch_dimensions`) is solved for the type previewed at each label, lock,
+EQ or value (`sketch_try`), and the sketch's lines go where the solve puts them at once, a step of the sketch's Ctrl+Z; a
+value is a lock at it for that one solve. What the constraints can't hold for the type previewed is refused then, with T19's
+words, nothing changed; Align's padlock and a lock another type can't hold are found at Finish, which refuses them for each
+type, naming it, with sketch mode open and the draft as it was. Finish writes the form, its dimensions and their parameters as
+one step of the history (Undo takes them back together); Cancel drops them all, leaving no step and no Unsaved mark. A line of
+the form gone from the sketch (deleted, or taken back by Ctrl+Z) is taken from the dimensions that measure to it, made while
+sketching or the draft's (`forget_reference`, one left with too few references gone), as `forget_lines_gone` takes it at
+Finish. The status bar asks what the dimension tool asks outside sketch mode. A dimension's text is set on the paper, so a
+plane's trace through it doesn't cross it out. Out of scope: a profile's lines (F6d); a drag of a line's end is checked at
+Finish, not driven.
 
 F7c, part of FORMAT 19: angles, turning reference lines and arcs. `kind: "angular"` measures the angles
 between 2 to `MAX_DIM_REFS` lines seen as lines in its view: reference planes seen edge on (their traces), reference lines
@@ -1301,7 +1324,7 @@ In `crates/ui-egui`, the Family Editor:
 - `editor/temp_hide.rs`: the document's Temporary Hide/Isolate. `editor/views.rs`: its plans and elevations.
 - `editor/keys.rs`: the document's two-letter keys (`FAMILY_SHORTCUTS`) and what each does (`BimApp::family_action`).
 - `editor/zoom.rs`: the zoom commands in the document's views and their Previous Pan/Zoom history, over the window's `zoom.rs`.
-- `editor/sketch.rs`: sketch mode. `editor/shape_handles.rs`: a selected form's profile handles. `editor/dimensions.rs`: their dimensions and Align.
+- `editor/sketch.rs`: sketch mode. `editor/sketch_dims.rs`: the dimensions while a form is sketched (FE-12). `editor/shape_handles.rs`: a selected form's profile handles. `editor/dimensions.rs`: their dimensions and Align.
 - `editor/work_plane.rs`: its Work Plane dialog and Go To View.
 - `editor/options.rs`: the family's options (Family Category and Parameters, Properties' Other).
 - `editor/nested.rs`: its nested families (Load Family, Component, Edit Family). `editor/pivot.rs`: its pivots and grips.

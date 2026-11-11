@@ -1,0 +1,398 @@
+//! FE-12: the Dimension tool while a form is sketched. Aligned, Angular and Radial dimensions on the sketch's own lines and
+//! circles and to a reference plane, held with the sketch and written at Finish (one step, undone with the form); a label and
+//! a value typed drive the sketch's lines; a padlock locks; a lock the constraints refuse keeps sketch mode open; Cancel drops
+//! them; a line deleted takes its dimensions with it; the draft's dimensions of the form show and are edited while it is.
+use super::family_views::{click_family, editor, open, view};
+use super::*;
+use bimcraft_core::family::views::Which;
+use bimcraft_core::family::{DimKind, DimRef, FamilyDimension};
+use bimcraft_core::ids::Guid;
+use std::collections::BTreeMap;
+
+const LEFT: &str = "11111111-1111-4111-8111-000000000001";
+const RIGHT: &str = "11111111-1111-4111-8111-000000000002";
+const SLAB: &str = "33333333-3333-4333-8333-000000000001";
+const SOUTH: &str = "33333333-3333-4333-8333-000000000002";
+const EAST: &str = "33333333-3333-4333-8333-000000000003";
+const WEST: &str = "33333333-3333-4333-8333-000000000005";
+const DISC: &str = "33333333-3333-4333-8333-000000000006";
+const RING: &str = "33333333-3333-4333-8333-000000000007";
+const SPAN: &str = "44444444-4444-4444-8444-000000000001";
+
+/// A box family: Width 1000 (Small 600, Large 1400, Large previewed), Left and Right at ±500 labelled Width; a slab on Ref.
+/// Level sketched as a rectangle at ±300 by ±200, and a disc of radius 80 at (0, 600); `dims`, more dimensions as JSON.
+fn family(dims: &str) -> String {
+    format!(
+        r#"family {{"name": "Box", "category": "generic", "parameters": [{{"name": "Width", "value": 1000}}, {{"name": "R", "value": 80}}], "types": {{"Small": {{"Width": 600, "R": 50}}, "Large": {{"Width": 1400, "R": 120}}}}, "ref_planes": [{{"guid": "{LEFT}", "name": "Left", "start": [-500, -2000, 0], "end": [-500, 2000, 0], "up": [0, 0, 1]}}, {{"guid": "{RIGHT}", "name": "Right", "start": [500, -2000, 0], "end": [500, 2000, 0], "up": [0, 0, 1]}}], "forms": [{{"guid": "{SLAB}", "sketch": [{{"guid": "{SOUTH}", "start": [-300, -200], "end": [300, -200]}}, {{"guid": "{EAST}", "start": [300, -200], "end": [300, 200]}}, {{"guid": "33333333-3333-4333-8333-000000000004", "start": [300, 200], "end": [-300, 200]}}, {{"guid": "{WEST}", "start": [-300, 200], "end": [-300, -200]}}], "from": 0, "to": 100}}, {{"guid": "{DISC}", "sketch": [{{"guid": "{RING}", "centre": [0, 600], "radius": 80}}], "from": 0, "to": 50}}], "dimensions": [{{"refs": [{{"plane": "{LEFT}"}}, {{"plane": "{RIGHT}"}}], "at": [0, -900, 0], "label": "Width"}}{dims}]}}"#
+    )
+}
+
+/// The slab's west and east lines measured across, below it.
+fn span() -> String {
+    format!(
+        r#", {{"guid": "{SPAN}", "refs": [{{"form": "{SLAB}", "line": "{WEST}"}}, {{"form": "{SLAB}", "line": "{EAST}"}}], "at": [0, -450, 0]}}"#
+    )
+}
+
+fn g(s: &str) -> Guid {
+    serde_json::from_value(json!(s)).unwrap()
+}
+
+fn ed_mut<'a>(h: &'a mut Harness<'_, BimApp>) -> &'a mut crate::editor::FamilyEditor {
+    h.state_mut().active_family_mut().unwrap()
+}
+
+fn status(h: &Harness<BimApp>) -> String {
+    h.state().status.text.clone()
+}
+
+/// Form `i` sketched again in plan (Edit Extrusion), its history and Unsaved mark as they were.
+fn sketching(dims: &str, i: usize) -> Harness<'static, BimApp> {
+    let (mut h, _) = open(&family(dims), "Box");
+    view(&mut h, Some(Which::Plan));
+    ed_mut(&mut h).edit_form_sketch(i).unwrap();
+    h.run();
+    assert!(editor(&h).sketching());
+    h
+}
+
+/// Where line `line` of the sketch is: its start and end.
+fn line(h: &Harness<BimApp>, line: &str) -> (P2, P2) {
+    let l = editor(h).sketch.as_ref().unwrap().sketch.lines.iter().find(|l| l.guid == g(line)).expect("the line").clone();
+    (l.start(), l.end())
+}
+
+/// The dimensions made while sketching.
+fn made(h: &Harness<BimApp>) -> Vec<FamilyDimension> {
+    editor(h).sketch.as_ref().unwrap().dims.clone()
+}
+
+/// The slab's west and east lines dimensioned with Aligned Dimension (DI), the dimension placed below the slab; the tool
+/// put down.
+fn dimension_west_to_east(h: &mut Harness<BimApp>) -> FamilyDimension {
+    shortcut(h, "DI");
+    assert!(editor(h).views.dimensioning.is_some(), "Aligned Dimension, while sketching");
+    click_family(h, [-300.0, 100.0, 0.0]);
+    click_family(h, [300.0, 100.0, 0.0]);
+    click_family(h, [150.0, -450.0, 0.0]);
+    key(h, Key::Escape);
+    assert!(editor(h).views.dimensioning.is_none());
+    made(h).last().cloned().expect("a dimension made")
+}
+
+/// Segment 0's padlock of the aligned dimension whose line runs level through `y`, its middle at `x`, clicked.
+fn click_padlock(h: &mut Harness<BimApp>, x: f64, y: f64) {
+    let at = editor(h).views.screen_of([x, y, 0.0]).unwrap() + vec2(0.0, 16.0);
+    click_at(h, at);
+}
+
+#[test]
+fn two_sketch_lines_dimensioned_are_written_at_finish_and_undone_with_the_form() {
+    let mut h = sketching("", 0);
+    let (steps, dims) = (editor(&h).steps(), editor(&h).dimensions.len());
+    let d = dimension_west_to_east(&mut h);
+    assert_eq!(d.refs, vec![DimRef::Sketch(g(SLAB), g(WEST)), DimRef::Sketch(g(SLAB), g(EAST))], "{}", status(&h));
+    assert_eq!(editor(&h).dimensions.len(), dims, "the draft waits for Finish");
+    assert_eq!(editor(&h).steps(), steps);
+    press(&mut h, "Finish Edit Mode");
+    assert!(!editor(&h).sketching(), "{}", status(&h));
+    let saved = editor(&h).dimensions.iter().find(|x| x.guid == d.guid).cloned().expect("written with the form");
+    assert_eq!(saved.refs, d.refs);
+    assert_eq!(editor(&h).steps(), steps + 1, "one step");
+    // Undo takes the form's sketch and the dimension back together.
+    h.state_mut().family_undo();
+    h.run();
+    assert_eq!(editor(&h).dimensions.len(), dims);
+    assert_eq!(editor(&h).steps(), steps);
+}
+
+#[test]
+fn a_new_extrusion_dimensioned_is_undone_with_its_dimension() {
+    let (mut h, _) = open(&family(""), "Box");
+    view(&mut h, Some(Which::Plan));
+    let (forms, dims) = (editor(&h).draft_family().unwrap().forms.len(), editor(&h).dimensions.len());
+    h.get_by_role_and_label(Role::Button, "Extrusion").click();
+    h.run();
+    h.get_by_role_and_label(Role::Button, "Rectangle").click();
+    h.run();
+    click_family(&mut h, [-200.0, -1300.0, 0.0]);
+    click_family(&mut h, [200.0, -1100.0, 0.0]);
+    assert_eq!(editor(&h).sketch.as_ref().unwrap().sketch.lines.len(), 4);
+    shortcut(&mut h, "DD");
+    click_family(&mut h, [-200.0, -1150.0, 0.0]);
+    click_family(&mut h, [200.0, -1150.0, 0.0]);
+    click_family(&mut h, [100.0, -1450.0, 0.0]);
+    assert_eq!(made(&h).len(), 1, "{}", status(&h));
+    press(&mut h, "Finish Edit Mode");
+    assert!(!editor(&h).sketching(), "{}", status(&h));
+    assert_eq!((editor(&h).draft_family().unwrap().forms.len(), editor(&h).dimensions.len()), (forms + 1, dims + 1));
+    let form = editor(&h).draft_family().unwrap().forms.last().unwrap().guid;
+    assert!(editor(&h).dimensions.last().unwrap().refs.iter().all(|r| r.names(form)));
+    h.state_mut().family_undo();
+    h.run();
+    assert_eq!(
+        (editor(&h).draft_family().unwrap().forms.len(), editor(&h).dimensions.len()),
+        (forms, dims),
+        "form and dimension undone together"
+    );
+}
+
+#[test]
+fn a_label_drives_the_sketch_lines_and_a_padlock_locks_the_dimension() {
+    let mut h = sketching("", 0);
+    let d = dimension_west_to_east(&mut h);
+    // Selected by its line: its Label on the Options Bar, Width (Large: 1400).
+    click_family(&mut h, [100.0, -450.0, 0.0]);
+    assert_eq!(editor(&h).sketch.as_ref().unwrap().selected_dim, Some(d.guid), "{}", status(&h));
+    h.get_by_label("Label").click();
+    h.run();
+    press_near(&mut h, "Width", "Label");
+    assert_eq!(made(&h)[0].label.as_deref(), Some("Width"), "{}", status(&h));
+    let (w, e) = (line(&h, WEST), line(&h, EAST));
+    assert!(((e.0.0 - w.0.0) - 1400.0).abs() < 1e-6, "the lines moved apart to Width at once: {w:?} {e:?}");
+    // Width taken off, a value typed in: the lines follow it.
+    h.get_by_label("Label").click();
+    h.run();
+    press_near(&mut h, "<None>", "Label");
+    assert_eq!(made(&h)[0].label, None);
+    ed_mut(&mut h).set_dimension_value(d.guid, 800.0).unwrap();
+    let (w, e) = (line(&h, WEST), line(&h, EAST));
+    assert!(((e.0.0 - w.0.0) - 800.0).abs() < 1e-6, "{w:?} {e:?}");
+    // Locked by its padlock, under its middle.
+    let mid = (w.0.0 + e.0.0) / 2.0;
+    click_padlock(&mut h, mid, -450.0);
+    assert!(made(&h)[0].is_locked(0), "{}", status(&h));
+    press(&mut h, "Finish Edit Mode");
+    assert!(!editor(&h).sketching(), "{}", status(&h));
+    let f = editor(&h).draft_family().unwrap();
+    let at = f.dimensions.iter().position(|x| x.guid == d.guid).unwrap();
+    for t in ["Small", "Large"] {
+        let v = f.values(t, &BTreeMap::new()).unwrap();
+        assert_eq!(f.measured(&v).unwrap()[at], vec![800.0], "{t}: locked at 800");
+    }
+}
+
+#[test]
+fn a_lock_the_constraints_refuse_keeps_sketch_mode_open_and_cancel_drops_the_dimensions() {
+    let mut h = sketching("", 0);
+    let (steps, unsaved, before) = (editor(&h).steps(), editor(&h).unsaved(), editor(&h).draft_family().unwrap());
+    dimension_west_to_east(&mut h);
+    click_family(&mut h, [100.0, -450.0, 0.0]);
+    click_padlock(&mut h, 0.0, -450.0);
+    assert!(made(&h)[0].is_locked(0), "{}", status(&h));
+    // Align locks the west line to Left and the east one to Right: with the span locked at 600, Width can't be 1400.
+    key(&mut h, Key::Escape);
+    for (plane, side) in [(-700.0, -300.0), (700.0, 300.0)] {
+        shortcut(&mut h, "AL");
+        click_family(&mut h, [plane, 900.0, 0.0]);
+        click_family(&mut h, [side, 100.0, 0.0]);
+        let at = editor(&h)
+            .sketch_padlocks_shown()
+            .into_iter()
+            .find(|(_, w)| *w == crate::editor::sketch::Padlock::Offer)
+            .map(|(p, _)| p)
+            .expect("Align's padlock");
+        click_at(&mut h, at);
+    }
+    assert_eq!(editor(&h).sketch.as_ref().unwrap().locks.len(), 2);
+    press(&mut h, "Finish Edit Mode");
+    assert!(editor(&h).sketching(), "refused: sketch mode stays open");
+    assert!(status(&h).contains("Large"), "{}", status(&h));
+    assert_eq!(editor(&h).draft_family().unwrap(), before, "the draft as it was");
+    assert_eq!(editor(&h).steps(), steps);
+    // Cancel: the dimension and the locks dropped, no step, no Unsaved mark.
+    press(&mut h, "Cancel Edit Mode");
+    assert!(!editor(&h).sketching());
+    assert_eq!(editor(&h).draft_family().unwrap(), before);
+    assert_eq!((editor(&h).steps(), editor(&h).unsaved()), (steps, unsaved));
+}
+
+#[test]
+fn a_label_made_by_create_parameter_while_sketching_goes_with_cancel() {
+    let mut h = sketching("", 0);
+    let params = editor(&h).draft_family().unwrap().parameters.len();
+    let d = dimension_west_to_east(&mut h);
+    click_family(&mut h, [100.0, -450.0, 0.0]);
+    h.get_by_label("Label").click();
+    h.run();
+    press_near(&mut h, "Create Parameter…", "Label");
+    type_into(&mut h, "Name", "Span");
+    press_near(&mut h, "OK", "Name");
+    assert_eq!(made(&h)[0].label.as_deref(), Some("Span"), "{}", status(&h));
+    assert_eq!(editor(&h).draft_family().unwrap().parameters.len(), params, "held with the sketch");
+    assert_eq!(made(&h)[0].guid, d.guid);
+    press(&mut h, "Cancel Edit Mode");
+    assert_eq!(editor(&h).draft_family().unwrap().parameters.len(), params, "dropped");
+    // Made again and finished: the parameter comes with the form.
+    ed_mut(&mut h).edit_form_sketch(0).unwrap();
+    h.run();
+    dimension_west_to_east(&mut h);
+    click_family(&mut h, [100.0, -450.0, 0.0]);
+    h.get_by_label("Label").click();
+    h.run();
+    press_near(&mut h, "Create Parameter…", "Label");
+    type_into(&mut h, "Name", "Span");
+    press_near(&mut h, "OK", "Name");
+    press(&mut h, "Finish Edit Mode");
+    assert!(!editor(&h).sketching(), "{}", status(&h));
+    let f = editor(&h).draft_family().unwrap();
+    assert!(f.parameters.iter().any(|p| p.name == "Span"));
+    assert!(f.dimensions.iter().any(|x| x.label.as_deref() == Some("Span")));
+}
+
+#[test]
+fn a_sketch_line_deleted_takes_its_dimensions_with_it() {
+    let mut h = sketching(&span(), 0);
+    let mine = dimension_west_to_east(&mut h);
+    let names_west = |h: &Harness<BimApp>| {
+        editor(h).sketch_dimensions().iter().any(|d| d.refs.iter().any(|r| matches!(r, DimRef::Sketch(_, l) if *l == g(WEST))))
+    };
+    assert!(names_west(&h));
+    // The west line picked and deleted: both dimensions that measure to it go, the one made now and the draft's.
+    click_family(&mut h, [-300.0, 100.0, 0.0]);
+    assert!(!editor(&h).sketch.as_ref().unwrap().sketch.picked.is_empty(), "picked");
+    key(&mut h, Key::Delete);
+    assert!(!names_west(&h));
+    assert!(editor(&h).sketch_dimensions().iter().all(|d| d.guid != mine.guid && d.guid != g(SPAN)));
+    // Drawn again and finished: a new line, and no dimension of the old one.
+    h.get_by_role_and_label(Role::Button, "Line").click();
+    h.run();
+    click_family(&mut h, [-300.0, 200.0, 0.0]);
+    click_family(&mut h, [-300.0, -200.0, 0.0]);
+    key(&mut h, Key::Escape);
+    press(&mut h, "Finish Edit Mode");
+    assert!(!editor(&h).sketching(), "{}", status(&h));
+    assert!(editor(&h).dimensions.iter().all(|d| !d.refs.iter().any(|r| r.names(g(WEST)))));
+    assert!(editor(&h).dimensions.iter().all(|d| d.guid != g(SPAN)));
+}
+
+#[test]
+fn radial_dimension_on_a_sketch_circle_and_its_label_drives_the_radius() {
+    let mut h = sketching("", 1);
+    h.get_by_role_and_label(Role::Button, "Radial").click();
+    h.run();
+    click_family(&mut h, [80.0, 600.0, 0.0]);
+    click_family(&mut h, [300.0, 700.0, 0.0]);
+    let r = made(&h).last().cloned().expect("a radial dimension");
+    assert_eq!((r.kind, r.refs.clone()), (DimKind::Radial, vec![DimRef::Sketch(g(DISC), g(RING))]), "{}", status(&h));
+    key(&mut h, Key::Escape);
+    ed_mut(&mut h).set_label(r.guid, Some("R".into())).unwrap();
+    let ring = editor(&h).sketch.as_ref().unwrap().sketch.lines.iter().find(|l| l.guid == g(RING)).unwrap().clone();
+    match ring.curve {
+        bimcraft_core::curves::Curve::Circle { radius, .. } => assert!((radius - 120.0).abs() < 1e-6, "Large's R: {radius}"),
+        c => panic!("a circle: {c:?}"),
+    }
+    press(&mut h, "Finish Edit Mode");
+    assert!(!editor(&h).sketching(), "{}", status(&h));
+    let f = editor(&h).draft_family().unwrap();
+    let v = f.values("Small", &BTreeMap::new()).unwrap();
+    let at = f.dimensions.iter().position(|d| d.guid == r.guid).unwrap();
+    assert_eq!(f.measured(&v).unwrap()[at], vec![50.0], "the radius flexes with R");
+}
+
+#[test]
+fn angular_dimension_between_two_sketch_lines() {
+    let mut h = sketching("", 0);
+    shortcut(&mut h, "AN");
+    assert_eq!(editor(&h).views.dim_kind, DimKind::Angular);
+    click_family(&mut h, [100.0, -200.0, 0.0]);
+    click_family(&mut h, [300.0, 100.0, 0.0]);
+    click_family(&mut h, [200.0, -120.0, 0.0]);
+    let d = made(&h).last().cloned().expect("an angular dimension");
+    assert_eq!(d.kind, DimKind::Angular);
+    assert_eq!(d.refs, vec![DimRef::Sketch(g(SLAB), g(SOUTH)), DimRef::Sketch(g(SLAB), g(EAST))], "{}", status(&h));
+    press(&mut h, "Finish Edit Mode");
+    assert!(!editor(&h).sketching(), "{}", status(&h));
+    let f = editor(&h).draft_family().unwrap();
+    let v = f.values("Large", &BTreeMap::new()).unwrap();
+    let at = f.dimensions.iter().position(|x| x.guid == d.guid).unwrap();
+    assert_eq!(f.measured(&v).unwrap()[at], vec![90.0]);
+}
+
+#[test]
+fn a_reference_plane_dimensioned_to_a_sketch_line_while_sketching() {
+    let mut h = sketching("", 0);
+    shortcut(&mut h, "DI");
+    // Left, where Large (previewed) has it, then the west line.
+    click_family(&mut h, [-700.0, 900.0, 0.0]);
+    click_family(&mut h, [-300.0, 100.0, 0.0]);
+    click_family(&mut h, [-500.0, -600.0, 0.0]);
+    let d = made(&h).last().cloned().expect("a dimension");
+    assert_eq!(d.refs, vec![DimRef::Plane(g(LEFT)), DimRef::Sketch(g(SLAB), g(WEST))], "{}", status(&h));
+    press(&mut h, "Finish Edit Mode");
+    assert!(editor(&h).dimensions.iter().any(|x| x.guid == d.guid), "{}", status(&h));
+}
+
+#[test]
+fn the_drafts_dimensions_of_the_form_show_and_are_edited_while_it_is_sketched() {
+    let mut h = sketching(&span(), 0);
+    // The span, the draft's, is there to select by its line (with Modify: Escape puts Line down), and its padlock locks it:
+    // held with the sketch.
+    key(&mut h, Key::Escape);
+    click_family(&mut h, [100.0, -450.0, 0.0]);
+    assert_eq!(editor(&h).sketch.as_ref().unwrap().selected_dim, Some(g(SPAN)), "{}", status(&h));
+    click_padlock(&mut h, 0.0, -450.0);
+    assert!(editor(&h).sketch.as_ref().unwrap().changed.iter().any(|d| d.guid == g(SPAN) && d.is_locked(0)), "{}", status(&h));
+    assert!(!editor(&h).dimensions.iter().any(|d| d.guid == g(SPAN) && d.is_locked(0)), "the draft waits");
+    press(&mut h, "Finish Edit Mode");
+    assert!(editor(&h).dimensions.iter().any(|d| d.guid == g(SPAN) && d.is_locked(0)), "{}", status(&h));
+    // Selected while sketching, Delete takes it off, at Finish.
+    ed_mut(&mut h).edit_form_sketch(0).unwrap();
+    h.run();
+    key(&mut h, Key::Escape);
+    click_family(&mut h, [100.0, -450.0, 0.0]);
+    key(&mut h, Key::Delete);
+    assert!(editor(&h).dimensions.iter().any(|d| d.guid == g(SPAN)));
+    assert_eq!(editor(&h).sketch.as_ref().unwrap().sketch.lines.len(), 4, "no line deleted");
+    press(&mut h, "Finish Edit Mode");
+    assert!(editor(&h).dimensions.iter().all(|d| d.guid != g(SPAN)), "{}", status(&h));
+}
+
+#[test]
+fn no_dimension_tool_while_sketching_in_3d() {
+    let mut h = sketching("", 0);
+    view(&mut h, None);
+    shortcut(&mut h, "DI");
+    assert!(editor(&h).views.dimensioning.is_none(), "not in {{3D}}");
+    assert!(editor(&h).sketch_undimensionable().is_some());
+}
+
+/// A sketch in plan with an aligned dimension between two of its lines, labelled and locked, selected; and a disc's sketch
+/// with a radial dimension. Saved where `BIMCRAFT_FE12_DUMP` says (only then).
+#[test]
+fn family_sketch_dimensions_screenshots() {
+    let Ok(folder) = std::env::var("BIMCRAFT_FE12_DUMP") else { return };
+    std::fs::create_dir_all(&folder).unwrap();
+    let mut h = app(&family(""));
+    h.set_size(vec2(1600.0, 1000.0));
+    h.state_mut().edit_family("Box");
+    h.run();
+    view(&mut h, Some(Which::Plan));
+    h.run();
+    ed_mut(&mut h).edit_form_sketch(0).unwrap();
+    h.run();
+    let d = dimension_west_to_east(&mut h);
+    click_family(&mut h, [100.0, -450.0, 0.0]);
+    ed_mut(&mut h).set_label(d.guid, Some("Width".into())).unwrap();
+    h.run();
+    let (w, e) = (line(&h, WEST), line(&h, EAST));
+    click_padlock(&mut h, (w.0.0 + e.0.0) / 2.0, -450.0);
+    h.hover_at(egui::pos2(1500.0, 900.0));
+    h.run();
+    h.render().unwrap().save(std::path::Path::new(&folder).join("fe12-sketch-aligned.png")).unwrap();
+    press(&mut h, "Cancel Edit Mode");
+    ed_mut(&mut h).edit_form_sketch(1).unwrap();
+    h.run();
+    h.get_by_role_and_label(Role::Button, "Radial").click();
+    h.run();
+    click_family(&mut h, [80.0, 600.0, 0.0]);
+    click_family(&mut h, [300.0, 750.0, 0.0]);
+    key(&mut h, Key::Escape);
+    // Selected by its leader, labelled R: its padlock shows.
+    let r = made(&h).last().cloned().unwrap();
+    ed_mut(&mut h).set_label(r.guid, Some("R".into())).unwrap();
+    ed_mut(&mut h).sketch.as_mut().unwrap().selected_dim = Some(r.guid);
+    h.hover_at(egui::pos2(1500.0, 900.0));
+    h.run();
+    h.render().unwrap().save(std::path::Path::new(&folder).join("fe12-sketch-radial.png")).unwrap();
+}
