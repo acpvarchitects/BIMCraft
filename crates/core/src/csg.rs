@@ -27,6 +27,12 @@ impl Default for Meter {
 const TOO_MUCH: &str = "it has too many faces to cut: give it fewer sides, or fewer triangles";
 
 impl Meter {
+    /// `n` times what one cut may cost: for work that is several cuts, as dividing a part into pieces is.
+    pub fn times(n: u64) -> Meter {
+        let one = Meter::default();
+        Meter { work: one.work.saturating_mul(n), splits: one.splits.saturating_mul(n) }
+    }
+
     fn work(&mut self, corners: usize) -> Result<(), String> {
         self.work = self.work.checked_sub(corners as u64 + 1).ok_or(TOO_MUCH)?;
         Ok(())
@@ -289,6 +295,29 @@ pub fn subtract(solid: &[[P3; 3]], void: &[[P3; 3]], meter: &mut Meter) -> Resul
     Ok(a.polygons().iter().flat_map(Poly::triangles).collect())
 }
 
+/// What `solid` and `other` share: each a closed surface of triangles turned outward; the part of `solid` inside
+/// `other`, as triangles, none where they are apart. With [`subtract`] of the same two it makes `solid` again.
+pub fn intersect(solid: &[[P3; 3]], other: &[[P3; 3]], meter: &mut Meter) -> Result<Vec<[P3; 3]>, String> {
+    for (what, n) in [("the solid cut", solid.len()), ("what cuts it", other.len())] {
+        if n > MAX_TRIANGLES {
+            return Err(format!("{what} has {n} triangles; it can't have more than {MAX_TRIANGLES} to cut"));
+        }
+    }
+    let ((lo_s, hi_s), (lo_o, hi_o)) = (bounds(solid), bounds(other));
+    if (0..3).any(|k| lo_o[k] > hi_s[k] + EPS || hi_o[k] < lo_s[k] - EPS) {
+        return Ok(Vec::new());
+    }
+    let (mut a, mut b) = (Bsp::of(solid, meter)?, Bsp::of(other, meter)?);
+    a.invert();
+    b.clip_to(&a, meter)?;
+    b.invert();
+    a.clip_to(&b, meter)?;
+    b.clip_to(&a, meter)?;
+    a.build(b.polygons(), meter)?;
+    a.invert();
+    Ok(a.polygons().iter().flat_map(Poly::triangles).collect())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -346,6 +375,30 @@ mod tests {
             assert!((volume(&got) - left).abs() < 1e-3, "{what}: {} left, not {left}", volume(&got));
             assert!((area(&got) - surface).abs() < 1e-3, "{what}: {} of surface, not {surface}", area(&got));
         }
+    }
+
+    #[test]
+    fn what_two_solids_share_and_what_one_keeps_make_it_again() {
+        let slab = cuboid([0.0, 0.0, 0.0], [1000.0, 1000.0, 100.0]);
+        // A box through it, a pocket flush with its top, one at a corner, one inside it, one round it all, one away.
+        for (what, lo, hi, shared) in [
+            ("through", [400.0, 400.0, -10.0], [600.0, 600.0, 110.0], 4e6),
+            ("a pocket", [400.0, 400.0, 50.0], [600.0, 600.0, 100.0], 2e6),
+            ("a corner", [0.0, 0.0, 0.0], [500.0, 500.0, 50.0], 1.25e7),
+            ("a cavity", [400.0, 400.0, 40.0], [600.0, 600.0, 60.0], 8e5),
+            ("all of it", [-1.0, -1.0, -1.0], [1001.0, 1001.0, 101.0], 1e8),
+            ("away", [2000.0, 0.0, 0.0], [3000.0, 100.0, 100.0], 0.0),
+        ] {
+            let other = cuboid(lo, hi);
+            let both = intersect(&slab, &other, &mut Meter::default()).unwrap();
+            assert!((volume(&both) - shared).abs() < 1e-3, "{what}: {} shared, not {shared}", volume(&both));
+            let kept = volume(&cut(&slab, &other));
+            assert!((kept + volume(&both) - 1e8).abs() < 1e-3, "{what}: {kept} kept and {} shared", volume(&both));
+        }
+        let many = vec![slab[0]; MAX_TRIANGLES + 1];
+        assert!(intersect(&many, &slab, &mut Meter::default()).unwrap_err().contains("20000"));
+        assert!(intersect(&slab, &slab, &mut Meter { work: 10, splits: 10 }).unwrap_err().contains("too many faces"));
+        assert!(Meter::times(3).work == 3 * Meter::default().work);
     }
 
     #[test]

@@ -112,7 +112,7 @@ the category `part`, which an older one refuses on opening, saying so.
 
 ## Next
 
-Divide Parts (the engine is `divide.rs`; a division is a new `Source`, its cuts in the host's own coordinates, and the divided
+Divide Parts (the engine is `divide.rs`, written up in [parts-geometry](parts-geometry.md); a division is a new `Source`, its cuts in the host's own coordinates, and the divided
 part the sum of its divisions), edge offsets and gaps, parts in plans, sections and the 3D view with Parts Visibility (Show
 Original, Show Parts, Show Both) and colours by `Decay_Pathology` or `Historical_Period`, schedules and tags of parts, the
 desktop's tools (the material's weight and heat among them), reading parts and a material's values from IFC, and the
