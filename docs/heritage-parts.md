@@ -19,17 +19,19 @@ from `release/family-editor` or `followups/family-editor`, and it touches differ
 
 ## 1. Where things stand
 
-Integration branch on the fork: **`feature/heritage-parts`**, 7 commits on upstream `main` f202abd (FORMAT 18).
+Integration branch on the fork: **`feature/heritage-parts`**, 7 commits on upstream `main` f202abd (FORMAT 18); the
+steps after HP-1 are fork PRs into it, each with green CI, waiting for review (2026-11-12).
 Compare: <https://github.com/acpvarchitects/BIMCraft/compare/f202abd...feature/heritage-parts>
 
 | Step | What | Where | State |
 |---|---|---|---|
 | HP-1 | The part element, its solid and quantities, its values by name, `create_parts` / `part` / `parts`, IFC export, material values, `docs/areas/parts.md` | `feature/heritage-parts` (b7a9847) | **Done**, waiting for review |
-| HP-2 | The division engine: a part's solid cut by planes, lines drawn on a face, extruded profiles; gaps and offsets; measuring | `vp/heritage-parts-divide`, 6 local commits on f202abd, `docs/areas/parts-geometry.md` | Mostly done, not pushed; last fixes in progress |
-| HP-3 | `divide_parts`: HP-1 and HP-2 wired together | | Not started (needs HP-2) |
-| HP-4 | Parts Visibility per view: Show Original, Show Parts, Show Both | `vp/heritage-parts-views`, 1 local commit | Built, not pushed |
-| HP-5 | Colour maps by `Decay_Pathology` or `Historical_Period`, with a legend | same branch | Started, uncommitted |
-| HP-6 | Schedules of parts: the bill of quantities, xlsx | `vp/heritage-parts-schedules` | Started, uncommitted |
+| HP-1 fix | A part measured on the face it shows: a wall's interior plaster on the interior face, a ceiling's plaster on its underside (Vincenzo's decision, 10.2) | [#19](https://github.com/acpvarchitects/BIMCraft/pull/19), `vp/heritage-parts-net-area` | **Done**, in review |
+| HP-2 | The division engine: a part's solid cut by planes, lines drawn on a face, extruded profiles; gaps and offsets; measuring | [#16](https://github.com/acpvarchitects/BIMCraft/pull/16), `vp/heritage-parts-divide`, `docs/areas/parts-geometry.md` | **Done**, in review |
+| HP-3 | `divide_parts`: HP-1 and HP-2 wired together | | Next (on HP-2) |
+| HP-4 | Parts Visibility per view: Show Original, Show Parts, Show Both | [#20](https://github.com/acpvarchitects/BIMCraft/pull/20), `vp/heritage-parts-views` | **Done**, in review |
+| HP-5 | Colour maps (`theme`) by `Decay_Pathology`, `Historical_Period` or any part value, with a legend | same PR | **Done**, in review |
+| HP-6 | Schedules of parts: the bill of quantities (Restoration Quantities), CSV and xlsx | [#17](https://github.com/acpvarchitects/BIMCraft/pull/17), `vp/heritage-parts-schedules` | **Done**, in review |
 | HP-7 | Desktop: Create Parts, Divide Parts (sketch on the face), Properties of a part | | Not started |
 | HP-8 | IFC import of parts | | Not started |
 | HP-9 | The `FORMAT` step | | Not started; needs agreement (2.3) |
@@ -102,7 +104,7 @@ wall type was edited would be worse than a visible conflict.
 - **Quantities and survey data.** `BIMCraft_PartQuantities` (`Width`, `NetArea`, `NetVolume`), since IFC4 has no quantity
   set for parts. `BIMCraft_Heritage` holds the survey values that were set. Material values go out as
   `Pset_MaterialCommon` / `Pset_MaterialThermal`.
-- **The consequence to agree.** BIMCraft's own IFC import skips a host with no body, and its doors and windows with it,
+- **Vincenzo's choice (10.1): no body on the host, and HP-8 rebuilds it from the parts.** BIMCraft's own IFC import skips a host with no body, and its doors and windows with it,
   listing them in `skipped`. HP-8 should read a decomposed host's shape from its parts. Until then a file exported with
   parts does not come back whole. **The alternative** is to keep the host's body too: simpler import, but every reader
   then sees the wall twice.
@@ -155,7 +157,9 @@ it.
 - its solid: a closed mesh in model coordinates, counter-clockwise from outside. A wall's solid has its joins,
   attached top and base, and openings cut through. A floor's, roof's and ceiling's lose their openings and shafts.
 - thickness and material;
-- net volume, and net area of its main face: a wall part's exterior-side face, the top of the others;
+- net volume, and net area of the face it shows: a wall part's exterior face, but the interior face for a layer inside
+  the structure (the interior plaster); the top of a floor's or a roof's part; a ceiling's top, but the underside for a
+  layer under its structure (its plaster);
 - mass and thermal resistance, where its material says density and conductivity.
 
 `Material` gains three optional values for that: `density`, `conductivity` and `specific_heat`.
@@ -255,8 +259,10 @@ divided part has no area or volume of its own, because its divisions hold them, 
 
 **Colour maps** (HP-5) colour parts by a value, in plan, elevation, section and 3D, with a legend. The value is
 `Decay_Pathology` or `Historical_Period`; `Decay_Severity` gets an ordered ramp.
-- **Stable colours.** One value has one colour in every view and run: a fixed palette over the sorted values, or the
-  user's choice.
+- **Stable colours.** One value has one colour in every view and run. The 26 named decays have a fixed table of colours
+  picked far apart in CIELAB (any two a survey uses are told apart; before, Detachment and Biological colonization were
+  one green); `Decay_Severity` a ramp; any other value a palette slot by a hash of its text; or the user's choice.
+- **The command.** `theme {view, by, colors?, legend?, off?}`; a template holding a Parts Visibility holds the theme too.
 - **The legend** lists value, colour, count and total net area, the figure a decay map reports. "Not set" is a row of
   its own.
 - **How it is built.** It rides on the existing view filters and overrides (`graphics.rs`, `Look`), not on a parallel
@@ -328,13 +334,18 @@ Each tool drives a command; the UI stays thin.
 
 ## 10. Open questions
 
-1. **IFC body of a decomposed host** (2.4): read it back from the parts in HP-8, or keep it on the host too?
-2. **A wall part's net area** is measured on the exterior-side face for every layer. An interior plaster might rather
-   use the face it shows.
-3. **The decay list** (2.6): are the 26 terms the right set?
-4. **`SU_Code`**: or `MSU_Code` for masonry only?
+Answered by Vincenzo on 2026-11-11 (the IFC one still for the maintainers to agree, as 2.4):
+1. ~~IFC body of a decomposed host~~: **no body on the host; HP-8 rebuilds it from the parts.**
+2. ~~A wall part's net area~~: **each layer on the face it shows**: a wall's interior plaster on the interior face, a
+   ceiling's plaster on its underside (#19).
+3. ~~The decay list~~: **the 26 terms stand.**
+4. ~~`SU_Code` or `MSU_Code`~~: **`SU_Code`.**
+
+Still open:
 5. **The `FORMAT` number** (2.3), with the family line.
 6. **Parts in a project brought in by Insert from File**: a type with the same name but different layer GUIDs puts its
    parts in conflict, which `part {layer}` fixes. Is that acceptable?
 7. **`csg::MAX_TRIANGLES`** (20 000) can be reached by a large floor's part. Raise it for parts, or cut near the cutter
    only (`parts-geometry.md`)?
+8. **A theme's legend in an elevation** counts every part from its line to its far clip, hidden behind others or not
+   (a box seen from the south lists the north wall's parts too). Count only what the elevation shows?
