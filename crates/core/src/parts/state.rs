@@ -301,11 +301,13 @@ impl Model {
         Ok(match host {
             Element::Wall(w) => {
                 let axis = Axis::of(w);
+                // Measured on its own side: a layer inside the structure on the interior face, any other on the exterior.
+                let inside = k.is_some_and(|k| interior(self.type_layers("wall", &w.type_name), k));
                 let facing = match axis.arc() {
                     // Its exterior side is to its left: turning left, toward the arc's centre.
-                    Some((centre, _, _, sweep)) => Facing::Round { centre, inward: sweep > 0.0 },
+                    Some((centre, _, _, sweep)) => Facing::Round { centre, inward: (sweep > 0.0) != inside },
                     None => {
-                        let out = axis.tangent(0.0).perp();
+                        let out = axis.tangent(0.0).perp() * if inside { -1.0 } else { 1.0 };
                         Facing::Along(vec![[out.0, out.1, 0.0]])
                     }
                 };
@@ -485,4 +487,15 @@ pub(crate) fn json(m: &Model, id: Id, p: &BuildingPart, extra: &mut Map<String, 
     if let Some(conflict) = state.conflict {
         extra.insert("conflict".into(), json!(conflict));
     }
+}
+
+/// Whether layer `k` of a wall's `layers` (from its exterior in) lies on the interior side of the wall's structure, so
+/// that its area is its interior face's: past the last structure layer, or, with none, past the thickest (the first of
+/// the thickest).
+fn interior(layers: &[crate::model::Layer], k: usize) -> bool {
+    let core = layers
+        .iter()
+        .rposition(|l| l.function == crate::model::Function::Structure)
+        .or_else(|| layers.iter().enumerate().max_by(|a, b| a.1.thickness.total_cmp(&b.1.thickness).then(b.0.cmp(&a.0))).map(|(i, _)| i));
+    core.is_some_and(|c| k > c)
 }

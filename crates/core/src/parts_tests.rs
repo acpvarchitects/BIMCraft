@@ -632,6 +632,10 @@ fn walls_that_join_give_their_parts_their_ends_and_curved_ones_their_bow() {
     assert!(area <= face && area > 0.999 * face, "{area} of {face}");
     let ring = (radius - 240.0) * sweep * 20.0 * 3000.0;
     assert!((volume - ring).abs() < 0.002 * ring, "{volume} of {ring}");
+    // Its interior plaster is measured on the interior face, the arc on the other side of the wall.
+    let (_, area, _) = measured(&s.model, s.model.parts_of(bow)[2]);
+    let face = (radius + 250.0) * sweep * 3000.0;
+    assert!(area <= face && area > 0.999 * face, "{area} of {face}");
 }
 
 #[test]
@@ -1615,4 +1619,32 @@ fn a_materials_weight_and_heat_are_numbers_above_nothing_and_within_reason() {
         x.conductivity = Some(f64::NAN);
     }
     assert_eq!(m.check().unwrap_err(), "material `Lime Plaster`: conductivity is W/(m·K), above 0 and at most 10000, not NaN");
+}
+
+/// A wall's part is measured on its own side of the wall: a layer outside the wall's structure on its exterior face, one
+/// inside it on its interior face, and the structure, as a single layer is, on its exterior face. Round a room's corner
+/// the interior plaster's face is the shorter by the wall's thickness.
+#[test]
+fn a_wall_part_is_measured_on_the_face_of_its_own_side() {
+    let mut s = Session::new();
+    run(
+        &mut s,
+        "type",
+        json!({"category": "wall", "name": "Three", "layers": [
+            {"function": "finish", "thickness": 20}, {"function": "structure", "thickness": 460}, {"function": "finish", "thickness": 15}
+        ]}),
+    );
+    // Drawn clockwise, so each wall's exterior, its left, is outside the room.
+    let walls = made(&run(
+        &mut s,
+        "wall",
+        json!({"points": [[0, 0], [0, 6000], [8000, 6000], [8000, 0]], "closed": true, "type": "Three", "height": 3000}),
+    ));
+    let west = walls[0];
+    run(&mut s, "create_parts", json!({"ids": [west]}));
+    let listed = run(&mut s, "parts", json!({"host": west}));
+    let areas: Vec<f64> = listed["parts"].as_array().unwrap().iter().map(|p| p["area_m2"].as_f64().unwrap()).collect();
+    // 6 m between the axes' corners, the wall 495 mm thick: outside 6.495 m long, its masonry's outer face 6.455 m, the
+    // room's face 5.505 m.
+    assert_eq!(areas, [19.485, 19.365, 16.515]);
 }
