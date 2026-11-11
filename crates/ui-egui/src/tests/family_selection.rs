@@ -261,11 +261,11 @@ fn id_selects_what_a_list_of_ids_and_guids_names_and_says_what_names_nothing() {
     assert_eq!(project(&h), before, "nothing of it reaches the project");
 }
 
-/// A small box of two types, S 100 wide and L 300, to nest.
+/// A small box of two types, Short 100 wide and Long 300, to nest.
 fn small_file(dir: &std::path::Path) -> std::path::PathBuf {
     let path = dir.join("Small.json");
     let family = json!({"name": "Small", "category": "generic", "parameters": [{"name": "W", "value": 100}],
-        "types": {"S": {}, "L": {"W": 300}},
+        "types": {"Short": {}, "Long": {"W": 300}},
         "forms": [{"profile": [[0, 0], ["W", 0], ["W", 100], [0, 100]], "to": 100}]});
     std::fs::write(&path, family.to_string()).unwrap();
     path
@@ -290,8 +290,8 @@ fn sa_and_sv_select_the_nested_instances_of_the_selected_ones_family_and_type() 
     h.state_mut().nest_family_file(doc, &small_file(dir.path()));
     h.run();
     assert_eq!(editor(&h).nested.len(), 1, "Small is loaded into the family");
-    // Three of type S and one of L in a row in front of the boxes; the second S switched off.
-    for (type_name, x) in [("S", 200.0), ("S", 600.0), ("S", 1000.0), ("L", 1400.0)] {
+    // Three of type Short and one of Long in a row in front of the boxes; the second Short switched off.
+    for (type_name, x) in [("Short", 200.0), ("Short", 600.0), ("Short", 1000.0), ("Long", 1400.0)] {
         place(&mut h, type_name, [x, -400.0, 0.0]);
     }
     assert_eq!(editor(&h).nested_instances.len(), 4);
@@ -305,7 +305,7 @@ fn sa_and_sv_select_the_nested_instances_of_the_selected_ones_family_and_type() 
     assert_eq!(selected(&h), vec![Picked::Nested(0), Picked::Nested(2)], "SA: visible in view");
     shortcut(&mut h, "SV");
     assert_eq!(selected(&h), vec![Picked::Nested(0), Picked::Nested(1), Picked::Nested(2)], "SV: in entire project");
-    // Another type is another: L alone.
+    // Another type is another: Long alone.
     click_family(&mut h, [1500.0, -350.0, 0.0]);
     assert_eq!(selected(&h), vec![Picked::Nested(3)]);
     shortcut(&mut h, "SV");
@@ -324,11 +324,26 @@ fn sa_and_sv_select_the_nested_instances_of_the_selected_ones_family_and_type() 
     shortcut(&mut h, "SA");
     shortcut(&mut h, "SV");
     assert_eq!(selected(&h), vec![Picked::Form(1)]);
-    // The Project Browser's menu on a nested family's type asks the same of the type.
-    editor_mut(&mut h).select_instances_of("Small", "S", true);
-    assert_eq!(selected(&h), vec![Picked::Nested(0), Picked::Nested(2)]);
-    editor_mut(&mut h).select_instances_of("Small", "S", false);
-    assert_eq!(selected(&h), vec![Picked::Nested(0), Picked::Nested(1), Picked::Nested(2)]);
+    // The Project Browser's menu on a nested family's type asks the same of the type, as the project's does on a type: with
+    // none of its instances selected.
+    for (scope, found) in [
+        ("Visible in View", vec![Picked::Nested(0), Picked::Nested(2)]),
+        ("In Entire Project", vec![Picked::Nested(0), Picked::Nested(1), Picked::Nested(2)]),
+    ] {
+        click_family(&mut h, [700.0, 400.0, 0.0]);
+        h.get_by_label("Short").scroll_to_me();
+        h.run();
+        let at = h.get_by_label("Short").rect().center();
+        right_click_at(&mut h, at);
+        choose_item(&mut h, "Select All Instances");
+        choose_item(&mut h, scope);
+        assert_eq!(selected(&h), found, "the browser's {scope}");
+    }
+    let at = h.get_by_label("Long").rect().center();
+    right_click_at(&mut h, at);
+    choose_item(&mut h, "Select All Instances");
+    choose_item(&mut h, "In Entire Project");
+    assert_eq!(selected(&h), vec![Picked::Nested(3)], "the other type's");
     // In {3D} and an elevation too: the keys are the document's, not a view's.
     for which in [None, Some(Which::Elevation(Side::Front))] {
         view(&mut h, which);
