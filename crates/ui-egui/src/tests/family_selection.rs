@@ -273,9 +273,22 @@ fn small_file(dir: &std::path::Path) -> std::path::PathBuf {
 
 /// An instance of Small's type `type_name` placed by Component at `at` of the floor plan.
 fn place(h: &mut Harness<BimApp>, type_name: &str, at: [f64; 3]) {
+    place_of(h, "Small", type_name, at);
+}
+
+/// A family of a symbolic line alone, to nest: it builds nothing, and a plan draws its line.
+fn mark_file(dir: &std::path::Path) -> std::path::PathBuf {
+    let path = dir.join("Mark.json");
+    let family = json!({"name": "Mark", "category": "generic", "types": {"M": {}}, "symbols": [{"line": [[0, 0], [200, 0]]}]});
+    std::fs::write(&path, family.to_string()).unwrap();
+    path
+}
+
+/// An instance of nested family `family`'s type `type_name` placed by Component at `at` of the floor plan.
+fn place_of(h: &mut Harness<BimApp>, family: &str, type_name: &str, at: [f64; 3]) {
     shortcut(h, "CM");
     assert!(editor(h).placing.is_some(), "Component");
-    editor_mut(h).placing = Some(("Small".into(), type_name.into()));
+    editor_mut(h).placing = Some((family.into(), type_name.into()));
     let pos = editor(h).views.screen_of(at).expect("the floor plan shows");
     click_at(h, pos);
     h.run();
@@ -638,4 +651,69 @@ fn pr_after_an_undo_brings_back_the_form_that_was_selected_not_the_one_now_in_it
     undo(&mut h);
     shortcut(&mut h, "PR");
     assert_eq!(selected(&h), vec![Picked::Plane(g(EDGE))], "the plane, not the symbol's place");
+}
+
+/// SA's Visible in View is what the view in front shows: not an instance its Visibility Settings leave out of that view, and
+/// in a plan an instance of a family of symbols alone, which builds nothing. Where the view shows none, the selection stays.
+#[test]
+fn sa_takes_what_the_view_in_front_shows_and_keeps_the_selection_where_it_shows_none() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = plan();
+    let before = project(&h);
+    let doc = h.state().active_doc().expect("a family document");
+    h.state_mut().nest_family_file(doc, &small_file(dir.path()));
+    h.state_mut().nest_family_file(doc, &mark_file(dir.path()));
+    h.run();
+    assert_eq!(editor(&h).nested.len(), 2, "Small and Mark are loaded into the family");
+    // Three Shorts in front of the boxes, the third left out of Front and Back by its Visibility Settings; two Marks.
+    for x in [200.0, 600.0, 1000.0] {
+        place(&mut h, "Short", [x, -400.0, 0.0]);
+    }
+    for x in [200.0, 600.0] {
+        place_of(&mut h, "Mark", "M", [x, -950.0, 0.0]);
+    }
+    editor_mut(&mut h).nested_instances[2].visibility = Some(bimcraft_core::family::Visibility { front_back: false, ..Default::default() });
+    h.run();
+    let pick = |h: &mut Harness<BimApp>, i: usize| {
+        editor_mut(h).select_nested(Some(i));
+        h.run();
+    };
+    // The plan shows all three Shorts.
+    pick(&mut h, 0);
+    shortcut(&mut h, "SA");
+    assert_eq!(selected(&h), vec![Picked::Nested(0), Picked::Nested(1), Picked::Nested(2)], "the plan shows all three");
+    // Front doesn't show the third: SA leaves it out there, SV takes it.
+    view(&mut h, Some(Which::Elevation(Side::Front)));
+    pick(&mut h, 0);
+    shortcut(&mut h, "SA");
+    assert_eq!(selected(&h), vec![Picked::Nested(0), Picked::Nested(1)], "Front leaves the third out");
+    shortcut(&mut h, "SV");
+    assert_eq!(selected(&h), vec![Picked::Nested(0), Picked::Nested(1), Picked::Nested(2)], "SV: all of them");
+    // Left shows it.
+    view(&mut h, Some(Which::Elevation(Side::Left)));
+    pick(&mut h, 0);
+    shortcut(&mut h, "SA");
+    assert_eq!(selected(&h).len(), 3, "Left shows all three");
+    // A family of symbols alone builds nothing: the plan draws its instances' lines, and SA takes them there.
+    view(&mut h, Some(Which::Plan));
+    pick(&mut h, 3);
+    shortcut(&mut h, "SA");
+    assert_eq!(selected(&h), vec![Picked::Nested(3), Picked::Nested(4)], "the plan draws the Marks");
+    // An elevation and {3D} draw none of them: SA finds nothing there, and the selection stays as it was.
+    for which in [Some(Which::Elevation(Side::Front)), None] {
+        view(&mut h, which);
+        pick(&mut h, 3);
+        shortcut(&mut h, "SA");
+        assert_eq!(selected(&h), vec![Picked::Nested(3)], "{which:?} shows no Mark: the selection stays");
+    }
+    // The Project Browser's menu on a type none is placed of keeps the selection too.
+    view(&mut h, Some(Which::Plan));
+    h.get_by_label("Long").scroll_to_me();
+    h.run();
+    let at = h.get_by_label("Long").rect().center();
+    right_click_at(&mut h, at);
+    choose_item(&mut h, "Select All Instances");
+    choose_item(&mut h, "In Entire Project");
+    assert_eq!(selected(&h), vec![Picked::Nested(3)], "no Long is placed: the selection stays");
+    assert_eq!(project(&h), before, "nothing of it reaches the project");
 }

@@ -742,9 +742,14 @@ of the document's history, and nothing reaches the project.
   and is found by its GUID, which a plane and a dimension drawn there and a form sketched there are given as they are made; a
   symbol, a connector and a nested instance made since have neither yet, and nothing names them.
 - **Select All Instances** takes the nested instances of the family and type of those selected (`select::instances`): SA those
-  the views show (Visible in View, which SA means in the project; one its `visible` leaves out isn't shown), SV all of them
-  (In Entire Project, here the whole family). The Project Browser's menu on a nested family's type offers both, as the
-  project's does on a type; the family's views have no right-click menu yet. A form, a plane or a dimension has no type.
+  the view in front shows (Visible in View, which SA means in the project), SV all of them (In Entire Project, here the whole
+  family). What a view shows is `views::nested_shown`: an instance a piece of which the view draws by its Visibility Settings
+  (F8: the instance's over its family's forms', in that view at the document's Detail Level, a plan's cut plane counted), and
+  in a plan one whose family's plan symbols are drawn there, so an instance of a family of symbols alone, which builds
+  nothing, is found in a plan and in no elevation; one its `visible` leaves out is in no view. Where the view shows none of
+  the type, the selection stays as it is. The Project Browser's menu on a nested family's type offers both, as the
+  project's does on a type (with none placed, the selection stays); the family's views have no right-click menu yet. A form,
+  a plane or a dimension has no type.
 - **Select Elements by Face** (BF; the toggle left of the status bar's funnel on the tab of a family that isn't adaptive,
   lit while on and crossed out while off; the window's setting, `select_by_face` in `settings.json`, on to begin with since a
   click has always taken a form by its face, where Revit begins with it off): on, a click on a form's or a nested instance's

@@ -259,24 +259,44 @@ impl Family {
     ) -> Result<Vec<Tagged>, String> {
         let mut out = Vec::new();
         for i in 0..self.nested_instances.len() {
-            if let (Some(d), Some(v)) = (detail, self.nested_instances[i].visibility)
-                && !v.at(d)
-            {
-                continue;
-            }
-            let who = |e: String| format!("nested instance {}: {e}", i + 1);
-            let Some((nested, own, placed)) = self.placed_instance(i, values).map_err(who)? else { continue };
-            if !placed.level() {
-                continue;
-            }
-            meter.spend()?;
-            let to = |p: P2| {
-                let q = placed.point([p.0, p.1, 0.0]);
-                P2(q[0], q[1])
-            };
-            out.extend(nested.marks_metered(&own, detail, meter).map_err(who)?.into_iter().map(|(m, sub)| (m.map(to), sub)));
+            out.extend(self.instance_marks(i, values, detail, meter)?);
         }
         Ok(out)
+    }
+
+    /// Nested instance `i`'s plan marks, sized by `values`: its family's, where it stands upright on a level plane and, at
+    /// `detail` if it says, its Visibility Settings draw there. None where its `visible` leaves it out.
+    fn instance_marks(
+        &self,
+        i: usize,
+        values: &BTreeMap<String, Val>,
+        detail: Option<crate::graphics::Detail>,
+        meter: &mut Meter,
+    ) -> Result<Vec<Tagged>, String> {
+        if let (Some(d), Some(v)) = (detail, self.nested_instances[i].visibility)
+            && !v.at(d)
+        {
+            return Ok(Vec::new());
+        }
+        let who = |e: String| format!("nested instance {}: {e}", i + 1);
+        let Some((nested, own, placed)) = self.placed_instance(i, values).map_err(who)? else { return Ok(Vec::new()) };
+        if !placed.level() {
+            return Ok(Vec::new());
+        }
+        meter.spend()?;
+        let to = |p: P2| {
+            let q = placed.point([p.0, p.1, 0.0]);
+            P2(q[0], q[1])
+        };
+        Ok(nested.marks_metered(&own, detail, meter).map_err(who)?.into_iter().map(|(m, sub)| (m.map(to), sub)).collect())
+    }
+
+    /// Whether a plan at `detail` draws plan marks of nested instance `i`, sized by `values` (the host's), where it stands
+    /// in the host flexed for them: what a plan shows of an instance whose family is of symbols alone.
+    pub fn instance_marked(&self, i: usize, values: &BTreeMap<String, Val>, detail: crate::graphics::Detail) -> bool {
+        let Ok(flexed) = self.flexed(values) else { return false };
+        i < flexed.nested_instances.len()
+            && flexed.instance_marks(i, values, Some(detail), &mut Meter::default()).is_ok_and(|marks| !marks.is_empty())
     }
 
     /// Whether it nests a family named `name`, at any depth.

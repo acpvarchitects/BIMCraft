@@ -149,6 +149,33 @@ pub fn hidden_in(
         .collect()
 }
 
+/// Which of `family`'s nested instances view `which` (none, {3D}) at `detail` draws, sized by `values`: one a piece of
+/// which the view draws by its Visibility Settings (the instance's over its family's forms', F8: a plan by Plan/RCP, cut
+/// where its cut plane at `cut` mm passes through the piece; an elevation by Front/Back or Left/Right; {3D} by the detail
+/// level alone), or, in a plan, one whose family's plan symbols the plan draws there. One its `visible` leaves out, or that
+/// builds nothing the view draws, isn't shown: what Select All Instances' Visible in View and a selection box go by.
+pub fn nested_shown(
+    family: &Family,
+    values: &BTreeMap<String, Val>,
+    which: Option<Which>,
+    detail: crate::graphics::Detail,
+    cut: f64,
+) -> Vec<bool> {
+    use super::visibility::class;
+    let plan = matches!(which, Some(Which::Plan | Which::Ceiling));
+    (0..family.nested_instances.len())
+        .map(|i| {
+            let drawn = family.instance_pieces(i, values).iter().any(|p| match (p.vis, which) {
+                (None, _) => true,
+                (Some(v), None) => v.in_3d(detail),
+                (Some(v), Some(Which::Plan | Which::Ceiling)) => v.in_plan(detail, p.bottom < cut && cut < p.top),
+                (Some(v), Some(Which::Elevation(side))) => v.along(class(side.looking(), P2(1.0, 0.0)), detail, false),
+            });
+            drawn || (plan && family.instance_marked(i, values, detail))
+        })
+        .collect()
+}
+
 /// What `family` takes up sized by `values`, in its axes, its least and greatest corners: what any of its types draws (a form
 /// the type hides is still drawn, halftone); a family that builds nothing, two metres round its origin.
 pub fn extents(family: &Family, values: &BTreeMap<String, Val>) -> (P3, P3) {

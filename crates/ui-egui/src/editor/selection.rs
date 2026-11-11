@@ -13,6 +13,8 @@
 //!   project has no id yet, and one the document made without a GUID none of that either.
 //! - **Select All Instances** (SA, Visible in View, as the project's SA; SV, In Entire Project, here the whole family; the
 //!   Project Browser's menu on a nested family's type): every nested instance of the family and type of those selected.
+//!   Visible in View is what the view in front shows (`views::nested_shown`: its Visibility Settings there, a family of
+//!   symbols alone in a plan); where it shows none, the selection stays.
 //! - **Select Elements by Face** (BF; the status bar's toggle on a family's tab, a setting the window keeps): on, a click
 //!   on a form's or a nested instance's face selects it and a crossing box drawn inside one takes it; off, each is taken
 //!   by an edge of its outline alone (`views.rs`, `select_box::Scene`). Either way a box may begin inside the face of what
@@ -180,30 +182,49 @@ impl FamilyEditor {
         self.selects() && self.selection.items().iter().any(|p| matches!(p, Picked::Nested(i) if *i < self.nested_instances.len()))
     }
 
+    /// Which of `family`'s nested instances the view in front shows (`views::nested_shown`): by their Visibility Settings in
+    /// that view at the document's Detail Level, a plan by where its cut plane is, and in a plan those of a family of
+    /// symbols alone.
+    pub(super) fn nested_shown(&self, family: &Family) -> Vec<bool> {
+        let cut = self
+            .views
+            .cache
+            .as_ref()
+            .and_then(|c| c.staged.model.levels().first().map(|(_, l)| l.view_range.cut))
+            .unwrap_or(bimcraft_core::model::CUT_HEIGHT);
+        bimcraft_core::family::views::nested_shown(family, &self.values(), self.views.shown, self.views.detail, cut)
+    }
+
+    /// The nested instances of the family and type of those among `picked`: those the view in front shows (`shown`), or
+    /// all of the family's. They are the selection; where there are none (the view shows no instance of the type), the
+    /// selection stays as it is.
+    fn take_instances(&mut self, picked: &[Picked], shown: bool) {
+        let family = self.family().unwrap_or_else(|_| self.parts());
+        let in_view = shown.then(|| self.nested_shown(&family));
+        let found = select::instances(&family, picked, in_view.as_deref());
+        if !found.is_empty() {
+            self.selection.apply(&found, How::Replace);
+        }
+    }
+
     /// Select All Instances (SA with `shown`, Visible in View; SV without, In Entire Project): every nested instance of the
     /// family and type of those selected is the selection. Nothing with no nested instance selected.
     pub(crate) fn select_instances(&mut self, shown: bool) {
-        if !self.can_select_instances() {
-            return;
+        if self.can_select_instances() {
+            let picked = self.selection.items().to_vec();
+            self.take_instances(&picked, shown);
         }
-        let family = self.family().unwrap_or_else(|_| self.parts());
-        let found = select::instances(&family, &self.values(), self.selection.items(), shown);
-        self.selection.apply(&found, How::Replace);
     }
 
     /// Every instance of nested family `name`'s type `type_name` selected, as the Project Browser's menu on the type asks:
-    /// those the views show (`shown`), or all of them.
+    /// those the view in front shows (`shown`), or all of them. With none placed, the selection stays as it is.
     pub(crate) fn select_instances_of(&mut self, name: &str, type_name: &str, shown: bool) {
         if !self.selects() {
             return;
         }
-        let Some(first) = self.nested_instances.iter().position(|n| n.family == name && n.type_name == type_name) else {
-            self.selection.clear();
-            return;
-        };
-        let family = self.family().unwrap_or_else(|_| self.parts());
-        let found = select::instances(&family, &self.values(), &[Picked::Nested(first)], shown);
-        self.selection.apply(&found, How::Replace);
+        if let Some(first) = self.nested_instances.iter().position(|n| n.family == name && n.type_name == type_name) {
+            self.take_instances(&[Picked::Nested(first)], shown);
+        }
     }
 
     /// The selection's dialogs, while one is open: Filter, Select by ID and IDs of Selection. What Select by ID has to say
