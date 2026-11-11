@@ -1045,8 +1045,11 @@ impl FamilyEditor {
             }
         }
         let snaps = self.snaps;
-        let square = ui.input(|i| i.modifiers.shift);
+        let shift = ui.input(|i| i.modifiers.shift);
         let s = self.sketch.as_mut()?;
+        // Only a line or a chained arc's endpoint follows Ortho. Shape construction points (a rectangle's opposite
+        // corner, a radius, an arc's third point) must remain free.
+        let square = shift && s.tool.is_some_and(|shape| shape.chains()) && s.points.len() == 1;
         s.chain = chain(ui.ctx());
         s.lock = lock(ui.ctx());
         // The pointer snapped, as a project's view snaps it, while a shape is drawn or a line's end dragged.

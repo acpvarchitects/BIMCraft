@@ -64,6 +64,32 @@ fn family_ortho_shift_constrains_sketch_lines_in_plan_elevation_and_3d() {
 }
 
 #[test]
+fn family_ortho_shift_leaves_other_shapes_and_an_arcs_third_point_free() {
+    use bimcraft_core::draw::Shape;
+    for shape in [Shape::Rectangle, Shape::Circle, Shape::Inscribed, Shape::Circumscribed, Shape::Arc, Shape::CentreArc] {
+        let mut drawings = Vec::new();
+        for shifted in [false, true] {
+            let (mut h, _) = open(FAMILY, "Ortho");
+            view(&mut h, Some(Which::Plan));
+            button(&mut h, "Extrusion");
+            h.state_mut().active_family_mut().unwrap().sketch.as_mut().unwrap().tool = Some(shape);
+            h.run();
+            for (i, q) in
+                [P2(-900.0, -700.0), P2(-200.0, -450.0), P2(-550.0, -150.0)].into_iter().take(shape.clicks(&Default::default())).enumerate()
+            {
+                // An arc's end can be constrained; its third point must stay free.
+                let shift = shifted && i > 0 && (shape != Shape::Arc || i == 2);
+                let pos = sketch_point(&h, q);
+                click_mod(&mut h, pos, if shift { Modifiers::SHIFT } else { Modifiers::NONE });
+            }
+            drawings.push(editor(&h).sketch.as_ref().unwrap().sketch.lines.iter().map(|l| l.curve.clone()).collect::<Vec<_>>());
+        }
+        assert!(!drawings[0].is_empty(), "{shape:?}: the control draws a shape");
+        assert_eq!(drawings[0], drawings[1], "{shape:?}: Shift must leave this construction free");
+    }
+}
+
+#[test]
 fn family_ortho_shift_constrains_reference_planes_in_plan_and_elevation() {
     for which in [Which::Plan, Which::Elevation(Side::Front)] {
         let (mut h, _) = open(FAMILY, "Ortho");

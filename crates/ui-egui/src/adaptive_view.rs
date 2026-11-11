@@ -1,14 +1,16 @@
 //! The Family Editor's adaptive modelling view, as Revit's: a 3D view over a work plane where Point places reference points
 //! (on a line, hosted on it), Line draws through points (a click on the first closes the profile), Make Adaptive numbers the
 //! points selected in the order it is pressed, and Create Form makes a solid or a void of the profiles selected. A point
-//! selected shows a move gizmo: a drag of an arrow moves it along that axis, a drag of the point over its own height. The view
+//! selected shows a move gizmo: a drag of an arrow moves it along that axis, a drag of the point parallel to the work plane through its original position. The view
 //! orbits, pans and zooms as the 3D view does. Every edit changes the family's canonical definition (`adaptive::Definition`,
 //! its edits in `adaptive/edit.rs`); Undo here steps back through this editor's edits, and Apply or OK makes the family the
 //! project's.
 use crate::lang::t;
 use crate::orbit::{Cube, Input, Orbit};
 use crate::style::pal;
-use bimcraft_core::adaptive::{Definition, Evaluated, Evaluation, Host, Operation, Picked, Plane, PointType, Show, WorkPlane, gizmo_end};
+use bimcraft_core::adaptive::{
+    Definition, Evaluated, Evaluation, Frame, Host, Operation, Picked, Plane, PointType, Show, WorkPlane, gizmo_end,
+};
 use bimcraft_core::family::{CENTER_FRONT_BACK, CENTER_LEFT_RIGHT, PlaneRef, Planes, REF_LEVEL, Val};
 use bimcraft_core::view3d::{AZIMUTH, Camera, ELEVATION, P3};
 use bimcraft_i18n::msg;
@@ -38,8 +40,8 @@ pub(crate) enum Draw {
 /// A drag under way in the view.
 #[derive(Clone, Debug)]
 enum Drag {
-    /// A point dragged over the horizontal plane at its height, from its original position.
-    Plane(String, P3),
+    /// A point dragged parallel to the work plane, through its original position, in the plane's axes.
+    Plane(String, P3, Frame),
     /// A point dragged along a gizmo axis: which, where the drag began, and where the point was then.
     Axis(String, usize, Pos2, P3),
     /// A selection box, from where the drag began: left to right a window, right to left a crossing.
@@ -250,7 +252,7 @@ pub(crate) fn selection_centre(d: &Definition, m: &Modeller, values: &BTreeMap<S
 }
 
 /// A constrained drawing or move point in the active work plane's own axes.
-/// The first pick's height is kept, so moving never acquires a normal displacement.
+/// Move keeps the first pick's height; new line points lie on the work plane, as `add_point_on` places them.
 fn orthogonal_cursor(p: P3, m: &Modeller, r: &Evaluation, planes: Planes, shift: bool) -> Option<P3> {
     if !shift {
         return None;
@@ -263,7 +265,8 @@ fn orthogonal_cursor(p: P3, m: &Modeller, r: &Evaluation, planes: Planes, shift:
     let frame = m.work_plane.frame(r, planes)?;
     let (from, to) = (frame.inverse_point(from), frame.inverse_point(p));
     let (to, _) = bimcraft_core::snap::orthogonal_step(bimcraft_core::geom::P2(from[0], from[1]), bimcraft_core::geom::P2(to[0], to[1]));
-    Some(frame.point([to.0, to.1, from[2]]))
+    let height = if matches!(m.tool, Draw::Line(_)) { 0.0 } else { from[2] };
+    Some(frame.point([to.0, to.1, height]))
 }
 
 fn point_on_constraint(p: P3, constrained: P3) -> bool {
@@ -376,7 +379,8 @@ pub(crate) fn show(
                 Some(Picked::Point(id)) if movable(d, &id) => {
                     m.selection = vec![id.clone()];
                     let start = r.origin(&id).unwrap_or_default();
-                    Some(Drag::Plane(id, start))
+                    let frame = m.work_plane.frame(&r, planes).unwrap_or_default();
+                    Some(Drag::Plane(id, start, frame))
                 }
                 // On empty space, as Revit's: a selection box.
                 _ if !mods.shift => Some(Drag::Box(origin)),
@@ -392,14 +396,15 @@ pub(crate) fn show(
         && let (Some(drag), Some(now)) = (m.drag.clone(), latest)
     {
         match drag {
-            Drag::Plane(id, start) => {
-                if let Some(mut to) = cam.on_plane(px(now), start[2]) {
+            Drag::Plane(id, start, frame) => {
+                if let Some(mut to) = cam.on(px(now), start, frame.z) {
                     if mods.shift {
+                        let (from, local) = (frame.inverse_point(start), frame.inverse_point(to));
                         let (p, _) = bimcraft_core::snap::orthogonal_step(
-                            bimcraft_core::geom::P2(start[0], start[1]),
-                            bimcraft_core::geom::P2(to[0], to[1]),
+                            bimcraft_core::geom::P2(from[0], from[1]),
+                            bimcraft_core::geom::P2(local[0], local[1]),
                         );
-                        (to[0], to[1]) = (p.0, p.1);
+                        to = frame.point([p.0, p.1, from[2]]);
                     }
                     let _ = d.move_point(&id, &r, to);
                 }
@@ -893,5 +898,25 @@ fn draw(
             egui::FontId::proportional(14.0),
             ink,
         );
+    }
+}
+
+#[cfg(test)]
+mod ortho_tests {
+    use super::*;
+
+    #[test]
+    fn family_ortho_line_preview_matches_the_created_points_plane_height() {
+        let mut d = Definition::default();
+        let start = d.add_point([0.0, 0.0, 500.0]);
+        let r = d.evaluate(&Default::default(), &d.preview);
+        let mut m = Modeller { tool: Draw::Line(vec![start]), ..Default::default() };
+        let preview = orthogonal_cursor([650.0, 200.0, 0.0], &m, &r, Planes::default(), true).unwrap();
+        let made = d.add_point_on(&m.work_plane, preview, &r, Planes::default()).unwrap();
+        let actual = d.evaluate(&Default::default(), &d.preview).origin(&made).unwrap();
+        assert_eq!(preview, actual, "the preview and placement must agree, even from an off-plane start");
+        assert_eq!(preview, [650.0, 0.0, 0.0]);
+        m.tool = Draw::Move { from: Some([0.0, 0.0, 500.0]), copy: false };
+        assert_eq!(orthogonal_cursor([650.0, 200.0, 0.0], &m, &r, Planes::default(), true), Some([650.0, 0.0, 500.0]));
     }
 }

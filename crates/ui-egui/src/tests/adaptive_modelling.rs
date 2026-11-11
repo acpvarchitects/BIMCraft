@@ -685,6 +685,83 @@ fn family_ortho_shift_draws_past_an_existing_off_axis_point_without_moving_it() 
 }
 
 #[test]
+fn family_ortho_shift_line_from_a_raised_point_snaps_to_an_axis_point_on_the_plane() {
+    let mut h = modelling();
+    let d = h.state_mut().active_family_mut().unwrap().adaptive.as_mut().unwrap();
+    let raised = d.add_point([0.0, 0.0, 500.0]);
+    let target = d.add_point([650.0, 0.0, 0.0]);
+    h.run();
+    tool(&mut h, "Line");
+    click_model(&mut h, [0.0, 0.0, 500.0], Modifiers::NONE);
+    h.event(Event::ModifiersChanged(Modifiers::SHIFT));
+    click_model(&mut h, [650.0, 0.0, 0.0], Modifiers::SHIFT);
+    h.key_press(Key::Enter);
+    h.run();
+    let d = definition(&h);
+    let line = d.nodes.iter().find(|n| matches!(n.operation, Operation::Line { .. })).unwrap();
+    assert!(
+        matches!(&line.operation, Operation::Line { a, b } if a == &raised && b == &target),
+        "the on-plane axis point must be reused: {:?}",
+        line.operation
+    );
+}
+
+#[test]
+fn family_ortho_point_drag_uses_rotated_plane_axes_and_reads_shift_each_frame() {
+    use bimcraft_core::adaptive::{Frame, Plane, Transform, WorkPlane};
+    let mut h = modelling();
+    let d = h.state_mut().active_family_mut().unwrap().adaptive.as_mut().unwrap();
+    let anchor = d.add_point([-2000.0, -2000.0, 0.0]);
+    let q = std::f64::consts::FRAC_1_SQRT_2;
+    d.nodes.last_mut().unwrap().operation = Operation::Point {
+        host: Host::World {
+            frame: Frame { origin: [-2000.0, -2000.0, 0.0], x: [q, q, 0.0], y: [-q, q, 0.0], z: [0.0, 0.0, 1.0] },
+            plane: None,
+        },
+        transform: Transform::default(),
+    };
+    let point = d.add_point([0.0, 0.0, 300.0]);
+    h.state_mut().active_family_mut().unwrap().modeller.work_plane = WorkPlane::Point { point: anchor, plane: Plane::Xy };
+    h.state_mut().active_family_mut().unwrap().modeller.selection = vec![point.clone()];
+    h.run();
+    tool(&mut h, "Modify");
+    let ed = h.state().active_family().unwrap();
+    let start = ed.modeller.screen([0.0, 0.0, 300.0]);
+    let before = ed.modeller.camera.unwrap();
+    h.hover_at(start);
+    h.run();
+    h.event(Event::PointerButton { pos: start, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::NONE });
+    h.run();
+    for (local, shift, expected) in [
+        ([400.0, 100.0], false, [400.0, 100.0]),
+        ([600.0, 150.0], true, [600.0, 0.0]),
+        ([100.0, 700.0], true, [0.0, 700.0]),
+        ([200.0, 650.0], false, [200.0, 650.0]),
+    ] {
+        let world = [(local[0] - local[1]) * q, (local[0] + local[1]) * q, 300.0];
+        let pos = h.state().active_family().unwrap().modeller.screen(world);
+        h.event(Event::ModifiersChanged(if shift { Modifiers::SHIFT } else { Modifiers::NONE }));
+        h.hover_at(pos);
+        h.run();
+        let d = definition(&h);
+        let p = d.evaluate(&Default::default(), &d.preview).origin(&point).unwrap();
+        let local = [(p[0] + p[1]) * q, (-p[0] + p[1]) * q];
+        assert!(
+            (local[0] - expected[0]).abs() < 2.0 && (local[1] - expected[1]).abs() < 2.0 && (p[2] - 300.0).abs() < 1e-6,
+            "drag: {local:?}, expected {expected:?}, world {p:?}"
+        );
+    }
+    let pos = h.state().active_family().unwrap().modeller.screen([0.0, 0.0, 300.0]);
+    h.event(Event::PointerButton { pos, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE });
+    h.run();
+    let after = h.state().active_family().unwrap().modeller.camera.unwrap();
+    assert_eq!(
+        (before.azimuth, before.elevation, before.target, before.scale),
+        (after.azimuth, after.elevation, after.target, after.scale)
+    );
+}
+
+#[test]
 fn family_ortho_shift_drag_moves_a_point_without_orbiting() {
     let mut h = modelling();
     tool(&mut h, "Point");
@@ -694,6 +771,7 @@ fn family_ortho_shift_drag_moves_a_point_without_orbiting() {
     let initial = d.evaluate(&Default::default(), &d.preview).origin(&point).unwrap();
     tool(&mut h, "Modify");
     let ed = h.state().active_family().unwrap();
+    let camera = ed.modeller.camera.unwrap();
     let a = ed.modeller.screen([0.0, 0.0, 0.0]);
     let b = ed.modeller.screen([650.0, 200.0, 0.0]);
     h.event(Event::ModifiersChanged(Modifiers::SHIFT));
@@ -710,6 +788,11 @@ fn family_ortho_shift_drag_moves_a_point_without_orbiting() {
     let d = definition(&h);
     let p = d.evaluate(&Default::default(), &d.preview).origin(&point).unwrap();
     assert!((p[0] - 650.0).abs() < 20.0 && (p[1] - initial[1]).abs() < 1e-6, "Shift primary drag should move horizontally: {p:?}");
+    let after = h.state().active_family().unwrap().modeller.camera.unwrap();
+    assert_eq!(
+        (camera.azimuth, camera.elevation, camera.target, camera.scale),
+        (after.azimuth, after.elevation, after.target, after.scale)
+    );
 }
 
 #[test]
