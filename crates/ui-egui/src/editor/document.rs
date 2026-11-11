@@ -177,6 +177,7 @@ impl FamilyEditor {
             || self.views.creating.is_some()
             || self.views.dialog.is_some()
             || self.views.go_to.is_some()
+            || self.selecting()
     }
 
     /// The document's history, at the end of a frame: Undo or Redo when `ask` says so, else a step for what changed since the
@@ -603,6 +604,8 @@ impl BimApp {
                     later(ui, Icon::Materials, "Materials");
                     later(ui, Icon::Units, msg!("Project Units"));
                 });
+                // Select by ID and IDs of Selection (FE-20), as the project's Manage tab has them.
+                super::selection::inquiry_panel(ui, ed);
                 // An adaptive family is placed by its points, as Revit's Generic Model Adaptive: made so here, its forms then
                 // drawn through its points in the modelling view.
                 if !adaptive {
@@ -782,6 +785,8 @@ impl BimApp {
             if big_button(ui, Icon::Modify, "Modify", ed.modeller.tool == Draw::Modify && ed.views.drawing.is_none(), tip).clicked() {
                 ed.modify_tool();
             }
+            // Filter, while something is selected (FE-20), as the project's Select panel has it.
+            super::selection::filter_button(ui, ed);
         });
         let shown = self.docking.shown(Palette::Properties);
         ribbon::panel(ui, msg!("Properties"), |ui| {
@@ -1543,6 +1548,10 @@ impl BimApp {
         ed.go_to_view_dialog(ctx);
         // F8: Family Element Visibility Settings.
         ed.visibility_dialog(ctx);
+        // FE-20: Filter, Select by ID and IDs of Selection.
+        if let Some(said) = ed.selection_dialogs(ctx) {
+            self.status = said;
+        }
         let Some(dialog) = ed.dialog else {
             ed.document.dialog_saved = None;
             ed.document.category_shown = false;

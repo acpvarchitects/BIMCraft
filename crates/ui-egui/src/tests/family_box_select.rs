@@ -24,29 +24,29 @@ const BOXES: &str = concat!(
     r#"{"plane": "9e3c0a10-1f0b-4d8c-8a5e-0000000000a3"}], "view": "plan", "at": [-650, -1200, 0]}]}"#
 );
 
-const EDGE: &str = "fe100000-0000-4000-8000-000000000001";
-const LINE: &str = "fe100000-0000-4000-8000-000000000002";
-const DIM: &str = "fe100000-0000-4000-8000-000000000003";
+pub(super) const EDGE: &str = "fe100000-0000-4000-8000-000000000001";
+pub(super) const LINE: &str = "fe100000-0000-4000-8000-000000000002";
+pub(super) const DIM: &str = "fe100000-0000-4000-8000-000000000003";
 
-fn g(s: &str) -> Guid {
+pub(super) fn g(s: &str) -> Guid {
     Guid::parse(s).expect("a GUID")
 }
 
 /// The family's document open on its floor plan.
-fn plan() -> Harness<'static, BimApp> {
+pub(super) fn plan() -> Harness<'static, BimApp> {
     let (mut h, _) = open(BOXES, "Boxes");
     view(&mut h, Some(Which::Plan));
     h
 }
 
 /// What is selected, in order.
-fn selected(h: &Harness<BimApp>) -> Vec<Picked> {
+pub(super) fn selected(h: &Harness<BimApp>) -> Vec<Picked> {
     let mut v = editor(h).selection.items().to_vec();
     v.sort();
     v
 }
 
-fn set(mut v: Vec<Picked>) -> Vec<Picked> {
+pub(super) fn set(mut v: Vec<Picked>) -> Vec<Picked> {
     v.sort();
     v
 }
@@ -69,12 +69,12 @@ fn drag_family(h: &mut Harness<BimApp>, a: [f64; 3], b: [f64; 3], mods: Modifier
     h.run();
 }
 
-fn boxed(h: &mut Harness<BimApp>, a: [f64; 3], b: [f64; 3], mods: Modifiers) {
+pub(super) fn boxed(h: &mut Harness<BimApp>, a: [f64; 3], b: [f64; 3], mods: Modifiers) {
     drag_family(h, a, b, mods, PointerButton::Primary);
 }
 
 /// A click at family point `p` of the view shown, `mods` held.
-fn click_with_mods(h: &mut Harness<BimApp>, p: [f64; 3], mods: Modifiers) {
+pub(super) fn click_with_mods(h: &mut Harness<BimApp>, p: [f64; 3], mods: Modifiers) {
     let pos = editor(h).views.screen_of(p).expect("a view shown");
     h.hover_at(pos);
     h.run();

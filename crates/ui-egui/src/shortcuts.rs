@@ -139,6 +139,10 @@ pub const ACTIONS: &[&str] = &[
     msg!("Zoom In Region"),
     msg!("Zoom Out (2x)"),
     msg!("Previous Pan/Zoom"),
+    msg!("Filter Selection"),
+    msg!("Select Previous"),
+    msg!("Select by ID"),
+    msg!("Select All Instances in Entire Project"),
 ];
 
 /// The actions of `ACTIONS` only a family document does (`editor::keys`): a key for one does nothing on a project's tab, and
@@ -153,6 +157,10 @@ pub(crate) const FAMILY_ONLY: &[&str] = &[
     "Zoom In Region",
     "Zoom Out (2x)",
     "Previous Pan/Zoom",
+    "Filter Selection",
+    "Select Previous",
+    "Select by ID",
+    "Select All Instances in Entire Project",
 ];
 
 /// Whether `action` is a family document's alone.

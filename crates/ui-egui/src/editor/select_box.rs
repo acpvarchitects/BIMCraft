@@ -38,23 +38,9 @@ use bimcraft_core::ids::Guid;
 use bimcraft_core::render::{Drawing, View};
 use egui::{Modifiers, Painter, Pos2, Response, Shape};
 
-/// One thing selected in a family document that isn't adaptive.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub(crate) enum Picked {
-    /// A form, by its place in the family's forms.
-    Form(usize),
-    /// A reference plane, a datum or the family's own.
-    Plane(Guid),
-    /// A reference line.
-    Line(Guid),
-    Dimension(Guid),
-    /// A plan symbol, by its place in the family's symbols.
-    Symbol(usize),
-    /// A connector, by its place in the family's connectors.
-    Connector(usize),
-    /// A nested instance, by its place in the family's nested instances.
-    Nested(usize),
-}
+/// One thing selected in a family document that isn't adaptive: the core's, with what any front end needs of a selection
+/// (`family::select`: Filter's kinds, Select by ID, Select All Instances).
+pub(crate) use bimcraft_core::family::select::Picked;
 
 /// What a click or a box does with what it takes, by the keys held, as Revit's: Ctrl adds it, Shift takes it away, else it
 /// is the selection.
@@ -81,6 +67,9 @@ impl How {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct Selection {
     items: Vec<Picked>,
+    /// What was selected before the selection was last let go or replaced by another: what Select Previous brings back
+    /// (FE-20, `selection.rs`). Kept in step with the draft as the selection is.
+    previous: Vec<Picked>,
     /// A box being dragged in a plan or an elevation: where it began, on screen.
     boxing: Option<Pos2>,
 }
@@ -111,8 +100,25 @@ impl Selection {
         }
     }
 
+    /// Everything let go: what was selected is what Select Previous brings back.
     pub(crate) fn clear(&mut self) {
-        self.items.clear();
+        if !self.items.is_empty() {
+            self.previous = std::mem::take(&mut self.items);
+        }
+    }
+
+    /// What Select Previous would bring back: the selection as it was before it was last let go or replaced.
+    pub(crate) fn previous(&self) -> &[Picked] {
+        &self.previous
+    }
+
+    /// Select Previous: the selection as it was before it was last let go or replaced, again; what it replaces is the
+    /// previous one from then on, so the two change places. Nothing with none before.
+    pub(crate) fn restore_previous(&mut self) {
+        if !self.previous.is_empty() {
+            let previous = std::mem::take(&mut self.previous);
+            self.apply(&previous, How::Replace);
+        }
     }
 
     /// `p` let go, if it was selected.
@@ -127,7 +133,11 @@ impl Selection {
     /// What a click or a box took, `taken`, made the selection, added to it or taken away from it, as `how` says.
     pub(crate) fn apply(&mut self, taken: &[Picked], how: How) {
         if how == How::Replace {
-            self.items.clear();
+            // Replaced by another selection, it is the previous one; taken again as it is, it stays the selection.
+            let was = std::mem::take(&mut self.items);
+            if !was.is_empty() && (was.len() != taken.len() || was.iter().any(|p| !taken.contains(p))) {
+                self.previous = was;
+            }
         }
         for p in taken {
             match how {
@@ -145,7 +155,8 @@ impl Selection {
     /// goes from the selection, and what is selected of the same list after it moves up one place.
     pub(crate) fn taken_out(&mut self, gone: Picked) {
         self.forget(gone);
-        for p in &mut self.items {
+        self.previous.retain(|q| *q != gone);
+        for p in self.items.iter_mut().chain(&mut self.previous) {
             *p = match (*p, gone) {
                 (Picked::Form(j), Picked::Form(i)) if j > i => Picked::Form(j - 1),
                 (Picked::Symbol(j), Picked::Symbol(i)) if j > i => Picked::Symbol(j - 1),
@@ -158,7 +169,7 @@ impl Selection {
 
     /// Forms `i` and `j` swapped in their list (Move Up, Move Down): each selected stays so where it went.
     pub(crate) fn forms_swapped(&mut self, i: usize, j: usize) {
-        for p in &mut self.items {
+        for p in self.items.iter_mut().chain(&mut self.previous) {
             *p = match *p {
                 Picked::Form(k) if k == i => Picked::Form(j),
                 Picked::Form(k) if k == j => Picked::Form(i),
@@ -213,6 +224,10 @@ impl FamilyEditor {
         let mut items = std::mem::take(&mut self.selection.items);
         items.retain(|p| self.holds(*p));
         self.selection.items = items;
+        // And from what Select Previous brings back.
+        let mut previous = std::mem::take(&mut self.selection.previous);
+        previous.retain(|p| self.holds(*p));
+        self.selection.previous = previous;
     }
 
     /// A click on `hit` in a plan or an elevation (none: on nothing), with the keys `mods` held: Ctrl adds it, Shift takes

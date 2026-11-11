@@ -6980,6 +6980,7 @@ mod family_nav3d;
 mod family_open;
 mod family_pivots;
 mod family_properties;
+mod family_selection;
 mod family_sketch;
 mod family_sketch_locks;
 mod family_tabs;

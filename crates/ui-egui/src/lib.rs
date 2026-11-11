@@ -5326,14 +5326,19 @@ impl BimApp {
         ui.horizontal(|ui| {
             ui.label(RichText::new(t(self.prompt())).color(pal().muted));
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                // How many elements are selected, by the selection filter, as Revit shows it.
-                // A click on it filters the selection, as Revit's does.
-                ui.label(format!(":{}", self.selection.len()));
+                // How many elements are selected, by the selection filter, as Revit shows it: on a family's tab, of the
+                // family document's own selection. A click on it filters the selection, as Revit's does.
+                let selected = self.active_family().map_or(self.selection.len(), |ed| ed.selected_count());
+                ui.label(format!(":{selected}"));
                 let (r, funnel) = ui.allocate_exact_size(vec2(16.0, 16.0), Sense::click());
                 icons::paint(ui.painter(), Icon::Filter, r, pal().icon);
                 funnel.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, t("Filter Selection")));
                 if funnel.on_hover_text(t("Filter Selection")).clicked() {
-                    self.open_filter();
+                    // The family document's Filter on its tab (FE-20), never the project's from there.
+                    match self.active_family_mut() {
+                        Some(ed) => ed.open_filter(),
+                        None => self.open_filter(),
+                    }
                 }
                 if let Some(p) = self.canvas.cursor {
                     let u = self.session.model.units;
