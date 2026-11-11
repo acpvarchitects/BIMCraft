@@ -1046,10 +1046,12 @@ impl FamilyEditor {
             .then(|| response.interact_pointer_pos())
             .flatten()
             .and_then(|p| scene.as_ref().and_then(|s| s.form_hit(at_view(p))));
+        // A box let go where it began (a slow or a shaky click, which egui calls a drag) is the click there (FE-20).
+        let box_click = self.selection.box_click(ui, &response);
         // An adaptive family's views only show it: its tools are in {3D}.
         if editable
-            && response.clicked()
-            && let Some(p) = response.interact_pointer_pos()
+            && (response.clicked() || box_click.is_some())
+            && let Some(p) = box_click.or_else(|| response.interact_pointer_pos())
         {
             let q = at_view(p);
             clicked_any = true;

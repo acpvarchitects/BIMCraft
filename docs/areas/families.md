@@ -723,7 +723,10 @@ exactly one, of any kind, and nothing while it holds several, so Properties, the
 handles and the grips act on one element as before and never on one of several; a click and the Project Browser make the set what
 they select. In a plan or an elevation, a drag of the primary button that starts on no element (nor a handle, a
 grip or a padlock), with no tool in hand, draws a box as Revit's: left to right a window, solid, taking what lies wholly inside it;
-right to left a crossing, dashed, taking what it touches too. It is the rule the adaptive modelling view boxes by, one for both
+right to left a crossing, dashed, taking what it touches too. Let go within `canvas::STILL` (6 px each way, sketch mode's box's
+too) of where it began, it is no box but the click there: a slow click or a shaky one, which egui calls a drag once held past
+its click's time, selects what a click would rather than boxing nothing and letting the selection go (FE-20). It is the rule
+the adaptive modelling view boxes by, one for both
 (`geom::SelectBox` in the core), drawn as a project's plan draws its box (`canvas::box_shapes`). Each element is boxed by what it is
 drawn with on screen: a form's or a nested instance's edges as the view draws them (`views::outline_edges`, `nested_outline_edges`:
 an L's inner corner, never its hull's chord across the empty corner), a plane's trace, a reference line, a dimension's line, a symbol's

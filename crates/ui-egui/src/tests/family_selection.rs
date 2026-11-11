@@ -829,3 +829,48 @@ fn a_box_takes_nothing_the_view_leaves_out_by_its_visibility_settings() {
     assert_eq!(selected(&h), vec![Picked::Form(1)], "B");
     assert_eq!(project(&h), before, "nothing of it reaches the project");
 }
+
+/// A press at `from` on screen, `mods` held, kept down a second (past what egui still calls a click, so it is a drag) and
+/// let go at `to`: a slow click, or a shaky one.
+fn slow_press(h: &mut Harness<BimApp>, from: egui::Pos2, to: egui::Pos2, mods: Modifiers) {
+    h.event(Event::ModifiersChanged(mods));
+    h.hover_at(from);
+    h.run();
+    h.event(Event::PointerButton { pos: from, button: PointerButton::Primary, pressed: true, modifiers: mods });
+    h.run_steps(4);
+    h.hover_at(to);
+    h.run();
+    h.event(Event::PointerButton { pos: to, button: PointerButton::Primary, pressed: false, modifiers: mods });
+    h.run();
+    h.event(Event::ModifiersChanged(Modifiers::NONE));
+    h.run();
+}
+
+/// A slow or shaky click is a click, not a tiny box that boxes nothing and lets the selection go: a drag let go within
+/// the few pixels the project's canvas allows one (`canvas::STILL`) selects what a click where it began would. Past them it
+/// is a box.
+#[test]
+fn a_slow_or_shaky_click_is_a_click_and_not_a_tiny_box() {
+    let mut h = plan();
+    let before = project(&h);
+    let at = |h: &Harness<BimApp>, p: [f64; 3]| editor(h).views.screen_of(p).expect("a view shown");
+    click_family(&mut h, [-700.0, 400.0, 0.0]);
+    assert_eq!(selected(&h), vec![Picked::Form(0)]);
+    // On B's face, which isn't selected (the box's to begin in), the hand moving 3 px: B, as a click there selects it.
+    let b = at(&h, [700.0, 400.0, 0.0]);
+    slow_press(&mut h, b, b + egui::vec2(3.0, 1.0), Modifiers::NONE);
+    assert!(!editor(&h).boxing(), "no box left drawn");
+    assert_eq!(selected(&h), vec![Picked::Form(1)], "B, by a click on its face");
+    // With Ctrl, A added, as a click with Ctrl adds it; on nothing, the selection let go, as a click on nothing does.
+    let a = at(&h, [-700.0, 400.0, 0.0]);
+    slow_press(&mut h, a, a + egui::vec2(-2.0, 2.0), Modifiers::COMMAND);
+    assert_eq!(selected(&h), vec![Picked::Form(0), Picked::Form(1)], "Ctrl adds A");
+    let nothing = at(&h, [300.0, -400.0, 0.0]);
+    slow_press(&mut h, nothing, nothing + egui::vec2(2.0, -3.0), Modifiers::NONE);
+    assert!(selected(&h).is_empty(), "a click on nothing");
+    // Past them, a box: a window 20 px across inside B's face holds none of it, and lets the selection go.
+    click_family(&mut h, [-700.0, 400.0, 0.0]);
+    slow_press(&mut h, b, b + egui::vec2(20.0, 10.0), Modifiers::NONE);
+    assert!(selected(&h).is_empty(), "a window inside B's face");
+    assert_eq!(project(&h), before, "nothing of it reaches the project");
+}

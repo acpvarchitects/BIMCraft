@@ -609,9 +609,25 @@ impl Scene<'_> {
     }
 }
 
+/// Whether `at` is still where a box began at `from`: within the few pixels each way (`canvas::STILL`) the project's
+/// canvas lets a drag go and still be a click.
+fn still(from: Pos2, at: Pos2) -> bool {
+    (from.x - at.x).abs().max((from.y - at.y).abs()) < crate::canvas::STILL
+}
+
+impl Selection {
+    /// Where a box let go this frame began, when it was let go still there (`still`): a slow click or a shaky one, which
+    /// egui calls a drag, and which is the click where it began, not a box (FE-20).
+    pub(super) fn box_click(&self, ui: &Ui, response: &Response) -> Option<Pos2> {
+        let from = self.boxing.filter(|_| response.drag_stopped())?;
+        still(from, ui.input(|i| i.pointer.latest_pos()).unwrap_or(from)).then_some(from)
+    }
+}
+
 /// The selection box of a plan or an elevation: begun at `start` (a drag from nothing), drawn while the drag lasts over
 /// `pane`, solid left to right and dashed right to left as the project's plans draw theirs; where it began and where it was
-/// let go, once it is.
+/// let go, once it is. Within the few pixels a click may move (`still`) it is no box yet, and let go there none at all, but
+/// the click where it began (`Selection::box_click`).
 pub(super) fn track(
     sel: &mut Selection,
     ui: &Ui,
@@ -627,13 +643,15 @@ pub(super) fn track(
     let now = ui.input(|i| i.pointer.latest_pos()).unwrap_or(from);
     if response.drag_stopped() {
         sel.boxing = None;
-        return Some((from, now));
+        return (!still(from, now)).then_some((from, now));
     }
     if !response.dragged_by(PointerButton::Primary) {
         sel.boxing = None;
         return None;
     }
-    let local = |p: Pos2| (p.x - pane.min.x, p.y - pane.min.y);
-    painter.extend(crate::canvas::box_shapes(pane, local(from), local(now)));
+    if !still(from, now) {
+        let local = |p: Pos2| (p.x - pane.min.x, p.y - pane.min.y);
+        painter.extend(crate::canvas::box_shapes(pane, local(from), local(now)));
+    }
     None
 }
