@@ -17,6 +17,7 @@ mod pivot;
 pub(crate) mod select_box;
 pub(crate) mod shape_handles;
 pub(crate) mod sketch;
+mod sketch_dims;
 pub(crate) mod tabs;
 mod temp_hide;
 mod types_dialog;
