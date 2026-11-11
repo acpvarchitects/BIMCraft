@@ -23,6 +23,11 @@ use crate::schedule;
 mod category_tests;
 #[cfg(test)]
 mod fill_tests;
+pub mod parts;
+#[cfg(test)]
+mod parts_tests;
+
+pub use parts::PartsVisibility;
 
 /// The categories a plan, a section or a 3D view draws, and so may hide and override: those of the
 /// model, then those of the annotation. A family component is of its family's category (see [`COMPONENTS`]); `component`, which
@@ -540,6 +545,11 @@ pub struct Graphics {
     /// The layers of each CAD drawing it hides, by the drawing's name: Revit's Imported Categories, layer by layer.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub layers: BTreeMap<String, BTreeSet<String>>,
+    /// Revit's Parts Visibility: which of an element and the parts it was taken apart into the view draws (`parts.rs`).
+    /// A view that says none draws the originals, and holds none for it: [`PartsVisibility::Original`] is no value of a
+    /// view's. A view template that says one sets it for the views that follow it, Show Original too.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parts_visibility: Option<PartsVisibility>,
 }
 
 /// An edge of `element` as the view draws it, from `from` to `to` (mm in the view's terms), in line style `style` instead
@@ -594,7 +604,17 @@ impl Graphics {
         if t.controls.contains(&Group::BackgroundGrid) {
             g.background_grid = t.graphics.background_grid;
         }
+        if t.graphics.parts_visibility.is_some() {
+            g.parts_visibility = t.graphics.parts_visibility;
+        }
         std::borrow::Cow::Owned(g)
+    }
+
+    /// The view template it follows, when that says which of an element and its parts its views draw: a template that
+    /// holds a Parts Visibility controls it, and one that holds none leaves it to each view.
+    pub fn parts_controlled_by(&self, m: &Model) -> Option<&str> {
+        let name = self.template.as_deref()?;
+        m.view_templates.get(name)?.graphics.parts_visibility.map(|_| name)
     }
 
     /// The view template it follows, when that controls `group`: the group's settings aren't the view's own to change.
@@ -986,6 +1006,9 @@ pub fn check_followed(m: &Model, old: &Element, new: &Element) -> Result<(), Str
     follows(Group::Detail, a.detail == b.detail, "detail level")?;
     follows(Group::Style, a.style == b.style, "visual style")?;
     follows(Group::BackgroundGrid, a.background_grid == b.background_grid, "background grids")?;
+    if t.graphics.parts_visibility.is_some() && a.parts_visibility != b.parts_visibility {
+        return Err(format!("its parts visibility follows view template `{name}`; change the template, or unfollow it (`template: null`)"));
+    }
     if let (Element::Level(x), Element::Level(y)) = (old, new) {
         follows(Group::Range, x.view_range == y.view_range, "view range")?;
     }
@@ -1104,7 +1127,7 @@ impl Look {
         let mut look = Look { style: g.style, layers: own.layers.clone(), ..Look::default() };
         // Nothing to look for: no graphics of its own, and nothing in the project phased or in an option.
         let linked = m.elements.keys().next_back().is_some_and(|id| crate::link::is_linked(*id));
-        if own.draws_as_is() && !linked && !crate::phasing::any(m) && m.rare("mass").is_empty() {
+        if own.draws_as_is() && !linked && !crate::phasing::any(m) && m.rare("mass").is_empty() && !parts::any(m) {
             return look;
         }
         // The phase it shows, as where it stands in the project's order, and how its phase filter shows each status.
@@ -1113,7 +1136,13 @@ impl Look {
         // Each applied filter, and the elements it picks out.
         let applied: Vec<(&Applied, BTreeSet<Id>)> =
             g.filters.iter().filter_map(|a| Some((a, m.view_filters.get(&a.filter)?.matching(m)))).collect();
+        // The parts of building elements, which are shown as their hosts are, once those are known.
+        let mut parts: Vec<(Id, &crate::parts::BuildingPart)> = Vec::new();
         for (&id, e) in &m.elements {
+            if let Element::Part(p) = e {
+                parts.push((id, p));
+                continue;
+            }
             let cat = category_of(m, e);
             if !drawn(cat) {
                 continue;
@@ -1168,6 +1197,9 @@ impl Look {
             } else if !over.is_empty() {
                 look.paint.insert(id, over);
             }
+        }
+        if !parts.is_empty() {
+            look.parts(m, &g, &parts, &applied);
         }
         look
     }

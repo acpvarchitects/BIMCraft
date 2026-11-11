@@ -48,6 +48,8 @@ pub struct Lookup {
     rare: BTreeMap<&'static str, Arc<BTreeSet<Id>>>,
     /// The elements phased, or in a design option: with a value of a name [`crate::phasing::reserved`] keeps.
     phased: Arc<BTreeSet<Id>>,
+    /// The parts of building elements (`parts.rs`): a view hides them, or draws them for the elements they are parts of.
+    parts: Arc<BTreeSet<Id>>,
     /// The levels: walls' heights are of them, so when one changes the lookup is made again.
     levels: Arc<BTreeSet<Id>>,
     /// Components and runs by [`Group`], each group by band of the heights the elements' own values give: a component's
@@ -281,6 +283,9 @@ impl Lookup {
             Element::Grid(_) => {
                 Arc::make_mut(&mut self.grids).insert(id);
             }
+            Element::Part(_) => {
+                Arc::make_mut(&mut self.parts).insert(id);
+            }
             _ => {}
         }
         if let Some(cat) = RARE.iter().find(|c| **c == e.category()) {
@@ -347,6 +352,7 @@ impl Lookup {
             &mut self.everywhere,
             &mut self.levels,
             &mut self.phased,
+            &mut self.parts,
             &mut self.other,
         ] {
             if set.contains(&id) {
@@ -494,6 +500,11 @@ impl Lookup {
     /// Whether an element is phased or in a design option.
     pub fn any_phased(&self) -> bool {
         !self.phased.is_empty()
+    }
+
+    /// Whether the project has parts of building elements.
+    pub fn any_parts(&self) -> bool {
+        !self.parts.is_empty()
     }
 
     /// The groups of elements banded by height ([`Group`]), each with one of its elements.

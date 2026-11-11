@@ -767,3 +767,51 @@ key beside it, with Make Text (`TitleBlock::make_text`: back to plain text, the 
 text has Make Field, keyed by what it says (`TitleBlock::free_key`, numbered past the keys there are) as each sheet's. An
 MTEXT's colour is the one its formatting sets before its first word (`\C`, `\c`), over the entity's. The stroke lettering has the
 ordinals º and ª.
+
+## Parts in views
+
+Parts Visibility. A view says which of an element and the parts it was taken apart into ([parts](parts.md)) it draws, as
+Revit's Parts Visibility: Show Original (`original`, what a view does unless it says), Show Parts (`parts`: an element that has
+parts as those parts and no more of it, one that has none whole) or Show Both (`both`). It is `Graphics::parts_visibility`
+(`graphics::PartsVisibility`, `graphics/parts.rs`), set by `graphics {view, parts_visibility}` on a plan, a ceiling plan, a
+section, an elevation or a 3D view, and by Properties' Parts Visibility in the desktop (`graphics_properties`); a view holds
+none for Show Original, so a project that never asks is saved as it always was, and an older BIMCraft leaves the field out.
+A view template is no `Group` of `controls` for it (a new one in that list an older BIMCraft could not read): a template that
+holds a Parts Visibility (`template {parts_visibility}`, Show Original too; null to hold none; `from` a view that shows parts
+takes it) sets it for the views that follow it (`Graphics::resolved`, `parts_controlled_by`), which then can't say otherwise
+(`check_followed`, and the `graphics` command, which names the template).
+
+The view's `Look` says it all (`Look::parts`, after everything else is known): a part is hidden unless the view shows parts,
+it is one to draw (`parts::drawable`: not excluded, its recipe holding, not divided into other parts, which stand for it) and
+the view draws its host; so a part follows its host's phase, design option, category and own hiding, and is painted as its
+host is, then as each view filter that picks it says (a filter may hide it). Showing parts alone, an element with a part to
+draw is hidden in its turn, but one with a part in conflict, which stays whole (and its good parts are drawn over it), so
+nothing of it goes missing; an element whose parts are all excluded is drawn whole too. `parts::holds` is the conflict a view
+asks after each time it is drawn: `Model::part_conflict` without the solid (a host with no solid there is the one it leaves
+out). Since the look hides and paints by id, every view agrees with no rule of its own, and what a view hides isn't snapped
+to or tagged: in Show Parts a wall's faces aren't snapped to, and its tag isn't drawn.
+
+How a part is drawn. The 3D scene holds every drawable part's solid beside its host's (`view3d::part_solids`: the prisms of
+`Model::part_prisms`, in the part's material's colour and texture as a layer's are; a component's part, its family's forms),
+whatever any view shows, and the look picks: so `Scene::update` makes a part again when its host, what its host joins or holds,
+the part or a part divided from it changes (a part points at its host and its parent, which the update follows both ways), a
+type's change being a whole scene as ever. A part's planes are numbered apart from every other element's
+(`PlaneTable::apart`), so the edge between two parts that share a plane (two parts of one face of a wall) is drawn, in 3D and
+in an elevation. A section cuts a part's prisms as it cuts a wall's, and an elevation sees them, a part hiding what is behind
+it as a wall does; where it is cut it is poché and, a layer of its host's type in a view that isn't coarse, drawn as that
+layer is (`render::parts::layer`, `cut_layer`: its material's cut pattern where it is wide enough, else lighter where it isn't
+its host's structure; in the part's own material where it has one). The outline of what is cut keeps the line between two
+parts (`cut_edges`' `apart`: a part's pieces join each other and nothing else). A plan (`render/parts.rs`) draws each prism of
+a part's solid the cut plane passes through as its ring there (clipped under a sloped top), cut, the same way; one whose top
+lies from the view depth up to the cut plane it sees, in projection: outlined, the lowest first, and filled only where the
+view fills its surface (the theme, below), so a floor's finish reads from above; a ceiling plan sees those whose underside
+lies from its cut up to its range's top. A component's part is drawn as the component is. Every primitive and every triangle
+is the part's own, so `Drawing::pick`, a 3D pick and a selection's highlight are the part's. Show Both draws both: in a plan
+the parts lie over the original (Tab cycles to it), in 3D the original's faces are the ones seen where the two coincide (it
+is drawn first).
+
+What is approximate, or left for later: a plan doesn't hide what a seen part covers; a part that is all of a layered host
+is poché, not its layers; a part can't be hidden or overridden on its own in a view (nothing but a part may point at a part
+until the file format takes its step), only by a view filter or by excluding it; parts aren't snapped to or dimensioned;
+`Model::part_prisms` looks through every element for a wall's doors and windows, once a part, which a project of very many
+parts will feel in its scene and its plans.

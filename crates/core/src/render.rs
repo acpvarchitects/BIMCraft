@@ -35,6 +35,7 @@ use crate::walls::{self, Axis};
 use crate::{font, massing, sheet, stairs};
 
 mod dimensions;
+mod parts;
 use dimensions::dimension;
 mod regions;
 
@@ -894,7 +895,7 @@ impl<'a> BoxGrid<'a> {
     }
 }
 
-fn cut_edges(outlines: &[(Id, Vec<P2>)], reach: f64) -> Vec<(Id, Vec<Vec<P2>>)> {
+fn cut_edges(outlines: &[(Id, Vec<P2>)], reach: f64, apart: &dyn Fn(Id) -> bool) -> Vec<(Id, Vec<Vec<P2>>)> {
     // How far past an edge, outward, a point is looked for in another outline: mm.
     const PAST: f64 = 1.0;
     let boxes: Vec<(P2, P2)> = outlines
@@ -916,7 +917,9 @@ fn cut_edges(outlines: &[(Id, Vec<P2>)], reach: f64) -> Vec<(Id, Vec<Vec<P2>>)> 
         // Its twin, which tests hold it to: every outline asked.
         #[cfg(test)]
         assert_eq!(found, (0..outlines.len()).filter(|&j| near(i, j)).collect::<Vec<_>>(), "the outlines near outline {i}");
-        let others: Vec<&[P2]> = found.into_iter().filter(|&j| near(i, j)).map(|j| outlines[j].1.as_slice()).collect();
+        // An outline that stands apart (a part of a building element's) is joined with its own element's alone.
+        let joins = |j: usize| outlines[j].0 == *id || !(apart(*id) || apart(outlines[j].0));
+        let others: Vec<&[P2]> = found.into_iter().filter(|&j| near(i, j) && joins(j)).map(|j| outlines[j].1.as_slice()).collect();
         if others.is_empty() {
             let mut ring = o.clone();
             ring.extend(o.first().copied());
@@ -1118,6 +1121,7 @@ fn plan_shows_among(m: &Model, key: Guid, among: bool) -> Vec<P2> {
                 extent.extend(boundary)
             }
             Element::Room(r) if r.level == level => extent.push(r.point),
+            Element::Part(p) => extent.extend(parts::extent(m, p, &r)),
             Element::Mass(ms) if m.mass_cut_by(ms, r.cut) => extent.extend(m.mass_outline(ms, r.cut)),
             Element::Component(c) if c.level == level => {
                 extent.extend(components.outlines(c));
@@ -2125,9 +2129,21 @@ fn section_base_cancellable(
         } else {
             d.fill(rings, POCHE);
         }
+        // A part of a building element, as the layer it is: across a wall its courses run level, in a slab along it.
+        if let Some(Element::Part(p)) = m.elements.get(*owner) {
+            let upright = matches!(m.elements.get(p.host), Some(Element::Wall(_)));
+            for ring in rings {
+                let along = match ring.as_slice() {
+                    [a, b, ..] if !upright && a.dist(*b) > 1e-9 => (*b - *a).unit(),
+                    _ => P2(1.0, 0.0),
+                };
+                parts::layer(&mut d, m, *owner, ring, Some(along));
+            }
+        }
     }
     let pieces: Vec<(Id, Vec<P2>)> = cuts.iter().flat_map(|(owner, rings)| rings.iter().map(|r| (*owner, r.clone()))).collect();
-    for (owner, runs) in cut_edges(&pieces, 1.0 / d.view.scale) {
+    let is_part = |id: Id| matches!(m.elements.get(id), Some(Element::Part(_)));
+    for (owner, runs) in cut_edges(&pieces, 1.0 / d.view.scale, &is_part) {
         if cancelled() {
             return None;
         }
@@ -2701,6 +2717,10 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
             slope_arrow(&mut d, tail, head, f.slope);
         }
     }
+    // The parts of building elements the view shows: those it sees from its cut plane here, over the floors and under all
+    // the rest; those it cuts, with what is cut.
+    let part_pieces = parts::shown(m, elements.iter().map(|(id, e)| (*id, *e)), &range, up, &look);
+    parts::seen(&mut d, &part_pieces, &range, &look);
     // Components it sees, in projection, as Revit draws furniture: whole while any of one is under
     // the cut plane and over the view depth; and the symbols of those on its level.
     for (&id, e) in all().filter(|(id, _)| shown(**id)) {
@@ -2717,6 +2737,9 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
         if c.level == level && d.detail != Detail::Coarse {
             marks(&mut d, &m.component_marks(c));
         }
+    }
+    if !up {
+        parts::components(&mut d, m, elements.iter().map(|(id, e)| (*id, *e)), &range, &look, &mut components);
     }
     // Walls and columns below the cut plane, as seen from it; past the bottom, faint.
     for (id, o, top) in seen_below(m, &elements, &range, &look, index).into_iter().filter(|_| !up) {
@@ -2796,7 +2819,7 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
             d.fill(rings, POCHE);
         }
     }
-    for (id, runs) in cut_edges(&outlines, 1.0 / d.view.scale) {
+    for (id, runs) in cut_edges(&outlines, 1.0 / d.view.scale, &|_| false) {
         d.owner = Some(id);
         for run in runs {
             ink_cut(&mut d, &run);
@@ -2832,6 +2855,7 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
         }
         d.part(Part::Cut);
     }
+    parts::cut(&mut d, m, &part_pieces);
     for (&id, e) in all() {
         // The opening is the wall's: with neither the wall nor the opening shown, there is nothing to leave a gap in.
         if let Element::Door(o) | Element::Window(o) = e

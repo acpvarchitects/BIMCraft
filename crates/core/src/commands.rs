@@ -1708,6 +1708,7 @@ other_files(
          …], show?: […], hide_elements?: [id, …], show_elements?: […], categories?: {category: override | null, …}, elements?: \
          {id: override | null, …}, filters?: [{filter, hidden?, projection?, cut?, halftone?, transparency?}, …], phase?: name \
          | null, phase_filter?: name | null, options?: {set: option | null, …}, layers?: {drawing: [layer, …] | null, …}, template?: name | null, \
+         parts_visibility?: original | parts | both | null, \
          background_grid?: {visible?, main?: {enabled?, color?: [r,g,b], pen?: 0..16}, sub?: {enabled?, color?, pen?}, \
          spacing?: [X,Y] (mm), divisions?: [X,Y] (1..1000), rotation?: degrees (-360..360)} | null, \
          reset?: true} what a view hides and how it draws the rest, as Revit's Visibility/Graphics does; with \
@@ -1732,7 +1733,15 @@ other_files(
          `template` follows a view template; `reset` takes away all of the view's own settings. `phase` is the phase the view \
          shows (the project's last unless it says) and `phase_filter` how it shows each status of what's in it (see `phase`); \
          `options` chooses the design option it shows of a set (the set's primary unless it says; see `option`); `layers` the \
-         layers of each CAD drawing it hides, by the drawing's name (null shows them all again)",
+         layers of each CAD drawing it hides, by the drawing's name (null shows them all again). `parts_visibility` is Revit's \
+         Parts Visibility, in a plan, a ceiling plan, a section, an elevation and a 3D view alike: `original` (Show Original, \
+         what a view does unless it says, and what null goes back to) draws every element whole and no part; `parts` (Show \
+         Parts) draws an element that has parts as those parts and no more of it, and one that has none whole; `both` (Show \
+         Both) draws every element whole and its parts too. A part is drawn where its view draws its host (its phase, its \
+         design option, its category and the element itself not hidden), as the cut of its solid in a plan and a section and \
+         its solid in a 3D view, made of its material, and is picked by its own id. One excluded, one in conflict and one \
+         divided into other parts are not drawn; an element with a part in conflict stays whole, so nothing of it goes \
+         missing. A view filter that picks parts hides or overrides them as it does any element",
         view_graphics,
     ),
     edit(
@@ -1820,6 +1829,7 @@ other_files(
          kind?: plan | section | 3d | null, rename?, controls?: [categories, filters, range, \
          phase, options, scale, detail, style, background_grid], view_range?: {top?, cut?, bottom?, depth?}, phase?, phase_filter?, options?, \
          scale?: 1 | … | 100000, detail?: coarse | medium | fine, visual_style?: shaded | hidden_line | wireframe, \
+         parts_visibility?: original | parts | both | null, \
          background_grid?: grid settings as in graphics, hide?, show?, categories?, filters?, reset?, delete?: true} a view template, as Revit's: settings under a name for \
          views to follow with `graphics {template}`. `kind` is the views it is for (plans, elevations and sections, or 3D \
          views; null, any), which `from` sets; `like` makes a new one a copy of another (Duplicate); `rename` names it anew, \
@@ -1829,8 +1839,10 @@ other_files(
          categories, its filters, a plan's view range, its phase with its phase filter, its design options, its scale (`scale` \
          command), its detail level (`detail`), its visual style (`visual_style`). `hide`, `show`, `categories`, `filters`, \
          `phase`, `phase_filter`, `options`, `scale`, `detail`, `visual_style`, `background_grid` and `reset` change it as they change a view; \
-         `view_range` merges into its range. Changed, every view following it follows. Gone, they keep their own settings. \
-         `name` alone reads one",
+         `view_range` merges into its range. `parts_visibility` (see `graphics`) is no group of `controls`: a template that \
+         holds one sets it for the views that follow it, Show Original too, and with null it leaves it to each view (as a \
+         template starts, unless `from` is a view that shows parts). Changed, every view following it follows. Gone, they \
+         keep their own settings. `name` alone reads one",
         view_template,
     ),
     edit(
@@ -3823,8 +3835,28 @@ fn edit_graphics(c: &str, m: &Model, p: &Value, g: &mut Graphics, of_template: b
             }
         }
     }
+    if !flag(c, p, "reset")? && p.get("parts_visibility").is_some() && controlled.is_some_and(|t| t.graphics.parts_visibility.is_some()) {
+        let t = template_then.clone().unwrap_or_default();
+        return Err(bad(
+            c,
+            format!("its parts visibility follows view template `{t}`; change the template, or `template: null` to stop following it"),
+        ));
+    }
     if flag(c, p, "reset")? {
         *g = Graphics::default();
+    }
+    // Which of an element and its parts it draws. Show Original is what a view does unless it says, so a view holds none
+    // for it; a template that holds it sets it for its views.
+    match p.get("parts_visibility") {
+        None => {}
+        Some(Value::Null) => g.parts_visibility = None,
+        Some(Value::String(n)) => {
+            let v = graphics::PartsVisibility::parse(n).ok_or_else(|| {
+                bad(c, format!("`parts_visibility` is original, parts or both (Show Original, Show Parts, Show Both), not `{n}`"))
+            })?;
+            g.parts_visibility = Some(v).filter(|v| of_template || v.shows_parts());
+        }
+        Some(v) => return Err(bad(c, format!("`parts_visibility` is original, parts or both, or null, not {v}"))),
     }
     if let Some(patch) = p.get("background_grid") {
         if patch.is_null() {
@@ -3990,6 +4022,7 @@ fn graphics_reply(g: &Graphics) -> Value {
         "phase": g.phase, "phase_filter": g.phase_filter, "options": g.options,
         "scale": g.scale, "detail": g.detail, "visual_style": g.style,
         "background_grid": g.background_grid,
+        "parts_visibility": g.parts_visibility,
     })
 }
 
@@ -4029,6 +4062,8 @@ fn view_graphics(s: &mut Session, p: &Value) -> R {
         g.template.as_ref().and_then(|n| m.view_templates.get(n)).map(|t| t.controls.iter().copied().collect()).unwrap_or_default();
     reply["view"] = json!(view);
     reply["name"] = json!(view.and_then(|v| m.view_name(v)).unwrap_or("{3D}"));
+    // A view always has one: the originals, unless it or its template says.
+    reply["parts_visibility"] = json!(in_force.parts_visibility.unwrap_or_default());
     // Elements by their ids, as the command takes them.
     reply["hidden_elements"] = json!(g.elements.iter().filter(|(_, o)| o.hidden).filter_map(|(g, _)| m.elements.id(g)).collect::<Vec<_>>());
     reply["elements"] = json!(g.elements.iter().filter_map(|(g, o)| Some((m.elements.id(g)?.to_string(), o))).collect::<BTreeMap<_, _>>());
@@ -4387,6 +4422,7 @@ fn view_template(s: &mut Session, p: &Value) -> R {
         "detail",
         "visual_style",
         "background_grid",
+        "parts_visibility",
     ];
     let makes = keys.iter().any(|k| !absent(p.get(k))) || p.get("template").is_some();
     if was.is_none() && !makes {
@@ -4431,6 +4467,7 @@ fn view_template(s: &mut Session, p: &Value) -> R {
             detail: resolved.detail,
             style: resolved.style,
             background_grid: resolved.background_grid,
+            parts_visibility: resolved.parts_visibility,
             ..Graphics::default()
         };
         t.view_range = match m.elements.get(view) {

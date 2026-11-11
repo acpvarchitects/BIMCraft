@@ -1521,6 +1521,36 @@ fn choose(h: &mut Harness<BimApp>, label: &str, option: &str) {
 }
 
 #[test]
+fn properties_of_a_view_show_and_set_its_parts_visibility() {
+    use bimcraft_core::graphics::{Look, PartsVisibility};
+    let mut h = app(&format!("{BOX}\ncreate_parts {{\"ids\": [100002]}}"));
+    let part = ids(&h, "part")[0];
+    let shows = |h: &Harness<BimApp>| {
+        let look = Look::of(&h.state().session.model, 100000);
+        (look.shows(100002), look.shows(part))
+    };
+    // A plan draws the originals until it says, and Properties name it as Revit does.
+    assert_eq!(combo_value(&h, "Parts Visibility"), "Show Original");
+    assert_eq!(shows(&h), (true, false));
+    let before = h.state().session.history().len();
+    choose(&mut h, "Parts Visibility", "Show Parts");
+    assert_eq!(plan_graphics(&h, 100000).parts_visibility, Some(PartsVisibility::Parts));
+    assert_eq!((h.state().session.history().len(), h.state().session.history().last()), (before + 1, Some(&"Visibility/Graphics")));
+    assert_eq!((combo_value(&h, "Parts Visibility"), shows(&h)), ("Show Parts".into(), (false, true)));
+    choose(&mut h, "Parts Visibility", "Show Both");
+    assert_eq!(shows(&h), (true, true));
+    // Show Original is the view as it starts: nothing held for it.
+    choose(&mut h, "Parts Visibility", "Show Original");
+    assert_eq!(plan_graphics(&h, 100000).parts_visibility, None);
+    // A template that holds one sets it for its views: the row is greyed out.
+    h.state_mut().session.execute("template", &json!({"name": "Survey", "controls": [], "parts_visibility": "parts"})).unwrap();
+    h.state_mut().session.execute("graphics", &json!({"view": 100000, "template": "Survey"})).unwrap();
+    h.run();
+    assert_eq!(combo_value(&h, "Parts Visibility"), "Show Parts");
+    assert!(h.get_by_role_and_label(Role::ComboBox, "Parts Visibility").accesskit_node().is_disabled());
+}
+
+#[test]
 fn properties_of_a_view_show_and_set_its_scale_detail_level_and_visual_style() {
     use bimcraft_core::graphics::{Detail, Look, VisualStyle};
     let mut h = app(&format!("{BOX}\nsection {{\"start\": [-1000, 3000], \"end\": [9000, 3000]}}"));
