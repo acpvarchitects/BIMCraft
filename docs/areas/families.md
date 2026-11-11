@@ -739,7 +739,7 @@ of the document's history, and nothing reaches the project.
   **IDs of Selection** beside it shows each selected thing's id and GUID to read or copy: the one place a family document
   shows them (Properties and the Project Browser show neither). A part holds the id and the GUID its family's project gave it
   (`HasPart`). One made in the document since has no id until the family is loaded into a project and opened again (a dash),
-  and is found by its GUID, which a plane, a reference line, a dimension and a sketched form are given as they are made; a
+  and is found by its GUID, which a plane and a dimension drawn there and a form sketched there are given as they are made; a
   symbol, a connector and a nested instance made since have neither yet, and nothing names them.
 - **Select All Instances** takes the nested instances of the family and type of those selected (`select::instances`): SA those
   the views show (Visible in View, which SA means in the project; one its `visible` leaves out isn't shown), SV all of them
