@@ -334,9 +334,29 @@ fn family_drag_copy_screenshots() {
     h.hover_at(over);
     mods(&mut h, Modifiers::CTRL);
     save(&mut h, "ctrl-prompt");
-    let at = press_and_move(&mut h, [300.0, 300.0, 0.0], [700.0, 600.0, 0.0], Modifiers::CTRL);
+    let at = press_and_move(&mut h, [300.0, 300.0, 0.0], [500.0, 600.0, 0.0], Modifiers::CTRL);
     save(&mut h, "copying");
     release_with(&mut h, at, Modifiers::CTRL);
     save(&mut h, "copied");
     let _ = ed(&mut h);
+}
+
+#[test]
+fn over_a_copy_just_dropped_the_status_bar_says_a_drag_moves_it_and_over_a_plane_not_selected_it_doesnt() {
+    // Dropped with the pointer on Edge's trace (x 1000), which a press there would select: the general prompt.
+    let mut h = plan();
+    pick(&mut h, &[Picked::Form(0)]);
+    copy_drag(&mut h, [300.0, 300.0, 0.0], [700.0, 600.0, 0.0]);
+    h.run();
+    assert!(!h.state().prompt().contains("Drag to move"), "{}", h.state().prompt());
+    // Dropped clear of it: over the copy, selected, a drag moves it, and with Ctrl copies it.
+    let mut h = plan();
+    pick(&mut h, &[Picked::Form(0)]);
+    copy_drag(&mut h, [300.0, 300.0, 0.0], [500.0, 600.0, 0.0]);
+    assert_eq!(editor(&h).selection.items(), &[Picked::Form(2)]);
+    h.run();
+    h.run();
+    assert!(h.state().prompt().contains("Drag to move"), "{}", h.state().prompt());
+    mods(&mut h, Modifiers::CTRL);
+    assert!(h.state().prompt().contains("to copy"), "{}", h.state().prompt());
 }
