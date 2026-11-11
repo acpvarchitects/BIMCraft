@@ -567,3 +567,40 @@ fn a_revolves_axis_drawn_again_keeps_its_dimensions_and_takes_new_ones() {
     assert_eq!(dim.refs[1], DimRef::Sketch(g(REV), axis));
     assert!(f.dimensions.iter().all(|x| x.guid != g(TO_AXIS)), "the old axis's went with it");
 }
+
+#[test]
+fn ctrl_z_in_a_sketch_takes_back_its_dimensions_with_its_lines() {
+    let mut h = sketching("", 0);
+    let d = dimension_west_to_east(&mut h);
+    click_family(&mut h, [100.0, -450.0, 0.0]);
+    assert_eq!(editor(&h).sketch.as_ref().unwrap().selected_dim, Some(d.guid));
+    ed_mut(&mut h).set_label(d.guid, Some("Width".into())).unwrap();
+    h.run();
+    assert!(((line(&h, EAST).0.0 - line(&h, WEST).0.0) - 1400.0).abs() < 1e-6);
+    // Ctrl+Z: the label and the lines it moved, together.
+    h.state_mut().family_undo();
+    h.run();
+    assert_eq!(made(&h)[0].label, None, "the label taken back");
+    assert_eq!((line(&h, WEST).0.0, line(&h, EAST).0.0), (-300.0, 300.0), "the lines where they were");
+    // Again: the dimension, and its selection with it.
+    h.state_mut().family_undo();
+    h.run();
+    assert!(made(&h).is_empty(), "the dimension taken back");
+    assert_eq!(editor(&h).sketch.as_ref().unwrap().selected_dim, None, "nothing stale selected");
+    // A parameter Create Parameter… made goes with its step too.
+    let d = dimension_west_to_east(&mut h);
+    click_family(&mut h, [100.0, -450.0, 0.0]);
+    h.get_by_label("Label").click();
+    h.run();
+    press_near(&mut h, "Create Parameter…", "Label");
+    type_into(&mut h, "Name", "Span");
+    press_near(&mut h, "OK", "Name");
+    assert_eq!(made(&h)[0].label.as_deref(), Some("Span"), "{}", status(&h));
+    h.state_mut().family_undo();
+    h.run();
+    let s = editor(&h).sketch.as_ref().unwrap();
+    assert!(
+        editor(&h).sketch_params().is_empty() && s.dims.iter().all(|x| x.guid != d.guid || x.label.is_none()),
+        "the parameter taken back"
+    );
+}

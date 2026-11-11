@@ -127,11 +127,30 @@ pub(crate) struct FormSketch {
     /// it. One still where they put it is the line as drawn to Finish (its formulas kept, as outside sketch mode a label
     /// leaves the lines as drawn and the solve flexes them); one moved since is the line where it is.
     pub(crate) driven: Vec<(Guid, Curve, Curve)>,
+    /// The sketch's own history (Ctrl+Z): the lines of every part with its dimensions, locks, parameters and the lines they
+    /// moved, as the last frame saw them, and the steps before.
+    seen: Option<Snap>,
+    history: Vec<Snap>,
     /// Pick Lines' Lock, on the Options Bar (F10a): a line picked from a reference is locked to it, as Align's padlock locks.
     pub(crate) lock: bool,
     /// Trim/Extend to Corner (TR), on: the first line picked, where it was clicked (the part kept).
     pub(crate) trim: Option<Option<(usize, P2)>>,
 }
+
+/// A step of a sketch's own history: what a change while sketching may change, together (FE-12).
+#[derive(Clone, PartialEq)]
+struct Snap {
+    lines: [Vec<SketchLine>; 4],
+    locks: Vec<FamilyDimension>,
+    unlocked: Vec<Guid>,
+    dims: Vec<FamilyDimension>,
+    changed: Vec<FamilyDimension>,
+    params: Vec<ParamText>,
+    driven: Vec<(Guid, Curve, Curve)>,
+}
+
+/// The most steps a sketch's history keeps.
+const STEPS: usize = 100;
 
 /// What Pick Lines picks: the line, and the reference it lies on, if the view found one, as a lock waiting for the sketch's
 /// line (its `refs` the reference alone): what Lock adds.
@@ -171,6 +190,52 @@ impl FormSketch {
         self.offer = None;
         self.targets = None;
         self.set_tool(Some(Shape::Line), false);
+    }
+
+    /// What the sketch's history holds of it now.
+    fn snap(&self) -> Snap {
+        let mut lines = self.parts.clone();
+        lines[self.part as usize] = self.sketch.lines.clone();
+        Snap {
+            lines,
+            locks: self.locks.clone(),
+            unlocked: self.unlocked.clone(),
+            dims: self.dims.clone(),
+            changed: self.changed.clone(),
+            params: self.params.clone(),
+            driven: self.driven.clone(),
+        }
+    }
+
+    /// Notes the sketch if it is not as the last frame saw it: the change is a step Ctrl+Z takes back.
+    pub(crate) fn track(&mut self) {
+        let now = self.snap();
+        match self.seen.take() {
+            Some(was) if was != now => {
+                self.history.push(was);
+                if self.history.len() > STEPS {
+                    self.history.remove(0);
+                }
+            }
+            _ => {}
+        }
+        self.seen = Some(now);
+    }
+
+    /// Ctrl+Z: the sketch as it was before its last change, its lines (every part's) and its dimensions, locks and
+    /// parameters together; false when there's none to take back.
+    pub(crate) fn undo(&mut self) -> bool {
+        self.track();
+        let Some(was) = self.history.pop() else { return false };
+        let Snap { mut lines, locks, unlocked, dims, changed, params, driven } = was.clone();
+        self.sketch.lines = std::mem::take(&mut lines[self.part as usize]);
+        self.parts = lines;
+        (self.locks, self.unlocked, self.dims, self.changed, self.params, self.driven) = (locks, unlocked, dims, changed, params, driven);
+        self.seen = Some(was);
+        self.sketch.changed();
+        self.offer = None;
+        self.align_from = None;
+        true
     }
 
     /// The path (a sweep's sketch) as drawn, chained, its numbers as they are.
@@ -688,6 +753,8 @@ impl FamilyEditor {
             params: Vec::new(),
             selected_dim: None,
             driven: Vec::new(),
+            seen: None,
+            history: Vec::new(),
             lock: false,
             trim: None,
         }));
@@ -973,8 +1040,9 @@ impl FamilyEditor {
     pub(crate) fn undo_sketch(&mut self) {
         if let Some(s) = self.sketch.as_mut() {
             s.points.clear();
-            s.sketch.undo();
+            s.undo();
         }
+        self.prune_selected_dim();
     }
 
     /// A form's sketch in a plan or an elevation: the lines over the picture, and the clicks and drags that draw them.
@@ -1172,6 +1240,7 @@ impl FamilyEditor {
             }
         }
         s.sketch.track();
+        s.track();
         s.paint(painter, screen, hovered);
         if let Some(f) = s.found
             && let Some(at) = screen(f.at)

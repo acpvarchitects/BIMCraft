@@ -81,6 +81,17 @@ impl FamilyEditor {
         f.dimensions
     }
 
+    /// The dimension selected while sketching let go once it is gone (taken back, deleted, its line gone), so the Options Bar
+    /// and Delete never act on one that isn't there.
+    pub(crate) fn prune_selected_dim(&mut self) {
+        let Some(g) = self.sketch.as_ref().and_then(|s| s.selected_dim) else { return };
+        if !self.sketch_dimensions().iter().any(|d| d.guid == g)
+            && let Some(s) = self.sketch.as_mut()
+        {
+            s.selected_dim = None;
+        }
+    }
+
     /// The dimensions in effect: the sketch's while a form is sketched ([`FamilyEditor::sketch_dimensions`]), else the draft's.
     pub(crate) fn dimensions_now(&self) -> Vec<FamilyDimension> {
         self.sketch_dimensions()

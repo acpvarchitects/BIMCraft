@@ -602,6 +602,7 @@ impl FamilyEditor {
             let mut lines = drawn_lines(&cache.drawing, pane.min);
             // The sketch's dimensions (FE-12): those made while sketching and the draft's that measure the form, and the one
             // being placed. Align's padlocks keep off them too.
+            self.prune_selected_dim();
             let mm_screen = dims::screen_of(view, pane.min);
             let plane_here = |p: egui::Pos2| plane_at(&cache.drawing, &cache.staged, p);
             let sketch_dims = self.sketch_dims(&cache.staged, which, &mm_screen, response.hover_pos(), &at_view, &plane_here);
