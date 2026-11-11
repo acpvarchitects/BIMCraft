@@ -8,6 +8,7 @@
 //! session's, never the family's. Each view shows the family as the type previewed flexes it, and its dimensions, Aligned
 //! Dimension and Align are F7's (`dimensions.rs`).
 use super::dimensions::{self as dims, Clicked};
+use super::select_box::Picked;
 use super::*;
 use bimcraft_core::family::views::{self as fv, Side, Staged, Which};
 use bimcraft_core::family::{DimRef, FamilyDimension};
@@ -40,8 +41,6 @@ pub(crate) struct Views {
     pub(crate) detail: bimcraft_core::graphics::Detail,
     /// The Reference Plane tool, on, with its first click once made.
     pub(crate) drawing: Option<Option<P2>>,
-    /// The plane selected, by GUID.
-    pub(crate) plane: Option<Guid>,
     /// The plane being dragged: where the pointer was, in the view's millimetres.
     pub(super) drag: Option<P2>,
     /// A selected extrusion's Start or End (true) being dragged by its handle (F5): where the pointer was, in the view's
@@ -49,8 +48,6 @@ pub(crate) struct Views {
     end_drag: Option<(bool, P2, [f64; 3])>,
     /// The picture shown, and what it was drawn of.
     pub(super) cache: Option<Cached>,
-    /// The dimension selected, by GUID.
-    pub(crate) dim: Option<Guid>,
     /// Aligned Dimension (DI): on, with the references picked so far; Radial or Diameter Dimension too (`dim_kind`), its
     /// circle picked once it is.
     pub(crate) dimensioning: Option<Vec<DimRef>>,
@@ -74,8 +71,6 @@ pub(crate) struct Views {
     pub(crate) status: Option<String>,
     /// Where on screen the view was last shown.
     pane: Option<Rect>,
-    /// The reference line selected, by GUID (F7d).
-    pub(crate) line: Option<Guid>,
     /// Where the pointer was last over {3D} and the camera {3D} was seen through, and the form or nested instance under it
     /// there (T11's hover).
     pub(crate) hover3d: Option<(egui::Pos2, bimcraft_core::view3d::Camera, Option<bimcraft_core::family::views::Part>)>,
@@ -160,7 +155,7 @@ fn default_work_plane(which: Option<Which>) -> PlaneRef {
 pub(crate) const WORK_PLANE_MARGIN: f64 = 300.0;
 
 /// The selection's colour in the family's views.
-pub(super) const PICKED: Color32 = Color32::from_rgb(40, 120, 230);
+pub(crate) const PICKED: Color32 = Color32::from_rgb(40, 120, 230);
 /// How far a dimension's tick reaches from its point, in points: what a padlock keeps clear of.
 const TICK: f32 = 7.0;
 
@@ -268,9 +263,12 @@ impl FamilyEditor {
         self.views.shown.is_some() && self.adaptive.is_none()
     }
 
-    /// The plane selected, while the family has it.
+    /// The plane selected, while it alone is and the family has it.
     pub(crate) fn selected_plane(&self) -> Option<Guid> {
-        self.views.plane.filter(|g| self.planes.iter().any(|p| p.guid == *g))
+        match self.only_selected() {
+            Some(Picked::Plane(g)) => Some(g),
+            _ => None,
+        }
     }
 
     /// Reference Plane (RP): the tool, in a plan or an elevation of a family that isn't adaptive; the selection goes.
@@ -278,8 +276,7 @@ impl FamilyEditor {
         if self.editing_2d() {
             self.views.drawing = Some(None);
             self.views.picking = None;
-            self.views.plane = None;
-            self.form = None;
+            self.let_everything_go();
         }
     }
 
@@ -295,7 +292,7 @@ impl FamilyEditor {
         }
         self.planes.retain(|p| p.guid != g);
         self.forget_reference(g);
-        self.views.plane = None;
+        self.selection.forget(Picked::Plane(g));
         Ok(())
     }
 
@@ -728,7 +725,7 @@ impl FamilyEditor {
         self.views.offer_shown = offered;
         for m in &marks {
             let g = self.dimensions.get(m.index).map(|d| d.guid);
-            let picked = g.is_some() && (g == selected_dim || g.is_some_and(|g| unsatisfied.contains(&g)));
+            let picked = g.is_some_and(|g| self.selection.contains(Picked::Dimension(g)) || unsatisfied.contains(&g));
             let lock = locks.iter().find(|(i, _)| *i == m.index).map(|(_, p)| *p);
             dims::paint(&painter, m, &on_screen, picked, base.units, lock);
         }
@@ -800,44 +797,28 @@ impl FamilyEditor {
         let project = |q: [f64; 3]| Some(screen(c.staged.to_view(which, q)));
         self.connector_hover = response.hover_pos().and_then(|p| super::connector_marks::pick(&connector_marks, &project, p));
         let lit = (PICKED, crate::style::canvas_pal().hover);
-        super::connector_marks::paint(&painter, &connector_marks, &project, self.selected_connector(), self.connector_hover, lit);
-        // What is selected, over the picture.
-        if editable && let (Some(i), Some(f)) = (self.selected_form(), family.as_ref()) {
-            let ring: Vec<egui::Pos2> = fv::outline(f, &values, &c.staged, which, i).into_iter().map(screen).collect();
-            if ring.len() > 2 {
-                painter.add(egui::Shape::closed_line(ring, Stroke::new(2.0, PICKED)));
-            }
-        }
-        if editable && let (Some(i), Some(f)) = (self.selected_nested(), family.as_ref()) {
-            let ring: Vec<egui::Pos2> = fv::nested_outline(f, &values, &c.staged, which, i).into_iter().map(screen).collect();
-            if ring.len() > 2 {
-                painter.add(egui::Shape::closed_line(ring, Stroke::new(2.0, PICKED)));
-            }
-        }
-        let trace = |g: Guid| -> Option<(egui::Pos2, egui::Pos2)> {
-            let p =
-                family.as_ref().and_then(|f| f.planes.iter().find(|p| p.guid == g)).or_else(|| self.planes.iter().find(|p| p.guid == g))?;
-            plane_trace(&c.staged, which, &p.frame()).map(|(a, b)| (screen(a), screen(b)))
-        };
-        if editable && let Some(g) = self.selected_plane() {
-            let strokes = plane_strokes(&c.drawing, &c.staged, g, pane.min);
-            if strokes.is_empty() {
-                if let Some((a, b)) = trace(g) {
-                    painter.line_segment([a, b], Stroke::new(2.5, PICKED));
-                }
-            } else {
-                for s in strokes {
-                    painter.line_segment(s, Stroke::new(2.5, PICKED));
-                }
-            }
-        }
-        // The reference line selected, its pivots' marks and its grips (F7d).
-        if editable
-            && let (Some(g), Some(f)) = (self.selected_line(), family.as_ref())
-            && let Some(l) = f.lines.iter().find(|l| l.guid == g)
-        {
-            let (a, b) = (c.staged.to_view(which, l.start), c.staged.to_view(which, l.end));
-            painter.line_segment([screen(a), screen(b)], Stroke::new(2.5, PICKED));
+        let chosen_connectors: Vec<usize> =
+            self.selection.items().iter().filter_map(|p| if let Picked::Connector(i) = p { Some(*i) } else { None }).collect();
+        super::connector_marks::paint(&painter, &connector_marks, &project, &chosen_connectors, self.connector_hover, lit);
+        // What is selected, over the picture: each of it as one selected alone is drawn (FE-1, `select_box.rs`); the
+        // reference line selected, its pivots' marks and its grips (F7d).
+        let hidden: Vec<bool> = (0..self.forms.len()).map(|i| self.temp_hidden_form(i)).collect();
+        let scene = family.as_ref().map(|f| super::select_box::Scene {
+            family: f,
+            values: &values,
+            staged: &c.staged,
+            drawing: &c.drawing,
+            which,
+            view,
+            min: pane.min,
+            dims: &marks,
+            dimensions: &self.dimensions,
+            connectors: &connector_marks,
+            detail: self.views.detail,
+            hidden: &hidden,
+        });
+        if editable && let Some(scene) = scene.as_ref() {
+            scene.paint_selected(&painter, self.selection.items());
         }
         let chosen = self.selected_line().or_else(|| self.selected_plane());
         let turning = match self.views.grip {
@@ -909,8 +890,8 @@ impl FamilyEditor {
             end_moved = Some((end, d[0] * n[0] + d[1] * n[1] + d[2] * n[2]));
             self.views.end_drag = Some((end, to, n));
         }
-        let mut select: Option<(Option<usize>, Option<Guid>)> = None;
-        let mut select_line: Option<Option<Guid>> = None;
+        // What a click selects (FE-1): an element, or (inner none) nothing.
+        let mut select: Option<Option<Picked>> = None;
         let mut pin: Option<(Guid, (bimcraft_core::family::PivotPoint, bimcraft_core::family::PivotAt))> = None;
         let mut grip_moved: Option<super::pivot::GripMove> = None;
         // A grip pressed (F7d): the rotate grip, or a line's end; the drag is the grip's.
@@ -934,8 +915,6 @@ impl FamilyEditor {
             });
             self.views.grip = Some((grip, now));
         }
-        let mut select_nested: Option<usize> = None;
-        let mut select_connector: Option<usize> = None;
         let mut place_at: Option<(PlaneRef, (f64, f64), f64)> = None;
         let mut moved: Option<(Guid, [f64; 3])> = None;
         let mut new_plane = None;
@@ -1052,9 +1031,9 @@ impl FamilyEditor {
                 };
                 on_dims = Some((hit, lengths));
             } else if let Some(i) = super::connector_marks::pick(&connector_marks, &project, p) {
-                select_connector = Some(i);
+                select = Some(Some(Picked::Connector(i)));
             } else if let Some(i) = family.as_ref().and_then(|f| fv::nested_at(f, &values, &c.staged, which, q)) {
-                select_nested = Some(i);
+                select = Some(Some(Picked::Nested(i)));
             } else {
                 // A reference line where the view draws it (F7d): over the planes' traces and the forms, as it is drawn.
                 let line = c
@@ -1064,13 +1043,35 @@ impl FamilyEditor {
                 let plane = if line.is_some() { None } else { pick_plane(p) };
                 let form = family.as_ref().and_then(|f| fv::form_at(f, &values, &c.staged, which, q));
                 select = Some(match (plane, line, form) {
-                    (Some(g), _, _) => (None, Some(g)),
-                    (None, Some(_), _) => (None, None),
-                    (None, None, Some(i)) => (Some(i), None),
-                    (None, None, None) => (None, None),
+                    (Some(g), _, _) => Some(Picked::Plane(g)),
+                    (None, Some(g), _) => Some(Picked::Line(g)),
+                    (None, None, Some(i)) => Some(Picked::Form(i)),
+                    (None, None, None) => None,
                 });
-                select_line = Some(line);
             }
+        }
+        // A drag from nothing a click would select, nor a handle, a grip or a padlock, with no tool in hand: a selection box,
+        // a window left to right, a crossing right to left; Ctrl adds what it takes, Shift takes it away (FE-1).
+        let free = editable
+            && self.views.drawing.is_none()
+            && self.views.picking.is_none()
+            && self.views.pivoting.is_none()
+            && self.views.dimensioning.is_none()
+            && self.views.aligning.is_none()
+            && self.placing.is_none()
+            && self.views.end_drag.is_none()
+            && self.views.grip.is_none();
+        let start =
+            response.drag_started_by(PointerButton::Primary).then(|| ui.input(|i| i.pointer.press_origin())).flatten().filter(|p| {
+                free && scene.as_ref().is_some_and(|s| !s.under(*p))
+                    && handles.iter().all(|h| screen(h.0).distance(*p) > 10.0)
+                    && grips.iter().all(|(_, at)| at.distance(*p) > super::pivot::REACH)
+                    && dims::clicked(&marks, &self.dimensions, selected_dim, align_lock, &locks, *p, &on_screen).is_none()
+            });
+        let boxed = super::select_box::track(&mut self.selection, ui, &response, &painter, pane, start);
+        if let (Some((from, to)), Some(scene)) = (boxed, scene.as_ref()) {
+            let taken = scene.in_box(from, to);
+            self.selection.apply(&taken, super::select_box::How::of(crate::canvas::click_modifiers(ui)));
         }
         // A plane of the family's own, selected, dragged square to itself.
         if editable
@@ -1128,7 +1129,7 @@ impl FamilyEditor {
         if let Some((hit, lengths)) = on_dims {
             let done = match hit {
                 Clicked::Select(g) => {
-                    (self.views.dim, self.views.plane, self.form) = (Some(g), None, None);
+                    self.click_select(Some(Picked::Dimension(g)), crate::canvas::click_modifiers(ui));
                     Ok(())
                 }
                 Clicked::Lock(g, i) => self.toggle_lock(g, i, lengths.get(i).copied().unwrap_or(0.0)),
@@ -1149,12 +1150,6 @@ impl FamilyEditor {
         if let Some((host, at, offset)) = place_at {
             self.place_nested(host, at, offset);
         }
-        if let Some(i) = select_connector {
-            self.select_connector(i);
-        }
-        if let Some(i) = select_nested {
-            self.select_nested(Some(i));
-        }
         if let Some(m) = grip_moved
             && let Some(e) = self.drag_grip(m)
         {
@@ -1165,14 +1160,8 @@ impl FamilyEditor {
         {
             problem = Some(e);
         }
-        if let Some((form, plane)) = select {
-            self.nested_sel = None;
-            self.symbol = None;
-            self.connector = None;
-            self.views.dim = None;
-            self.form = form;
-            self.views.plane = plane;
-            self.views.line = select_line.flatten();
+        if let Some(hit) = select {
+            self.click_select(hit, crate::canvas::click_modifiers(ui));
         }
         // A plane its dimensions hold is dragged through them: a label it changes takes the new length, what is locked to it
         // follows, and what can't hold says so.
@@ -1212,8 +1201,7 @@ impl FamilyEditor {
                 pivot: None,
                 turned: None,
             });
-            self.views.plane = Some(guid);
-            self.form = None;
+            self.select_only(Picked::Plane(guid));
         }
         problem.or_else(|| self.views.status.take())
     }
