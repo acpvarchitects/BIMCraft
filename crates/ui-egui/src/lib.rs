@@ -5324,7 +5324,8 @@ impl BimApp {
 
     fn status_bar(&mut self, ui: &mut Ui) {
         ui.horizontal(|ui| {
-            ui.label(RichText::new(t(self.prompt())).color(pal().muted));
+            // The indicators at the right first, then the prompt in what is left, cut short with an ellipsis rather than
+            // run under them.
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 // How many elements are selected, by the selection filter, as Revit shows it.
                 // A click on it filters the selection, as Revit's does.
@@ -5348,6 +5349,9 @@ impl BimApp {
                     ui.label(RichText::new(t("Unsaved changes")).color(pal().muted));
                 }
                 self.option_selector(ui);
+                ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
+                    ui.add(egui::Label::new(RichText::new(t(self.prompt())).color(pal().muted)).truncate());
+                });
             });
         });
     }
