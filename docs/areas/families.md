@@ -819,7 +819,8 @@ began, so the view refitting what it frames doesn't move the drag under the hand
 step, nothing unsaved); Escape, Undo, Redo and another view or tab shown give it up, the form put back as it was (the Start and
 End drag too); the form is followed by what it is known by while the document is open, never by its place. A click on an arrow
 keeps the selection. Refused, the form left as it was and the status
-bar saying why: an edge a dimension's label, lock, Align lock or EQ measures to (`Family::edge_held`), greyed; a drag that leaves
+bar saying why: an edge a dimension's label, lock, Align lock or EQ measures to (`Family::edge_held`), greyed, as one whose numbers a drag
+would move are formulas is (`shape_handles::greyed`: by what ties it alone, never by where a drag would take the profile); a drag that leaves
 no profile (a line turned back or of no length, or what `finish_check` refuses: lines crossing, overlapping, a loop open); one
 the constraints would undo (where a family is constrained, the type previewed must flex the edge to where the drag put it, the
 handles sitting where that type shows the outline, F10); and one a type can't build, as Finish checks. No snapping: the
