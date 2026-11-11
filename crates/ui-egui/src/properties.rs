@@ -2806,6 +2806,7 @@ impl BimApp {
                         let now = match (kind, f.value.as_f64()) {
                             (schedule::Kind::Length, Some(x)) => units.length(x),
                             (schedule::Kind::Area, Some(x)) => format!("{}", (units.area(x * 1e6).0 * 100.0).round() / 100.0),
+                            (schedule::Kind::Volume, Some(x)) => format!("{}", (units.volume(x * 1e9).0 * 1000.0).round() / 1000.0),
                             _ => text(&f.value),
                         };
                         // A field of its own width: a grid cell would only be as wide as the last frame's.
@@ -2883,10 +2884,11 @@ pub(crate) struct ScheduleDialog {
 }
 
 /// What a calculated field comes to, as Schedule Properties names it.
-const RESULTS: [(schedule::Kind, &str); 4] = [
+const RESULTS: [(schedule::Kind, &str); 5] = [
     (schedule::Kind::Number, "Number"),
     (schedule::Kind::Length, "Length"),
     (schedule::Kind::Area, "Area"),
+    (schedule::Kind::Volume, "Volume"),
     (schedule::Kind::YesNo, "Yes/No"),
 ];
 
@@ -2919,7 +2921,7 @@ fn ops(kind: schedule::Kind) -> Vec<(Op, &'static str)> {
     OPS.into_iter().filter(|(op, _)| fits(*op)).collect()
 }
 
-/// A filter's value as typed, for a field holding `kind`: lengths in `units`, areas in m² or ft².
+/// A filter's value as typed, for a field holding `kind`: lengths in `units`, areas in m² or ft², volumes in m³ or ft³.
 fn filter_value(kind: schedule::Kind, typed: &str, units: Units) -> Result<Value, String> {
     match kind {
         schedule::Kind::Text => Ok(json!(typed.trim())),
@@ -2927,6 +2929,9 @@ fn filter_value(kind: schedule::Kind, typed: &str, units: Units) -> Result<Value
         // Typed as the schedule shows it; kept in m².
         schedule::Kind::Area => {
             number(typed).map(|x| json!(x / units.area(1e6).0)).ok_or_else(|| tf("`{}` is not a number", &[typed.trim()]))
+        }
+        schedule::Kind::Volume => {
+            number(typed).map(|x| json!(x / units.volume(1e9).0)).ok_or_else(|| tf("`{}` is not a number", &[typed.trim()]))
         }
         _ => number(typed).map(|x| json!(x)).ok_or_else(|| tf("`{}` is not a number", &[typed.trim()])),
     }
@@ -3225,7 +3230,7 @@ impl BimApp {
                                     change = Some(json!({"fields": fields}));
                                 }
                                 ui.end_row();
-                                if matches!(kind, schedule::Kind::Number | schedule::Kind::Length | schedule::Kind::Area) {
+                                if kind.numeric() {
                                     let l = ui.label(t("Calculate totals"));
                                     let mut on = fields[i].total;
                                     let r = ui.checkbox(&mut on, "");

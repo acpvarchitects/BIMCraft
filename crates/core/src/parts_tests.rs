@@ -992,7 +992,7 @@ fn a_parts_values_are_fields_read_by_name_as_any_elements() {
     let kind = |name: &str| fields.iter().find(|(n, _)| n == name).unwrap().1;
     assert_eq!(
         [kind("SU_Code"), kind("Decay_Severity"), kind("Net Area"), kind("Net Volume"), kind("Thickness"), kind("Excluded")],
-        [Kind::Text, Kind::Number, Kind::Area, Kind::Number, Kind::Length, Kind::YesNo]
+        [Kind::Text, Kind::Number, Kind::Area, Kind::Volume, Kind::Length, Kind::YesNo]
     );
     // The heritage set's names are the ones it is shown by everywhere.
     assert!(Heritage::NAMES.iter().all(|n| names.contains(n)));
@@ -1010,7 +1010,7 @@ fn a_parts_values_are_fields_read_by_name_as_any_elements() {
     );
     assert_eq!(
         of(ids[0], &["Thickness", "Net Area", "Net Volume", "Predefined Type", "Excluded"]),
-        some(&["20", "12.00", "0.24", "notdefined", "No"])
+        some(&["20", "12.00", "0.240", "notdefined", "No"])
     );
     assert_eq!(of(ids[0], &["Object Type", "Conflict", "Phase Demolished"]), [None, None, None]);
     assert_eq!(text(ids[2], "Decay_Pathology").as_deref(), Some("Lacuna in the fresco"));
@@ -1018,15 +1018,15 @@ fn a_parts_values_are_fields_read_by_name_as_any_elements() {
     // A part of all of a plain wall: no layer, no function, no material its type names.
     assert_eq!(
         of(whole, &["Layer", "Function", "Material", "Thickness", "Net Volume"]),
-        [None, None, None, Some("200".into()), Some("2.4".into())]
+        [None, None, None, Some("200".into()), Some("2.400".into())]
     );
     assert_eq!(text(wall, "SU_Code"), None, "a wall has no such field");
     // A name a part has of its own is no name for a project parameter of parts.
     let mut t = s.clone();
     let e = fails(&mut t, "parameter", json!({"name": "SU_Code", "categories": ["part"]}));
     assert!(e.contains("parts have a `SU_Code` of their own; name it otherwise"), "{e}");
-    // There is no schedule of parts yet: only their values by name.
-    assert!(!schedule::categories().contains(&"part") && !schedule::built().contains(&"part"));
+    // Parts are a category schedules are of (`parts_schedule_tests.rs`), and none a multi-category one lists.
+    assert!(schedule::categories().contains(&"part") && !schedule::built().contains(&"part"));
 }
 
 #[test]

@@ -7,8 +7,11 @@ a component's `params` hold its family's instance values too, so a parameter for
 parameter's name, nor any category's own field's (`schedule::own_field`). A schedule's fields are its category's own
 (`OWN` in `schedule.rs`, read from `element_json`), the project parameters for it and, for components, the families'
 parameters, or calculated: a formula over the row's others, read as the family formula engine reads (lengths in mm, areas in
-m²), a field with no value leaving it with none (an unset yes or no is no). Filters compare numbers as the schedule shows
-them, so two that show the same are equal. The six schedules every project has (`schedule::VIEWS`) aren't elements
+m², volumes in m³), a field with no value leaving it with none (an unset yes or no is no). Filters compare numbers as the schedule shows
+them, so two that show the same are equal. What a field holds is its `schedule::Kind`: text, a number, a length, an area, a
+volume (m³, shown to three places, a litre, in m³ or ft³ as `Units::volume` says, its heading saying which, as an area's
+does) or yes or no; numbers, lengths, areas and volumes total (`Kind::numeric`). A total, and a grouped row's sum, of rows
+none of which has a number is no value, never 0 (`sum`). The six schedules every project has (`schedule::VIEWS`) aren't elements
 until changed or placed (`schedule::standard`), and a schedule named as one of them, in any language or case, is that one; renaming a parameter renames it in schedules, but a formula naming it holds
 the rename back.
 A component's Room Number and Room Name (as Revit's Room: Number and Room: Name) are the room it stands in, found where it is
@@ -24,7 +27,62 @@ area), and Material, its type's structure layer's (or its thickest's), a run's t
 parameter's. Its filters, sorting, grouping, totals and calculated fields are any schedule's; only it lists categories.
 A table goes to a file as CSV (`schedule::to_csv`, text a spreadsheet would read as a formula guarded with `'`) or, for a path
 ending `.xlsx`, as a workbook of one sheet (`schedule::to_xlsx` over `xlsx.rs`, which writes the parts and the zip by hand on
-`flate2`): headings in bold, numbers as numbers so they sum, text as inline strings, which a spreadsheet never takes for a formula.
+`flate2`): headings in bold, numbers as numbers so they sum, text as inline strings, which a spreadsheet never takes for a formula,
+no value as no cell, and the totals row in bold (`xlsx::workbook_with`).
+
+## Parts: the restoration's bill of quantities
+
+Parts ([parts](parts.md)) are a category schedules are of, `part` (`Parts`, as Revit lists it): `schedule {name, category:
+"parts"}`, or Parts in the desktop's New Schedule dialog. A row is a part, and lists it (`Table::ids`), so a click on it
+selects the part as any schedule's row selects its element. Its fields are a part's values by name (`OWN`'s `part`, read from
+`parts::json`): `Id`, `Host`, `Host Category`, `Host Type`, `Level`, `Layer`, `Function`, `Material`, `Thickness`, `Net Area`
+(m²) and `Net Volume` (m³), which a schedule shows unless it chooses, then `Density`, `Mass`, `Thermal Conductivity`, `Thermal
+Resistance`, `Specific Heat`, `Predefined Type`, `Object Type`, `Excluded`, the heritage set (`SU_Code`, `Historical_Period`,
+`Decay_Pathology`, `Decay_Severity`, `Intervention_Type`), `Conflict`, `Count`, the phases, the design option, and the
+project's parameters for parts. Nothing of them is stored: a row is what the part is of its host now, so the schedule follows
+a wall that is stretched or takes a window. A value nobody gave is no value, never 0.
+
+- **Excluded parts are left out**, as Revit leaves them out of schedules (`sources`), but of a schedule with a filter on
+  `Excluded`, which says for itself which it lists (`Excluded equals true` lists the excluded).
+- **Parts in conflict are listed**, counted, with their `Conflict` and with no `Net Area` and no `Net Volume`
+  (`From::Measured`: a listing says 0 of a conflicted part's volume, a schedule none), so they add nothing to a sum and are
+  not silently missing either: the table names them in `Table::notes` (`notes` in the command's output, a line over the rows
+  in the desktop). `Conflict has-no-value` as a filter leaves them out, `has-value` lists only them.
+- A part that parts were divided from is listed with no area and no volume: its divisions hold them, so nothing is summed
+  twice (its `Count` is still 1).
+- A multi-category schedule lists no parts (`NOT_LISTED`): they are of what it lists, and would be counted beside it.
+
+**The bill of quantities** is a schedule of parts sorted by what the works are priced by, `grouped`, with `total` on its
+quantities: a row for each `Intervention_Type` (or `Decay_Pathology`, `Historical_Period`, `Material`, `Host`, or several in
+turn, a row for each set of their values) with its parts' `Net Area`, `Net Volume` and `Count` summed, a field whose values
+differ left empty, and the totals of all of them under the rows. Parts with no value of a sort field come together under a
+blank heading, first among text (after every number, for a number such as `Decay_Severity`): neither dropped nor counted as
+0. Filters narrow it (`Decay_Severity greater 2`). Areas show to two places and volumes to three; the table, the CSV and the
+workbook hold them as fine as a part's listing does (the square centimetre, the cubic centimetre), and sums are taken of
+those, not of what is shown.
+
+**The starter schedule.** `schedule {starter: "restoration-quantities"}` (`schedule::starter`, `STARTERS`; Restoration
+Quantities in the desktop's Schedules list until the project has it) makes the schedule Restoration Quantities, named in the
+project's language, or under `name`, in one go, and reads it once the project has one of that name; it is the project's own
+from then on, changed as any other. It is this, which the command takes as well:
+
+```json
+{"name": "Restoration Quantities", "category": "parts", "grouped": true,
+ "fields": ["Intervention_Type", "Decay_Pathology", "SU_Code", "Host Type", "Material",
+            {"name": "Net Area", "total": true}, {"name": "Net Volume", "total": true}, {"name": "Count", "total": true}],
+ "sort": ["Intervention_Type", "Decay_Pathology"]}
+```
+
+With `path`, it goes to a file as any schedule: `schedule {starter: "restoration-quantities", path: "works.xlsx"}` writes
+the workbook, its headings `Net Area (m²)` and `Net Volume (m³)`, its quantities numbers to be priced, its totals in bold.
+Prices are not part of it. A unit price by `Intervention_Type` would be a project parameter of parts (a number, `Unit
+Price`) and a calculated field (`Net Area * Unit Price`, totalled); a price list keyed by the intervention, one row to
+fill in, is what schedules lack for it (a key schedule).
+
+**The file.** A schedule of parts is a `schedule` element whose `of` is `part`: a BIMCraft from before parts refuses the
+whole file on opening (`Model::check`: there's no schedule of `part`), and one from before `Kind::Volume` refuses a file
+with a calculated field of `kind: "volume"` (an unknown variant). Both wait for the `FORMAT` step parts take
+([parts](parts.md)).
 
 ## The same numbers as Revit
 

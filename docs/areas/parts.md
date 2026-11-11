@@ -77,9 +77,16 @@ uses for forms of decay, or `Custom(text)`; the words only, never a standard's d
 `parts::json` (what `elements` shows): `Id`, `Host`, `Host Category`, `Host Type`, `Level`, `Layer`, `Function`, `Material`,
 `Thickness`, `Net Area`, `Net Volume`, `Density`, `Mass`, `Thermal Conductivity`, `Thermal Resistance`, `Specific Heat`,
 `Predefined Type`, `Object Type`, `Excluded`, the five heritage names, `Conflict`,
-`Count`, the phases and the design option. A value nobody gave is no value, never 0 (`From::Held`). `part` is in
-`schedule::MORE`: there is no schedule of parts and no view filter of them yet. A part that parts were divided from lists them
-(`divisions`) and no area or volume: they hold them.
+`Count`, the phases and the design option. A value nobody gave is no value, never 0 (`From::Held`). A part that parts were
+divided from lists them (`divisions`) and no area or volume: they hold them.
+
+## Schedules
+
+Parts are a category schedules are of (`schedule {category: "parts"}`), and a schedule of them grouped by `Intervention_Type`
+or `Decay_Pathology`, with its net areas, net volumes and counts totalled, is the restoration's bill of quantities:
+`schedule {starter: "restoration-quantities"}` makes it in one go, and `path` writes it as CSV or a workbook. Excluded parts
+are left out; parts in conflict are listed with no area or volume, and named in the table's `notes`. The detail is in
+[schedules](schedules.md#parts-the-restorations-bill-of-quantities).
 
 ## IFC
 
@@ -114,6 +121,6 @@ the category `part`, which an older one refuses on opening, saying so.
 
 Divide Parts (the engine is `divide.rs`; a division is a new `Source`, its cuts in the host's own coordinates, and the divided
 part the sum of its divisions), edge offsets and gaps, parts in plans, sections and the 3D view with Parts Visibility (Show
-Original, Show Parts, Show Both) and colours by `Decay_Pathology` or `Historical_Period`, schedules and tags of parts, the
+Original, Show Parts, Show Both) and colours by `Decay_Pathology` or `Historical_Period`, tags of parts, the
 desktop's tools (the material's weight and heat among them), reading parts and a material's values from IFC, and the
 `FORMAT` step.

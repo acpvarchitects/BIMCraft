@@ -4032,6 +4032,18 @@ impl BimApp {
                 if ui.button(t("Schedule/Quantities…")).clicked() {
                     self.new_schedule = Some(properties::NewSchedule::default());
                 }
+                // The ready-made ones the project hasn't made yet: the restoration's bill of quantities, of its parts.
+                for key in schedule::STARTERS {
+                    let m = &self.session.model;
+                    let Some(name) = schedule::starter(m, key).map(|st| st.name).filter(|n| schedule::named(m, n).is_none()) else {
+                        continue;
+                    };
+                    if ui.button(t(&name)).clicked()
+                        && let Some(id) = self.run("schedule", json!({"starter": key})).and_then(|made| made["id"].as_u64())
+                    {
+                        self.open_sheet(Sheet::Table(id));
+                    }
+                }
                 ui.separator();
                 for (cat, name) in SCHEDULES {
                     if ui.button(t(name)).clicked() {
@@ -5214,6 +5226,11 @@ impl BimApp {
                         Some(true) => Some(style.visuals.selection.bg_fill.gamma_multiply(0.5)),
                         _ => (row % 2 == 1).then_some(style.visuals.faint_bg_color),
                     };
+                    // What its cells don't say: the parts in conflict it lists, which measure nothing.
+                    for note in &table.notes {
+                        ui.label(RichText::new(note).color(pal().muted));
+                        ui.add_space(4.0);
+                    }
                     let mut picked = None;
                     ScrollArea::both().show(ui, |ui| {
                         Grid::new(("schedule", &sc.name)).with_row_color(row_color).spacing(vec2(28.0, 6.0)).show(ui, |ui| {
