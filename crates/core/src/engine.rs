@@ -702,6 +702,10 @@ impl Session {
         let option = self.option.clone().filter(|o| crate::phasing::option_exists(m, o));
         let is_first = phase.as_ref() == m.phases.first();
         for (_, e) in m.elements.range_mut(first..) {
+            // A part is of its host, in the phase and the option its host is in, unless it is given its own.
+            if matches!(e, Element::Part(_)) {
+                continue;
+            }
             let follows = matches!(e, Element::Door(_) | Element::Window(_));
             let Some(params) = e.params_mut() else { continue };
             if let Some(p) = &phase

@@ -2154,6 +2154,59 @@ other_files(
         ids_of,
     )
     .menu("Manage > IDs of Selection"),
+    edit(
+        "create_parts",
+        "Create Parts",
+        &[],
+        "{ids: [id, …] | id} takes walls, floors, roofs, ceilings and components apart into parts, as Revit's Create Parts: a \
+         part for each layer of the element's type that has some thickness (a wall's from its exterior side in, the others' \
+         from the top down), or one part of all of it where its type has no layers, or it is a component. A part is an element \
+         of its own (category `part`) that holds a recipe and no shape: it is its layer of its host as the host stands, so it \
+         follows the host when that moves, stretches, takes a door or has its type's layers changed, and says so (`conflict`) \
+         once the host's type has its layer no more. A thermal layer's part starts as IFC's INSULATION. An element that has \
+         parts gets those it lacks; refused when none of the elements lacks any, or when a part of all of an element stands \
+         where its layers' would. Deleting an element deletes its parts; copying one copies them. Returns `ids` (the parts \
+         made, in the order of the elements and of their layers) and `existing` (those the elements had)",
+        create_parts,
+    ),
+    edit(
+        "part",
+        "Part Properties",
+        &[],
+        "{id | ids: [id, …], material?: name | null, predefined_type?: insulation | precastpanel | userdefined | notdefined, \
+         object_type?: text | null, excluded?: true | false, su_code?: text | null, historical_period?: text | null, \
+         decay_pathology?: word | {custom: text} | null, decay_severity?: 1 to 5 | null, intervention_type?: text | null, \
+         layer?: n | null} says of parts what they are: `material`, one of the library's in place of the layer's (null, the \
+         layer's again); `predefined_type`, IFC's kind of building element part, and `object_type`, what it is in the \
+         project's own words (USM, Decay…), which a `userdefined` part must say; `excluded`, left out of what is counted \
+         and exported, as Revit's Exclude Parts (false, Restore Parts). The heritage set, each value null to clear it and \
+         each named in any case (`SU_Code` as `su_code`): `su_code`, the stratigraphic unit's code; `historical_period`, \
+         when it was built, in the project's own names; `decay_pathology`, how it has decayed, one of alveolization, \
+         biological colonization, blistering, crack, crust, deformation, delamination, deposit, detachment, discolouration, \
+         disintegration, efflorescence, encrustation, erosion, exfoliation, fragmentation, graffiti, missing part, moist \
+         area, patina, peeling, pitting, scaling, soiling, staining, vegetation, or {custom: text} for another; \
+         `decay_severity`, 1 (slight) to 5 (the worst); `intervention_type`, what is to be done (cleaning, consolidation, \
+         repointing, filling…). `layer` says which layer of its host's type it is, counted from 1 (null, all of its host): \
+         what puts right a part in conflict after its host's type changed, keeping what was said of it. Other values go in \
+         project parameters for parts (`parameter`, category part). With one `id` returns the part as `parts` lists it, \
+         else `modified`; with nothing to change, the same without changing anything",
+        part,
+    ),
+    other(
+        "parts",
+        "Parts",
+        "{host?: id, ids?: [id, …], conflicts?: true, limit?, offset?} the project's parts, or those of element `host`, or \
+         those in `ids`; with `conflicts`, only those whose recipe no longer applies. Each with what it holds (`host`, \
+         `source`, `parent`, `predefined_type`, `object_type`, `excluded`, `heritage`, `params`) and what it is now, worked \
+         out from its host as the host stands: `host_category`, `level`, `layer` (its place in its host's type, from 1) and \
+         its `function`, `material` (its own, else its layer's; `own_material` says which), `thickness` (mm), `area_m2` \
+         (the net area of its main face: a wall's part's face toward the wall's exterior side less its doors and windows, a \
+         floor's, a roof's or a ceiling's part's top less its openings and shafts; none for a component's), `volume_m3` \
+         (its solid's net volume), the heritage set by the names it is shown by (`SU_Code`, `Historical_Period`, \
+         `Decay_Pathology`, `Decay_Severity`, `Intervention_Type`) and, when its recipe no longer applies, `conflict`: \
+         why, and what to do. Returns `count`, `returned`, `conflicts` (how many of them are in conflict) and `parts`",
+        parts,
+    ),
     other(
         "filter_selection",
         "Filter",
@@ -12214,9 +12267,10 @@ fn duplicate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion) -> R {
     let mut notes = Vec::new();
     for &id in ids {
         match transformed(c, m, id, mo, &copying)? {
-            // A copied wall brings its doors and windows, a stair or a ramp its railings; see below.
+            // A copied wall brings its doors and windows, a stair or a ramp its railings, an element its parts; see below.
             Element::Door(o) | Element::Window(o) if copying_guids.contains(&o.host) => {}
             Element::Railing(Railing { host: Some(h), .. }) if copying_guids.contains(&h) => {}
+            Element::Part(p) if copying_guids.contains(&p.host) => {}
             e @ (Element::Dimension(_) | Element::Tag(_) | Element::Spot(_)) => notes.push((id, e)),
             e => copies.push((id, e)),
         }
@@ -12227,6 +12281,7 @@ fn duplicate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion) -> R {
         .filter(|(_, e)| match e {
             Element::Door(o) | Element::Window(o) => copying_guids.contains(&o.host),
             Element::Railing(r) => r.host.is_some_and(|h| copying_guids.contains(&h)),
+            Element::Part(p) => copying_guids.contains(&p.host),
             _ => false,
         })
         .map(|(&id, e)| {
@@ -12260,6 +12315,8 @@ fn duplicate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion) -> R {
                 }))
             }
             Element::Railing(r) => r.host = r.host.map(|h| hosts.get(&h).copied().unwrap_or(h)),
+            // Of the copy, as it was of the original: the copy is of the same type, so the layers are the same.
+            Element::Part(p) => p.host = hosts.get(&p.host).copied().unwrap_or(p.host),
             Element::Door(o) | Element::Window(o) => {
                 o.host = hosts.get(&o.host).copied().unwrap_or(o.host);
                 o.mark = next_number(m.elements.values().filter_map(|e| match e {
@@ -12284,6 +12341,14 @@ fn duplicate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion) -> R {
             for at in [&mut w.attach_top, &mut w.attach_base] {
                 *at = at.map(|a| hosts.get(&a).copied().unwrap_or(a));
             }
+        }
+    }
+    // A copied part divided from another is divided from that one's copy.
+    for id in &made {
+        if matches!(m.elements.get(id), Some(Element::Part(p)) if p.parent.is_some_and(|g| hosts.contains_key(&g)))
+            && let Some(Element::Part(p)) = m.elements.get_mut(id)
+        {
+            p.parent = p.parent.map(|g| hosts.get(&g).copied().unwrap_or(g));
         }
     }
     for (from, mut e) in notes {
@@ -13251,6 +13316,228 @@ fn delete_from_scratch(s: &mut Session, p: &Value) -> R {
         }
     }
     Ok(json!({"deleted": deleted}))
+}
+
+// ---------- parts ----------
+
+fn create_parts(s: &mut Session, p: &Value) -> R {
+    let c = "create_parts";
+    only(c, p, &["ids", "id"])?;
+    let m = &s.model;
+    let hosts = ids_param(c, m, p)?;
+    let (mut existing, mut wanted) = (Vec::new(), Vec::new());
+    for &host in &hosts {
+        let (has, lacks) = crate::parts::missing(m, host).map_err(|e| bad(c, e))?;
+        existing.extend(has);
+        wanted.extend(lacks);
+    }
+    if wanted.is_empty() {
+        let what = if hosts.len() == 1 { "the element has its parts" } else { "every one of the elements has its parts" };
+        return Err(bad(c, format!("{what} already ({existing:?}); `parts` lists them")));
+    }
+    let m = s.model_mut();
+    let ids: Vec<Id> = wanted.into_iter().map(|part| m.insert(Element::Part(part))).collect();
+    Ok(json!({"ids": ids, "existing": existing}))
+}
+
+/// The keys `part` takes beside the parts themselves, each in lower case: the heritage set's are given in any case.
+const PART_KEYS: [&str; 10] = [
+    "material",
+    "predefined_type",
+    "object_type",
+    "excluded",
+    "su_code",
+    "historical_period",
+    "decay_pathology",
+    "decay_severity",
+    "intervention_type",
+    "layer",
+];
+
+fn part(s: &mut Session, p: &Value) -> R {
+    use crate::parts::{Decay, PartType, SEVERITY, Source};
+    let c = "part";
+    // Its keys in lower case: `SU_Code` is `su_code`.
+    let lowered: Value = match p.as_object() {
+        Some(o) => Value::Object(o.iter().map(|(k, v)| (k.to_ascii_lowercase(), v.clone())).collect()),
+        None => p.clone(),
+    };
+    let p = &lowered;
+    let keys: Vec<&str> = ["id", "ids"].into_iter().chain(PART_KEYS).collect();
+    only(c, p, &keys)?;
+    let m = &s.model;
+    let ids = ids_param(c, m, p)?;
+    if let Some(other) = ids.iter().find(|id| !matches!(m.elements.get(**id), Some(Element::Part(_)))) {
+        let cat = m.elements.get(*other).map_or("nothing", Element::category);
+        return Err(bad(c, format!("{cat} {other} isn't a part; `parts` lists the parts there are, `create_parts` makes an element's")));
+    }
+    // A text, or none of it: null and blank clear it.
+    let text = |key: &str| -> Result<Option<String>, String> {
+        match p.get(key) {
+            None => Ok(None),
+            Some(Value::Null) => Ok(Some(String::new())),
+            Some(_) => Ok(Some(string(c, p, key)?.unwrap_or_default().trim().to_string())),
+        }
+    };
+    let material = match p.get("material") {
+        None => None,
+        Some(Value::Null) => Some(None),
+        Some(_) => {
+            let name = string(c, p, "material")?.unwrap_or_default().trim().to_string();
+            if !m.materials.contains_key(&name) {
+                return Err(bad(
+                    c,
+                    format!("material `{name}` isn't in the library; add it with `material`, or give null for its layer's"),
+                ));
+            }
+            Some(Some(name))
+        }
+    };
+    let predefined = match p.get("predefined_type").filter(|v| !v.is_null()) {
+        None => None,
+        Some(v) => Some(v.as_str().and_then(PartType::parse).ok_or_else(|| {
+            let names: Vec<&str> = PartType::ALL.iter().map(|t| t.name()).collect();
+            bad(c, format!("`predefined_type` is one of {}, not {v}", names.join(", ")))
+        })?),
+    };
+    let object_type = text("object_type")?;
+    let excluded = match p.get("excluded") {
+        None | Some(Value::Null) => None,
+        Some(Value::Bool(b)) => Some(*b),
+        Some(v) => return Err(bad(c, format!("`excluded` is true or false, not {v}"))),
+    };
+    let (su_code, period, intervention) = (text("su_code")?, text("historical_period")?, text("intervention_type")?);
+    let decay = match p.get("decay_pathology") {
+        None => None,
+        Some(Value::Null) => Some(None),
+        Some(Value::String(word)) => Some(Some(Decay::named(word).ok_or_else(|| {
+            let words: Vec<String> = Decay::NAMED.iter().map(|d| d.label().to_ascii_lowercase()).collect();
+            bad(c, format!("`decay_pathology` is one of {}, or {{custom: text}} for another, not `{word}`", words.join(", ")))
+        })?)),
+        Some(Value::Object(o)) if o.len() == 1 && o.get("custom").is_some_and(Value::is_string) => {
+            let own = string(c, &Value::Object(o.clone()), "custom")?.unwrap_or_default().trim().to_string();
+            if own.is_empty() {
+                return Err(bad(c, "`decay_pathology`: a decay of the project's own has a name; give null for none"));
+            }
+            // In the list's own words when it is one of them.
+            Some(Some(Decay::named(&own).unwrap_or(Decay::Custom(own))))
+        }
+        Some(v) => return Err(bad(c, format!("`decay_pathology` is a word of the list, {{custom: text}} or null, not {v}"))),
+    };
+    let severity = match p.get("decay_severity") {
+        None => None,
+        Some(Value::Null) => Some(None),
+        Some(v) => Some(Some(
+            v.as_f64()
+                .filter(|x| x.fract() == 0.0 && (f64::from(*SEVERITY.start())..=f64::from(*SEVERITY.end())).contains(x))
+                .map(|x| x as u8)
+                .ok_or_else(|| bad(c, format!("`decay_severity` is a whole number from 1 (slight) to 5 (the worst), not {v}")))?,
+        )),
+    };
+    // Which layer of its host's type as it is now, from 1; null, all of its host.
+    let layer = match p.get("layer") {
+        None => None,
+        Some(Value::Null) => Some(None),
+        Some(v) => {
+            Some(Some(v.as_u64().and_then(|n| usize::try_from(n).ok()).filter(|n| (1..=crate::model::MAX_LAYERS).contains(n)).ok_or_else(
+                || bad(c, format!("`layer` is a layer of its host's type, counted from 1, or null for all of its host, not {v}")),
+            )?))
+        }
+    };
+    let mut edited = Vec::new();
+    for &id in &ids {
+        let Some(Element::Part(old)) = m.elements.get(id) else { continue };
+        let mut part = old.clone();
+        if let Some(material) = &material {
+            part.material.clone_from(material);
+        }
+        if let Some(t) = predefined {
+            part.predefined_type = t;
+        }
+        if let Some(t) = &object_type {
+            part.object_type.clone_from(t);
+        }
+        if let Some(x) = excluded {
+            part.excluded = x;
+        }
+        for (given, held) in [
+            (&su_code, &mut part.heritage.su_code),
+            (&period, &mut part.heritage.historical_period),
+            (&intervention, &mut part.heritage.intervention_type),
+        ] {
+            if let Some(t) = given {
+                held.clone_from(t);
+            }
+        }
+        if let Some(d) = &decay {
+            part.heritage.decay_pathology.clone_from(d);
+        }
+        if let Some(n) = severity {
+            part.heritage.decay_severity = n;
+        }
+        match layer {
+            None => {}
+            Some(None) => part.source = Source::Whole,
+            Some(Some(n)) => {
+                let host = m.elements.get(part.host);
+                let (cat, name) = match host {
+                    Some(Element::Wall(w)) => ("wall", w.type_name.as_str()),
+                    Some(Element::Floor(f)) => ("floor", f.type_name.as_str()),
+                    Some(Element::Roof(r)) => ("roof", r.type_name.as_str()),
+                    Some(Element::Ceiling(cl)) => ("ceiling", cl.type_name.as_str()),
+                    _ => return Err(bad(c, format!("part {id}: what it is a part of has no layers; give `layer` null for all of it"))),
+                };
+                let layers = m.type_layers(cat, name);
+                let Some(l) = layers.get(n - 1) else {
+                    return Err(bad(c, format!("part {id}: {cat} type `{name}` has {} layers, not a layer {n}", layers.len())));
+                };
+                part.source = Source::Layer(l.guid);
+            }
+        }
+        if part != *old {
+            edited.push((id, part));
+        }
+    }
+    if !edited.is_empty() {
+        let m = s.model_mut();
+        for (id, part) in edited {
+            m.elements.insert(id, Element::Part(part));
+        }
+    }
+    match (p.get("ids"), ids.as_slice()) {
+        (None, [one]) => Ok(element_json(&s.model, *one)),
+        _ => Ok(json!({"modified": ids})),
+    }
+}
+
+fn parts(s: &mut Session, p: &Value) -> R {
+    let c = "parts";
+    only(c, p, &["host", "ids", "conflicts", "limit", "offset"])?;
+    let m = &s.model;
+    let is_part = |id: &Id| matches!(m.elements.get(*id), Some(Element::Part(_)));
+    let mut ids: Vec<Id> = match (p.get("ids").filter(|v| !v.is_null()), p.get("host").filter(|v| !v.is_null())) {
+        (Some(_), Some(_)) => return Err(bad(c, "give `host` or `ids`, not both")),
+        (Some(_), None) => {
+            let ids = ids_param(c, m, p)?;
+            if let Some(other) = ids.iter().find(|id| !is_part(id)) {
+                let cat = m.elements.get(*other).map_or("nothing", Element::category);
+                return Err(bad(c, format!("{cat} {other} isn't a part; give `host` for an element's parts")));
+            }
+            ids
+        }
+        (None, Some(host)) => m.parts_of(element_id(c, m, host)?),
+        (None, None) => m.elements.iter().map(|(id, _)| *id).filter(is_part).collect(),
+    };
+    let only_conflicts = flag(c, p, "conflicts")?;
+    let (limit, offset) = (count_opt(c, p, "limit", 500)?, count_opt(c, p, "offset", 0)?);
+    let in_conflict = |id: &Id| matches!(m.elements.get(*id), Some(Element::Part(part)) if m.part_conflict(part).is_some());
+    let conflicts = ids.iter().filter(|id| in_conflict(id)).count();
+    if only_conflicts {
+        ids.retain(in_conflict);
+    }
+    let rooms = crate::rooms::Rooms::new(m);
+    let page: Vec<Value> = ids.iter().skip(offset).take(limit).map(|id| element_json_with(m, *id, &rooms)).collect();
+    Ok(json!({"count": ids.len(), "returned": page.len(), "conflicts": conflicts, "parts": page}))
 }
 
 // ---------- reading ----------

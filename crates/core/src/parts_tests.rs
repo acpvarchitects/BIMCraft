@@ -473,6 +473,17 @@ fn three(s: &mut Session, wall: Id) -> [Id; 3] {
     [0, 1, 2].map(|k| put(s, |m| layer_part(m, wall, k)))
 }
 
+/// All of element `host` on its own, measured: a part of all of it in a copy of the project where it has no other part.
+fn alone(m: &Model, host: Id) -> (Vec<[P3; 3]>, f64, f64) {
+    let mut m = m.clone();
+    for id in m.parts_of(host) {
+        m.elements.remove(id);
+    }
+    let guid = m.guid(host);
+    let id = m.insert(Element::Part(BuildingPart::new(guid, Source::Whole)));
+    measured(&m, id)
+}
+
 /// Part `id`'s solid, which it must have, checked to be closed; with its net area and its volume.
 fn measured(m: &Model, id: Id) -> (Vec<[P3; 3]>, f64, f64) {
     let p = part(m, id);
@@ -487,7 +498,6 @@ fn measured(m: &Model, id: Id) -> (Vec<[P3; 3]>, f64, f64) {
 fn a_walls_part_is_its_layer_between_the_layers_faces() {
     let (mut s, wall) = historic();
     let [outer, core, inner] = three(&mut s, wall);
-    let whole = put(&mut s, |m| BuildingPart::new(m.guid(wall), Source::Whole));
     let m = &s.model;
     // The wall runs east, so its exterior side is north: 250 mm from its centre line, the plaster's first 20 of them.
     for (id, (y0, y1), thick) in [(outer, (230.0, 250.0), 20.0), (core, (-230.0, 230.0), 460.0), (inner, (-250.0, -230.0), 20.0)] {
@@ -502,10 +512,11 @@ fn a_walls_part_is_its_layer_between_the_layers_faces() {
     assert_eq!(m.part_material(part(m, outer)), Some("Lime Plaster"));
     assert_eq!(m.part_material(part(m, core)), Some("Rubble Masonry"));
     // All of it: the wall's own thickness, the material of its structure, the sum of its layers.
-    let (tris, area, volume) = measured(m, whole);
+    let (tris, area, volume) = alone(m, wall);
     assert_eq!(extent(&tris), ([0.0, -250.0, 0.0], [4000.0, 250.0, 3000.0]));
     assert!(near(volume, 4000.0 * 3000.0 * 500.0) && near(area, 4000.0 * 3000.0));
-    assert_eq!((m.part_thickness(part(m, whole)), m.part_material(part(m, whole))), (Some(500.0), Some("Rubble Masonry")));
+    let all = BuildingPart::new(m.guid(wall), Source::Whole);
+    assert_eq!((m.part_thickness(&all), m.part_material(&all)), (Some(500.0), Some("Rubble Masonry")));
     let state = m.part_state(core).unwrap();
     assert_eq!(
         (state.layer, state.material.as_str(), state.thickness),
@@ -513,12 +524,22 @@ fn a_walls_part_is_its_layer_between_the_layers_faces() {
     );
     assert_eq!((state.net_area.map(f64::round), state.net_volume.round(), state.conflict), (Some(12e6), 5.52e9, None));
     assert_eq!(m.part_state(wall), None, "a wall is no part");
-    assert_eq!(m.parts_of(wall), [outer, core, inner, whole]);
+    assert_eq!(m.parts_of(wall), [outer, core, inner]);
     // Triangles turned out: a corner of the exterior plaster's north face, its normal north.
     let (tris, ..) = measured(m, outer);
     let north = tris.iter().filter(|t| t.iter().all(|p| near(p[1], 250.0))).count();
     assert_eq!(north, 2, "its exterior face is two triangles");
     assert!(near(solid::facing(&tris, &solid::Facing::Along(vec![[0.0, 1.0, 0.0]])), 12e6));
+    // A part of all of the wall beside its layers' parts would be counted twice with them: it is in conflict.
+    let whole = put(&mut s, |m| BuildingPart::new(m.guid(wall), Source::Whole));
+    assert_eq!(
+        s.model.part_conflict(part(&s.model, whole)),
+        Some(format!(
+            "it is all of wall {wall}, which has parts of its layers too ({outer}, {core}, {inner}), and would be counted twice with \
+             them: delete it, or them"
+        ))
+    );
+    assert!(s.model.part_conflict(part(&s.model, core)).is_none());
 }
 
 #[test]
@@ -594,9 +615,8 @@ fn walls_that_join_give_their_parts_their_ends_and_curved_ones_their_bow() {
     for host in [wall, other, bow] {
         let outline = crate::geom::area(&crate::walls::outline(&s.model, host)).abs();
         let parts = three(&mut s, host);
-        let whole = put(&mut s, |m| BuildingPart::new(m.guid(host), Source::Whole));
         let layers: f64 = parts.iter().map(|id| measured(&s.model, *id).2).sum();
-        let (_, _, all) = measured(&s.model, whole);
+        let (_, _, all) = alone(&s.model, host);
         assert!((layers - all).abs() <= 1e-6 * all, "wall {host}: its layers hold {layers}, all of it {all}");
         assert!((all - outline * 3000.0).abs() <= 1e-6 * all, "wall {host}: {all} is its outline, {outline} mm², swept up");
     }
@@ -691,10 +711,9 @@ fn a_floors_part_is_its_layer_from_the_top_down_less_its_openings_and_shafts() {
     let (_, area, volume) = measured(&s.model, ids[1]);
     assert!(near(area, plan - 1e6) && near(volume, (plan - 1e6) * 60.0), "{area} mm², {volume} mm³");
     // All of it holds what the floor does.
-    let whole = put(&mut s, |m| BuildingPart::new(m.guid(floor), Source::Whole));
     let Some(Element::Floor(f)) = s.model.elements.get(floor) else { panic!() };
-    assert!(near(measured(&s.model, whole).2, s.model.floor_volume(f)));
-    assert_eq!(s.model.part_thickness(part(&s.model, whole)), Some(280.0));
+    assert!(near(alone(&s.model, floor).2, s.model.floor_volume(f)));
+    assert_eq!(s.model.part_thickness(&BuildingPart::new(s.model.guid(floor), Source::Whole)), Some(280.0));
 }
 
 #[test]
@@ -762,10 +781,9 @@ fn a_roofs_a_ceilings_and_a_components_part_have_their_solids_too() {
     let layer = |m: &Model, cat: &str, name: &str, k: usize| m.type_layers(cat, name)[k].guid;
     let tiles = put(&mut s, |m| BuildingPart::new(m.guid(roof), Source::Layer(layer(m, "roof", "Tiled", 0))));
     let boards = put(&mut s, |m| BuildingPart::new(m.guid(roof), Source::Layer(layer(m, "roof", "Tiled", 1))));
-    let all = put(&mut s, |m| BuildingPart::new(m.guid(roof), Source::Whole));
     let (_, top, v_tiles) = measured(&s.model, tiles);
     let (_, _, v_boards) = measured(&s.model, boards);
-    let (_, top_all, v_all) = measured(&s.model, all);
+    let (_, top_all, v_all) = alone(&s.model, roof);
     assert!(near(v_tiles + v_boards, v_all) && near(v_boards, 3.0 * v_tiles), "{v_tiles} + {v_boards} of {v_all}");
     let Some(Element::Roof(r)) = s.model.elements.get(roof) else { panic!() };
     let plan = crate::geom::area(&s.model.roof_outline(r)).abs();
@@ -802,7 +820,8 @@ fn a_part_whose_recipe_no_longer_applies_is_in_conflict_and_says_what_to_fix() {
         said,
         format!(
             "it is layer 2 of wall type Historic - 500mm, and wall {wall} is of wall type `Generic - 200mm` now, which has no such \
-             layer: delete it and make the wall's parts again with `create_parts`, or give the wall its type back"
+             layer: say which layer of that type it is now (`part` with `layer`, null for all of the wall), give the wall its type \
+             back, or delete it"
         )
     );
     assert_eq!((state.layer, state.thickness, state.net_area, state.net_volume), (None, None, None, 0.0));
@@ -814,10 +833,12 @@ fn a_part_whose_recipe_no_longer_applies_is_in_conflict_and_says_what_to_fix() {
     // A part of all of the wall has no layer to lose.
     let whole = put(&mut s, |m| BuildingPart::new(m.guid(wall), Source::Whole));
     assert!(near(measured(&s.model, whole).2, 4000.0 * 3000.0 * 200.0));
-    // Its type given back, they are what they were.
+    // Its type given back, they are what they were, and the part of all of it is the one too many.
     run(&mut s, "modify", json!({"id": wall, "type": "Historic - 500mm"}));
     assert!(near(measured(&s.model, core).2, 4000.0 * 3000.0 * 460.0));
     assert_eq!(s.model.part_conflict(part(&s.model, patch)), None);
+    assert!(s.model.part_conflict(part(&s.model, whole)).is_some_and(|c| c.contains("would be counted twice with them")));
+    run(&mut s, "delete", json!({"ids": [whole]}));
     // The type losing its last layer: the part of it is in conflict, the others follow the two that stay.
     run(
         &mut s,
@@ -832,8 +853,8 @@ fn a_part_whose_recipe_no_longer_applies_is_in_conflict_and_says_what_to_fix() {
     assert_eq!(
         said,
         format!(
-            "the layer it was made of is gone from wall type `Historic - 500mm`, which wall {wall} is of: delete it and make the \
-             wall's parts again with `create_parts`"
+            "the layer it was made of is gone from wall type `Historic - 500mm`, which wall {wall} is of: say which layer of that \
+             type it is now (`part` with `layer`, null for all of the wall), or delete it"
         )
     );
     // A layer as thin as nothing (a membrane) has nothing to it.
@@ -1064,4 +1085,430 @@ fn filter_on_a_selection_groups_parts_by_their_values_and_a_part_reads_its_hosts
     let picked =
         schedule::picks(&s.model, &["part".to_string()], &[Filter { field: "Surveyed By".into(), op: Op::HasValue, value: Value::Null }]);
     assert_eq!(picked.into_iter().collect::<Vec<_>>(), [ids[1]]);
+}
+
+// ---------- the commands ----------
+
+/// The ids a command made (`ids`).
+fn made(v: &Value) -> Vec<Id> {
+    v["ids"].as_array().unwrap().iter().map(|id| id.as_u64().unwrap()).collect()
+}
+
+#[test]
+fn create_parts_makes_a_part_for_each_layer_of_an_elements_type_or_one_of_all_of_it() {
+    let (mut s, wall) = historic();
+    let plain = run(&mut s, "wall", json!({"points": [[0, 5000], [4000, 5000]], "type": "Generic - 200mm"}))["ids"][0].as_u64().unwrap();
+    let reply = run(&mut s, "create_parts", json!({"ids": [wall, plain]}));
+    let ids = made(&reply);
+    assert_eq!((ids.len(), &reply["existing"]), (4, &json!([])));
+    // The historic wall's three, from its exterior in, then the plain wall's one, all of it.
+    let guids = layers(&s.model, "Historic - 500mm");
+    for (id, layer) in ids.iter().zip(&guids) {
+        assert_eq!(*part(&s.model, *id), BuildingPart::new(s.model.guid(wall), Source::Layer(*layer)));
+    }
+    assert_eq!(*part(&s.model, ids[3]), BuildingPart::new(s.model.guid(plain), Source::Whole));
+    assert!(ids.iter().all(|id| s.model.part_conflict(part(&s.model, *id)).is_none()));
+    assert_eq!(s.model.parts_of(wall), ids[..3]);
+    // One step, taken back and done again as any.
+    run(&mut s, "undo", json!({}));
+    assert!(s.model.parts_of(wall).is_empty() && s.model.parts_of(plain).is_empty());
+    run(&mut s, "redo", json!({}));
+    assert_eq!(s.model.parts_of(wall), ids[..3]);
+    // By GUID as by id; a floor, a roof, a ceiling and a component too.
+    s.script(
+        r#"type {"category": "floor", "name": "Layered", "layers": [{"function": "finish", "thickness": 20}, {"function": "thermal", "thickness": 80}, {"function": "membrane", "thickness": 0}, {"function": "structure", "thickness": 200}]}
+           floor {"boundary": [[0, 0], [4000, 0], [4000, 3000], [0, 3000]], "type": "Layered"}
+           ceiling {"boundary": [[0, 0], [4000, 0], [4000, 3000], [0, 3000]]}
+           roof {"boundary": [[-500, -500], [4500, -500], [4500, 3500], [-500, 3500]], "slope": 30}
+           component {"family": "WC", "at": [2000, 2000]}"#,
+    )
+    .unwrap();
+    let find = |s: &Session, cat: &str| *s.model.elements.iter().find(|(_, e)| e.category() == cat).unwrap().0;
+    let (floor, ceiling, roof, wc) = (find(&s, "floor"), find(&s, "ceiling"), find(&s, "roof"), find(&s, "component"));
+    let by_guid = json!({"id": s.model.guid(floor)});
+    let of_floor = made(&run(&mut s, "create_parts", by_guid));
+    // A layer of no thickness has no part; a thermal one's is IFC's insulation.
+    assert_eq!(of_floor.len(), 3);
+    let kinds: Vec<PartType> = of_floor.iter().map(|id| part(&s.model, *id).predefined_type).collect();
+    assert_eq!(kinds, [PartType::NotDefined, PartType::Insulation, PartType::NotDefined]);
+    let thick: Vec<Option<f64>> = of_floor.iter().map(|id| s.model.part_thickness(part(&s.model, *id))).collect();
+    assert_eq!(thick, [Some(20.0), Some(80.0), Some(200.0)]);
+    let rest = made(&run(&mut s, "create_parts", json!({"ids": [ceiling, roof, wc]})));
+    assert_eq!(rest.len(), 3, "a ceiling, a roof and a fixture of types with no layers: one part each");
+    assert!(rest.iter().all(|id| part(&s.model, *id).source == Source::Whole && s.model.part_conflict(part(&s.model, *id)).is_none()));
+}
+
+#[test]
+fn create_parts_gives_an_element_the_parts_it_lacks_and_is_refused_when_none_lacks_any() {
+    let (mut s, wall) = historic();
+    let other = run(&mut s, "wall", json!({"points": [[0, 5000], [4000, 5000]], "type": "Historic - 500mm"}))["ids"][0].as_u64().unwrap();
+    let ids = made(&run(&mut s, "create_parts", json!({"id": wall})));
+    let e = fails(&mut s, "create_parts", json!({"ids": [wall]}));
+    assert_eq!(e, format!("create_parts: the element has its parts already ({ids:?}); `parts` lists them"));
+    // One deleted, it is made again; the others are the ones it had.
+    run(&mut s, "delete", json!({"ids": [ids[1]]}));
+    let again = run(&mut s, "create_parts", json!({"ids": [wall]}));
+    assert_eq!((made(&again).len(), &again["existing"]), (1, &json!([ids[0], ids[2]])));
+    assert_eq!(part(&s.model, made(&again)[0]).source, Source::Layer(layers(&s.model, "Historic - 500mm")[1]));
+    // Of two elements, the one that lacks them gets them.
+    let both = run(&mut s, "create_parts", json!({"ids": [wall, other]}));
+    assert_eq!((made(&both).len(), both["existing"].as_array().unwrap().len()), (3, 3));
+    assert!(made(&both).iter().all(|id| part(&s.model, *id).host == s.model.guid(other)));
+    let e = fails(&mut s, "create_parts", json!({"ids": [wall, other]}));
+    assert!(e.contains("every one of the elements has its parts already"), "{e}");
+    // What was divided from a part is no part the element lacks or has.
+    put(&mut s, |m| BuildingPart { parent: Some(m.guid(ids[0])), ..layer_part(m, wall, 0) });
+    assert!(fails(&mut s, "create_parts", json!({"ids": [wall]})).contains(&format!("({:?})", [ids[0], ids[2], made(&again)[0]])));
+    // No parts of what has none to make, nor of nothing.
+    let level = s.model.levels()[0].0;
+    for (target, cat) in [(level, "level"), (ids[0], "part")] {
+        let e = fails(&mut s, "create_parts", json!({"ids": [target]}));
+        assert!(e.contains(&format!("{cat} {target} has no parts to make; a wall, a floor, a roof, a ceiling or a component has")), "{e}");
+    }
+    assert!(fails(&mut s, "create_parts", json!({})).contains("`ids` [id, …] is required"));
+    assert!(fails(&mut s, "create_parts", json!({"ids": [wall], "whole": true})).contains("`whole` isn't one of its parameters"));
+    assert!(fails(&mut s, "create_parts", json!({"ids": [99]})).contains("no element 99"));
+    // A part of all of a wall stands where its layers' parts would, once its type has layers.
+    let plain = run(&mut s, "wall", json!({"points": [[0, 9000], [4000, 9000]], "type": "Generic - 200mm"}))["ids"][0].as_u64().unwrap();
+    let whole = made(&run(&mut s, "create_parts", json!({"id": plain})))[0];
+    run(&mut s, "modify", json!({"id": plain, "type": "Historic - 500mm"}));
+    let e = fails(&mut s, "create_parts", json!({"id": plain}));
+    assert!(e.contains(&format!("wall {plain} has a part of all of it, part {whole}, where its layers' parts would stand")), "{e}");
+    run(&mut s, "delete", json!({"ids": [whole]}));
+    assert_eq!(made(&run(&mut s, "create_parts", json!({"id": plain}))).len(), 3);
+}
+
+#[test]
+fn part_says_what_a_part_is_made_of_what_kind_it_is_and_what_the_survey_says_of_it() {
+    let (mut s, wall) = historic();
+    let ids = made(&run(&mut s, "create_parts", json!({"id": wall})));
+    run(&mut s, "material", json!({"name": "Cocciopesto", "color": "#b5651d"}));
+    let one = run(
+        &mut s,
+        "part",
+        json!({"id": ids[0], "material": "Cocciopesto", "predefined_type": "USERDEFINED", "object_type": "USR", "excluded": true,
+            "SU_Code": "USR 12", "Historical_Period": "Late medieval", "Decay_Pathology": "Missing part", "Decay_Severity": 4,
+            "Intervention_Type": "Filling"}),
+    );
+    // What it returns is the part as `parts` lists it.
+    assert_eq!((&one["id"], &one["material"], &one["own_material"]), (&json!(ids[0]), &json!("Cocciopesto"), &json!(true)));
+    assert_eq!((&one["predefined_type"], &one["object_type"], &one["excluded"]), (&json!("userdefined"), &json!("USR"), &json!(true)));
+    assert_eq!(
+        [&one["SU_Code"], &one["Historical_Period"], &one["Decay_Pathology"], &one["Decay_Severity"], &one["Intervention_Type"]],
+        [&json!("USR 12"), &json!("Late medieval"), &json!("Missing part"), &json!(4), &json!("Filling")]
+    );
+    let held = part(&s.model, ids[0]).clone();
+    assert_eq!(
+        held.heritage,
+        Heritage {
+            su_code: "USR 12".into(),
+            historical_period: "Late medieval".into(),
+            decay_pathology: Some(Decay::MissingPart),
+            decay_severity: Some(4),
+            intervention_type: "Filling".into(),
+        }
+    );
+    // What isn't named stays; null clears; a decay of the project's own carries its own words.
+    run(&mut s, "part", json!({"id": ids[0], "su_code": "USR 13", "decay_pathology": {"custom": "Lacuna in the fresco"}}));
+    let now = part(&s.model, ids[0]);
+    assert_eq!(
+        (now.heritage.su_code.as_str(), now.heritage.decay_severity, now.material.as_deref()),
+        ("USR 13", Some(4), Some("Cocciopesto"))
+    );
+    assert_eq!(now.heritage.decay_pathology, Some(Decay::Custom("Lacuna in the fresco".into())));
+    run(&mut s, "part", json!({"id": ids[0], "decay_pathology": {"custom": "efflorescence"}}));
+    assert_eq!(part(&s.model, ids[0]).heritage.decay_pathology, Some(Decay::Efflorescence), "one of the list's, in the list's words");
+    let cleared = run(
+        &mut s,
+        "part",
+        json!({"id": ids[0], "material": null, "predefined_type": "notdefined", "object_type": null, "excluded": false, "su_code": null,
+            "historical_period": "", "decay_pathology": null, "decay_severity": null, "intervention_type": null}),
+    );
+    assert_eq!(*part(&s.model, ids[0]), layer_part(&s.model, wall, 0));
+    assert_eq!((&cleared["material"], &cleared["own_material"]), (&json!("Lime Plaster"), &json!(false)));
+    // Several at once; each step taken back as any.
+    let reply = run(&mut s, "part", json!({"ids": ids, "historical_period": "16th century", "decay_severity": 1}));
+    assert_eq!(reply, json!({"modified": ids}));
+    assert!(ids.iter().all(|id| part(&s.model, *id).heritage.historical_period == "16th century"));
+    run(&mut s, "undo", json!({}));
+    assert!(ids.iter().all(|id| part(&s.model, *id).heritage.is_empty()));
+    // With nothing to change it reads, and makes no step.
+    let steps = s.history().len();
+    let read = run(&mut s, "part", json!({"id": ids[1]}));
+    assert_eq!((&read["id"], &read["layer"], s.history().len()), (&json!(ids[1]), &json!(2), steps));
+    run(&mut s, "part", json!({"id": ids[1], "excluded": false}));
+    assert_eq!(s.history().len(), steps, "what changes nothing is no step");
+}
+
+#[test]
+fn part_refuses_what_a_part_cant_be() {
+    let (mut s, wall) = historic();
+    let ids = made(&run(&mut s, "create_parts", json!({"id": wall})));
+    let id = ids[0];
+    for (p, said) in [
+        (json!({"id": wall, "excluded": true}), format!("wall {wall} isn't a part")),
+        (json!({"excluded": true}), "`ids` [id, …] is required".to_string()),
+        (json!({"id": id, "colour": "red"}), "`colour` isn't one of its parameters".to_string()),
+        (json!({"id": id, "material": "Unobtainium"}), "material `Unobtainium` isn't in the library".to_string()),
+        (json!({"id": id, "material": 5}), "`material` must be text".to_string()),
+        (
+            json!({"id": id, "predefined_type": "panel"}),
+            "`predefined_type` is one of insulation, precastpanel, userdefined, notdefined".to_string(),
+        ),
+        (json!({"id": id, "predefined_type": "userdefined"}), "a user-defined part says what it is; give it an `object_type`".to_string()),
+        (json!({"id": id, "object_type": "x".repeat(300)}), "`object_type` must be text of at most 256 characters".to_string()),
+        (json!({"id": id, "excluded": "yes"}), "`excluded` is true or false".to_string()),
+        (json!({"id": id, "su_code": 12}), "`su_code` must be text".to_string()),
+        (json!({"id": id, "decay_pathology": "rot"}), "or {custom: text} for another, not `rot`".to_string()),
+        (json!({"id": id, "decay_pathology": {"custom": " "}}), "a decay of the project's own has a name".to_string()),
+        (json!({"id": id, "decay_pathology": {"other": "x"}}), "is a word of the list, {custom: text} or null".to_string()),
+        (json!({"id": id, "decay_pathology": 3}), "is a word of the list, {custom: text} or null".to_string()),
+        (json!({"id": id, "decay_severity": 0}), "a whole number from 1 (slight) to 5 (the worst), not 0".to_string()),
+        (json!({"id": id, "decay_severity": 6}), "a whole number from 1 (slight) to 5 (the worst), not 6".to_string()),
+        (json!({"id": id, "decay_severity": 2.5}), "a whole number from 1 (slight) to 5 (the worst), not 2.5".to_string()),
+        (json!({"id": id, "decay_severity": "3"}), "a whole number from 1 (slight) to 5 (the worst), not \"3\"".to_string()),
+        (json!({"id": id, "layer": 0}), "`layer` is a layer of its host's type, counted from 1".to_string()),
+        (json!({"id": id, "layer": 4}), "wall type `Historic - 500mm` has 3 layers, not a layer 4".to_string()),
+        (json!({"id": id, "layer": 2}), format!("part {id}: part {} is that of wall {wall} too", ids[1])),
+        (json!({"id": ids[2], "layer": 2}), format!("part {}: part {} is that of wall {wall} too", ids[1], ids[2])),
+    ] {
+        let e = fails(&mut s, "part", p.clone());
+        assert!(e.contains(&said), "{p}: {e}");
+    }
+    assert_eq!(*part(&s.model, id), layer_part(&s.model, wall, 0));
+}
+
+#[test]
+fn a_part_in_conflict_is_put_right_by_saying_which_layer_it_is_now() {
+    let (mut s, wall) = historic();
+    let ids = made(&run(&mut s, "create_parts", json!({"id": wall})));
+    run(&mut s, "part", json!({"id": ids[1], "su_code": "USM 7", "decay_pathology": "crack", "decay_severity": 3}));
+    // The wall becomes one of two layers: brick behind render.
+    run(&mut s, "material", json!({"name": "Brick"}));
+    run(
+        &mut s,
+        "type",
+        json!({"category": "wall", "name": "Rebuilt", "layers": [
+            {"function": "finish", "material": "Lime Plaster", "thickness": 20}, {"function": "structure", "material": "Brick", "thickness": 380}]}),
+    );
+    run(&mut s, "modify", json!({"id": wall, "type": "Rebuilt"}));
+    let listed = run(&mut s, "parts", json!({"host": wall}));
+    assert_eq!((&listed["count"], &listed["conflicts"]), (&json!(3), &json!(3)));
+    // Its masonry is the brick now: said so, it is that layer, with what the survey said of it.
+    let one = run(&mut s, "part", json!({"id": ids[1], "layer": 2}));
+    assert!(one.get("conflict").is_none(), "{one}");
+    assert_eq!(
+        (&one["layer"], &one["material"], &one["thickness"], &one["SU_Code"]),
+        (&json!(2), &json!("Brick"), &json!(380.0), &json!("USM 7"))
+    );
+    assert_eq!(one["volume_m3"], json!(4.56));
+    run(&mut s, "part", json!({"id": ids[0], "layer": 1}));
+    // The third has no layer to be: all of the wall it can't be beside the others' solids, but the model lets it say so.
+    let listed = run(&mut s, "parts", json!({"host": wall, "conflicts": true}));
+    assert_eq!((&listed["count"], &listed["conflicts"], &listed["parts"][0]["id"]), (&json!(1), &json!(1), &json!(ids[2])));
+    run(&mut s, "delete", json!({"ids": [ids[2]]}));
+    assert_eq!(run(&mut s, "parts", json!({}))["conflicts"], 0);
+    // All of its host: no layer at all.
+    let plain = run(&mut s, "wall", json!({"points": [[0, 5000], [4000, 5000]], "type": "Historic - 500mm"}))["ids"][0].as_u64().unwrap();
+    let of_plain = made(&run(&mut s, "create_parts", json!({"id": plain})));
+    run(&mut s, "delete", json!({"ids": of_plain[1..]}));
+    let whole = run(&mut s, "part", json!({"id": of_plain[0], "layer": null}));
+    assert_eq!((whole.get("layer"), &whole["thickness"]), (None, &json!(500.0)));
+    assert_eq!(part(&s.model, of_plain[0]).source, Source::Whole);
+}
+
+#[test]
+fn parts_lists_them_all_an_elements_or_those_named_with_what_they_are_now() {
+    let (mut s, wall) = historic();
+    let other = run(&mut s, "wall", json!({"points": [[0, 5000], [4000, 5000]], "type": "Generic - 200mm"}))["ids"][0].as_u64().unwrap();
+    assert_eq!(run(&mut s, "parts", json!({})), json!({"count": 0, "returned": 0, "conflicts": 0, "parts": []}));
+    let ids = made(&run(&mut s, "create_parts", json!({"ids": [wall, other]})));
+    let all = run(&mut s, "parts", json!({}));
+    assert_eq!((&all["count"], &all["returned"], &all["conflicts"]), (&json!(4), &json!(4), &json!(0)));
+    let listed: Vec<u64> = all["parts"].as_array().unwrap().iter().map(|p| p["id"].as_u64().unwrap()).collect();
+    assert_eq!(listed, ids);
+    let masonry = &all["parts"][1];
+    assert_eq!((&masonry["host"], &masonry["host_category"]), (&json!(s.model.guid(wall)), &json!("wall")));
+    assert_eq!((&masonry["layer"], &masonry["function"], &masonry["material"]), (&json!(2), &json!("structure"), &json!("Rubble Masonry")));
+    assert_eq!((&masonry["thickness"], &masonry["area_m2"], &masonry["volume_m3"]), (&json!(460.0), &json!(12.0), &json!(5.52)));
+    // An element's, by its id or its GUID; those named; a page of them.
+    assert_eq!(run(&mut s, "parts", json!({"host": other}))["parts"][0]["id"], ids[3]);
+    let by_guid = json!({"host": s.model.guid(wall)});
+    assert_eq!(run(&mut s, "parts", by_guid)["count"], 3);
+    assert_eq!(run(&mut s, "parts", json!({"ids": [ids[2], ids[0]]}))["parts"][0]["id"], ids[2]);
+    let page = run(&mut s, "parts", json!({"limit": 2, "offset": 1}));
+    assert_eq!((&page["count"], &page["returned"], &page["parts"][0]["id"]), (&json!(4), &json!(2), &json!(ids[1])));
+    // It reads, so it is no step, and a session that may only read may ask it.
+    let steps = s.history().len();
+    run(&mut s, "parts", json!({}));
+    assert_eq!(s.history().len(), steps);
+    assert!(s.reading("only reading", |s| s.execute("parts", &json!({"host": wall}))).is_ok());
+    for (p, said) in [
+        (json!({"host": wall, "ids": [ids[0]]}), "give `host` or `ids`, not both".to_string()),
+        (json!({"ids": [wall]}), format!("wall {wall} isn't a part; give `host` for an element's parts")),
+        (json!({"host": 99}), "no element 99".to_string()),
+        (json!({"conflicts": "yes"}), "`conflicts` must be true or false".to_string()),
+        (json!({"category": "wall"}), "`category` isn't one of its parameters".to_string()),
+    ] {
+        let e = fails(&mut s, "parts", p.clone());
+        assert!(e.contains(&said), "{p}: {e}");
+    }
+}
+
+#[test]
+fn a_copied_element_brings_its_parts_and_what_was_said_of_them() {
+    let (mut s, wall) = historic();
+    let ids = made(&run(&mut s, "create_parts", json!({"id": wall})));
+    run(&mut s, "part", json!({"id": ids[0], "su_code": "USR 1", "decay_pathology": "soiling"}));
+    let patch = put(&mut s, |m| BuildingPart { parent: Some(m.guid(ids[0])), ..layer_part(m, wall, 0) });
+    let copied = made(&run(&mut s, "copy", json!({"ids": [wall], "by": [0, 5000]})));
+    let twin = copied[0];
+    assert!(s.model.wall(twin).is_some());
+    let theirs = s.model.parts_of(twin);
+    assert_eq!(theirs.len(), 4, "its three layers' parts and the one divided from the first");
+    assert_eq!(copied[1..], theirs[..]);
+    let first = part(&s.model, theirs[0]);
+    assert_eq!((first.host, first.source, first.heritage.su_code.as_str()), (s.model.guid(twin), part(&s.model, ids[0]).source, "USR 1"));
+    // What was divided from a part is divided from that part's copy.
+    assert_eq!(part(&s.model, theirs[3]).parent, Some(s.model.guid(theirs[0])));
+    assert_ne!(part(&s.model, patch).parent, part(&s.model, theirs[3]).parent);
+    let (tris, ..) = measured(&s.model, theirs[1]);
+    assert_eq!(extent(&tris).0[1], 5000.0 - 230.0, "where the copy stands");
+    // A mirror image runs back the other way, its exterior side the mirror image's: its parts are its layers still.
+    let mirrored = made(&run(&mut s, "mirror", json!({"ids": [wall], "axis": [[0, -1000], [1000, -1000]], "copy": true})));
+    let image = s.model.parts_of(mirrored[0]);
+    assert_eq!(image.len(), 4);
+    let (tris, ..) = measured(&s.model, image[0]);
+    let (lo, hi) = extent(&tris);
+    assert!(near(lo[1], -2250.0) && near(hi[1], -2230.0), "its exterior plaster is on its south side: {lo:?} {hi:?}");
+    // The originals are as they were.
+    assert_eq!(s.model.parts_of(wall), [ids[0], ids[1], ids[2], patch]);
+}
+
+#[test]
+fn a_part_is_in_the_phase_and_the_option_of_what_it_is_a_part_of_unless_it_says_its_own() {
+    let (mut s, wall) = historic();
+    run(&mut s, "modify", json!({"id": wall, "params": {"Phase Created": "Existing"}}));
+    // Made while the work is on New Construction: a part is no new work, it is of the wall.
+    run(&mut s, "phase", json!({"now": "New Construction"}));
+    let ids = made(&run(&mut s, "create_parts", json!({"id": wall})));
+    let p = s.model.elements.get(ids[0]).unwrap();
+    assert!(part(&s.model, ids[0]).params.is_empty());
+    assert_eq!(crate::phasing::value(&s.model, p, crate::phasing::CREATED), Some("Existing"));
+    run(&mut s, "modify", json!({"id": wall, "params": {"Phase Demolished": "New Construction"}}));
+    let p = s.model.elements.get(ids[0]).unwrap();
+    assert_eq!(crate::phasing::value(&s.model, p, crate::phasing::DEMOLISHED), Some("New Construction"));
+    // One part taken down on its own: the plaster hacked off, the wall kept.
+    run(&mut s, "modify", json!({"id": wall, "params": {"Phase Demolished": null}}));
+    run(&mut s, "modify", json!({"id": ids[0], "params": {"Phase Demolished": "New Construction"}}));
+    let p = s.model.elements.get(ids[0]).unwrap();
+    assert_eq!(crate::phasing::value(&s.model, p, crate::phasing::DEMOLISHED), Some("New Construction"));
+    assert_eq!(crate::phasing::value(&s.model, s.model.elements.get(ids[1]).unwrap(), crate::phasing::DEMOLISHED), None);
+}
+
+#[test]
+fn a_part_holds_values_of_the_projects_parameters_for_parts() {
+    let (mut s, wall) = historic();
+    let ids = made(&run(&mut s, "create_parts", json!({"id": wall})));
+    let e = fails(&mut s, "modify", json!({"id": ids[0], "params": {"Surveyed By": "A. Rossi"}}));
+    assert!(e.contains("`Surveyed By` isn't a parameter of parts; add it with `parameter`"), "{e}");
+    run(&mut s, "parameter", json!({"name": "Surveyed By", "categories": ["parts"]}));
+    run(&mut s, "parameter", json!({"name": "Sample Depth", "kind": "length", "categories": ["part", "wall"]}));
+    run(&mut s, "modify", json!({"id": ids[0], "params": {"Surveyed By": "A. Rossi", "Sample Depth": 35}}));
+    assert_eq!(part(&s.model, ids[0]).params["Surveyed By"], "A. Rossi");
+    // In a file, keyed by the parameters' GUIDs as any element's; read back, by their names.
+    let text = s.model.to_json().unwrap();
+    let file: Value = serde_json::from_str(&text).unwrap();
+    let held = file[FILE_KEY][ids[0].to_string()]["params"].as_object().unwrap();
+    assert!(held.keys().all(|k| Guid::parse(k).is_some_and(|g| g.pending().is_none())), "{held:?}");
+    let back = Model::from_json(&text).unwrap();
+    assert_eq!(part(&back, ids[0]).params, part(&s.model, ids[0]).params);
+    // Renamed, the part's value goes by the new name.
+    run(&mut s, "parameter", json!({"name": "Surveyed By", "rename": "Surveyor"}));
+    assert_eq!(part(&s.model, ids[0]).params["Surveyor"], "A. Rossi");
+}
+
+#[test]
+fn a_part_that_parts_were_divided_from_is_their_sum_and_is_counted_in_them() {
+    let (mut s, wall) = historic();
+    let [outer, ..] = three(&mut s, wall);
+    let patch = put(&mut s, |m| BuildingPart { parent: Some(m.guid(outer)), ..layer_part(m, wall, 0) });
+    assert_eq!((s.model.part_divisions(outer), s.model.part_divisions(patch)), (vec![patch], Vec::new()));
+    // The listing counts what was divided from it, not it: its area and volume are theirs.
+    let whole = shown(&mut s, outer);
+    assert_eq!(whole["divisions"], json!([patch]));
+    assert!(whole.get("area_m2").is_none() && whole.get("volume_m3").is_none(), "{whole}");
+    let piece = shown(&mut s, patch);
+    assert_eq!((&piece["area_m2"], &piece["volume_m3"], piece.get("divisions")), (&json!(12.0), &json!(0.24), None));
+    assert_eq!(schedule::field_text(&s.model, outer, "Net Area"), None);
+    assert_eq!(schedule::field_text(&s.model, patch, "Net Area").as_deref(), Some("12.00"));
+    // Its own solid is there all the same: what a division of it is cut from.
+    assert!(near(measured(&s.model, outer).2, 4000.0 * 3000.0 * 20.0));
+    // The division deleted, it measures for itself again.
+    run(&mut s, "delete", json!({"ids": [patch]}));
+    assert_eq!(shown(&mut s, outer)["volume_m3"], json!(0.24));
+}
+
+/// What the sweep of every command with every hostile value (`tests::hostile_params_never_panic_or_break_the_model`) is
+/// given of parts: a wall of four layers and a floor taken apart in its base project, a part divided from another, and
+/// the values that name them: some for every command, some for the one they are for.
+pub(crate) fn sweep_payloads(s: &mut Session) -> (Vec<Value>, Vec<(&'static str, Value)>) {
+    let wall = run(s, "wall", json!({"points": [[20000, 20000], [24000, 20000]], "type": "Exterior - 300mm"}))["ids"][0].as_u64().unwrap();
+    let floor =
+        run(s, "floor", json!({"boundary": [[20000, 21000], [24000, 21000], [24000, 24000], [20000, 24000]]}))["id"].as_u64().unwrap();
+    let ids = made(&run(s, "create_parts", json!({"ids": [wall, floor]})));
+    run(s, "part", json!({"id": ids[0], "su_code": "USR 1", "decay_pathology": "soiling", "decay_severity": 2}));
+    let patch = put(s, |m| BuildingPart { parent: Some(m.guid(ids[1])), ..part(m, ids[1]).clone() });
+    let long = "x".repeat(100_000);
+    let general = vec![
+        json!({"ids": ids, "by": [1e9, 0]}),
+        json!({"ids": [wall, floor, ids[0], patch, 99]}),
+        json!({"id": ids[0], "decay_severity": 1e300, "decay_pathology": {"custom": long}, "layer": u64::MAX, "material": 5, "SU_Code": []}),
+        json!({"id": ids[0], "decay_severity": 9, "predefined_type": "userdefined", "object_type": null, "excluded": "x"}),
+        json!({"id": ids[0], "Decay_Severity": -1, "DECAY_PATHOLOGY": {"custom": ""}, "Intervention_Type": long}),
+        json!({"ids": ids, "layer": 2, "historical_period": "x".repeat(300)}),
+        json!({"ids": ids, "layer": null}),
+        json!({"id": ids[0], "host": ids[1], "parent": ids[0], "source": {"layer": 7}}),
+        json!({"id": ids[0], "host": floor}),
+        json!({"id": ids[0], "parent": patch}),
+        json!({"id": ids[1], "parent": patch}),
+        json!({"id": ids[0], "heritage": {"decay_severity": 255, "decay_pathology": {"custom": ""}, "su_code": 5}}),
+        json!({"id": ids[0], "source": "everything", "excluded": 1}),
+        json!({"id": patch, "source": "whole", "parent": null}),
+        json!({"ids": [wall, ids[0]], "type": "Generic - 200mm"}),
+        json!({"id": wall, "type": "Generic - 200mm"}),
+        json!({"id": wall, "type": "Interior - 100mm", "height": 1e-300}),
+        json!({"host": wall, "ids": [ids[0]], "conflicts": "x", "limit": 1e300, "offset": -1}),
+        json!({"host": u64::MAX, "conflicts": true}),
+        json!({"host": wall, "conflicts": true, "limit": 0}),
+        json!({"ids": [wall], "about": [0, 0], "angle": 33, "copy": true}),
+        json!({"ids": [wall, patch], "axis": [[0, 0], [1, 1]], "copy": true}),
+        json!({"from": ids[0], "ids": ids}),
+        json!({"name": "SU_Code", "categories": ["part"]}),
+        json!({"name": "Hostile", "categories": ["part", "parts", "nope"], "kind": "length"}),
+        json!({"category": "wall", "name": "Exterior - 300mm", "layers": [{"function": "membrane", "thickness": 0}, {"thickness": 300}]}),
+        json!({"category": "wall", "name": "Exterior - 300mm", "layers": []}),
+        json!({"view": 100000, "hide_elements": ids, "elements": {ids[0].to_string(): {"hidden": true}}}),
+    ];
+    let targeted = vec![
+        ("create_parts", json!({"ids": [wall, floor]})),
+        ("create_parts", json!({"ids": [100002, 100003, wall]})),
+        ("create_parts", json!({"ids": ids})),
+        ("part", json!({"id": ids[0], "layer": null})),
+        ("part", json!({"ids": ids, "excluded": true, "predefined_type": "PRECASTPANEL", "decay_severity": 5})),
+        ("part", json!({"id": patch, "layer": 3})),
+        ("parts", json!({})),
+        ("parts", json!({"host": wall, "conflicts": true})),
+        ("delete", json!({"ids": [wall]})),
+        ("delete", json!({"ids": [ids[1]]})),
+        ("copy", json!({"ids": [wall, floor], "by": [0, 9000]})),
+        ("modify", json!({"id": patch, "source": part(&s.model, ids[0]).source})),
+        ("modify", json!({"id": wall, "type": "Generic - 200mm"})),
+        ("type", json!({"category": "wall", "name": "Exterior - 300mm", "thickness": 500})),
+        ("delete_type", json!({"category": "wall", "name": "Exterior - 300mm"})),
+        ("split", json!({"id": wall, "at": [22000, 20000]})),
+        ("window", json!({"at": [22000, 20000]})),
+        ("shaft", json!({"boundary": [[21000, 22000], [22000, 22000], [22000, 23000], [21000, 23000]], "base_offset": -100})),
+    ];
+    (general, targeted)
 }
