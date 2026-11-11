@@ -557,8 +557,8 @@ FE-12 (`editor/sketch_dims.rs`): while a form is sketched, the contextual tab's 
 Angular, AN, Radial and Diameter) works in a plan or an elevation that sees the sketch's plane flat, as outside sketch mode:
 it picks the sketch's own lines and circles as they are, reference planes, reference lines and other forms' lines, then a
 click places the dimension (`dimensions::pick_reference`, `placing`, `dimension_click`, which both modes share). It is greyed,
-saying why, in {3D}, in a view that sees the plane edge-on and on a sweep's profile (whose lines the constraints don't
-measure, F6d); a sweep's path and a Blend's base and top are measured. What is made, changed or taken off while sketching is
+saying why, in {3D} and in a view that sees the plane edge-on; a sweep's path, a Blend's base and top and a sweep's
+profiles (in an elevation that sees the profile's plane flat, picking the profile's own lines alone) are measured. What is made, changed or taken off while sketching is
 held with the sketch, as Align's locks are (`FormSketch::dims`, `changed`, `unlocked`, and `params`, the parameters Create
 Parameter… made for a label), and drawn with it with the draft's own dimensions that measure the form's lines (its Align
 locks are the padlocks above). A click selects one ("Modify" first: the Draw panel's shape takes the click otherwise): its
@@ -572,9 +572,9 @@ type, naming it, with sketch mode open and the draft as it was. Finish writes th
 one step of the history (Undo takes them back together); Cancel drops them all, leaving no step and no Unsaved mark. A line of
 the form gone from the sketch (deleted, or taken back by Ctrl+Z) is taken from the dimensions that measure to it, made while
 sketching or the draft's (`forget_reference`, one left with too few references gone), as `forget_lines_gone` takes it at
-Finish. The status bar asks what the dimension tool asks outside sketch mode. A dimension's text is set on the paper, so a
-plane's trace through it doesn't cross it out. Out of scope: a profile's lines (F6d); a drag of a line's end is checked at
-Finish, not driven.
+Finish. The status bar asks what the dimension tool asks outside sketch mode, and with a dimension selected what can be done
+to it. The view leaves out the form being sketched again (`staged`), its sketch standing for it, as Revit's does. A dimension's text is set on the paper, so a
+plane's trace through it doesn't cross it out. Out of scope: a drag of a line's end is checked at Finish, not driven.
 
 F7c, part of FORMAT 19: angles, turning reference lines and arcs. `kind: "angular"` measures the angles
 between 2 to `MAX_DIM_REFS` lines seen as lines in its view: reference planes seen edge on (their traces), reference lines
@@ -863,8 +863,13 @@ triangles, as for any form not flat on a level plane. IFC writes the triangles a
 
 Constraints (F7) reach a Blend's base and top and a sweep's path: they are `Form::plane_lines`, the sketch then the top,
 whose vertices join within one group only (a base corner and a top corner over each other stay two); a Blend's First and
-Second End are measured as an extrusion's Start and End. A sweep's profile lines lie in a plane of their own and aren't
-measured yet: a dimension naming one is refused, saying so (F6d). `edit_work_plane`'s `keep` maps a Blend's top too (and
+Second End are measured as an extrusion's Start and End. A sweep's profile lines (a Swept Blend's two profiles') are
+`plane_lines` too, groups 2 and 3 (FE-12): each is read in its profile's plane as the path is drawn for the type
+(`forms::profile_frames`, `Layout::profiles`, `Seen::profile`), which moves with no unknown, so a profile's lines are
+measured among themselves alone (`check_dimensions` refuses one with what lies off its plane: the plane follows the path, as
+nothing else does). Labels, locks and EQ on them flex the profile in its own axes; no FORMAT change, `{"form", "line"}`
+naming a profile line as it names any other (a build before this one leaves such a dimension out of a file, as one measuring
+to nothing). `edit_work_plane`'s `keep` maps a Blend's top too (and
 swaps base and top on a plane facing the other way) and refuses a sweep on a plane facing the other way or mirrored.
 
 In the family document (`editor/sketch.rs`), Create > Blend, Sweep and Swept Blend, and Void Forms' Void Blend, Void Sweep
@@ -881,7 +886,7 @@ every type as F5 does (`commit_form`); Edit Blend, Edit Sweep and Edit Swept Ble
 each part keeping its lines' formulas where they don't move.
 
 Left out, each a task: Edit Vertices' connecting chosen vertex pairs by hand (F6b); profile families (BIMCraft has no
-Profile category: loading one, `sweep.family`, its offsets and angle; F6c); dimensions and locks on a sweep's profile (F6d);
+Profile category: loading one, `sweep.family`, its offsets and angle; F6c); dimensions between a sweep's profile and what lies off its plane (F6d);
 paths across planes and Pick Path of 3D edges (F6e).
 
 ## Family options

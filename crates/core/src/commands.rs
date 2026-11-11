@@ -11825,18 +11825,6 @@ fn family(s: &mut Session, p: &Value) -> R {
     // A dimension that measures to what the family hasn't: refused, unless the caller says to delete it (T14's Delete
     // Dimension(s)); a reload can't leave one behind unasked.
     let dangling = f.dangling_dimensions();
-    // A sweep's profile lies square to its path, in a plane of its own: not measured yet (F6d), and said so.
-    let profile_lines: Vec<crate::ids::Guid> =
-        f.forms.iter().flat_map(|x| x.sweep.iter().flat_map(|s| s.profile.iter().chain(&s.end)).map(|l| l.guid)).collect();
-    for i in &dangling {
-        let on_profile = f.dimensions[*i].refs.iter().any(|r| match *r {
-            crate::family::DimRef::Sketch(_, l) | crate::family::DimRef::Point(_, l, _) => profile_lines.contains(&l),
-            _ => false,
-        });
-        if on_profile {
-            return Err(bad(c, format!("dimension {}: a sweep's profile line isn't measured or locked yet: dimension its path", i + 1)));
-        }
-    }
     if !dangling.is_empty() {
         match string(c, &p, "invalid_dimensions")?.as_deref() {
             Some("delete") => {

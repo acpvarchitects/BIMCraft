@@ -357,6 +357,53 @@ fn no_dimension_tool_while_sketching_in_3d() {
     assert!(editor(&h).sketch_undimensionable().is_some());
 }
 
+const SWEEP: &str = "55555555-5555-4555-8555-000000000001";
+const BOTTOM: &str = "55555555-5555-4555-8555-000000000002";
+const TOP: &str = "55555555-5555-4555-8555-000000000003";
+
+/// A sweep along y on Ref. Level, its profile a 100 square on its plane (x across, z up), and a Depth parameter (Small 80,
+/// Large 200, Large previewed).
+fn sweep_family() -> String {
+    format!(
+        r#"family {{"name": "Sw", "category": "generic", "parameters": [{{"name": "Depth", "value": 100}}], "types": {{"Small": {{"Depth": 80}}, "Large": {{"Depth": 200}}}}, "forms": [{{"guid": "{SWEEP}", "sketch": [{{"start": [0, -400], "end": [0, 400]}}], "sweep": {{"profile": [{{"guid": "{BOTTOM}", "start": [-50, 0], "end": [50, 0]}}, {{"start": [50, 0], "end": [50, 100]}}, {{"guid": "{TOP}", "start": [50, 100], "end": [-50, 100]}}, {{"start": [-50, 100], "end": [-50, 0]}}]}}}}]}}"#
+    )
+}
+
+/// A sweep's profile, shown in an elevation that sees it flat, dimensioned and labelled while sketching.
+fn sweep_profile_dimensioned(h: &mut Harness<BimApp>) -> FamilyDimension {
+    ed_mut(h).edit_form_sketch(0).unwrap();
+    h.run();
+    ed_mut(h).show_part(crate::editor::sketch::Part::Profile).unwrap();
+    h.run();
+    h.run();
+    assert!(editor(h).views.shown.is_some_and(|w| w != Which::Plan), "an elevation that sees the profile flat");
+    assert!(editor(h).sketch_undimensionable().is_none());
+    shortcut(h, "DI");
+    click_family(h, [20.0, 0.0, 0.0]);
+    click_family(h, [20.0, 0.0, 100.0]);
+    click_family(h, [300.0, 0.0, 50.0]);
+    key(h, Key::Escape);
+    let d = made(h).last().cloned().expect("a dimension of the profile");
+    assert_eq!(d.refs, vec![DimRef::Sketch(g(SWEEP), g(BOTTOM)), DimRef::Sketch(g(SWEEP), g(TOP))], "{}", status(h));
+    ed_mut(h).set_label(d.guid, Some("Depth".into())).unwrap();
+    d
+}
+
+#[test]
+fn a_sweeps_profile_is_dimensioned_and_labelled_while_sketched() {
+    let (mut h, _) = open(&sweep_family(), "Sw");
+    view(&mut h, Some(Which::Plan));
+    let d = sweep_profile_dimensioned(&mut h);
+    let (b, t) = (line(&h, BOTTOM), line(&h, TOP));
+    assert!(((t.0.1 - b.0.1) - 200.0).abs() < 1e-6, "Large's Depth, at once: {b:?} {t:?}");
+    press(&mut h, "Finish Edit Mode");
+    assert!(!editor(&h).sketching(), "{}", status(&h));
+    let f = editor(&h).draft_family().unwrap();
+    let at = f.dimensions.iter().position(|x| x.guid == d.guid).expect("written");
+    let v = f.values("Small", &BTreeMap::new()).unwrap();
+    assert_eq!(f.measured(&v).unwrap()[at], vec![80.0]);
+}
+
 /// A sketch in plan with an aligned dimension between two of its lines, labelled and locked, selected; and a disc's sketch
 /// with a radial dimension. Saved where `BIMCRAFT_FE12_DUMP` says (only then).
 #[test]
@@ -395,4 +442,16 @@ fn family_sketch_dimensions_screenshots() {
     h.hover_at(egui::pos2(1500.0, 900.0));
     h.run();
     h.render().unwrap().save(std::path::Path::new(&folder).join("fe12-sketch-radial.png")).unwrap();
+    // A sweep's profile in an elevation, its depth labelled, selected.
+    let mut h = app(&sweep_family());
+    h.set_size(vec2(1600.0, 1000.0));
+    h.state_mut().edit_family("Sw");
+    h.run();
+    view(&mut h, Some(Which::Plan));
+    h.run();
+    let d = sweep_profile_dimensioned(&mut h);
+    ed_mut(&mut h).sketch.as_mut().unwrap().selected_dim = Some(d.guid);
+    h.hover_at(egui::pos2(1500.0, 900.0));
+    h.run();
+    h.render().unwrap().save(std::path::Path::new(&folder).join("fe12-sketch-profile.png")).unwrap();
 }

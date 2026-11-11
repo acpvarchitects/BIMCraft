@@ -179,13 +179,10 @@ impl FamilyEditor {
         }
     }
 
-    /// Why the dimension tools can't be taken up while sketching, if they can't: in {3D}, in a view that doesn't see the
-    /// sketch's plane flat, or on a profile (whose lines the constraints don't measure, F6d).
+    /// Why the dimension tools can't be taken up while sketching, if they can't: in {3D}, or in a view that doesn't see the
+    /// sketch's plane flat (a sweep's profile's too).
     pub(crate) fn sketch_undimensionable(&self) -> Option<&'static str> {
-        let s = self.sketch.as_ref()?;
-        if matches!(s.part, Part::Profile | Part::End) {
-            return Some(msg!("A profile's lines aren't measured: dimension the path, or the form once it is finished."));
-        }
+        self.sketch.as_ref()?;
         let Some(which) = self.views.shown.filter(|_| self.adaptive.is_none()) else {
             return Some(msg!("Dimensions are drawn in a plan or an elevation, not in {3D}."));
         };
@@ -258,6 +255,31 @@ impl FamilyEditor {
         Ok(())
     }
 
+    /// The reference a dimension tool of `kind` picks at `p` while sketching: as outside sketch mode; on a sweep's profile, its
+    /// own lines alone (the constraints measure a profile's lines among themselves).
+    #[allow(clippy::too_many_arguments)]
+    fn sketch_pick(
+        &self,
+        f: &Family,
+        values: &BTreeMap<String, Val>,
+        st: &Staged,
+        which: Which,
+        kind: DimKind,
+        p: Pos2,
+        screen: &dyn Fn(P2) -> Pos2,
+        plane_at: &dyn Fn(Pos2) -> Option<Guid>,
+    ) -> Option<DimRef> {
+        let s = self.sketch.as_ref()?;
+        if !matches!(s.part, Part::Profile | Part::End) {
+            return dims::pick_reference(f, values, st, which, kind, plane_at(p), p, screen);
+        }
+        let own = |r: &DimRef| match *r {
+            DimRef::Sketch(g, l) | DimRef::Point(g, l, _) => g == s.guid && s.sketch.lines.iter().any(|x| x.guid == l),
+            _ => false,
+        };
+        dims::pick_reference(f, values, st, which, kind, None, p, screen).filter(own)
+    }
+
     /// What the sketch's dimensions are in view `which` (`st` its scratch model, `screen` its millimetres on screen): the
     /// sketch's family flexed for the type previewed, and the marks of the dimensions made while sketching and of the draft's
     /// that measure the form (Align's locks are the sketch's padlocks), with the one being placed toward `hover`. None while
@@ -278,7 +300,7 @@ impl FamilyEditor {
         let kind = self.views.dim_kind;
         let placing = match (&self.views.dimensioning, hover) {
             (Some(refs), Some(h)) => {
-                let under = dims::pick_reference(&flexed, &values, st, which, kind, plane_at(h), h, screen);
+                let under = self.sketch_pick(&flexed, &values, st, which, kind, h, screen, plane_at);
                 dims::placing(&flexed, &values, st, which, kind, refs, under, at_view(h))
             }
             _ => None,
@@ -311,7 +333,7 @@ impl FamilyEditor {
     ) -> (bool, Option<String>) {
         let kind = self.views.dim_kind;
         if let Some(mut refs) = self.views.dimensioning.take() {
-            let under = dims::pick_reference(&sd.flexed, &sd.values, st, which, kind, plane_at(p), p, screen);
+            let under = self.sketch_pick(&sd.flexed, &sd.values, st, which, kind, p, screen, plane_at);
             let done = dims::dimension_click(&sd.flexed, &sd.values, st, which, kind, &mut refs, under, q);
             self.views.dimensioning = Some(refs);
             return match done {
