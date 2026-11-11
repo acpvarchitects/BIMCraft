@@ -869,8 +869,10 @@ Second End are measured as an extrusion's Start and End. A sweep's profile lines
 (`forms::profile_frames`, `Layout::profiles`, `Seen::profile`), which moves with no unknown, so a profile's lines are
 measured among themselves alone (`check_dimensions` refuses one with what lies off its plane: the plane follows the path, as
 nothing else does). Labels, locks and EQ on them flex the profile in its own axes; no FORMAT change, `{"form", "line"}`
-naming a profile line as it names any other (a build before this one leaves such a dimension out of a file, as one measuring
-to nothing). `edit_work_plane`'s `keep` maps a Blend's top too (and
+naming a profile line as it names any other. Older builds: a project file's such dimension is left out and listed in
+`left_out`, as one measuring to nothing; a family file holding one isn't filtered there (`read_family_file`), and Load into
+Project refuses it (their sweep-profile check, which no `invalid_dimensions` passes), so such a family can't be loaded from
+an older build until the shared FORMAT 19 to 20 step marks it. `edit_work_plane`'s `keep` maps a Blend's top too (and
 swaps base and top on a plane facing the other way) and refuses a sweep on a plane facing the other way or mirrored.
 
 In the family document (`editor/sketch.rs`), Create > Blend, Sweep and Swept Blend, and Void Forms' Void Blend, Void Sweep
