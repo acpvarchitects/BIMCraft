@@ -179,10 +179,20 @@ impl FamilyEditor {
             || self.views.go_to.is_some()
     }
 
+    /// How many steps the document's history can undo: what a test reads to see that a refused edit left none.
+    #[cfg(test)]
+    pub(crate) fn steps(&self) -> usize {
+        self.document.undo.len()
+    }
+
     /// The document's history, at the end of a frame: Undo or Redo when `ask` says so, else a step for what changed since the
     /// last one, once nothing is going on any more (no button held, no field being typed in, no dialog open), so a drag, a
     /// word typed or a dialog's whole visit is one step. Cancel in a dialog puts back what it began from, leaving no step.
     pub(super) fn history(&mut self, ctx: &Context, ask: &Asked) {
+        // Undo and Redo give up a handle being dragged, the form put back as it was before it (FE-5).
+        if ask.undo || ask.redo {
+            self.cancel_drags();
+        }
         // What the frame took away from the draft goes from the selection too (FE-1).
         self.prune_selection();
         let now = Draft::of(self);
@@ -1491,7 +1501,8 @@ impl BimApp {
         // Escape lets a selected form go, though a button clicked has the keyboard (the window's own Escape does it otherwise).
         if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
             // The plane being drawn first, then the tool, then the selection.
-            if ed.stop_picking() || ed.views.pivoting.take().is_some() {
+            // A handle being dragged first: the form put back as it was.
+            if ed.cancel_drags() || ed.stop_picking() || ed.views.pivoting.take().is_some() {
             } else if let Some(refs) = ed.views.dimensioning.as_mut() {
                 if refs.is_empty() {
                     ed.views.dimensioning = None;

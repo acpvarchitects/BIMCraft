@@ -32,7 +32,9 @@ pub(crate) struct ShapeHandle {
 /// has gone.
 #[derive(Clone)]
 pub(crate) struct EdgeDrag {
-    form: usize,
+    /// The view it is dragged in, and the last pass that view was drawn in: shown no longer, the drag is given up.
+    pub(super) which: Which,
+    pub(super) seen: u64,
     line: usize,
     out: P2,
     way: [f64; 3],
@@ -138,8 +140,7 @@ impl FamilyEditor {
     pub(crate) fn edge_drag(
         &self,
         h: &ShapeHandle,
-        from: P2,
-        view: bimcraft_core::render::View,
+        (from, view, which, seen): (P2, bimcraft_core::render::View, Which, u64),
         shown: &Family,
     ) -> Result<EdgeDrag, String> {
         if let Some(why) = &h.blocked {
@@ -150,7 +151,7 @@ impl FamilyEditor {
         let guid = before.original.guid;
         let flexed = if guid.is_nil() { shown.forms.get(i) } else { shown.forms.iter().find(|f| f.guid == guid) };
         let shown = flexed.map(|f| f.sketch.clone()).unwrap_or_default();
-        Ok(EdgeDrag { form: i, line: h.line, out: h.out, way: h.way, from, view, before, shown, last: 0.0 })
+        Ok(EdgeDrag { which, seen, line: h.line, out: h.out, way: h.way, from, view, before, shown, last: 0.0 })
     }
 
     /// The edge being dragged, the pointer `moved` (the family's mm) from where the button went down: the form made again from
@@ -164,23 +165,48 @@ impl FamilyEditor {
         }
         drag.last = d;
         let drag = drag.clone();
-        let done = self.offset_edge(&drag, d);
-        if done.is_err() && drag.form < self.forms.len() {
-            self.forms[drag.form] = drag.before.clone();
+        // The form by what it is known by while the document is open, not by its place, which an undo may give another.
+        let Some(i) = self.forms.iter().position(|f| f.tag == drag.before.tag) else {
+            self.views.edge_drag = None;
+            return Ok(());
+        };
+        // Back where it began: the form exactly as it was typed, so the drag leaves nothing to save.
+        if d.abs() < 1e-9 {
+            self.forms[i] = drag.before.clone();
+            return Ok(());
+        }
+        let done = self.offset_edge(&drag, i, d);
+        if done.is_err() {
+            self.forms[i] = drag.before.clone();
         }
         done
     }
 
-    fn offset_edge(&mut self, drag: &EdgeDrag, d: f64) -> Result<(), String> {
+    /// The Start or End drag and the edge drag given up, each form put back as it was before it began (so no step of the
+    /// history): Escape, Undo and Redo, and the view it began in shown no longer. Whether there was one.
+    pub(crate) fn cancel_drags(&mut self) -> bool {
+        let mut any = false;
+        if let Some(d) = self.views.edge_drag.take() {
+            if let Some(i) = self.forms.iter().position(|f| f.tag == d.before.tag) {
+                self.forms[i] = d.before;
+            }
+            any = true;
+        }
+        if let Some(d) = self.views.end_drag.take() {
+            if let Some(f) = self.forms.iter_mut().find(|f| f.tag == d.tag) {
+                *(if d.end { &mut f.to } else { &mut f.from }) = d.before;
+            }
+            any = true;
+        }
+        any
+    }
+
+    fn offset_edge(&mut self, drag: &EdgeDrag, i: usize, d: f64) -> Result<(), String> {
         let values = self.values();
         let mut num = reader(&values);
         let before = drag.before.form()?;
         let lines = hs::offset_edge(&before.sketch, drag.line, drag.out, d, &mut num).map_err(said)?;
         let form = Form { sketch: lines, ..before };
-        let i = drag.form;
-        if i >= self.forms.len() {
-            return Err(String::new());
-        }
         self.forms[i] = FormText { tag: drag.before.tag, ..FormText::of(&form) };
         let f = self.family()?;
         // Constraints flex it: the type previewed shows the edge where the drag put it, or a lock or a dimension holds it.
@@ -202,7 +228,7 @@ impl FamilyEditor {
             if let Err(e) = f.pieces(&values)
                 && e.contains(&mine)
             {
-                return Err(e);
+                return Err(format!("{name}: {e}"));
             }
         }
         Ok(())

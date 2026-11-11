@@ -792,7 +792,10 @@ drawn and through its ends where they now are (a D's arc grows with its flat sid
 centre, its ends going out along their radii and the lines at them following them; a whole circle's, its radius. Only the numbers
 that move are written, as numbers; one that is a formula refuses the drag, and the rest keep their formulas. The form is made
 again from what it was at each step of the drag (live, one step of the history), the pointer read through the view as the drag
-began, so the view refitting what it frames doesn't move the drag under the hand. Refused, the form left as it was and the status
+began, so the view refitting what it frames doesn't move the drag under the hand. A drag back where it began leaves the form as typed (no
+step, nothing unsaved); Escape, Undo, Redo and another view or tab shown give it up, the form put back as it was (the Start and
+End drag too); the form is followed by what it is known by while the document is open, never by its place. A click on an arrow
+keeps the selection. Refused, the form left as it was and the status
 bar saying why: an edge a dimension's label, lock, Align lock or EQ measures to (`Family::edge_held`), greyed; a drag that leaves
 no profile (a line turned back or of no length, or what `finish_check` refuses: lines crossing, overlapping, a loop open); one
 the constraints would undo (where a family is constrained, the type previewed must flex the edge to where the drag put it, the

@@ -16,6 +16,11 @@ const LINE: &str = "55555555-5555-4555-8555-0000000000";
 /// origin; a void box beside it; a slot whose right end is a half circle about (-500, -700); and a plane West on its west
 /// side (x 0), the west line Align-locked to it and the east line's distance from it labelled `Len`.
 fn family() -> String {
+    family_with("", "")
+}
+
+/// [`family`] with more types (`types`, JSON members after `"T": {}`) and dimensions (`dims`, JSON after the two).
+fn family_with(types: &str, dims: &str) -> String {
     let pts = [(0, 0), (1000, 0), (1000, 500), (500, 500), (500, 1000), (0, 1000)];
     let lines: Vec<String> = (0..6)
         .map(|i| {
@@ -25,7 +30,7 @@ fn family() -> String {
         .collect();
     let lines = lines.join(", ");
     format!(
-        r#"family {{"name": "Ell", "category": "generic", "parameters": [{{"name": "Len", "value": 1000}}], "types": {{"T": {{}}}}, "ref_planes": [{{"guid": "{WEST}", "name": "West", "start": [0, -2000, 0], "end": [0, 2000, 0], "up": [0, 0, 1]}}], "forms": [{{"guid": "{L}", "sketch": [{lines}], "from": 0, "to": 300}}, {{"profile": [[1500, 0], [1900, 0], [1900, 400], [1500, 400]], "from": 0, "to": 200, "void": true}}, {{"sketch": [{{"start": [-1000, -800], "end": [-500, -800]}}, {{"start": [-500, -800], "end": [-500, -600], "turn": 180}}, {{"start": [-500, -600], "end": [-1000, -600]}}, {{"start": [-1000, -600], "end": [-1000, -800]}}], "from": 0, "to": 100}}], "dimensions": [{{"refs": [{{"plane": "{WEST}"}}, {{"form": "{L}", "line": "{LINE}15"}}], "at": [0, -300, 0], "locked": [{{"segment": 0, "length": 0}}], "alignment": true}}, {{"refs": [{{"plane": "{WEST}"}}, {{"form": "{L}", "line": "{LINE}11"}}], "at": [500, -400, 0], "label": "Len"}}]}}"#
+        r#"family {{"name": "Ell", "category": "generic", "parameters": [{{"name": "Len", "value": 1000}}], "types": {{"T": {{}}{types}}}, "ref_planes": [{{"guid": "{WEST}", "name": "West", "start": [0, -2000, 0], "end": [0, 2000, 0], "up": [0, 0, 1]}}], "forms": [{{"guid": "{L}", "sketch": [{lines}], "from": 0, "to": 300}}, {{"profile": [[1500, 0], [1900, 0], [1900, 400], [1500, 400]], "from": 0, "to": 200, "void": true}}, {{"sketch": [{{"start": [-1000, -800], "end": [-500, -800]}}, {{"start": [-500, -800], "end": [-500, -600], "turn": 180}}, {{"start": [-500, -600], "end": [-1000, -600]}}, {{"start": [-1000, -600], "end": [-1000, -800]}}], "from": 0, "to": 100}}], "dimensions": [{{"refs": [{{"plane": "{WEST}"}}, {{"form": "{L}", "line": "{LINE}15"}}], "at": [0, -300, 0], "locked": [{{"segment": 0, "length": 0}}], "alignment": true}}, {{"refs": [{{"plane": "{WEST}"}}, {{"form": "{L}", "line": "{LINE}11"}}], "at": [500, -400, 0], "label": "Len"}}{dims}]}}"#
     )
 }
 
@@ -61,12 +66,12 @@ fn drag_handle(h: &mut Harness<BimApp>, p: [f64; 3], by: [f64; 3]) {
     drag_screen(h, a, a + (e - s), PointerButton::Primary);
 }
 
-/// Form `i`'s lines' ends as numbers (a formula NaN).
+/// Form `i`'s lines' ends as numbers (a formula infinite).
 fn ends(h: &Harness<BimApp>, i: usize) -> Vec<[f64; 4]> {
     let f: Family = editor(h).draft_family().unwrap();
     let v = |e: &Expr| match e {
         Expr::Number(x) => *x,
-        _ => f64::NAN,
+        _ => f64::INFINITY,
     };
     f.forms[i]
         .sketch
@@ -84,6 +89,34 @@ fn near(a: [f64; 4], b: [f64; 4], tol: f64) -> bool {
 
 fn status(h: &Harness<BimApp>) -> String {
     h.state().status.text.clone()
+}
+
+/// Whether the draft is as it was opened: no step of its history, nothing unsaved.
+fn untouched(h: &Harness<BimApp>) -> bool {
+    editor(h).steps() == 0 && !editor(h).unsaved()
+}
+
+/// A press on the handle at family point `p`, a move by `by` (mm) in steps, and the button held: what a test does mid-drag.
+fn press_and_move(h: &mut Harness<BimApp>, p: [f64; 3], by: [f64; 3]) -> egui::Pos2 {
+    let (a, _) = handle_at(h, p);
+    let s = editor(h).views.screen_of(p).unwrap();
+    let e = editor(h).views.screen_of([p[0] + by[0], p[1] + by[1], p[2] + by[2]]).unwrap();
+    h.hover_at(a);
+    h.run();
+    h.event(egui::Event::PointerButton { pos: a, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::NONE });
+    h.run();
+    for t in [0.5, 1.0] {
+        h.hover_at(a + (e - s) * t);
+        h.run();
+    }
+    a + (e - s)
+}
+
+/// The button let go at `at`.
+fn release(h: &mut Harness<BimApp>, at: egui::Pos2) {
+    h.event(egui::Event::PointerButton { pos: at, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE });
+    h.run();
+    h.run();
 }
 
 #[test]
@@ -141,13 +174,17 @@ fn a_locked_or_labelled_edge_and_a_drag_leaving_no_profile_are_refused_and_the_f
     drag_handle(&mut h, [0.0, 500.0, 0.0], [-200.0, 0.0, 0.0]);
     assert!(status(&h).contains("locked"), "{}", status(&h));
     assert_eq!(ends(&h, 0), before);
+    assert!(untouched(&h));
     drag_handle(&mut h, [1000.0, 250.0, 0.0], [200.0, 0.0, 0.0]);
     assert!(status(&h).contains("Len"), "{}", status(&h));
     assert_eq!(ends(&h, 0), before);
-    // The notch's wall (x 500) right past the east side: the floor would turn back on itself.
+    assert!(untouched(&h));
+    // The notch's wall (x 500) right past the east side, through places it could take (700, 900) on the way: the floor would
+    // turn back on itself where it is let go.
     drag_handle(&mut h, [500.0, 750.0, 0.0], [800.0, 0.0, 0.0]);
     assert!(status(&h).contains("can't take"), "{}", status(&h));
     assert_eq!(ends(&h, 0), before);
+    assert!(untouched(&h), "no step, nothing unsaved");
 }
 
 #[test]
@@ -248,4 +285,116 @@ fn family_shape_handles_screenshots() {
     view(&mut h, Some(Which::Elevation(Side::Back)));
     select(&mut h, 0);
     save(&mut h, "elevation");
+}
+
+#[test]
+fn a_drag_the_constraints_would_undo_or_another_type_cant_build_is_refused() {
+    // The west line's end (the corner at the origin) locked 300 from a plane South along y: the bottom's drag would move it.
+    const SOUTH: &str = "55555555-5555-4555-8555-000000000003";
+    let dims = format!(
+        r#", {{"refs": [{{"plane": "{SOUTH}"}}, {{"form": "{L}", "line": "{LINE}15", "point": "end"}}], "at": [-200, 0, 0], "locked": [{{"segment": 0, "length": 300}}]}}"#
+    );
+    let script = family_with("", &dims).replace(
+        r#""ref_planes": ["#,
+        &format!(
+            r#""ref_planes": [{{"guid": "{SOUTH}", "name": "South", "start": [-2000, -300, 0], "end": [2000, -300, 0], "up": [0, 0, 1]}}, "#
+        ),
+    );
+    let (mut h, _) = open(&script, "Ell");
+    view(&mut h, Some(Which::Plan));
+    select(&mut h, 0);
+    let before = ends(&h, 0);
+    assert!(handle_at(&h, [500.0, 0.0, 0.0]).1, "the bottom itself is free");
+    drag_handle(&mut h, [500.0, 0.0, 0.0], [0.0, -100.0, 0.0]);
+    assert!(status(&h).contains("Constraints are not satisfied"), "{}", status(&h));
+    assert_eq!(ends(&h, 0), before);
+    assert!(untouched(&h));
+    // A square with a hole whose east side is at W: 600 in T, 950 in U. The square's east side in to 900 is past the hole in
+    // U, which can't be built: refused, though T, shown, takes it.
+    let hole = |a: (&str, &str), b: (&str, &str)| format!(r#"{{"start": [{}, {}], "end": [{}, {}]}}"#, a.0, a.1, b.0, b.1);
+    let lines = [
+        hole(("0", "0"), ("1000", "0")),
+        hole(("1000", "0"), ("1000", "1000")),
+        hole(("1000", "1000"), ("0", "1000")),
+        hole(("0", "1000"), ("0", "0")),
+        hole(("400", "400"), ("400", "600")),
+        hole(("400", "600"), ("\"W\"", "600")),
+        hole(("\"W\"", "600"), ("\"W\"", "400")),
+        hole(("\"W\"", "400"), ("400", "400")),
+    ]
+    .join(", ");
+    let script = format!(
+        r#"family {{"name": "Holed", "category": "generic", "parameters": [{{"name": "W", "value": 600}}], "types": {{"T": {{}}, "U": {{"W": 950}}}}, "forms": [{{"sketch": [{lines}], "from": 0, "to": 300}}]}}"#
+    );
+    let (mut h, _) = open(&script, "Holed");
+    view(&mut h, Some(Which::Plan));
+    select(&mut h, 0);
+    let before = ends(&h, 0);
+    drag_handle(&mut h, [1000.0, 500.0, 0.0], [-100.0, 0.0, 0.0]);
+    assert!(status(&h).contains("U"), "{}", status(&h));
+    assert_eq!(ends(&h, 0), before);
+    assert!(untouched(&h));
+}
+
+#[test]
+fn a_drag_back_where_it_began_leaves_nothing_and_a_click_on_an_arrow_keeps_the_selection() {
+    let mut h = in_plan();
+    select(&mut h, 0);
+    let (pressed, _) = handle_at(&h, [750.0, 500.0, 0.0]);
+    press_and_move(&mut h, [750.0, 500.0, 0.0], [0.0, 200.0, 0.0]);
+    assert!(ends(&h, 0)[2][1] > 600.0, "live");
+    h.hover_at(pressed);
+    h.run();
+    release(&mut h, pressed);
+    assert!(untouched(&h), "back where it began: {} steps", editor(&h).steps());
+    // A click on an arrow: the form stays selected.
+    let (at, _) = handle_at(&h, [500.0, 0.0, 0.0]);
+    click_at(&mut h, at);
+    assert_eq!(editor(&h).selected_form(), Some(0));
+}
+
+#[test]
+fn escape_undo_and_another_view_mid_drag_give_the_drag_up() {
+    let mut h = in_plan();
+    select(&mut h, 0);
+    let before = ends(&h, 0);
+    // Escape: the form back as it was, still selected; the rest of the drag does nothing.
+    let at = press_and_move(&mut h, [750.0, 500.0, 0.0], [0.0, 200.0, 0.0]);
+    assert_ne!(ends(&h, 0), before);
+    key(&mut h, Key::Escape);
+    assert_eq!(ends(&h, 0), before);
+    h.hover_at(at + vec2(0.0, -40.0));
+    h.run();
+    release(&mut h, at + vec2(0.0, -40.0));
+    assert_eq!(ends(&h, 0), before);
+    assert_eq!(editor(&h).selected_form(), Some(0));
+    assert!(untouched(&h));
+    // Another view shown mid-drag: given up.
+    let at = press_and_move(&mut h, [750.0, 500.0, 0.0], [0.0, 200.0, 0.0]);
+    h.state_mut().active_family_mut().unwrap().views.show(Some(Which::Elevation(Side::Front)));
+    h.run();
+    h.hover_at(at + vec2(30.0, 0.0));
+    h.run();
+    release(&mut h, at + vec2(30.0, 0.0));
+    assert_eq!(ends(&h, 0), before);
+    assert!(untouched(&h));
+    // Undo mid-drag, after the void (form 2) was deleted and the slot dragged at its place: the void comes back as it was,
+    // and nothing of the slot is written over it.
+    view(&mut h, Some(Which::Plan));
+    let void = editor(&h).draft_family().unwrap().forms[1].clone();
+    select(&mut h, 1);
+    h.state_mut().active_family_mut().unwrap().delete_selected().unwrap();
+    h.run();
+    select(&mut h, 1);
+    let slot = editor(&h).draft_family().unwrap().forms[1].clone();
+    let at = press_and_move(&mut h, [-750.0, -800.0, 0.0], [0.0, -100.0, 0.0]);
+    h.state_mut().family_undo();
+    h.run();
+    h.hover_at(at + vec2(0.0, 30.0));
+    h.run();
+    release(&mut h, at + vec2(0.0, 30.0));
+    let f = editor(&h).draft_family().unwrap();
+    assert_eq!(f.forms.len(), 3);
+    assert_eq!(f.forms[1], void, "the void back, untouched");
+    assert_eq!(f.forms[2], slot, "the slot as it was");
 }

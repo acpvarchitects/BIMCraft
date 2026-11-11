@@ -46,7 +46,7 @@ pub(crate) struct Views {
     /// A selected extrusion's Start or End (true) being dragged by its handle (F5): where the pointer was, in the view's
     /// millimetres, the normal it moves along, and the view as it was when the drag began, which the pointer is read through
     /// while it goes on (a drag that changes what the view frames would otherwise change its scale under the hand).
-    end_drag: Option<(bool, P2, [f64; 3], View)>,
+    pub(super) end_drag: Option<EndDrag>,
     /// A profile edge being dragged by its handle (FE-5).
     pub(super) edge_drag: Option<super::shape_handles::EdgeDrag>,
     /// Where the selected form's profile handles were last shown on screen (FE-5).
@@ -93,6 +93,21 @@ pub(crate) struct Views {
     /// a click takes: Tab steps through them, as Revit's Tab does.
     pub(crate) under: Vec<Guid>,
     pub(crate) cycle: usize,
+}
+
+/// A selected extrusion's Start or End (`end`) being dragged by its handle (F5): where the pointer was (the view's
+/// millimetres), the normal it moves along, the view as the drag began (the pointer is read through it), what the end was
+/// typed before and the form's tag (what Escape puts back), and the view it is dragged in with the last pass it was drawn in.
+#[derive(Clone)]
+pub(crate) struct EndDrag {
+    pub(super) end: bool,
+    last: P2,
+    n: [f64; 3],
+    view: View,
+    pub(super) before: String,
+    pub(super) tag: u64,
+    which: Which,
+    seen: u64,
 }
 
 /// The planes the view draws under pixel `(x, y)` of `drawing` (within reach), each once, nearest first.
@@ -431,6 +446,20 @@ impl FamilyEditor {
     /// on, the plane being drawn; and the clicks and drags in it.
     pub(crate) fn view_2d(&mut self, ui: &mut Ui, base: &Model, which: Which, pane: Rect) -> Option<String> {
         let size = [pane.width().clamp(64.0, 2400.0) as u32, pane.height().clamp(64.0, 1600.0) as u32];
+        // A handle's drag begun in another view, or in this one before something else was shown, is given up (FE-5).
+        let pass = ui.ctx().cumulative_pass_nr();
+        let stale = |w: Which, seen: u64| w != which || seen + 1 < pass;
+        if self.views.edge_drag.as_ref().is_some_and(|d| stale(d.which, d.seen))
+            || self.views.end_drag.as_ref().is_some_and(|d| stale(d.which, d.seen))
+        {
+            self.cancel_drags();
+        }
+        if let Some(d) = self.views.edge_drag.as_mut() {
+            d.seen = pass;
+        }
+        if let Some(d) = self.views.end_drag.as_mut() {
+            d.seen = pass;
+        }
         self.refresh_view(ui.ctx(), base, which, size);
         let response = ui.interact(pane, UiId::new("family-view-2d"), Sense::click_and_drag());
         self.views.pane = Some(pane);
@@ -904,7 +933,13 @@ impl FamilyEditor {
         {
             if let Some((_, end, blocked, n)) = handles.iter().find(|h| screen(h.0).distance(p) <= HANDLE) {
                 match blocked {
-                    None => self.views.end_drag = Some((*end, at_view(p), *n, view)),
+                    None => {
+                        if let Some(ft) = self.selected_form().and_then(|i| self.forms.get(i)) {
+                            let before = if *end { ft.to.clone() } else { ft.from.clone() };
+                            let (last, n, tag, end) = (at_view(p), *n, ft.tag, *end);
+                            self.views.end_drag = Some(EndDrag { end, last, n, view, before, tag, which, seen: pass });
+                        }
+                    }
                     Some(why) => problem = Some(why.clone()),
                 }
             } else if let Some(h) = shapes
@@ -913,20 +948,22 @@ impl FamilyEditor {
                 .min_by(|a, b| screen(a.at).distance(p).total_cmp(&screen(b.at).distance(p)))
                 && let Some(f) = family.as_ref()
             {
-                match self.edge_drag(h, at_view(p), view, f) {
+                match self.edge_drag(h, (at_view(p), view, which, pass), f) {
                     Ok(d) => self.views.edge_drag = Some(d),
                     Err(e) => problem = Some(e),
                 }
             }
         }
         let held_at = |v: View, p: egui::Pos2| v.mm((p.x - pane.min.x, p.y - pane.min.y));
-        if let Some((end, from, n, then)) = self.views.end_drag
+        if let Some(EndDrag { end, last: from, n, view: then, .. }) = self.views.end_drag.clone()
             && let Some(to) = response.interact_pointer_pos().map(|p| held_at(then, p))
             && response.dragged_by(PointerButton::Primary)
         {
             let d = c.staged.vector(which, P2(to.0 - from.0, to.1 - from.1));
             end_moved = Some((end, d[0] * n[0] + d[1] * n[1] + d[2] * n[2]));
-            self.views.end_drag = Some((end, to, n, then));
+            if let Some(e) = self.views.end_drag.as_mut() {
+                e.last = to;
+            }
         }
         if let Some((from, then)) = self.views.edge_drag.as_ref().map(|d| (d.from, d.view))
             && let Some(to) = response.interact_pointer_pos().map(|p| held_at(then, p))
@@ -1064,6 +1101,8 @@ impl FamilyEditor {
                     }
                     _ => problem = Some(t("Pick a reference plane, an extrusion's end or a line of a form.").to_string()),
                 }
+            } else if on_handle(p) {
+                // A click on a handle, with no drag: the selection stays.
             } else if let Some(hit) = dims::clicked(&marks, &self.dimensions, selected_dim, align_lock, &locks, p, &on_screen) {
                 let lengths = match &hit {
                     Clicked::Lock(g, _) => marks
