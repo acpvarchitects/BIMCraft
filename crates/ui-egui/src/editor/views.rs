@@ -1211,7 +1211,8 @@ impl FamilyEditor {
                 self.selected_plane().is_some_and(|g| self.planes.iter().any(|q| q.guid == g && !q.datum() && q.pivot.is_none()));
             // With Ctrl, a lone plane is copied too (FE-4): a copy goes as the selection's move does.
             if self.selection.contains(hit) && (!lone_plane || ctrl) {
-                self.views.moving = Some(self.move_drag((at_view(p), view, which, pass), &in_view, ctrl));
+                let lone = self.selected_plane().filter(|_| lone_plane);
+                self.views.moving = Some(self.move_drag((at_view(p), view, which, pass), &in_view, ctrl, lone));
             }
         }
         let mut move_by: Option<[f64; 3]> = None;

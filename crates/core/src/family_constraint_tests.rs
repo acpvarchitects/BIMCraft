@@ -482,7 +482,53 @@ fn a_copy_gives_new_guids_and_takes_the_constraints_among_what_it_copies() {
     let v = with.values("Small", &BTreeMap::new()).unwrap();
     let moving = Moving { forms: vec![n], planes: c.planes.iter().map(|p| p.guid).collect(), ..Moving::default() };
     with.move_by(&v, &moving, [0.0, 2000.0, 0.0]).unwrap();
+    for (t, width) in [("Small", 600.0), ("Large", 1400.0)] {
+        let v = with.values(t, &BTreeMap::new()).unwrap();
+        let flexed = with.flexed(&v).unwrap();
+        let x = |guid: Guid| flexed.planes.iter().find(|p| p.guid == guid).unwrap().start[0];
+        assert!((x(c.planes[1].guid) - x(c.planes[0].guid) - width).abs() < 1e-6, "{t}: {} {}", x(c.planes[0].guid), x(c.planes[1].guid));
+    }
     // A datum isn't copied.
     let e = f.copies(&Copying { planes: vec![CENTER_LEFT_RIGHT], ..Copying::default() }).unwrap_err();
     assert!(matches!(e, CopyRefused::Datum(_)), "{e:?}");
+}
+
+#[test]
+fn a_reporting_label_is_one_dimensions_and_isnt_copied_as_a_constraint() {
+    use crate::family::constraints::Copying;
+    let mut s = boxed();
+    run(
+        &mut s,
+        "family",
+        json!({"name": "Box", "parameter": {"name": "Span", "kind": "length", "reporting": true, "value": 0},
+               "dimension": {"view": "plan", "refs": [{"plane": LEFT}, {"plane": RIGHT}], "at": [0, 1200, 0], "label": "Span"}}),
+    );
+    let f = s.model.families["Box"].clone();
+    let span = f.dimensions.iter().find(|d| d.label.as_deref() == Some("Span")).unwrap().guid;
+    // Left and Right copied: Width's label comes along, Span's (a reporting one, which holds nothing) doesn't.
+    let c = f.copies(&Copying { planes: vec![g(LEFT), g(RIGHT)], ..Copying::default() }).unwrap();
+    assert_eq!(c.dimensions.iter().map(|d| d.label.as_deref()).collect::<Vec<_>>(), vec![Some("Width")]);
+    // Selected, it is copied without its label: Span still reads the original.
+    let c = f.copies(&Copying { planes: vec![g(LEFT), g(RIGHT)], dimensions: vec![span], ..Copying::default() }).unwrap();
+    assert_eq!(c.dimensions.len(), 2);
+    assert_eq!(c.selected.len(), 1);
+    let copy = c.dimensions.iter().find(|d| c.selected.contains(&d.guid)).unwrap();
+    assert_eq!(copy.label, None);
+    // Two dimensions reporting one parameter: refused.
+    let e = s
+        .execute("family", &json!({"name": "Box", "dimension": {"view": "plan", "refs": [{"plane": FRONT}, {"plane": BACK}], "at": [1200, 0, 0], "label": "Span"}}))
+        .unwrap_err();
+    assert!(e.contains("reports `Span` already"), "{e}");
+}
+
+#[test]
+fn a_refusals_dimensions_renumbered_are_named_so() {
+    let u = crate::family::Unsat {
+        message: format!("{NOT_SATISFIED}: dimensions 3, 12 and dimension 12 hold it; dimension 4 too"),
+        dims: vec![2, 11],
+        over: true,
+    };
+    let r = u.renumbered(&|k| if k == 11 { 1 } else { k });
+    assert_eq!(r.message, format!("{NOT_SATISFIED}: dimensions 3, 2 and dimension 2 hold it; dimension 4 too"));
+    assert_eq!(r.dims, vec![2, 1]);
 }

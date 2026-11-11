@@ -19,7 +19,7 @@ mod copying;
 mod moving;
 mod pivot;
 pub use copying::{Copies, CopyRefused, Copying};
-pub use moving::{MoveRefused, Moving, Stays};
+pub use moving::{MoveRefused, Moving, Named, Stays};
 pub use pivot::{MAX_SWING, Pivot, PivotAt, PivotFrom, PivotMark, PivotPoint, Pivoted, Rotation, pivot_marks, pivot_targets};
 
 /// Dimensions one family may hold, and references one dimension may measure between.
@@ -324,6 +324,51 @@ pub struct Unsat {
 impl std::fmt::Display for Unsat {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&self.message)
+    }
+}
+
+impl Unsat {
+    /// The same refusal with its dimensions taken to other places (`to`, place to place, as a copy's are to what it copies):
+    /// its list, and its words where they name one of them (`dimension 3`, `dimensions 2, 4`).
+    pub fn renumbered(&self, to: &dyn Fn(usize) -> usize) -> Unsat {
+        let mut message = String::new();
+        let mut rest = self.message.as_str();
+        while let Some(at) = rest.find("dimension") {
+            let (before, from) = rest.split_at(at);
+            message.push_str(before);
+            let word = if from.starts_with("dimensions ") { "dimensions " } else { "dimension " };
+            if !from.starts_with(word) {
+                message.push_str("dimension");
+                rest = &from["dimension".len()..];
+                continue;
+            }
+            message.push_str(word);
+            rest = &from[word.len()..];
+            // The numbers that follow, `, `-separated.
+            loop {
+                let digits = rest.len() - rest.trim_start_matches(|c: char| c.is_ascii_digit()).len();
+                if digits == 0 {
+                    break;
+                }
+                let n: usize = rest[..digits].parse().unwrap_or(0);
+                let k = n.wrapping_sub(1);
+                if n > 0 && self.dims.contains(&k) {
+                    message.push_str(&(to(k) + 1).to_string());
+                } else {
+                    message.push_str(&rest[..digits]);
+                }
+                rest = &rest[digits..];
+                match rest.strip_prefix(", ") {
+                    Some(after) if after.starts_with(|c: char| c.is_ascii_digit()) => {
+                        message.push_str(", ");
+                        rest = after;
+                    }
+                    _ => break,
+                }
+            }
+        }
+        message.push_str(rest);
+        Unsat { message, dims: self.dims.iter().map(|k| to(*k)).collect(), over: self.over }
     }
 }
 
@@ -1618,6 +1663,19 @@ impl Family {
             if d.alignment && (segments != 1 || d.equal || !matches!(d.locked.as_slice(), [Lock { segment: 0, length }] if *length == 0.0))
             {
                 return Err(format!("{who}: an Align lock holds two references, its one segment locked at 0"));
+            }
+        }
+        // A reporting parameter is one dimension's: two would leave it reading whichever came last.
+        let mut reported: BTreeMap<&str, usize> = BTreeMap::new();
+        for (i, d) in self.dimensions.iter().enumerate() {
+            if let Some(l) = d.label.as_deref().filter(|l| self.reporting(l))
+                && let Some(j) = reported.insert(l, i)
+            {
+                return Err(format!(
+                    "dimension {}: dimension {} reports `{l}` already; a reporting parameter is one dimension's",
+                    i + 1,
+                    j + 1
+                ));
             }
         }
         // A label worked out from a reporting parameter measured by a dimension: the solve would read its own result.

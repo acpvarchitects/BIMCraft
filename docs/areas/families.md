@@ -778,18 +778,27 @@ originals selected and moving while it isn't, so the preview says which), and on
 of the history and stay the selection; the originals stay where they were. Ctrl may be pressed or let go during the drag: Ctrl as
 the button comes up decides (`settle_drag`). Ctrl on an element not selected adds it first, as FE-7 has it, and a Ctrl-click
 without a drag still adds or takes away (FE-1); with Ctrl, a lone plane of the family's own is copied by the same drag, not F4's
-(let go of Ctrl mid-drag, it is moved through `move_by`, not F4's drag). `Family::copies` (`Copying`, `Copies`) makes the copies
+(let go of Ctrl mid-drag, it moves as F4's drag moves it, through `drag_plane` where a dimension measures to it, a label taking
+the new length, and F4's Constraints Not Satisfied asking where they hold it). `Family::copies` (`Copying`, `Copies`) makes the copies
 where the originals are: a form with a new GUID and a new one for every line of its sketch, top and profiles (its formulas and
 what is typed for it as they are, `FormText::copied`), a reference plane or line (a plane's name and a named reference, Left
 through Top, being one plane's, the copy has neither), a symbol, a connector and a nested instance (the same type, a new GUID),
-ids left to be given; what a copy is drawn on is the copy of it where that is copied too. A dimension is copied where every
+ids left to be given; what a copy is drawn on is the copy of it where that is copied too. A form's copy goes into the list right
+after it, so the voids after it cut it as they cut the original; the rest go at the end. A dimension is copied where every
 reference of it is, naming the copies: one selected (its copy selected too), or one that holds a constraint among what is copied
-(a label, which keeps its parameter, so the copy is driven as the original is; a lock; EQ; an Align lock), while one that
+(a label, which keeps its parameter, so the copy is driven as the original is, but for a reporting parameter's, which holds
+nothing and is one dimension's: a selected dimension's copy measures without it, and the family's check refuses two dimensions
+reporting one parameter; a lock; EQ; an Align lock), while one that
 reaches past the copies isn't, so a lock to what isn't copied is dropped, as in Revit. Parameters aren't copied. A datum or a
-plane that defines the origin refuses the copy ("Center (Left/Right) is a datum: it isn't copied."). The copies are then put
+plane that defines the origin refuses the copy ("Center (Left/Right) is a datum: it isn't copied."), and so do what a pivot
+turns and what is drawn on it (F7d: its copy would turn about the same point). A selection of which nothing can be copied (a
+dimension alone, measuring what isn't selected) refuses it ("Nothing selected here can be copied."), the selection kept. The copies are then put
 where they go by FE-7's move of them (`move_picked`), so its rules hold: edge-on, an extrusion's or a blend's Start and End
 move, a revolve, a sweep and a reference line refuse; a number that would change and is a formula refuses (a copy across a box
-whose x is `W`'s; north it keeps `-W` and moves its y), the refusal naming the original, not its copy (`renamed`); every type
+whose x is `W`'s; north it keeps `-W` and moves its y), the refusal naming the original, not its copy: what is refused is said
+from where each copy came from (`drag_move::Origin`: forms, planes, lines, symbols, connectors, nested instances and dimensions,
+the core's `Named` and `Unsat::renumbered`), never by rewriting a translated message. A build's or a check's own words (free
+text) are said as they are; a copy, placed rigidly, rarely meets one its original doesn't. Every type
 must still solve and build and the family pass `Family::check` (one copy past `MAX_SYMBOLS` is refused). Refused, the draft and
 the selection are as they were, with no step and no Unsaved mark. Escape, Undo, Redo and another view give it up as they give a
 move up; let go where it began, it makes no copies and leaves no step, saying nothing (Revit would stack them). Only what the

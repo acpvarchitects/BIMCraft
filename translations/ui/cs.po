@@ -211,8 +211,8 @@ msgstr "Nový výkres s rozpiskou"
 msgid "A new type, a copy of the type shown"
 msgstr "Nový typ, kopie zobrazeného typu"
 
-#: crates/ui-egui/src/editor/drag_move.rs:142
-#: crates/ui-egui/src/editor/drag_move.rs:379
+#: crates/ui-egui/src/editor/drag_move.rs:183
+#: crates/ui-egui/src/editor/drag_move.rs:479
 msgid "A number of {} the move would change is worked out by a formula: change it in Family Types."
 msgstr ""
 
@@ -3434,7 +3434,7 @@ msgid "Drag to move what is selected (what a lock, a label or a formula holds st
 msgstr ""
 
 #: crates/ui-egui/src/editor/document.rs:1470
-msgid "Drag with Ctrl to copy what is selected, the copies selected after (a lock to what isn't copied is dropped); let Ctrl go to move it instead; click to add to the selection."
+msgid "Drag with Ctrl to copy what is selected, the copies selected after (a lock to what isn't copied is dropped); let Ctrl go to move it instead."
 msgstr ""
 
 #: crates/ui-egui/src/draw.rs:305
@@ -6648,6 +6648,10 @@ msgstr "Vše se používá."
 #: crates/ui-egui/src/editor/types_dialog.rs:286
 msgid "Nothing matches the search."
 msgstr "Hledání neodpovídá žádný výsledek."
+
+#: crates/ui-egui/src/editor/drag_move.rs:392
+msgid "Nothing selected here can be copied."
+msgstr ""
 
 #: crates/ui-egui/src/graphics.rs:310
 msgid "Nothing selected is hidden in this view. Reveal Hidden Elements (RH) draws what is, to select it."
@@ -11967,7 +11971,7 @@ msgstr "klikněte na místo, kde končí její rameno"
 msgid "column: {}"
 msgstr "sloup: {}"
 
-#: crates/ui-egui/src/editor/drag_move.rs:417
+#: crates/ui-egui/src/editor/drag_move.rs:520
 msgid "connector {}"
 msgstr ""
 
@@ -12123,7 +12127,7 @@ msgstr "materiál"
 msgid "modify sub elements: `{}` is not an elevation"
 msgstr "upravit dílčí prvky: `{}` není platná výšková kóta"
 
-#: crates/ui-egui/src/editor/drag_move.rs:390
+#: crates/ui-egui/src/editor/drag_move.rs:491
 msgid "nested instance {}"
 msgstr ""
 
@@ -12281,7 +12285,7 @@ msgstr "normový přesah"
 msgid "start"
 msgstr "začátek"
 
-#: crates/ui-egui/src/editor/drag_move.rs:408
+#: crates/ui-egui/src/editor/drag_move.rs:510
 msgid "symbol {}"
 msgstr ""
 
@@ -12457,11 +12461,11 @@ msgstr "{} nelze vypočítat"
 msgid "{} days ago"
 msgstr "Před {} dny"
 
-#: crates/ui-egui/src/editor/drag_move.rs:132
+#: crates/ui-egui/src/editor/drag_move.rs:117
 msgid "{} defines the origin: it isn't copied."
 msgstr ""
 
-#: crates/ui-egui/src/editor/drag_move.rs:140
+#: crates/ui-egui/src/editor/drag_move.rs:181
 msgid "{} defines the origin: it stays where it is."
 msgstr ""
 
@@ -12493,15 +12497,15 @@ msgstr "Před {} h"
 msgid "{} holds no parameters, so it has no phase to demolish"
 msgstr "{} neobsahuje žádné parametry, nemá tedy žádnou fázi k demolici"
 
-#: crates/ui-egui/src/editor/drag_move.rs:131
+#: crates/ui-egui/src/editor/drag_move.rs:116
 msgid "{} is a datum: it isn't copied."
 msgstr ""
 
-#: crates/ui-egui/src/editor/drag_move.rs:139
+#: crates/ui-egui/src/editor/drag_move.rs:180
 msgid "{} is a datum: it stays where it is."
 msgstr ""
 
-#: crates/ui-egui/src/editor/drag_move.rs:144
+#: crates/ui-egui/src/editor/drag_move.rs:185
 msgid "{} is a file's triangles: it has no sketch to move."
 msgstr ""
 
@@ -12587,7 +12591,11 @@ msgstr "Vybráno: {}."
 msgid "{} triangles, from a file"
 msgstr "{} trojúhelníků, ze souboru"
 
-#: crates/ui-egui/src/editor/drag_move.rs:141
+#: crates/ui-egui/src/editor/drag_move.rs:118
+msgid "{} turns about a pivot, or is drawn on what does: it isn't copied."
+msgstr ""
+
+#: crates/ui-egui/src/editor/drag_move.rs:182
 msgid "{} turns about its pivot: turn it by its rotate grip."
 msgstr ""
 
@@ -12595,7 +12603,7 @@ msgstr ""
 msgid "{} up"
 msgstr "{} nahoru"
 
-#: crates/ui-egui/src/editor/drag_move.rs:143
+#: crates/ui-egui/src/editor/drag_move.rs:184
 msgid "{} would leave the plane it is drawn on: move that plane with it."
 msgstr ""
 
@@ -13880,4 +13888,7 @@ msgstr "Horní"
 #~ msgstr "Klikněte na tvar, vnořenou instanci, referenční rovinu, referenční čáru nebo kótu a vyberte ji; vybranou rovinu přesunete tažením, tažením uzlu ji otočíte nebo protáhnete."
 #: crates/ui-egui/src/editor/sketch_dims.rs:187
 #~ msgid "A profile's lines aren't measured: dimension the path, or the form once it is finished."
+#~ msgstr ""
+#: crates/ui-egui/src/editor/document.rs:1470
+#~ msgid "Drag with Ctrl to copy what is selected, the copies selected after (a lock to what isn't copied is dropped); let Ctrl go to move it instead; click to add to the selection."
 #~ msgstr ""

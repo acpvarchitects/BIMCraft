@@ -64,18 +64,19 @@ fn a_form_copied_has_new_guids_is_selected_and_its_original_stays() {
     h.hover_at(over);
     mods(&mut h, Modifiers::CTRL);
     assert!(h.state().prompt().contains("to copy"), "{}", h.state().prompt());
+    assert!(!h.state().prompt().contains("click to add"), "it is selected already: {}", h.state().prompt());
     mods(&mut h, Modifiers::NONE);
     copy_drag(&mut h, [300.0, 300.0, 0.0], [0.0, -700.0, 0.0]);
     let f = family(&h);
     assert_eq!(f.forms.len(), 3, "{}", status(&h));
     assert_eq!(f.forms[0], before.forms[0], "the original stays");
-    let d = shift(&a0, &points(&h, 2));
+    let d = shift(&a0, &points(&h, 1));
     assert!(near(d[0], 0.0) && near(d[1], -700.0), "{d:?}");
-    assert!(f.forms[2].guid != g(A) && !f.forms[2].guid.is_nil());
-    let copied = line_guids(&h, 2);
+    assert!(f.forms[1].guid != g(A) && !f.forms[1].guid.is_nil());
+    let copied = line_guids(&h, 1);
     assert!(copied.iter().all(|c| !c.is_nil() && !lines.contains(c)), "{copied:?}");
-    assert_eq!((f.forms[2].from.clone(), f.forms[2].to.clone()), (f.forms[0].from.clone(), f.forms[0].to.clone()));
-    assert_eq!(editor(&h).selection.items(), &[Picked::Form(2)], "the copy is selected");
+    assert_eq!((f.forms[1].from.clone(), f.forms[1].to.clone()), (f.forms[0].from.clone(), f.forms[0].to.clone()));
+    assert_eq!(editor(&h).selection.items(), &[Picked::Form(1)], "the copy is selected");
     assert_eq!(editor(&h).steps(), 1);
     assert!(editor(&h).unsaved());
     // Undo takes the copy away, Redo brings it back.
@@ -126,10 +127,10 @@ fn a_form_and_a_plane_copy_their_align_lock_and_a_form_alone_drops_it() {
     assert_eq!(f.dimensions.len(), dims + 1, "{:?}", f.dimensions);
     let lock = f.dimensions.last().unwrap();
     assert!(lock.alignment);
-    assert_eq!(lock.refs, vec![DimRef::Plane(edge), DimRef::Sketch(f.forms[2].guid, f.forms[2].sketch[1].guid)]);
+    assert_eq!(lock.refs, vec![DimRef::Plane(edge), DimRef::Sketch(f.forms[1].guid, f.forms[1].sketch[1].guid)]);
     let mut sel = editor(&h).selection.items().to_vec();
     sel.sort();
-    let mut want = vec![Picked::Form(2), Picked::Plane(edge)];
+    let mut want = vec![Picked::Form(1), Picked::Plane(edge)];
     want.sort();
     assert_eq!(sel, want, "the copies are selected, the lock isn't");
     // Undo takes all of it away in one step.
@@ -143,7 +144,7 @@ fn a_form_and_a_plane_copy_their_align_lock_and_a_form_alone_drops_it() {
     let a0 = points(&h, 0);
     copy_drag(&mut h, [300.0, 300.0, 0.0], [1500.0, 0.0, 0.0]);
     assert_eq!(family(&h).forms.len(), 3, "{}", status(&h));
-    assert!(near(shift(&a0, &points(&h, 2))[0], 1500.0));
+    assert!(near(shift(&a0, &points(&h, 1))[0], 1500.0));
     assert_eq!(points(&h, 0), a0);
     assert_eq!(family(&h).dimensions.len(), dims, "no lock copied");
 }
@@ -163,7 +164,7 @@ fn a_dimension_is_copied_where_all_it_measures_is_and_a_label_drives_the_copy() 
     assert_eq!(f.forms.len(), 3, "{}", status(&h));
     // DIM2 and the label come along; DIM, from a datum, doesn't.
     assert_eq!(f.dimensions.len(), dims + 2, "{:?}", f.dimensions);
-    let (form, edge) = (f.forms[2].guid, f.planes.last().unwrap().guid);
+    let (form, edge) = (f.forms[1].guid, f.planes.last().unwrap().guid);
     let copy2 = f.dimensions.iter().find(|d| d.refs.first() == Some(&DimRef::Plane(edge))).expect("DIM2's copy");
     assert!(copy2.label.is_none() && near(copy2.at[1], -1400.0), "{copy2:?}");
     let label = f.dimensions[dims..].iter().find(|d| d.label.is_some()).expect("the label's copy");
@@ -177,6 +178,24 @@ fn a_dimension_is_copied_where_all_it_measures_is_and_a_label_drives_the_copy() 
     f.types.insert("Wide".into(), [("Len".to_string(), serde_json::json!(600))].into_iter().collect());
     let v = f.values("Wide", &std::collections::BTreeMap::new()).unwrap();
     assert!(f.solve(&v).is_ok() && f.pieces(&v).is_ok());
+    let flexed = f.flexed(&v).unwrap();
+    let xs: Vec<f64> = flexed
+        .forms
+        .iter()
+        .find(|x| x.guid == form)
+        .unwrap()
+        .sketch
+        .iter()
+        .flat_map(|l| match &l.curve {
+            FormCurve::Line { start, end, .. } => [&start[0], &end[0]].map(|e| match e {
+                Expr::Number(x) => *x,
+                _ => f64::NAN,
+            }),
+            FormCurve::Circle { .. } => [f64::NAN; 2],
+        })
+        .collect();
+    let wide = xs.iter().copied().fold(f64::NEG_INFINITY, f64::max) - xs.iter().copied().fold(f64::INFINITY, f64::min);
+    assert!((wide - 600.0).abs() < 1e-6, "the copy is {wide} wide in Wide: {xs:?}");
 }
 
 #[test]
@@ -188,7 +207,7 @@ fn ctrl_as_the_button_comes_up_decides_between_a_copy_and_a_move() {
     let at = press_and_move(&mut h, [300.0, 300.0, 0.0], [200.0, 0.0, 0.0], Modifiers::CTRL);
     assert_eq!(family(&h).forms.len(), 3, "the copy's preview");
     assert!(h.state().prompt().contains("Copying"), "{}", h.state().prompt());
-    assert_eq!(editor(&h).selection.items(), &[Picked::Form(2)]);
+    assert_eq!(editor(&h).selection.items(), &[Picked::Form(1)]);
     mods(&mut h, Modifiers::NONE);
     assert_eq!(family(&h).forms.len(), 2, "the move's preview");
     assert_eq!(editor(&h).selection.items(), &[Picked::Form(0)]);
@@ -203,8 +222,8 @@ fn ctrl_as_the_button_comes_up_decides_between_a_copy_and_a_move() {
     release_with(&mut h, at, Modifiers::CTRL);
     assert_eq!(family(&h).forms.len(), 3, "{}", status(&h));
     assert_eq!(points(&h, 0), a1);
-    assert!(near(shift(&a1, &points(&h, 2))[1], 900.0));
-    assert_eq!(editor(&h).selection.items(), &[Picked::Form(2)]);
+    assert!(near(shift(&a1, &points(&h, 1))[1], 900.0));
+    assert_eq!(editor(&h).selection.items(), &[Picked::Form(1)]);
     assert_eq!(editor(&h).steps(), 2);
 }
 
@@ -217,7 +236,7 @@ fn a_ctrl_press_on_a_form_not_selected_adds_it_and_copies_both() {
     assert_eq!(f.forms.len(), 4, "{}", status(&h));
     let mut sel = editor(&h).selection.items().to_vec();
     sel.sort();
-    assert_eq!(sel, [Picked::Form(2), Picked::Form(3)]);
+    assert_eq!(sel, [Picked::Form(1), Picked::Form(3)]);
 }
 
 #[test]
@@ -286,11 +305,11 @@ fn an_extrusion_copied_in_an_elevation_moves_its_copys_ends_and_only_what_the_vi
         Expr::Number(x) => *x,
         _ => f64::NAN,
     };
-    let (from, to) = (num(&f.forms[2].from), num(&f.forms[2].to));
+    let (from, to) = (num(&f.forms[1].from), num(&f.forms[1].to));
     assert!(near(from, 400.0) && (to - from - 300.0).abs() < 1e-6, "{from} {to}");
     assert_eq!((num(&f.forms[0].from), num(&f.forms[0].to)), (0.0, 300.0));
-    assert_eq!(points(&h, 2), a0, "its sketch where A's is");
-    assert_eq!(editor(&h).selection.items(), &[Picked::Form(2)]);
+    assert_eq!(points(&h, 1), a0, "its sketch where A's is");
+    assert_eq!(editor(&h).selection.items(), &[Picked::Form(1)]);
 }
 
 #[test]
@@ -353,10 +372,67 @@ fn over_a_copy_just_dropped_the_status_bar_says_a_drag_moves_it_and_over_a_plane
     let mut h = plan();
     pick(&mut h, &[Picked::Form(0)]);
     copy_drag(&mut h, [300.0, 300.0, 0.0], [500.0, 600.0, 0.0]);
-    assert_eq!(editor(&h).selection.items(), &[Picked::Form(2)]);
+    assert_eq!(editor(&h).selection.items(), &[Picked::Form(1)]);
     h.run();
     h.run();
     assert!(h.state().prompt().contains("Drag to move"), "{}", h.state().prompt());
     mods(&mut h, Modifiers::CTRL);
     assert!(h.state().prompt().contains("to copy"), "{}", h.state().prompt());
+}
+
+#[test]
+fn a_dimension_alone_that_cant_be_copied_keeps_the_selection_and_says_so() {
+    // DIM measures from Center (Left/Right), a datum, which isn't copied.
+    let mut h = plan();
+    pick(&mut h, &[Picked::Dimension(g(DIM))]);
+    copy_drag(&mut h, [500.0, -1200.0, 0.0], [0.0, -300.0, 0.0]);
+    assert!(status(&h).contains("Nothing selected here can be copied"), "{}", status(&h));
+    assert_eq!(editor(&h).selection.items(), &[Picked::Dimension(g(DIM))]);
+    assert_eq!(family(&h).dimensions[0].at, [500.0, -1200.0, 0.0]);
+    assert!(untouched(&h));
+}
+
+#[test]
+fn a_refusal_names_the_symbol_copied_not_its_copy() {
+    let script = family_with("").replace(
+        r#""symbols": [{"line": [[-200, -800], [200, -800]]}]"#,
+        r#""symbols": [{"line": [[-200, -800], [200, -800]]}, {"line": [["-Len", -900], [200, -900]]}]"#,
+    );
+    let mut h = plan_of(&script);
+    pick(&mut h, &[Picked::Symbol(1)]);
+    copy_drag(&mut h, [150.0, -900.0, 0.0], [300.0, 0.0, 0.0]);
+    assert!(status(&h).contains("symbol 2 "), "{}", status(&h));
+    assert_eq!(family(&h).symbols.len(), 2);
+    assert!(untouched(&h));
+}
+
+#[test]
+fn a_lone_plane_pressed_with_ctrl_and_let_go_without_moves_as_its_own_drag_does() {
+    // DIM labelled Len (1000): Edge's own drag (F4) takes Len with it, where FE-7's move would be held by the label.
+    let script = family_with("")
+        .replace(r#""at": [500, -1200, 0]}"#, r#""at": [500, -1200, 0], "label": "Len"}"#)
+        .replace(r#""name": "Len", "value": 100"#, r#""name": "Len", "value": 1000"#);
+    let mut h = plan_of(&script);
+    pick(&mut h, &[Picked::Plane(g(EDGE))]);
+    let at = press_and_move(&mut h, [1000.0, 800.0, 0.0], [200.0, 0.0, 0.0], Modifiers::CTRL);
+    mods(&mut h, Modifiers::NONE);
+    release_with(&mut h, at, Modifiers::NONE);
+    let f = family(&h);
+    assert_eq!(f.planes.iter().filter(|p| !p.datum()).count(), 1, "no copy: {}", status(&h));
+    assert!(near(edge_of(&h, g(EDGE)), 1200.0), "{} {}", edge_of(&h, g(EDGE)), status(&h));
+    let len = f.values("T", &std::collections::BTreeMap::new()).unwrap()["Len"].clone();
+    assert!(matches!(len, bimcraft_core::family::Val::Number(v) if near(v, 1200.0)), "{len:?}");
+}
+
+#[test]
+fn a_forms_copy_goes_right_after_it_so_a_void_after_it_cuts_it_as_it_cuts_the_original() {
+    let script = family_with("").replace(r#"{"sketch": "#, r#"{"void": true, "sketch": "#);
+    let mut h = plan_of(&script);
+    assert!(family(&h).forms[1].void);
+    pick(&mut h, &[Picked::Form(0)]);
+    copy_drag(&mut h, [300.0, 300.0, 0.0], [0.0, 900.0, 0.0]);
+    let f = family(&h);
+    assert_eq!(f.forms.len(), 3, "{}", status(&h));
+    assert!(!f.forms[1].void && f.forms[2].void, "A's copy after A, B (the void) after it");
+    assert_eq!(editor(&h).selection.items(), &[Picked::Form(1)]);
 }

@@ -1467,7 +1467,7 @@ impl BimApp {
             }
             (Some(_), false) if ed.moving() => msg!("Moving the selection: let go to put it there; Esc gives the move up."),
             (Some(_), false) if ed.views.over_selected && ed.views.ctrl => msg!(
-                "Drag with Ctrl to copy what is selected, the copies selected after (a lock to what isn't copied is dropped); let Ctrl go to move it instead; click to add to the selection."
+                "Drag with Ctrl to copy what is selected, the copies selected after (a lock to what isn't copied is dropped); let Ctrl go to move it instead."
             ),
             (Some(_), false) if ed.views.over_selected => msg!(
                 "Drag to move what is selected (what a lock, a label or a formula holds stays, and the move is refused); click to select, Ctrl to add, Shift to take away."
