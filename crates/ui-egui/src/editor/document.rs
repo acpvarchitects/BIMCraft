@@ -1457,6 +1457,10 @@ impl BimApp {
             (Some(_), false) if ed.views.pivoting.is_some() => {
                 msg!("Click the point it turns about: where two planes cross, a line's end, a point of a sketch, or anywhere.")
             }
+            (Some(_), false) if ed.moving() => msg!("Moving the selection: let go to put it there; Esc gives the move up."),
+            (Some(_), false) if ed.views.over_selected => msg!(
+                "Drag to move what is selected (what a lock, a label or a formula holds stays, and the move is refused); click to select, Ctrl to add, Shift to take away."
+            ),
             (Some(_), false) if ed.selected_form().is_some() => msg!(
                 "Drag a selected form's arrows to move its sides and ends; click a form, a nested instance, a reference plane, a reference line or a dimension to select it, Ctrl to add, Shift to take away; drag from nothing to box."
             ),

@@ -731,8 +731,7 @@ and a form hidden for now aren't. Ctrl adds what the box takes, Shift takes it a
 with Ctrl or Shift adds or takes away that one, and a click on nothing with either keeps the selection. The middle button still
 pans, and a drag from an element, or with a tool in hand, is the element's or the tool's. A crossing box drawn wholly inside a
 form's face, meeting none of its edges, doesn't take the form, as Revit's doesn't: a form is boxed by its outline. A drag from an
-element that isn't selected moves nothing (only a selected plane of the family's own, a handle or a grip is dragged): moving an
-element by dragging it is FE-7's. With several selected, Properties say how
+element moves the selection (FE-7, below). With several selected, Properties say how
 many (Multi-Select (N)) and show none of their rows, the contextual tab is Modify | Multi-Select, each is drawn selected (in the views,
 in {3D}, and in the Project Browser's lists), Temporary Hide/Isolate takes every form and plane selected, and Delete (the key, DE, the
 ribbon's) takes them all away as one step of the document's history: a dimension, a nested instance, a form, a symbol, a connector,
@@ -742,6 +741,29 @@ ribbon's) let the selection go; MD and DE are the document's own keys (FE-13, `B
 Modify and Delete do with the set. What goes from the draft another way (undone, redone, changed while another tab was in front) goes
 from the set (`FamilyEditor::prune_selection`); the history keeps the reference lines too (`Draft`), so Undo brings back a line
 deleted. {3D} has no box: a drag there turns the view, as before.
+
+FE-7 (`editor/drag_move.rs`, `family/constraints/moving.rs`): in a plan or an elevation, with no tool in hand, a press on an element
+(what a click there would select and the box doesn't begin on, `Scene::under`; a dimension's line; a selected symbol's strokes) and a
+drag past the few points a click allows move the whole selection by the drag, in the view's plane, live, as one step of the
+history, as Revit's. One not selected is selected first, alone, or added with Ctrl. A lone plane of the family's own keeps its drag
+above, square to itself through its constraints (a label it measures to takes the new length). Planes, reference lines and forms
+move through the constraints (`Family::move_by`, `Moving`): each unknown of theirs is held where it is drawn plus the move (a plane
+along its normal, a line's start in the axes of what it is drawn on, a form's sketch and top in its host's axes, its ends along its
+normal), those rows first, then every constraint; what is locked to what moves follows where they let it (a form's line locked to a
+plane that moves goes with it), and a lock, a label, EQ or an Align lock to what stays holds it, the move refused, "Constraints are
+not satisfied: dimension 2 holds what is moved where it is". A form moves its sketch where the view sees its plane flat; where it
+sees it edge-on, the drag's part along the normal moves an extrusion's or a blend's Start and End together, a revolve's, a sweep's
+or a reference line's refusing ("would leave the plane it is drawn on"). What is drawn on a plane that moves goes with it, and moves
+by the rest of the drag alone. A nested instance (its `at` and `offset` in its host's axes), a symbol and a connector are placed
+again; a dimension's line (`at`) goes with the drag, never what it measures. Only the numbers that move are written, as numbers:
+one that is a formula refuses the move, the rest keep theirs (a box whose x is `W`'s moves north). A datum, a plane that defines
+the origin, what a pivot turns and a form of a file's triangles stay, refusing it, and after it every type must still solve and
+build, as Finish checks (a form whose Align lock pulls another's side past a hole in another type is refused, naming the type).
+Refused, everything is as it was and the status bar says why. The drag is FE-5's: made again from the draft as it was at each
+step, the pointer read through the view as the drag began; a drag back where it began leaves nothing to save; Escape, Undo, Redo and
+another view or tab shown give it up, everything put back. Handles, grips and padlocks keep their drags, and a drag from nothing
+its box. Over something selected the status bar says a drag moves it. Shift (Ortho, FE-2) isn't wired yet: the delta is worked
+out in one place (`drag_move::delta`) for it. Tests: `tests/family_drag_move.rs`, `family_constraint_tests.rs`.
 
 The Work Plane dialog (T12, `editor/work_plane.rs`), as Revit's: Current Work Plane names the plane as `Planes::listed` does, with Show
 (the ribbon's toggle) and Dissociate, greyed (a family's work plane is always one of its planes or lines, which forms are drawn on).
@@ -1325,7 +1347,7 @@ planes, components hosted on them or on faces (Place on Face), and where a compo
 - `family/sketch.rs`: forms' sketches. `family/handles.rs`: shape handles on a profile's edges (FE-5).
 - `family/forms.rs`: Blend, Sweep and Swept Blend: their kinds, paths, vertex mapping and triangles.
 - `family/constraints.rs`: its dimensions, labels, locks and EQ, solved as a type flexes; `family/constraints/pivot.rs`,
-  lines and planes that turn about a pivot.
+  lines and planes that turn about a pivot; `family/constraints/moving.rs`, what a drag moves together through them (FE-7).
 - `family/nested.rs`: nested families and their instances, built into the host.
 - `family/visibility.rs`: Visibility Settings: which views and detail levels draw a form, a symbol or a nested instance.
 
@@ -1346,3 +1368,4 @@ In `crates/ui-egui`, the Family Editor:
   overlay drawn through a view's projection alone).
 - `editor/lit3d.rs`: {3D} staged for the project's 3D view (`FamilyScene`), its selection and hover highlight. `editor/visibility.rs`: Family Element Visibility Settings.
 - `editor/select_box.rs`: the selection, one set (FE-1), and the box a plan or an elevation selects with, window or crossing.
+  `editor/drag_move.rs`: the selection moved by a drag (FE-7).

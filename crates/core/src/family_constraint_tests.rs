@@ -373,3 +373,38 @@ fn hostile_dimensions_never_panic() {
     fam["dimensions"] = json!(dims);
     run(&mut s, "family", fam);
 }
+
+#[test]
+fn a_move_shifts_what_it_takes_and_is_refused_where_a_constraint_holds_it() {
+    use crate::family::constraints::{MoveRefused, Moving, Stays};
+    let s = boxed();
+    let f = &s.model.families["Box"];
+    let v = f.values("Small", &BTreeMap::new()).unwrap();
+    let post = f.forms.iter().position(|x| x.guid == g(POST)).unwrap();
+    // The post across the plan: each of its sketch's points moved by as much, its ends staying.
+    let moving = Moving { forms: vec![post], ..Moving::default() };
+    let edits = f.move_by(&v, &moving, [100.0, 50.0, 0.0]).unwrap();
+    let points: Vec<[f64; 2]> = edits
+        .iter()
+        .filter_map(|e| match e {
+            Edit::Point(i, _, _, p) if *i == post => Some(*p),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(points.len(), 8, "{edits:?}");
+    assert!(points.iter().all(|p| (p[0].abs() - 50.0).abs() < 1e-9 || (p[0] - 150.0).abs() < 1e-9), "{points:?}");
+    assert!(points.iter().any(|p| p == &[150.0, 100.0]) && points.iter().any(|p| p == &[50.0, 0.0]), "{points:?}");
+    assert!(!edits.iter().any(|e| matches!(e, Edit::End(..))), "{edits:?}");
+    // Up: its end is locked to Top, which Height holds: refused, naming what holds it.
+    let e = f.move_by(&v, &moving, [0.0, 0.0, 100.0]).unwrap_err();
+    assert!(matches!(&e, MoveRefused::Unsat(u) if u.message.starts_with(NOT_SATISFIED) && !u.dims.is_empty()), "{e:?}");
+    // Right, which Width and EQ hold, refused; Left and Right together across x keep Width, but EQ about the centre holds them.
+    let planes = |ps: &[&str]| Moving { planes: ps.iter().map(|p| g(p)).collect(), ..Moving::default() };
+    assert!(f.move_by(&v, &planes(&[RIGHT]), [100.0, 0.0, 0.0]).is_err());
+    assert!(f.move_by(&v, &planes(&[LEFT, RIGHT]), [100.0, 0.0, 0.0]).is_err());
+    // Along themselves they slide freely: nothing to solve but where they are.
+    assert!(f.move_by(&v, &planes(&[LEFT, RIGHT]), [0.0, 100.0, 0.0]).is_ok());
+    // A datum stays.
+    let datum = Moving { planes: vec![CENTER_LEFT_RIGHT], ..Moving::default() };
+    assert!(matches!(f.move_by(&v, &datum, [10.0, 0.0, 0.0]), Err(MoveRefused::Stays(Stays::Datum(_)))));
+}

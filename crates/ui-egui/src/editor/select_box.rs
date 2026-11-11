@@ -27,7 +27,7 @@
 //! element is boxed by what it is drawn with on screen: a form's or a nested instance's outline, a plane's trace, a
 //! reference line, a dimension's line, a symbol's strokes (in the plans, where symbols are drawn), a connector's place. So
 //! a crossing box wholly inside a form's face, meeting none of its edges, doesn't take it, as Revit's doesn't. A drag from
-//! an element that isn't selected moves nothing: dragging an element to move it is FE-7's. {3D} has no box: a drag there
+//! an element moves the selection (FE-7, `drag_move.rs`), the element selected first if it isn't. {3D} has no box: a drag there
 //! turns the view.
 use super::*;
 use bimcraft_core::family::constraints::DimMark;
@@ -465,6 +465,32 @@ impl Scene<'_> {
             || self.staged.line_at(self.which, q, reach).is_some()
             || self.drawing.pick_all((p.x - self.min.x, p.y - self.min.y), 6.0).into_iter().any(|id| self.staged.plane_of(id).is_some())
             || fv::form_at(self.family, self.values, self.staged, self.which, q).is_some()
+    }
+
+    /// What a press at `p` is on, as a click there would select it (FE-7): a connector, a nested instance, a reference line,
+    /// a plane (`plane`, the one Tab has come to), a form; else a symbol of `selected` by its strokes, which a click doesn't
+    /// select in a view but a drag moves.
+    pub(super) fn hit(&self, p: Pos2, plane: Option<Guid>, selected: &[Picked]) -> Option<Picked> {
+        let q = self.view.mm((p.x - self.min.x, p.y - self.min.y));
+        let reach = 6.0 / self.view.scale.max(1e-9);
+        let project = |x: [f64; 3]| Some(self.at(x));
+        if let Some(i) = super::connector_marks::pick(self.connectors, &project, p) {
+            return Some(Picked::Connector(i));
+        }
+        if let Some(i) = fv::nested_at(self.family, self.values, self.staged, self.which, q) {
+            return Some(Picked::Nested(i));
+        }
+        let line = self.staged.line_at(self.which, q, reach).and_then(|i| self.family.lines.get(i)).map(|l| Picked::Line(l.guid));
+        let form = || fv::form_at(self.family, self.values, self.staged, self.which, q).map(Picked::Form);
+        let symbol = || {
+            selected.iter().copied().filter(|s| matches!(s, Picked::Symbol(_))).find(|s| {
+                self.pieces(*s).iter().any(|[a, b]| {
+                    let (a, b, c) = (P2(a.x.into(), a.y.into()), P2(b.x.into(), b.y.into()), P2(p.x.into(), p.y.into()));
+                    bimcraft_core::geom::dist_to_segment(c, a, b) <= 6.0
+                })
+            })
+        };
+        line.or(plane.map(Picked::Plane)).or_else(form).or_else(symbol)
     }
 
     /// What is selected, over the picture, as one selected alone is drawn: a form's edges as seen, a nested instance's outline,

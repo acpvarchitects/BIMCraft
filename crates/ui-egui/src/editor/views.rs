@@ -49,6 +49,11 @@ pub(crate) struct Views {
     pub(super) end_drag: Option<EndDrag>,
     /// A profile edge being dragged by its handle (FE-5).
     pub(super) edge_drag: Option<super::shape_handles::EdgeDrag>,
+    /// The selection being dragged to move it (FE-7, `drag_move.rs`).
+    pub(super) moving: Option<super::drag_move::MoveDrag>,
+    /// Whether the pointer was last over something selected that a drag would move, with no tool in hand: what the status
+    /// bar says (FE-7).
+    pub(crate) over_selected: bool,
     /// Where the selected form's profile handles were last shown on screen (FE-5).
     pub(crate) shapes_shown: Vec<(egui::Pos2, super::shape_handles::ShapeHandle)>,
     /// Where the selected form's Start and End handles were last shown on screen, and whether each can be dragged.
@@ -456,6 +461,7 @@ impl FamilyEditor {
         let stale = |w: Which, seen: u64| w != which || seen + 1 < pass;
         if self.views.edge_drag.as_ref().is_some_and(|d| stale(d.which, d.seen))
             || self.views.end_drag.as_ref().is_some_and(|d| stale(d.which, d.seen))
+            || self.views.moving.as_ref().is_some_and(|d| stale(d.which, d.seen))
         {
             self.cancel_drags();
         }
@@ -463,6 +469,9 @@ impl FamilyEditor {
             d.seen = pass;
         }
         if let Some(d) = self.views.end_drag.as_mut() {
+            d.seen = pass;
+        }
+        if let Some(d) = self.views.moving.as_mut() {
             d.seen = pass;
         }
         self.refresh_view(ui.ctx(), base, which, size);
@@ -1108,9 +1117,9 @@ impl FamilyEditor {
                 });
             }
         }
-        // A drag from nothing a click would select, nor a handle, a grip or a padlock, with no tool in hand: a selection box,
-        // a window left to right, a crossing right to left; Ctrl adds what it takes, Shift takes it away (FE-1).
-        let free = editable
+        // What a press at `p` is on that a drag moves (FE-7): a dimension's line, else what a click there selects (and the box
+        // doesn't begin on, `Scene::under`), or a selected symbol's strokes; never a handle, a grip or a padlock.
+        let tools_free = editable
             && self.views.drawing.is_none()
             && self.views.picking.is_none()
             && self.views.pivoting.is_none()
@@ -1119,7 +1128,39 @@ impl FamilyEditor {
             && self.placing.is_none()
             && self.views.end_drag.is_none()
             && self.views.edge_drag.is_none()
-            && self.views.grip.is_none();
+            && self.views.grip.is_none()
+            && self.views.moving.is_none();
+        let press_hit = |p: egui::Pos2| -> Option<Picked> {
+            if !tools_free || on_handle(p) || grips.iter().any(|(_, at)| at.distance(p) <= super::pivot::REACH) {
+                return None;
+            }
+            match dims::clicked(&marks, &self.dimensions, selected_dim, align_lock, &locks, p, &on_screen) {
+                Some(Clicked::Select(g)) => return Some(Picked::Dimension(g)),
+                Some(_) => return None,
+                None => {}
+            }
+            let s = scene.as_ref()?;
+            let hit = s.hit(p, pick_plane(p), self.selection.items())?;
+            (matches!(hit, Picked::Symbol(_)) || s.under(p)).then_some(hit)
+        };
+        self.views.over_selected =
+            !self.selection.is_empty() && response.hover_pos().and_then(press_hit).is_some_and(|h| self.selection.contains(h));
+        let pressed =
+            response.drag_started_by(PointerButton::Primary).then(|| ui.input(|i| i.pointer.press_origin())).flatten().and_then(press_hit);
+        // A drag from nothing a click would select, nor a handle, a grip or a padlock, with no tool in hand: a selection box,
+        // a window left to right, a crossing right to left; Ctrl adds what it takes, Shift takes it away (FE-1).
+        let free = editable
+            && pressed.is_none()
+            && self.views.drawing.is_none()
+            && self.views.picking.is_none()
+            && self.views.pivoting.is_none()
+            && self.views.dimensioning.is_none()
+            && self.views.aligning.is_none()
+            && self.placing.is_none()
+            && self.views.end_drag.is_none()
+            && self.views.edge_drag.is_none()
+            && self.views.grip.is_none()
+            && self.views.moving.is_none();
         let start =
             response.drag_started_by(PointerButton::Primary).then(|| ui.input(|i| i.pointer.press_origin())).flatten().filter(|p| {
                 free && scene.as_ref().is_some_and(|s| !s.under(*p))
@@ -1132,8 +1173,37 @@ impl FamilyEditor {
             let taken = scene.in_box(from, to);
             self.selection.apply(&taken, super::select_box::How::of(crate::canvas::click_modifiers(ui)));
         }
+        // The view's ways in the family's axes, for the move below (the view's drawing isn't read past here).
+        let (across, up) = (c.staged.vector(which, P2(1.0, 0.0)), c.staged.vector(which, P2(0.0, 1.0)));
+        // A press on an element and a drag (FE-7): one not selected is selected first, alone or with Ctrl added; then the
+        // selection moves, but a lone plane of the family's own, which F4's drag below moves through its constraints.
+        if let Some(hit) = pressed
+            && let Some(p) = ui.input(|i| i.pointer.press_origin())
+        {
+            if !self.selection.contains(hit) {
+                match super::select_box::How::of(crate::canvas::click_modifiers(ui)) {
+                    super::select_box::How::Add => self.selection.apply(&[hit], super::select_box::How::Add),
+                    super::select_box::How::Remove => {}
+                    super::select_box::How::Replace => self.selection.apply(&[hit], super::select_box::How::Replace),
+                }
+            }
+            let lone_plane =
+                self.selected_plane().is_some_and(|g| self.planes.iter().any(|q| q.guid == g && !q.datum() && q.pivot.is_none()));
+            if self.selection.contains(hit) && !lone_plane {
+                self.views.moving = Some(self.move_drag((at_view(p), view, which, pass)));
+            }
+        }
+        let mut move_by: Option<[f64; 3]> = None;
+        if let Some((from, then)) = self.views.moving.as_ref().map(|d| (d.from, d.view))
+            && let Some(to) = response.interact_pointer_pos().map(|p| held_at(then, p))
+            && response.dragged_by(PointerButton::Primary)
+        {
+            let P2(dx, dy) = super::drag_move::delta(from, to);
+            move_by = Some(std::array::from_fn(|k| across[k] * dx + up[k] * dy));
+        }
         // A plane of the family's own, selected, dragged square to itself.
         if editable
+            && self.views.moving.is_none()
             && self.views.drawing.is_none()
             && self.views.picking.is_none()
             && self.views.end_drag.is_none()
@@ -1172,9 +1242,15 @@ impl FamilyEditor {
         {
             problem = Some(e);
         }
-        // The edge let go: the form stays as the drag left it, a step of the history once the button is up.
+        if let Some(d) = move_by
+            && let Err(e) = self.drag_move_to(d)
+        {
+            problem = Some(e);
+        }
+        // The edge or the selection let go: they stay as the drag left them, a step of the history once the button is up.
         if response.drag_stopped() || !ui.input(|i| i.pointer.primary_down()) {
             self.views.edge_drag = None;
+            self.views.moving = None;
         }
         if let Some(i) = edit
             && let Err(e) = self.edit_form_sketch(i)
