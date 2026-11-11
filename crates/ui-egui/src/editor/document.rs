@@ -1433,6 +1433,12 @@ impl BimApp {
             if ed.views.dimensioning.is_some() {
                 return Some(dimension_prompt(ed.views.dim_kind));
             }
+            // A dimension selected while sketching: what can be done to it.
+            if s.selected_dim.is_some() {
+                return Some(msg!(
+                    "Click a padlock to lock or unlock its length, EQ to make a string's lengths equal; the Options Bar gives its Label and Value; Delete takes it away."
+                ));
+            }
             return Some(super::sketch::prompt(s));
         }
         Some(match (ed.views.shown, ed.adaptive.is_some()) {
