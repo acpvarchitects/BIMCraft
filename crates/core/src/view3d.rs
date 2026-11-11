@@ -1110,11 +1110,11 @@ fn planes_apart(tris: &[Tri], apart: HashSet<Id>) -> Vec<usize> {
 /// the planes of apart.
 fn parts_among(m: &Model, owners: impl Iterator<Item = Id>) -> HashSet<Id> {
     let mut last = None;
-    owners
-        .filter(|id| std::mem::replace(&mut last, Some(*id)) != Some(*id))
-        .filter(|id| matches!(m.elements.get(*id), Some(Element::Part(_))))
-        .collect()
+    owners.filter(|id| last.replace(*id) != Some(*id)).filter(|id| matches!(m.elements.get(*id), Some(Element::Part(_)))).collect()
 }
+
+/// A plane found: its normal, its distance and its number.
+type PlaneFound = (P3, f64, usize);
 
 /// The planes found so far, and the curved surfaces: what numbers a triangle's plane, kept with a scene so the triangles an
 /// edit makes are numbered among those it keeps.
@@ -1122,7 +1122,7 @@ fn parts_among(m: &Model, owners: impl Iterator<Item = Id>) -> HashSet<Id> {
 struct PlaneTable {
     /// Planes by their normal, in cells wider than the tolerance, and a millimetre's slab of distance: each plane's normal,
     /// distance and number. Those of an element numbered apart, under its id; the rest under none, 0.
-    found: HashMap<(Id, [i64; 4]), Vec<(P3, f64, usize)>>,
+    found: HashMap<(Id, [i64; 4]), Vec<PlaneFound>>,
     curves: HashMap<(Id, usize), usize>,
     /// The elements whose planes are their own, shared with no other element's: the parts of building elements, so the
     /// edge where two of them meet in one plane (two parts of one face of a wall) is drawn, as their outlines are.

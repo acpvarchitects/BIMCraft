@@ -1547,6 +1547,7 @@ fn properties_of_a_view_show_and_set_its_parts_visibility() {
     h.state_mut().session.execute("graphics", &json!({"view": 100000, "template": "Survey"})).unwrap();
     h.run();
     assert_eq!(combo_value(&h, "Parts Visibility"), "Show Parts");
+    use egui_kittest::kittest::NodeT;
     assert!(h.get_by_role_and_label(Role::ComboBox, "Parts Visibility").accesskit_node().is_disabled());
 }
 

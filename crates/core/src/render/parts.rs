@@ -16,11 +16,14 @@ pub(super) struct Shown {
     pub seen: Vec<(Id, Vec<P2>, f64)>,
 }
 
+/// A closed outline in plan.
+type Ring = Vec<P2>;
+
 /// The pieces of part `p`'s solid a plan of range `r` cuts and sees, looking up from its cut (`up`, a ceiling plan) or down:
 /// of each prism of the solid, its ring where the cut plane passes through it; else its ring whole, where its top lies
 /// from the view depth up to the cut plane (looking up, its underside from the cut plane up to the range's top). None for
 /// a component's part, which is no prisms, and for a part in conflict.
-fn pieces(m: &Model, p: &BuildingPart, r: &PlanRange, up: bool) -> (Vec<Vec<P2>>, Vec<(Vec<P2>, f64)>) {
+fn pieces(m: &Model, p: &BuildingPart, r: &PlanRange, up: bool) -> (Vec<Ring>, Vec<(Ring, f64)>) {
     let (mut cut, mut seen) = (Vec::new(), Vec::new());
     for prism in m.part_prisms(p).ok().flatten().unwrap_or_default() {
         let (lo, hi) = prism.ring.iter().fold((f64::MAX, f64::MIN), |(lo, hi), q| (lo.min(prism.bottom.at(*q)), hi.max(prism.top.at(*q))));
