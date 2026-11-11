@@ -24,6 +24,7 @@ jobs:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.runner }}
     # Windows builds and tests the slowest: about 55 minutes before its desktop tests start, which run their GPU ones on one thread.
+    # macOS now takes 52-58 minutes, too close to 60, so it gets the same limit.
     timeout-minutes: ${{ matrix.timeout }}
     strategy:
       fail-fast: false
@@ -32,7 +33,7 @@ jobs:
           # The oldest Ubuntu runner, as the release workflow's Linux job.
           - { name: Linux, runner: ubuntu-22.04, timeout: 60 }
           - { name: Windows, runner: windows-latest, timeout: 100 }
-          - { name: macOS, runner: macos-15, timeout: 60 }
+          - { name: macOS, runner: macos-15, timeout: 100 }
     steps:
       - uses: actions/checkout@v4
 
