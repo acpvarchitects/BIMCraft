@@ -532,3 +532,46 @@ fn a_refusals_dimensions_renumbered_are_named_so() {
     assert_eq!(r.message, format!("{NOT_SATISFIED}: dimensions 3, 2 and dimension 2 hold it; dimension 4 too"));
     assert_eq!(r.dims, vec![2, 1]);
 }
+
+#[test]
+fn a_file_with_two_dimensions_reporting_one_parameter_still_opens_and_warns() {
+    let mut s = boxed();
+    run(
+        &mut s,
+        "family",
+        json!({"name": "Box", "parameter": {"name": "Span", "kind": "length", "reporting": true, "value": 0},
+               "dimension": {"view": "plan", "refs": [{"plane": LEFT}, {"plane": RIGHT}], "at": [0, 1200, 0], "label": "Span"}}),
+    );
+    // As a build before the rule could save it: a second dimension reporting Span.
+    let mut v: Value = serde_json::from_str(&s.model.to_json().unwrap()).unwrap();
+    let dims = v["families"]["Box"]["dimensions"].as_array_mut().unwrap();
+    dims.push(json!({"view": "plan", "refs": [{"plane": FRONT}, {"plane": BACK}], "at": [1200, 0, 0], "label": "Span"}));
+    let n = dims.len();
+    let (m, _) = Model::read(&v.to_string()).unwrap_or_else(|e| panic!("the project opens: {e}"));
+    let f = &m.families["Box"];
+    let twice = f.reported_twice();
+    assert_eq!((twice.len(), twice[0].0.as_str(), twice[0].1.last()), (1, "Span", Some(&(n - 1))), "{twice:?}");
+    let vals = f.values("Large", &BTreeMap::new()).unwrap();
+    assert_eq!(vals["Span"], crate::family::Val::Number(800.0), "it reads the last: Depth");
+    // The family's file loads into another project, and says what it reads.
+    let mut fam = v["families"]["Box"].clone();
+    fam["name"] = json!("Box");
+    let path = std::env::temp_dir().join(format!("bimcraft-two-reports-{}.json", std::process::id()));
+    std::fs::write(&path, fam.to_string()).unwrap();
+    let mut other = Session::new();
+    let r = run(&mut other, "family", json!({"path": path}));
+    let _ = std::fs::remove_file(&path);
+    let warned = |r: &Value| {
+        r["warnings"]
+            .as_array()
+            .is_some_and(|w| w.iter().any(|w| w.as_str().is_some_and(|w| w.contains(&format!("it reads dimension {n}, the last")))))
+    };
+    assert!(warned(&r), "{r}");
+    assert!(warned(&run(&mut other, "family", json!({"name": "Box"}))));
+    // Edited in passing (a parameter's value), it stays as it is; a third report is refused.
+    run(&mut other, "family", json!({"name": "Box", "parameter": {"name": "Width", "value": 1100}}));
+    let e = other
+        .execute("family", &json!({"name": "Box", "dimension": {"view": "front", "refs": [{"plane": REF_LEVEL}, {"plane": TOP}], "at": [-800, -1000, 0], "label": "Span"}}))
+        .unwrap_err();
+    assert!(e.contains("reports `Span` already"), "{e}");
+}

@@ -1665,19 +1665,6 @@ impl Family {
                 return Err(format!("{who}: an Align lock holds two references, its one segment locked at 0"));
             }
         }
-        // A reporting parameter is one dimension's: two would leave it reading whichever came last.
-        let mut reported: BTreeMap<&str, usize> = BTreeMap::new();
-        for (i, d) in self.dimensions.iter().enumerate() {
-            if let Some(l) = d.label.as_deref().filter(|l| self.reporting(l))
-                && let Some(j) = reported.insert(l, i)
-            {
-                return Err(format!(
-                    "dimension {}: dimension {} reports `{l}` already; a reporting parameter is one dimension's",
-                    i + 1,
-                    j + 1
-                ));
-            }
-        }
         // A label worked out from a reporting parameter measured by a dimension: the solve would read its own result.
         let measured: BTreeSet<&str> = self.dimensions.iter().filter_map(|d| d.label.as_deref()).filter(|l| self.reporting(l)).collect();
         if !measured.is_empty() {
@@ -2507,6 +2494,19 @@ impl Family {
                 }
             })
             .collect())
+    }
+
+    /// Each reporting parameter more than one dimension is labelled with, and those dimensions (by place): a file from
+    /// before FE-4's review may hold one, and still opens; it reads the last ([`Family::reported`]). Setting such a label
+    /// anew is refused (`family`'s `dimension` and `dimensions`, the family document's Label).
+    pub fn reported_twice(&self) -> Vec<(String, Vec<usize>)> {
+        let mut by: BTreeMap<&str, Vec<usize>> = BTreeMap::new();
+        for (i, d) in self.dimensions.iter().enumerate() {
+            if let Some(l) = d.label.as_deref().filter(|l| self.reporting(l)) {
+                by.entry(l).or_default().push(i);
+            }
+        }
+        by.into_iter().filter(|(_, v)| v.len() > 1).map(|(l, v)| (l.to_string(), v)).collect()
     }
 
     /// The values its reporting parameters measured by dimensions come to, for `values`: each labelled dimension's length.

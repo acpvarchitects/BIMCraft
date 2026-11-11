@@ -1335,8 +1335,8 @@ msgstr ""
 #: crates/ui-egui/src/clouds.rs:87
 #: crates/ui-egui/src/dimtypes.rs:319
 #: crates/ui-egui/src/display.rs:81
-#: crates/ui-egui/src/editor/dimensions.rs:933
-#: crates/ui-egui/src/editor/dimensions.rs:990
+#: crates/ui-egui/src/editor/dimensions.rs:942
+#: crates/ui-egui/src/editor/dimensions.rs:999
 #: crates/ui-egui/src/editor/document.rs:1643
 #: crates/ui-egui/src/editor/exists.rs:442
 #: crates/ui-egui/src/editor/types_dialog.rs:482
@@ -3233,6 +3233,10 @@ msgstr "Linee di quota, linee di richiamo, terminali, posizione del testo e simb
 msgid "Dimension {}"
 msgstr ""
 
+#: crates/ui-egui/src/editor/dimensions.rs:707
+msgid "Dimension {} reports `{}` already: a reporting parameter is one dimension's."
+msgstr ""
+
 #: crates/core/src/family.rs:352
 #: crates/ui-egui/src/editor/sketch_dims.rs:461
 #: crates/ui-egui/src/lang.rs:32
@@ -5023,7 +5027,7 @@ msgid "Installing BIMCraft {}…"
 msgstr "Installazione di BIMCraft {}…"
 
 #: crates/ui-egui/src/adaptive_editor.rs:725
-#: crates/ui-egui/src/editor/dimensions.rs:977
+#: crates/ui-egui/src/editor/dimensions.rs:986
 #: crates/ui-egui/src/editor/types_dialog.rs:567
 msgid "Instance"
 msgstr "Istanza"
@@ -5189,7 +5193,7 @@ msgstr "Lavello cucina"
 msgid "LEFT"
 msgstr ""
 
-#: crates/ui-egui/src/editor/dimensions.rs:1062
+#: crates/ui-egui/src/editor/dimensions.rs:1071
 #: crates/ui-egui/src/electrical.rs:444
 #: crates/ui-egui/src/titleblocks.rs:140
 msgid "Label"
@@ -6316,7 +6320,7 @@ msgstr "NON CHIUSA"
 #: crates/ui-egui/src/cad.rs:85
 #: crates/ui-egui/src/clouds.rs:59
 #: crates/ui-egui/src/editor/connectors.rs:221
-#: crates/ui-egui/src/editor/dimensions.rs:971
+#: crates/ui-egui/src/editor/dimensions.rs:980
 #: crates/ui-egui/src/editor/document.rs:938
 #: crates/ui-egui/src/editor/types_dialog.rs:469
 #: crates/ui-egui/src/editor/work_plane.rs:211
@@ -6682,7 +6686,7 @@ msgstr "Numero di poli"
 #: crates/ui-egui/src/clouds.rs:88
 #: crates/ui-egui/src/dimtypes.rs:318
 #: crates/ui-egui/src/display.rs:82
-#: crates/ui-egui/src/editor/dimensions.rs:991
+#: crates/ui-egui/src/editor/dimensions.rs:1000
 #: crates/ui-egui/src/editor/document.rs:1642
 #: crates/ui-egui/src/editor/types_dialog.rs:483
 #: crates/ui-egui/src/editor/types_dialog.rs:621
@@ -6795,7 +6799,7 @@ msgstr "Numero OmniClass"
 msgid "OmniClass Title"
 msgstr "Titolo OmniClass"
 
-#: crates/ui-egui/src/editor/dimensions.rs:1080
+#: crates/ui-egui/src/editor/dimensions.rs:1089
 msgid "Only a dimension of one segment takes a label."
 msgstr "Solo una quota di un segmento accetta un'etichetta."
 
@@ -7063,7 +7067,7 @@ msgid "Parameter Formula"
 msgstr "Formula del parametro"
 
 #: crates/ui-egui/src/adaptive_editor.rs:714
-#: crates/ui-egui/src/editor/dimensions.rs:968
+#: crates/ui-egui/src/editor/dimensions.rs:977
 #: crates/ui-egui/src/editor/types_dialog.rs:525
 msgid "Parameter Properties"
 msgstr "Proprietà del parametro"
@@ -7281,7 +7285,7 @@ msgstr "Scegli muri"
 msgid "Pick Walls: a boundary line along each wall clicked"
 msgstr "Scegli muri: una linea di contorno lungo ogni muro cliccato"
 
-#: crates/ui-egui/src/editor/dimensions.rs:1254
+#: crates/ui-egui/src/editor/dimensions.rs:1263
 msgid "Pick a circle or an arc, then click where the dimension goes."
 msgstr "Scegli un cerchio o un arco, poi clicca dove va la quota."
 
@@ -7310,7 +7314,7 @@ msgstr "Scegli una linea e usa il piano di lavoro su cui è stata disegnata"
 msgid "Pick a line of the sketch, on the part to keep."
 msgstr "Scegli una linea dello schizzo, sulla parte da tenere."
 
-#: crates/ui-egui/src/editor/dimensions.rs:1260
+#: crates/ui-egui/src/editor/dimensions.rs:1269
 msgid "Pick a line that crosses the one before."
 msgstr "Scegli una linea che incroci la precedente."
 
@@ -7335,7 +7339,7 @@ msgstr "Scegli un parametro del file di parametri condivisi."
 msgid "Pick a plane"
 msgstr "Scegli un piano"
 
-#: crates/ui-egui/src/editor/dimensions.rs:1281
+#: crates/ui-egui/src/editor/dimensions.rs:1290
 msgid "Pick a plane or a line too: points alone face no way to measure along."
 msgstr "Scegli anche un piano o una linea: i soli punti non indicano una direzione lungo cui misurare."
 
@@ -7359,7 +7363,7 @@ msgstr ""
 msgid "Pick a reference edge or centre line; the line under the cursor is highlighted."
 msgstr "Scegli uno spigolo o un asse di riferimento; la linea sotto il cursore è evidenziata."
 
-#: crates/ui-egui/src/editor/dimensions.rs:1273
+#: crates/ui-egui/src/editor/dimensions.rs:1282
 msgid "Pick a reference parallel to the first."
 msgstr "Scegli un riferimento parallelo al primo."
 
@@ -7412,7 +7416,7 @@ msgstr "Scegli un muro o una griglia come asse di specchiatura."
 msgid "Pick a wall, a grid or another line; then one that meets it."
 msgstr "Scegli un muro, una griglia o un'altra linea; poi una che la incontra."
 
-#: crates/ui-egui/src/editor/dimensions.rs:1268
+#: crates/ui-egui/src/editor/dimensions.rs:1277
 msgid "Pick lines that cross, then click where the dimension goes."
 msgstr "Scegli linee che si incrociano, poi clicca dove va la quota."
 
@@ -7492,7 +7496,7 @@ msgstr ""
 msgid "Pick three points: after OK, click three points on the model, each snapping to a corner near the pointer"
 msgstr "Scegli tre punti: dopo OK, clicca tre punti sul modello, ciascuno agganciato a un angolo vicino al puntatore"
 
-#: crates/ui-egui/src/editor/dimensions.rs:1282
+#: crates/ui-egui/src/editor/dimensions.rs:1291
 #: crates/ui-egui/src/editor/views.rs:1085
 msgid "Pick two references or more, then click where the dimension goes."
 msgstr "Scegli due o più riferimenti, poi clicca dove va la quota."
@@ -8400,7 +8404,7 @@ msgstr "Rimuovi"
 msgid "Remove Bars"
 msgstr "Rimuovi barre"
 
-#: crates/ui-egui/src/editor/dimensions.rs:934
+#: crates/ui-egui/src/editor/dimensions.rs:943
 msgid "Remove Constraints"
 msgstr "Rimuovi vincoli"
 
@@ -8516,7 +8520,7 @@ msgstr ""
 msgid "Replaying instance {} with its exact parameters and placement"
 msgstr ""
 
-#: crates/ui-egui/src/editor/dimensions.rs:981
+#: crates/ui-egui/src/editor/dimensions.rs:990
 #: crates/ui-egui/src/editor/types_dialog.rs:569
 msgid "Reporting Parameter"
 msgstr "Parametro di report"
@@ -10907,7 +10911,7 @@ msgstr ""
 
 #: crates/core/src/model.rs:1555
 #: crates/ui-egui/src/adaptive_editor.rs:724
-#: crates/ui-egui/src/editor/dimensions.rs:976
+#: crates/ui-egui/src/editor/dimensions.rs:985
 #: crates/ui-egui/src/editor/nested.rs:273
 #: crates/ui-egui/src/editor/nested.rs:454
 #: crates/ui-egui/src/editor/types_dialog.rs:566
@@ -11896,7 +11900,7 @@ msgstr "una lunghezza"
 msgid "a number"
 msgstr ""
 
-#: crates/ui-egui/src/editor/dimensions.rs:1012
+#: crates/ui-egui/src/editor/dimensions.rs:1021
 msgid "a parameter needs a name"
 msgstr "un parametro deve avere un nome"
 
@@ -12322,7 +12326,7 @@ msgstr "l'apertura deve restare sul suo muro"
 msgid "the plane can't go while {} is drawn on it"
 msgstr "il piano non si può togliere finché vi è disegnato {}"
 
-#: crates/ui-egui/src/editor/dimensions.rs:1015
+#: crates/ui-egui/src/editor/dimensions.rs:1024
 msgid "there's a parameter `{}` already"
 msgstr "esiste già un parametro `{}`"
 

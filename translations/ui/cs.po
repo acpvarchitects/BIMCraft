@@ -1334,8 +1334,8 @@ msgstr "Kamera: klikněte na místo, kde stojí její oko, a potom na to, na co 
 #: crates/ui-egui/src/clouds.rs:87
 #: crates/ui-egui/src/dimtypes.rs:319
 #: crates/ui-egui/src/display.rs:81
-#: crates/ui-egui/src/editor/dimensions.rs:933
-#: crates/ui-egui/src/editor/dimensions.rs:990
+#: crates/ui-egui/src/editor/dimensions.rs:942
+#: crates/ui-egui/src/editor/dimensions.rs:999
 #: crates/ui-egui/src/editor/document.rs:1643
 #: crates/ui-egui/src/editor/exists.rs:442
 #: crates/ui-egui/src/editor/types_dialog.rs:482
@@ -3232,6 +3232,10 @@ msgstr "Kótovací čáry, vynášecí čáry, ukončení, umístění textu a z
 msgid "Dimension {}"
 msgstr "Kóta {}"
 
+#: crates/ui-egui/src/editor/dimensions.rs:707
+msgid "Dimension {} reports `{}` already: a reporting parameter is one dimension's."
+msgstr ""
+
 #: crates/core/src/family.rs:352
 #: crates/ui-egui/src/editor/sketch_dims.rs:461
 #: crates/ui-egui/src/lang.rs:32
@@ -5022,7 +5026,7 @@ msgid "Installing BIMCraft {}…"
 msgstr "Instalace aplikace BIMCraft {}…"
 
 #: crates/ui-egui/src/adaptive_editor.rs:725
-#: crates/ui-egui/src/editor/dimensions.rs:977
+#: crates/ui-egui/src/editor/dimensions.rs:986
 #: crates/ui-egui/src/editor/types_dialog.rs:567
 msgid "Instance"
 msgstr "Instance"
@@ -5188,7 +5192,7 @@ msgstr "Kuchyňský dřez"
 msgid "LEFT"
 msgstr ""
 
-#: crates/ui-egui/src/editor/dimensions.rs:1062
+#: crates/ui-egui/src/editor/dimensions.rs:1071
 #: crates/ui-egui/src/electrical.rs:444
 #: crates/ui-egui/src/titleblocks.rs:140
 msgid "Label"
@@ -6315,7 +6319,7 @@ msgstr "NEUZAVŘENÝ OBVOD"
 #: crates/ui-egui/src/cad.rs:85
 #: crates/ui-egui/src/clouds.rs:59
 #: crates/ui-egui/src/editor/connectors.rs:221
-#: crates/ui-egui/src/editor/dimensions.rs:971
+#: crates/ui-egui/src/editor/dimensions.rs:980
 #: crates/ui-egui/src/editor/document.rs:938
 #: crates/ui-egui/src/editor/types_dialog.rs:469
 #: crates/ui-egui/src/editor/work_plane.rs:211
@@ -6681,7 +6685,7 @@ msgstr "Počet pólů"
 #: crates/ui-egui/src/clouds.rs:88
 #: crates/ui-egui/src/dimtypes.rs:318
 #: crates/ui-egui/src/display.rs:82
-#: crates/ui-egui/src/editor/dimensions.rs:991
+#: crates/ui-egui/src/editor/dimensions.rs:1000
 #: crates/ui-egui/src/editor/document.rs:1642
 #: crates/ui-egui/src/editor/types_dialog.rs:483
 #: crates/ui-egui/src/editor/types_dialog.rs:621
@@ -6794,7 +6798,7 @@ msgstr "Číslo OmniClass"
 msgid "OmniClass Title"
 msgstr "Název OmniClass"
 
-#: crates/ui-egui/src/editor/dimensions.rs:1080
+#: crates/ui-egui/src/editor/dimensions.rs:1089
 msgid "Only a dimension of one segment takes a label."
 msgstr "Popisek lze přiřadit jen kótě s jedním segmentem."
 
@@ -7062,7 +7066,7 @@ msgid "Parameter Formula"
 msgstr "Vzorec parametru"
 
 #: crates/ui-egui/src/adaptive_editor.rs:714
-#: crates/ui-egui/src/editor/dimensions.rs:968
+#: crates/ui-egui/src/editor/dimensions.rs:977
 #: crates/ui-egui/src/editor/types_dialog.rs:525
 msgid "Parameter Properties"
 msgstr "Vlastnosti parametru"
@@ -7280,7 +7284,7 @@ msgstr "Vybrat stěny"
 msgid "Pick Walls: a boundary line along each wall clicked"
 msgstr "Vybrat stěny: hraniční čára podél každé kliknuté stěny"
 
-#: crates/ui-egui/src/editor/dimensions.rs:1254
+#: crates/ui-egui/src/editor/dimensions.rs:1263
 msgid "Pick a circle or an arc, then click where the dimension goes."
 msgstr "Vyberte kružnici nebo oblouk a potom klikněte do místa kóty."
 
@@ -7309,7 +7313,7 @@ msgstr "Vybrat čáru a použít pracovní rovinu, ve které byla načrtnuta"
 msgid "Pick a line of the sketch, on the part to keep."
 msgstr "Vyberte čáru skici na části, kterou chcete zachovat."
 
-#: crates/ui-egui/src/editor/dimensions.rs:1260
+#: crates/ui-egui/src/editor/dimensions.rs:1269
 msgid "Pick a line that crosses the one before."
 msgstr "Vyberte čáru, která protíná předchozí."
 
@@ -7334,7 +7338,7 @@ msgstr "Vyberte parametr ze souboru sdílených parametrů."
 msgid "Pick a plane"
 msgstr "Vybrat rovinu"
 
-#: crates/ui-egui/src/editor/dimensions.rs:1281
+#: crates/ui-egui/src/editor/dimensions.rs:1290
 msgid "Pick a plane or a line too: points alone face no way to measure along."
 msgstr "Vyberte také rovinu nebo čáru: samotné body neurčují směr, ve kterém měřit."
 
@@ -7358,7 +7362,7 @@ msgstr ""
 msgid "Pick a reference edge or centre line; the line under the cursor is highlighted."
 msgstr "Vyberte referenční hranu nebo osu; čára pod kurzorem je zvýrazněna."
 
-#: crates/ui-egui/src/editor/dimensions.rs:1273
+#: crates/ui-egui/src/editor/dimensions.rs:1282
 msgid "Pick a reference parallel to the first."
 msgstr "Vyberte referenci rovnoběžnou s první."
 
@@ -7411,7 +7415,7 @@ msgstr "Vyberte stěnu nebo osnovu, podle které se má zrcadlit."
 msgid "Pick a wall, a grid or another line; then one that meets it."
 msgstr "Vyberte stěnu, osnovu nebo jinou čáru; poté čáru, která se s ní protíná."
 
-#: crates/ui-egui/src/editor/dimensions.rs:1268
+#: crates/ui-egui/src/editor/dimensions.rs:1277
 msgid "Pick lines that cross, then click where the dimension goes."
 msgstr "Vyberte protínající se čáry a potom klikněte do místa kóty."
 
@@ -7491,7 +7495,7 @@ msgstr "Vybrat tři body"
 msgid "Pick three points: after OK, click three points on the model, each snapping to a corner near the pointer"
 msgstr "Vybrat tři body: po OK klikněte na tři body modelu, každý se přichytí k rohu poblíž ukazatele"
 
-#: crates/ui-egui/src/editor/dimensions.rs:1282
+#: crates/ui-egui/src/editor/dimensions.rs:1291
 #: crates/ui-egui/src/editor/views.rs:1085
 msgid "Pick two references or more, then click where the dimension goes."
 msgstr "Vyberte dvě nebo více referencí a potom klikněte na místo kóty."
@@ -8399,7 +8403,7 @@ msgstr "Odebrat"
 msgid "Remove Bars"
 msgstr "Odebrat pruty"
 
-#: crates/ui-egui/src/editor/dimensions.rs:934
+#: crates/ui-egui/src/editor/dimensions.rs:943
 msgid "Remove Constraints"
 msgstr "Odebrat vazby"
 
@@ -8515,7 +8519,7 @@ msgstr ""
 msgid "Replaying instance {} with its exact parameters and placement"
 msgstr ""
 
-#: crates/ui-egui/src/editor/dimensions.rs:981
+#: crates/ui-egui/src/editor/dimensions.rs:990
 #: crates/ui-egui/src/editor/types_dialog.rs:569
 msgid "Reporting Parameter"
 msgstr "Parametr výkazu"
@@ -10906,7 +10910,7 @@ msgstr "Dvě položky ({}) mají stejný název: {}."
 
 #: crates/core/src/model.rs:1555
 #: crates/ui-egui/src/adaptive_editor.rs:724
-#: crates/ui-egui/src/editor/dimensions.rs:976
+#: crates/ui-egui/src/editor/dimensions.rs:985
 #: crates/ui-egui/src/editor/nested.rs:273
 #: crates/ui-egui/src/editor/nested.rs:454
 #: crates/ui-egui/src/editor/types_dialog.rs:566
@@ -11895,7 +11899,7 @@ msgstr "délka"
 msgid "a number"
 msgstr "číslo"
 
-#: crates/ui-egui/src/editor/dimensions.rs:1012
+#: crates/ui-egui/src/editor/dimensions.rs:1021
 msgid "a parameter needs a name"
 msgstr "parametr musí mít název"
 
@@ -12321,7 +12325,7 @@ msgstr "otvor musí zůstat na své stěně"
 msgid "the plane can't go while {} is drawn on it"
 msgstr "rovinu nelze odstranit, dokud je na ní nakresleno {}"
 
-#: crates/ui-egui/src/editor/dimensions.rs:1015
+#: crates/ui-egui/src/editor/dimensions.rs:1024
 msgid "there's a parameter `{}` already"
 msgstr "parametr `{}` již existuje"
 

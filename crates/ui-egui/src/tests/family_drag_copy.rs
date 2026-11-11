@@ -450,3 +450,18 @@ fn shift_and_ctrl_keep_a_copy_square_to_the_view() {
     assert!(near(d[0], 0.0) && near(d[1], 700.0) && d[0] == 0.0, "{d:?}");
     assert_eq!(points(&h, 0), a0);
 }
+
+#[test]
+fn a_second_dimension_reporting_one_parameter_is_refused_its_label() {
+    let more =
+        format!(r#", {{"guid": "{DIM2}", "refs": [{{"plane": "{EDGE}"}}, {{"form": "{A}", "line": "{A_LINE}1"}}], "at": [700, 600, 0]}}"#);
+    let script = family_with(&more)
+        .replace(r#""parameters": ["#, r#""parameters": [{"name": "Span", "kind": "length", "reporting": true, "value": 0}, "#)
+        .replace(r#""at": [500, -1200, 0]}"#, r#""at": [500, -1200, 0], "label": "Span"}"#);
+    let mut h = plan_of(&script);
+    let e = ed(&mut h).set_label(g(DIM2), Some("Span".into())).unwrap_err();
+    assert!(e.contains("reports `Span` already"), "{e}");
+    assert!(family(&h).dimensions.iter().all(|d| d.guid != g(DIM2) || d.label.is_none()));
+    // Its own dimension may keep it.
+    assert!(ed(&mut h).set_label(g(DIM), Some("Span".into())).is_ok());
+}

@@ -787,8 +787,9 @@ ids left to be given; what a copy is drawn on is the copy of it where that is co
 after it, so the voids after it cut it as they cut the original; the rest go at the end. A dimension is copied where every
 reference of it is, naming the copies: one selected (its copy selected too), or one that holds a constraint among what is copied
 (a label, which keeps its parameter, so the copy is driven as the original is, but for a reporting parameter's, which holds
-nothing and is one dimension's: a selected dimension's copy measures without it, and the family's check refuses two dimensions
-reporting one parameter; a lock; EQ; an Align lock), while one that
+nothing and is one dimension's: a selected dimension's copy measures without it, and a label that would make two dimensions
+report one parameter is refused where it is set, by `family`'s `dimension` and `dimensions` and by the Options Bar's Label,
+while a file that holds two still opens and warns which it reads, the last, `Family::reported_twice`; a lock; EQ; an Align lock), while one that
 reaches past the copies isn't, so a lock to what isn't copied is dropped, as in Revit. Parameters aren't copied. A datum or a
 plane that defines the origin refuses the copy ("Center (Left/Right) is a datum: it isn't copied."), and so do what a pivot
 turns and what is drawn on it (F7d: its copy would turn about the same point). A selection of which nothing can be copied (a
