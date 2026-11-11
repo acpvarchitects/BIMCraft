@@ -786,7 +786,8 @@ sees its plane flat shows a handle at the middle of each edge of its profile, ou
 each straight side it sees edge-on, unless another part of the profile hides it (`in_sight`), beside the Start and End handles.
 A Blend shows its base's handles where its base is seen flat, none on its leaning sides; a revolve, a sweep and a swept blend
 none. Dragged, a handle offsets its edge along its normal (`offset_edge`): each straight line at its ends slides along its own
-line to meet it, one in line with it (or an arc) has its shared end moved with it; an arc's handle changes its radius about its
+line to meet it, one in line with it has its shared end moved with it, and an arc there still runs through its middle as
+drawn and through its ends where they now are (a D's arc grows with its flat side); an arc's handle changes its radius about its
 centre, its ends going out along their radii and the lines at them following them; a whole circle's, its radius. Only the numbers
 that move are written, as numbers; one that is a formula refuses the drag, and the rest keep their formulas. The form is made
 again from what it was at each step of the drag (live, one step of the history), the pointer read through the view as the drag

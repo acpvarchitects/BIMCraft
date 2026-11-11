@@ -1,7 +1,8 @@
 //! FE-5: shape handles on a form's profile, as Revit's. A selected extrusion (solid or void) shows a handle at the middle of
 //! each edge of its profile, its outlines' and its holes' alike, pointing out of the solid; dragged, it offsets that edge along
 //! its normal. The lines that share its ends follow: each straight one along its own line, extended or trimmed to meet the
-//! moved edge (one running on in line with it, or an arc, has its shared end moved with the edge). An arc's handle changes its
+//! moved edge (one running on in line with it has its shared end moved with the edge); an arc there still runs through its
+//! middle as drawn and through its ends where they now are, so a D's arc grows with its flat side. An arc's handle changes its
 //! radius about its centre (its ends go out along their radii and the lines at them follow); a whole circle's, its radius.
 //!
 //! This is the geometry alone, in the host plane's own axes ([`edge_handles`], [`offset_lines`], [`offset_edge`]), and what
@@ -182,9 +183,10 @@ pub fn in_sight(lines: &[FormLine], h: &EdgeHandle, toward: P2, num: &mut dyn Fn
     !rings.iter().any(|r| r.iter().zip(r.iter().cycle().skip(1)).any(|(a, b)| crosses(*a, *b)))
 }
 
-/// Which line other than `k` ends at `p` (within [`TOL`]), and whether at its end: the one line a closed loop has there.
+/// Which line other than `k` ends at `p` (within [`TOL`]), and whether at its end: the one line a closed loop has there, the
+/// nearest end where two lie within reach (a corner of another loop close by is not its neighbour).
 fn neighbour(segs: &[Option<Seg>], k: usize, p: P2) -> Option<(usize, bool)> {
-    let mut found = None;
+    let mut near: Vec<(f64, usize, bool)> = Vec::new();
     for (j, s) in segs.iter().enumerate() {
         if j == k {
             continue;
@@ -192,15 +194,35 @@ fn neighbour(segs: &[Option<Seg>], k: usize, p: P2) -> Option<(usize, bool)> {
         if let Some(Seg::Line { a, b, .. }) = s {
             for (end, q) in [(false, *a), (true, *b)] {
                 if q.dist(p) <= TOL {
-                    if found.is_some() {
-                        return None;
-                    }
-                    found = Some((j, end));
+                    near.push((q.dist(p), j, end));
                 }
             }
         }
     }
-    found
+    near.sort_by(|x, y| x.0.total_cmp(&y.0));
+    match near.as_slice() {
+        [] => None,
+        [(_, j, end)] => Some((*j, *end)),
+        [(d0, j, end), (d1, ..), ..] if d1 - d0 > MOVED => Some((*j, *end)),
+        _ => None,
+    }
+}
+
+/// The turn, in degrees counter-clockwise, of the arc from `a` through `m` to `b`; None where they lie on a line.
+fn turn_through(a: P2, m: P2, b: P2) -> Option<f64> {
+    let d = 2.0 * ((m - a).cross(b - a));
+    if d.abs() < 1e-9 {
+        return None;
+    }
+    let (ma, ba) = (m - a, b - a);
+    let (lm, lb) = (ma.dot(ma), ba.dot(ba));
+    let c = a + P2(ba.1 * lm - ma.1 * lb, ma.0 * lb - ba.0 * lm) * (1.0 / d);
+    let ang = |p: P2| (p.1 - c.1).atan2(p.0 - c.0);
+    let tau = std::f64::consts::TAU;
+    let sweep = (ang(b) - ang(a)).rem_euclid(tau);
+    let to_m = (ang(m) - ang(a)).rem_euclid(tau);
+    let turn = if to_m < sweep { sweep } else { sweep - tau };
+    turn.is_finite().then(|| turn.to_degrees())
 }
 
 /// Number `e`, `old` now, made `new`: unchanged within [`MOVED`] (a formula kept), else written as a number, refused where it
@@ -226,9 +248,9 @@ fn put_point(l: &mut FormLine, end: bool, old: P2, new: P2) -> Result<(), Refuse
     put(&mut p[1], old.1, new.1)
 }
 
-/// The moves a drag of line `k` by `d` mm (out of the solid, `out`) makes: (line, its end or start, from, to), and a circle's
-/// or an arc's new radius.
-type Moves = (Vec<(usize, bool, P2, P2)>, Option<(f64, f64)>);
+/// The moves a drag of line `k` by `d` mm (out of the solid, `out`) makes: (line, its end or start, from, to), a circle's or
+/// an arc's new radius, and the arcs at its ends turned anew (line, turn before, turn now).
+type Moves = (Vec<(usize, bool, P2, P2)>, Option<(f64, f64)>, Vec<(usize, f64, f64)>);
 
 fn moves(segs: &[Option<Seg>], k: usize, out: P2, d: f64) -> Result<Moves, Refused> {
     let seg = segs.get(k).copied().flatten().ok_or(Refused::Invalid)?;
@@ -236,7 +258,7 @@ fn moves(segs: &[Option<Seg>], k: usize, out: P2, d: f64) -> Result<Moves, Refus
         Seg::Circle { r, .. } => {
             // Its handle is at 0°: out of the solid is away from the centre round an outline, toward it round a hole.
             let sign = if out.dot(P2(1.0, 0.0)) >= 0.0 { 1.0 } else { -1.0 };
-            return Ok((Vec::new(), Some((r, r + sign * d))));
+            return Ok((Vec::new(), Some((r, r + sign * d)), Vec::new()));
         }
         Seg::Line { a, b, turn } => (a, b, turn),
     };
@@ -288,7 +310,24 @@ fn moves(segs: &[Option<Seg>], k: usize, out: P2, d: f64) -> Result<Moves, Refus
     let (pa, pb) = (ends(at_a).ok_or(Refused::Invalid)?, ends(at_b).ok_or(Refused::Invalid)?);
     out_moves.push((at_a.0, at_a.1, pa, na));
     out_moves.push((at_b.0, at_b.1, pb, nb));
-    Ok((out_moves, radius))
+    // An arc at an end still runs through its middle as drawn and through its ends where they are now (both, in a D drawn of a
+    // line and an arc), so it grows or shrinks with the edge rather than being carried along.
+    let mut turns = Vec::new();
+    for j in [at_a.0, at_b.0] {
+        if turns.iter().any(|(x, _, _)| *x == j) {
+            continue;
+        }
+        if let Some(Seg::Line { a: ja, b: jb, turn: jt }) = segs.get(j).copied().flatten()
+            && jt != 0.0
+        {
+            let moved = |end: bool, was: P2| out_moves.iter().find(|m| m.0 == j && m.1 == end).map_or(was, |m| m.3);
+            let ax = Axis::new(ja, jb, jt);
+            let mid = ax.at(ax.length() / 2.0, 0.0);
+            let now = turn_through(moved(false, ja), mid, moved(true, jb)).ok_or(Refused::Invalid)?;
+            turns.push((j, jt, now));
+        }
+    }
+    Ok((out_moves, radius, turns))
 }
 
 /// `lines` (a form's sketch, its numbers read by `num`) with line `k` moved `d` mm out of the solid (`out`, its handle's way):
@@ -306,10 +345,16 @@ pub fn offset_lines(
         return Err(Refused::Invalid);
     }
     let segs = read_all(lines, num).ok_or(Refused::Invalid)?;
-    let (moved, radius) = moves(&segs, k, out, d)?;
+    let (moved, radius, turns) = moves(&segs, k, out, d)?;
     let mut new = lines.to_vec();
     for (j, end, from, to) in moved {
         put_point(&mut new[j], end, from, to)?;
+    }
+    for (j, was, now) in turns {
+        match &mut new[j].curve {
+            FormCurve::Line { turn: Some(t), .. } => put(t, was, now)?,
+            _ => return Err(Refused::Invalid),
+        }
     }
     if let Some((was, now)) = radius
         && let FormCurve::Circle { radius, .. } = &mut new[k].curve
@@ -545,6 +590,46 @@ mod tests {
         let moved = offset_edge(&disc, 0, h[0].out, -30.0, &mut num()).unwrap();
         assert!(matches!(&moved[0].curve, FormCurve::Circle { radius: Expr::Number(r), .. } if (*r - 50.0).abs() < 1e-9));
         assert_eq!(offset_edge(&disc, 0, h[0].out, -80.0, &mut num()), Err(Refused::Invalid));
+    }
+
+    #[test]
+    fn a_ds_flat_side_offset_grows_the_d_its_arc_keeping_its_middle() {
+        // A D: a line from (-100, 0) to (100, 0) and a half circle back over the top through (0, 100).
+        let mut lines = ring(&[(-100.0, 0.0), (100.0, 0.0)]);
+        if let FormCurve::Line { turn, .. } = &mut lines[1].curve {
+            *turn = Some(n(180.0));
+        }
+        let h = edge_handles(&lines, &mut num());
+        assert!(near(h[0].out, P2(0.0, -1.0)), "{h:?}");
+        let moved = offset_edge(&lines, 0, h[0].out, 50.0, &mut num()).unwrap();
+        assert_eq!(ends(&moved[0]), (P2(-100.0, -50.0), P2(100.0, -50.0)));
+        assert_eq!(ends(&moved[1]), (P2(100.0, -50.0), P2(-100.0, -50.0)));
+        let Some(Seg::Line { a, b, turn }) = read(&moved[1], &mut num()) else { panic!() };
+        assert!(turn > 180.0, "taller, not carried along: {turn}");
+        let ax = Axis::new(a, b, turn);
+        assert!(near(ax.at(ax.length() / 2.0, 0.0), P2(0.0, 100.0)), "its top stays");
+        // A slot's straight side out: each round end still runs through its tip and the side's new end.
+        let mut slot = ring(&[(0.0, 0.0), (500.0, 0.0), (500.0, 200.0), (0.0, 200.0)]);
+        for k in [1, 3] {
+            if let FormCurve::Line { turn, .. } = &mut slot[k].curve {
+                *turn = Some(n(180.0));
+            }
+        }
+        let moved = offset_edge(&slot, 0, P2(0.0, -1.0), 20.0, &mut num()).unwrap();
+        let Some(Seg::Line { a, b, turn }) = read(&moved[1], &mut num()) else { panic!() };
+        assert_eq!(a, P2(500.0, -20.0));
+        let (c, r) = arc_of(a, b, turn).unwrap();
+        assert!((c.dist(P2(600.0, 100.0)) - r).abs() < 1e-6, "still through the round end's tip: {c:?} {r}");
+    }
+
+    #[test]
+    fn a_corner_of_another_loop_close_by_is_not_a_neighbour() {
+        // Two squares, the second's corner 0.5 mm from the first's: each edge finds its own loop's line.
+        let mut lines = ring(&[(0.0, 0.0), (100.0, 0.0), (100.0, 100.0), (0.0, 100.0)]);
+        lines.extend(ring(&[(100.5, 100.0), (200.0, 100.0), (200.0, 200.0), (100.5, 200.0)]));
+        let segs = read_all(&lines, &mut num()).unwrap();
+        assert_eq!(neighbour(&segs, 1, P2(100.0, 100.0)), Some((2, false)));
+        assert_eq!(neighbour(&segs, 4, P2(100.5, 100.0)), Some((7, true)));
     }
 
     #[test]
