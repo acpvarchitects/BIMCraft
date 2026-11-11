@@ -558,3 +558,37 @@ fn the_selections_dialogs_and_status_bar_in_the_three_looks() {
         shot(&mut h, "ids");
     }
 }
+
+/// A reference plane or a reference line is clicked before a nested instance's edge, as before a form's: an instance
+/// aligned to a plane leaves the plane beside it to be clicked, Select Elements by Face on or off.
+#[test]
+fn a_click_on_a_plane_beside_a_nested_instance_aligned_to_it_selects_the_plane() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = plan();
+    let doc = h.state().active_doc().expect("a family document");
+    h.state_mut().nest_family_file(doc, &small_file(dir.path()));
+    h.run();
+    // Its west side on Center (Left/Right), in front of the boxes.
+    place(&mut h, "Short", [0.0, -400.0, 0.0]);
+    key(&mut h, Key::Escape);
+    let center = bimcraft_core::family::CENTER_LEFT_RIGHT;
+    // Three points left of its west side, on the plane's trace.
+    let beside = editor(&h).views.screen_of([0.0, -350.0, 0.0]).unwrap() - vec2(3.0, 0.0);
+    for by_face in [true, false] {
+        h.state_mut().select_by_face = by_face;
+        h.run();
+        click_at(&mut h, beside);
+        h.run();
+        assert_eq!(selected(&h), vec![Picked::Plane(center)], "the plane beside the instance, by face {by_face}");
+        key(&mut h, Key::Escape);
+        // Its east side, where no plane is, still selects it.
+        click_family(&mut h, [100.0, -350.0, 0.0]);
+        assert_eq!(selected(&h), vec![Picked::Nested(0)], "its own edge, by face {by_face}");
+        key(&mut h, Key::Escape);
+    }
+    // Its face, while a face selects, is the instance's, as it always was.
+    h.state_mut().select_by_face = true;
+    h.run();
+    click_family(&mut h, [50.0, -350.0, 0.0]);
+    assert_eq!(selected(&h), vec![Picked::Nested(0)]);
+}

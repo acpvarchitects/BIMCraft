@@ -1033,8 +1033,8 @@ impl FamilyEditor {
                 on_dims = Some((hit, lengths));
             } else if let Some(i) = super::connector_marks::pick(&connector_marks, &project, p) {
                 select = Some(Some(Picked::Connector(i)));
-            } else if let Some(i) = scene.as_ref().and_then(|s| s.nested_hit(q)) {
-                // A nested instance or a form by its face, or with Select Elements by Face off by an edge alone (FE-20).
+            } else if let Some(i) = scene.as_ref().and_then(|s| s.nested_face(q)) {
+                // A nested instance by its face, while Select Elements by Face is on (FE-20).
                 select = Some(Some(Picked::Nested(i)));
             } else {
                 // A reference line where the view draws it (F7d): over the planes' traces and the forms, as it is drawn.
@@ -1043,12 +1043,13 @@ impl FamilyEditor {
                     .line_at(which, q, 6.0 / view.scale.max(1e-9))
                     .and_then(|i| family.as_ref().and_then(|f| f.lines.get(i)).map(|l| l.guid));
                 let plane = if line.is_some() { None } else { pick_plane(p) };
-                let form = scene.as_ref().and_then(|s| s.form_hit(q));
-                select = Some(match (plane, line, form) {
+                // Then a form by its face, or a nested instance or a form by an edge of its outline: after the plane and the
+                // line, so an edge lying on a plane leaves the plane to be clicked (FE-20).
+                let body = scene.as_ref().and_then(|s| s.body_hit(q));
+                select = Some(match (plane, line, body) {
                     (Some(g), _, _) => Some(Picked::Plane(g)),
                     (None, Some(g), _) => Some(Picked::Line(g)),
-                    (None, None, Some(i)) => Some(Picked::Form(i)),
-                    (None, None, None) => None,
+                    (None, None, body) => body,
                 });
             }
         }

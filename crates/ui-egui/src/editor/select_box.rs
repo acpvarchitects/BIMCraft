@@ -500,10 +500,21 @@ impl Scene<'_> {
         face.or_else(|| fv::form_edge_at(self.family, self.values, self.staged, self.which, q, self.reach()))
     }
 
-    /// The nested instance a click at `q` takes, as [`Scene::form_hit`] finds a form.
-    pub(super) fn nested_hit(&self, q: P2) -> Option<usize> {
-        let face = if self.by_face { fv::nested_at(self.family, self.values, self.staged, self.which, q) } else { None };
-        face.or_else(|| fv::nested_edge_at(self.family, self.values, self.staged, self.which, q, self.reach()))
+    /// The nested instance whose face a click at `q` is on, while Select Elements by Face is on: what a click takes before
+    /// a reference line or a plane there, as it always did.
+    pub(super) fn nested_face(&self, q: P2) -> Option<usize> {
+        if self.by_face { fv::nested_at(self.family, self.values, self.staged, self.which, q) } else { None }
+    }
+
+    /// What a click at `q` takes where no reference line and no plane is: the form whose face is there (while a face
+    /// selects), else the nested instance, else the form, an edge of whose outline passes within the click's reach. An
+    /// edge comes after a plane and a line, so one aligned to a plane leaves the plane beside it to be clicked.
+    pub(super) fn body_hit(&self, q: P2) -> Option<Picked> {
+        let reach = self.reach();
+        let face = if self.by_face { fv::form_at(self.family, self.values, self.staged, self.which, q) } else { None };
+        face.map(Picked::Form)
+            .or_else(|| fv::nested_edge_at(self.family, self.values, self.staged, self.which, q, reach).map(Picked::Nested))
+            .or_else(|| fv::form_edge_at(self.family, self.values, self.staged, self.which, q, reach).map(Picked::Form))
     }
 
     /// Whether a drag from `p` is an element's and so draws no box: a connector, a reference line, a plane, or a form or a
