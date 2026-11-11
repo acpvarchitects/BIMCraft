@@ -6990,6 +6990,7 @@ mod family_views;
 mod family_visibility;
 #[cfg(test)]
 mod family_work_plane;
+mod family_zoom;
 mod highlight3d;
 mod nested_families;
 mod preview_visibility;

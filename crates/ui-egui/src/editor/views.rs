@@ -24,7 +24,7 @@ pub(crate) struct Views {
     /// The view shown; none, {3D}.
     pub(crate) shown: Option<Which>,
     /// How close each view is, times as fitted, and how far it is moved (mm).
-    frames: BTreeMap<Which, (f64, (f64, f64))>,
+    pub(super) frames: BTreeMap<Which, (f64, (f64, f64))>,
     /// Each view's work plane ({3D}'s under none), once Set; else its own (`default_work_plane`).
     work_planes: BTreeMap<Option<Which>, PlaneRef>,
     /// Work Plane > Show: the work plane tinted.
@@ -70,7 +70,7 @@ pub(crate) struct Views {
     /// What a tool of the views couldn't do, for the status bar.
     pub(crate) status: Option<String>,
     /// Where on screen the view was last shown.
-    pane: Option<Rect>,
+    pub(super) pane: Option<Rect>,
     /// Where the pointer was last over {3D} and the camera {3D} was seen through, and the form or nested instance under it
     /// there (T11's hover).
     pub(crate) hover3d: Option<(egui::Pos2, bimcraft_core::view3d::Camera, Option<bimcraft_core::family::views::Part>)>,
@@ -104,7 +104,7 @@ pub(super) struct Cached {
     key: u64,
     pub(super) which: Which,
     pub(super) staged: Staged,
-    view: View,
+    pub(super) view: View,
     drawing: Drawing,
     /// An elevation's hidden-line picture, which its drawing is painted over; and the picture itself, kept for a test.
     texture: Option<TextureHandle>,

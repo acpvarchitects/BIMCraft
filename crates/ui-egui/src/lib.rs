@@ -84,6 +84,7 @@ mod updates;
 mod view_worker;
 pub mod window;
 mod workplane;
+mod zoom;
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
