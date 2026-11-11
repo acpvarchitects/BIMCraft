@@ -434,7 +434,7 @@ fn the_named_decays_colours_are_far_apart_and_far_from_not_set() {
     let named: Vec<[u8; 3]> = crate::parts::Decay::NAMED.iter().map(|d| colours[d.label()]).collect();
     let apart = |a: [u8; 3], b: [u8; 3]| (0..3).map(|k| (f64::from(a[k]) - f64::from(b[k])).powi(2)).sum::<f64>().sqrt();
     for (i, a) in named.iter().enumerate() {
-        assert!(apart(*a, super::parts::NOT_SET) >= 80.0, "{:?} is near the grey of no decay", &crate::parts::Decay::NAMED[i]);
+        assert!(apart(*a, super::parts::NOT_SET) >= 80.0, "{:?} is near the grey of no decay", crate::parts::Decay::NAMED[i]);
         for (j, b) in named.iter().enumerate().skip(i + 1) {
             let (x, y) = (&crate::parts::Decay::NAMED[i], &crate::parts::Decay::NAMED[j]);
             assert!(apart(*a, *b) >= 40.0, "{x:?} {a:?} and {y:?} {b:?} are {} apart", apart(*a, *b));
