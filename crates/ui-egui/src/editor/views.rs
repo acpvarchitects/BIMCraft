@@ -332,14 +332,17 @@ impl FamilyEditor {
     fn staged(&self, base: &Model, which: Which) -> Result<Staged, String> {
         let f = self.family()?;
         let values = self.values();
-        let shown = temp_hide::without(&f, |i| self.temp_hidden_form(i)).unwrap_or_else(|| f.clone());
+        // The form being sketched again is left out: its sketch stands for it, as Revit's sketch mode hides the form (FE-12).
+        let editing = self.sketch.as_ref().and_then(|s| s.index);
+        let hidden = |i: usize| self.temp_hidden_form(i) || editing == Some(i);
+        let shown = temp_hide::without(&f, hidden).unwrap_or_else(|| f.clone());
         let mut model = self.scratch(base, &shown)?;
         let mut ghost_id = None;
         // F8: what the view's Visibility Settings leave out, at the document's Detail Level, drawn halftone too.
         let cut = model.levels().first().map_or(bimcraft_core::model::CUT_HEIGHT, |(_, l)| l.view_range.cut);
         let by_view = fv::hidden_in(&f, &values, Some(which), self.views.detail, cut);
         if !self.document.preview_visibility
-            && let Some(g) = ghosts(&f, &values, |i| self.temp_hidden_form(i), &by_view)
+            && let Some(g) = ghosts(&f, &values, hidden, &by_view)
         {
             let mut s = Session::new();
             s.model = Arc::new(model);
@@ -404,6 +407,8 @@ impl FamilyEditor {
             )
                 .hash(&mut h);
             (base.materials.len(), base.images.len()).hash(&mut h);
+            // The form being sketched again, which the view leaves out.
+            self.sketch.as_ref().and_then(|s| s.index).hash(&mut h);
             h.finish()
         };
         if self.views.cache.as_ref().is_some_and(|c| c.key == key) {
