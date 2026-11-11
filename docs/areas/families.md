@@ -565,8 +565,13 @@ locks are the padlocks above). A click selects one ("Modify" first: the Draw pan
 padlocks lock and unlock, its EQ toggles, the Options Bar gives its Label, and Value for one of one segment with no label,
 taken on Enter; Delete takes it away. The family Finish would make (`sketch_family`: the draft, the form made of the lines as
 they are, `sketched_form`, and those dimensions, `sketch_dimensions`) is solved for the type previewed at each label, lock,
-EQ or value (`sketch_try`), and the sketch's lines go where the solve puts them at once, a step of the sketch's Ctrl+Z; a
-value is a lock at it for that one solve. What the constraints can't hold for the type previewed is refused then, with T19's
+EQ or value (`sketch_try`), and the sketch's lines go where the solve puts them at once; a value is a lock at it for that one
+solve, refused where only a plane or a reference line would move. Finish writes a line the dimensions moved as it was drawn
+(its formulas kept, `FormSketch::driven`) while the constraints still put it where it shows, as labelling it after Finish
+would; one they no longer do is written where it is. The sketch's Ctrl+Z takes back every part's lines with the dimensions,
+locks and parameters made or changed while sketching, one step together. A draft dimension that lost a line deleted while
+sketching isn't changed until the line is back (Ctrl+Z) or the dimension deleted. A revolve's axis drawn again keeps its
+GUID, so what measures to it still does. What the constraints can't hold for the type previewed is refused then, with T19's
 words, nothing changed; Align's padlock and a lock another type can't hold are found at Finish, which refuses them for each
 type, naming it, with sketch mode open and the draft as it was. Finish writes the form, its dimensions and their parameters as
 one step of the history (Undo takes them back together); Cancel drops them all, leaving no step and no Unsaved mark. A line of
