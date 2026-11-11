@@ -78,7 +78,9 @@ impl Welder {
         for dx in -1..=1 {
             for dy in -1..=1 {
                 for dz in -1..=1 {
-                    let Some(list) = self.cells.get(&[c[0] + dx, c[1] + dy, c[2] + dz]) else { continue };
+                    let Some(list) = self.cells.get(&[c[0].saturating_add(dx), c[1].saturating_add(dy), c[2].saturating_add(dz)]) else {
+                        continue;
+                    };
                     for &i in list {
                         let near = self.pts.get(i as usize).is_some_and(|q| length(sub(*q, p)) <= WELD);
                         if near && found.is_none_or(|f| i < f) {

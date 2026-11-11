@@ -233,7 +233,8 @@ fn ears(pts: &[P2], ring: &[u32], out: &mut Vec<[u32; 3]>, work: &mut Work) -> R
             if bend > widest.0 {
                 widest = (bend, k);
             }
-            if bend > 0.0 {
+            // In line with its neighbours, to a ten-millionth of a turn, a corner is no ear: its triangle has no area.
+            if bend > 1e-7 * (pb - pa).length() * (pc - pb).length() {
                 work.spend(left)?;
                 let mut m = next[c];
                 let mut clear = true;

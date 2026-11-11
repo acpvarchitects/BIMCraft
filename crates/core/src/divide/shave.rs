@@ -5,7 +5,9 @@
 
 use super::mesh::Soup;
 use super::run::{MARGIN, Part, Shape, extent, mended, ring_sides, spanning, worth};
-use super::{Conflict, DivideError, FACING, FaceRef, KERF, MAX_CUTS, MAX_GAP, Offset, Recipe, Side, Work, clip, flat, from_csg, place};
+use super::{
+    Conflict, DivideError, FACING, FaceRef, KERF, MAX_CUTS, MAX_GAP, Offset, Recipe, Side, Work, clip, flat, from_csg, place, tidy,
+};
 use crate::csg;
 use crate::view3d::{cross, dot, sub, unit};
 
@@ -112,10 +114,15 @@ pub(crate) fn apply(
             }
         }
     };
+    // A cut's face that later cuts took off the piece: moving it takes nothing.
+    let held = soup.volume();
+    if matches!(o.face, FaceRef::Cut(_)) && held - less.volume() <= (1e-10 * held).max(1e-3) {
+        return Ok(Err(Conflict::NoSuchFace));
+    }
     let kept: Vec<Soup> = less.lumps(work)?.into_iter().filter(worth).collect();
     if kept.is_empty() {
         return Ok(Err(Conflict::NothingLeft));
     }
-    part.soup = Soup::join(&kept);
+    part.soup = tidy::tidy(&Soup::join(&kept), work)?;
     Ok(Ok(()))
 }

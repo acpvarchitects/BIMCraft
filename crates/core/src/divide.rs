@@ -22,10 +22,14 @@
 //!   (`Soup::mend`): corners within [`WELD`] become one and an edge is cut at every corner on it;
 //! - an open line drawn on a face: it cuts where it is drawn and nowhere else (a line across one jamb of a door leaves
 //!   the other whole), so no plane or half space will do. The solid loses a wall as thin as [`KERF`] along the line,
-//!   what is left falls into lumps, each on the left or the right of the line by the face the wall left on it, and the
-//!   corners on that face are moved back onto the line: with no gap the pieces meet again exactly. A lump the wall left
-//!   a face on both sides of was not cut through: the line doesn't cross it ([`Conflict::DoesNotCross`]). A straight
-//!   line that spans the whole piece is the plane through it, and is cut as one.
+//!   what is left falls into lumps, and each is on the left or the right of the line by the face the wall left on it.
+//!   With no gap the wall is taken twice, once wholly on each side of the line, and each side is kept from the time the
+//!   wall lay across the line from it: its face is then on the line itself, and the pieces meet exactly. A lump the
+//!   wall left a face on both sides of was not cut through: the line doesn't cross it ([`Conflict::DoesNotCross`]). A
+//!   straight line that spans the whole piece is the plane through it, and is cut as one.
+//!
+//! After each cut a piece's flat faces are made of as few triangles as they need again (`tidy`), for drawing and for
+//! the next cut: a box cut from a wall is twelve triangles.
 //!
 //! **What is promised.** The pieces of a plane cut are closed. The pieces of the other cuts are closed after mending in
 //! every case tested, and each [`Piece`] says whether it is (`closed`), since a partition gives no proof. The volumes add
@@ -47,6 +51,7 @@ mod run;
 mod shave;
 #[cfg(test)]
 mod tests;
+mod tidy;
 
 use std::fmt;
 
@@ -72,8 +77,8 @@ pub const MAX_PIECES: usize = 256;
 pub const MAX_GAP: f64 = 10_000.0;
 /// How near corners are one, and how near a plane a corner lies on it, mm.
 pub const WELD: f64 = 1e-5;
-/// The wall an open line takes out to part what lies either side of it, mm thick; with no gap, the faces it leaves are
-/// moved back onto the line.
+/// The wall an open line takes out to part what lies either side of it, mm thick; with no gap it is taken on each side
+/// of the line in turn, so nothing of either side is lost.
 pub const KERF: f64 = 2e-3;
 /// How far past its ends an open line cuts, mm: a line drawn up to an outline's edge crosses it.
 pub const REACH: f64 = 1.0;
@@ -376,7 +381,8 @@ pub enum Conflict {
     TooDeep,
     /// The piece it names is not among the pieces any more.
     NoSuchPiece,
-    /// The face an offset names is not on its piece any more.
+    /// The face an offset names is not on its piece any more: no face of the piece lies in that plane looking that way,
+    /// or the cuts after the one named took its face off the piece.
     NoSuchFace,
     /// An offset takes all its piece has.
     NothingLeft,
@@ -395,7 +401,9 @@ impl fmt::Display for Conflict {
                 "it is as deep as the part is thick, so nothing lies behind it: give a smaller depth, or none to cut through"
             }
             Conflict::NoSuchPiece => "the piece it names is no longer there: the cuts before it don't make that piece any more",
-            Conflict::NoSuchFace => "the piece has no flat face in that plane looking that way any more: name the face as it is now",
+            Conflict::NoSuchFace => {
+                "the piece no longer has that face (none of it lies in that plane looking that way, or on that cut): name a face it has now"
+            }
             Conflict::NothingLeft => "it takes all the piece has: give a smaller distance",
         })
     }
