@@ -23,7 +23,7 @@ use crate::ribbon;
 use crate::sketch::{Drag, Of, Sketch};
 
 /// What marks a sketch line as a revolve's Axis Line while it is drawn: never kept, the form's axis line is marked its own way.
-const AXIS: &str = "\u{0}axis";
+pub(crate) const AXIS: &str = "\u{0}axis";
 
 /// The green the family's views draw reference planes and lines in (the core's `render::REFERENCE_PLANE`).
 const REFERENCE: Color32 = Color32::from_rgb(70, 140, 90);
@@ -96,7 +96,7 @@ pub(crate) struct FormSketch {
     pub(crate) radius: String,
     pub(crate) offset: String,
     /// Where the cursor is on the plane, for the preview, snapped.
-    hover: Option<P2>,
+    pub(crate) hover: Option<P2>,
     /// What the cursor snapped to, for its marker.
     found: Option<bimcraft_core::snap::Found>,
     /// Chain: a line or an arc drawn starts the next where it ends (the Options Bar's, for the session).
@@ -135,6 +135,11 @@ pub(crate) struct FormSketch {
     pub(crate) lock: bool,
     /// Trim/Extend to Corner (TR), on: the first line picked, where it was clicked (the part kept).
     pub(crate) trim: Option<Option<(usize, P2)>>,
+    /// A Modify tool on the lines (FE-8, `modify.rs`): Move, Copy, Rotate, Mirror, Scale, Offset, Trim/Extend Single or
+    /// Multiple Elements, Split Element, with what has been clicked on the plane.
+    pub(crate) edit: Option<super::modify::Tool>,
+    /// Rotate's Angle typed on the Options Bar and Enter pressed, for the next frame of the view to turn the lines by.
+    pub(crate) typed: Option<f64>,
 }
 
 /// A step of a sketch's own history: what a change while sketching may change, together (FE-12).
@@ -446,6 +451,10 @@ impl FormSketch {
             self.trim = first.map(|_| None);
             return;
         }
+        if let Some(tool) = self.edit {
+            self.edit = tool.back();
+            return;
+        }
         if !self.points.is_empty() || self.fillet.is_some() {
             self.points.clear();
             self.fillet = None;
@@ -472,6 +481,7 @@ impl FormSketch {
         self.points.clear();
         self.fillet = None;
         self.trim = None;
+        self.edit = None;
     }
 
     /// Trim/Extend to Corner (TR) on: the next two lines picked meet at a corner.
@@ -757,6 +767,8 @@ impl FamilyEditor {
             history: Vec::new(),
             lock: false,
             trim: None,
+            edit: None,
+            typed: None,
         }));
         self.let_everything_go();
         self.views.drawing = None;
@@ -1195,6 +1207,8 @@ impl FamilyEditor {
         }
         let snaps = self.snaps;
         let shift = ui.input(|i| i.modifiers.shift);
+        let options = self.views.modify_options.clone();
+        let mut moved: Vec<Guid> = Vec::new();
         let s = self.sketch.as_mut()?;
         // Only a line or a chained arc's endpoint follows Ortho. Shape construction points (a rectangle's opposite
         // corner, a radius, an arc's third point) must remain free.
@@ -1202,7 +1216,9 @@ impl FamilyEditor {
         s.chain = chain(ui.ctx());
         s.lock = lock(ui.ctx());
         // The pointer snapped, as a project's view snaps it, while a shape is drawn or a line's end dragged.
-        let snapping = matches!(s.tool, Some(shape) if !matches!(shape, Shape::Fillet | Shape::PickLines)) || s.sketch.drag.is_some();
+        let snapping = matches!(s.tool, Some(shape) if !matches!(shape, Shape::Fillet | Shape::PickLines))
+            || s.sketch.drag.is_some()
+            || super::modify::snaps_points(s.edit);
         let snap = |s: &FormSketch, raw: P2| -> bimcraft_core::snap::Found {
             let own: Vec<Curve> = s.sketch.lines.iter().map(|l| l.curve.clone()).collect();
             let (traces, segments) = s.targets.as_ref().map(|(_, t)| (t.traces.as_slice(), t.segments.as_slice())).unwrap_or_default();
@@ -1217,6 +1233,7 @@ impl FamilyEditor {
         let mut problem = None;
         // A picked line's end, dragged with Modify: the lines joined there follow it.
         if s.tool.is_none()
+            && s.edit.is_none()
             && response.drag_started_by(PointerButton::Primary)
             && let Some(p) = ui.input(|i| i.pointer.press_origin()).and_then(at)
             && let Some(g) = s.sketch.grip_at(p, reach)
@@ -1233,6 +1250,15 @@ impl FamilyEditor {
             && let Some(pos) = response.interact_pointer_pos()
         {
             match at(pos).map(|raw| if snapping { snap(s, raw).at } else { raw }) {
+                Some(p) if s.edit.is_some() => {
+                    // A Modify tool (FE-8): on the lines picked, or the line clicked.
+                    let tool = s.edit?;
+                    let raw = at(pos).unwrap_or(p);
+                    let target = if super::modify::snaps_points(Some(tool)) { p } else { raw };
+                    let done = super::modify::sketch_click(s, tool, target, reach, &options, &snaps, &|| pick(pos), shift);
+                    problem = done.said;
+                    moved = done.moved;
+                }
                 Some(p) => {
                     let shift = ui.input(|i| i.modifiers.shift);
                     problem = s.click(p, reach, shift, &|| pick(pos));
@@ -1243,14 +1269,27 @@ impl FamilyEditor {
                 None => {}
             }
         }
+        // Rotate's Angle typed on the Options Bar (FE-8).
+        if let Some(a) = s.typed.take() {
+            let done = super::modify::sketch_typed(s, a, options.rotate_copy);
+            problem = problem.or(done.said);
+            moved.extend(done.moved);
+        }
         s.sketch.track();
         s.track();
         s.paint(painter, screen, hovered);
+        super::modify::paint_sketch_tool(s, painter, screen, &options, shift, &snaps);
         if let Some(f) = s.found
             && let Some(at) = screen(f.at)
         {
             let from = f.guide.and_then(|g| screen(g.from));
             crate::canvas::snap_mark(painter, at, from, f.kind, t(f.kind.name()).to_string());
+        }
+        // Locks to what didn't move with the lines let go, saying so.
+        if !moved.is_empty()
+            && let Some(said) = self.release_sketch_locks(&moved)
+        {
+            problem = problem.or(Some(said));
         }
         problem
     }
@@ -1446,7 +1485,10 @@ impl FamilyEditor {
 }
 
 /// What the status bar asks for while a form is sketched.
-pub(crate) fn prompt(s: &FormSketch) -> &'static str {
+pub(crate) fn prompt(s: &FormSketch, o: &super::modify::Options) -> &'static str {
+    if let Some(tool) = s.edit.as_ref() {
+        return super::modify::prompt(tool, o, true);
+    }
     match s.trim {
         Some(None) => return msg!("Pick the first line, on the part to keep."),
         Some(Some(_)) => return msg!("Pick the second line, on the part to keep."),
@@ -1476,6 +1518,13 @@ pub(crate) fn options_bar(ui: &mut Ui, ed: &mut FamilyEditor, units: bimcraft_co
     let values = ed.values();
     let flat_view = ed.views.shown.is_some();
     let Some(s) = ed.sketch.as_mut() else { return };
+    // A Modify tool on the lines (FE-8): its options alone.
+    if let Some(tool) = s.edit.as_mut() {
+        if let Some(a) = super::modify::options_bar(ui, &mut ed.views.modify_options, tool, units) {
+            s.typed = Some(a);
+        }
+        return;
+    }
     if matches!(s.kind, FormKind::Extrusion | FormKind::Blend) {
         let l = ui.label(t("Depth"));
         let (from, to) =
@@ -1677,12 +1726,18 @@ impl BimApp {
         let aligning = ed.views.aligning.is_some();
         let (mut align, mut trim, mut modify) = (false, false, false);
         let mut delete_dim = None;
+        // FE-8: Modify's tools on the lines picked, and the sketch's Trim/Extend and Split.
+        let mut tool = None;
+        let mut tools = super::modify::VIEW_TOOLS.to_vec();
+        tools.extend(super::modify::SKETCH_TOOLS);
+        let states = super::modify::states(ed, &tools);
         let Some(s) = ed.sketch.as_mut() else { return };
         ribbon::panel(ui, msg!("Modify"), |ui| {
             let tip = msg!("Modify (MD): pick lines of the sketch, and drag their ends");
             let trimming = s.trim.is_some();
             let dimensioning = ed.views.dimensioning.is_some();
-            if crate::small_button(ui, Icon::Modify, "Modify", s.tool.is_none() && !aligning && !trimming && !dimensioning, tip).clicked() {
+            let free = s.tool.is_none() && s.edit.is_none() && !aligning && !trimming && !dimensioning;
+            if crate::small_button(ui, Icon::Modify, "Modify", free, tip).clicked() {
                 s.set_tool(None, false);
                 modify = true;
             }
@@ -1691,6 +1746,7 @@ impl BimApp {
             if crate::small_button(ui, Icon::Trim, "Trim/Extend to Corner", trimming, tip).clicked() {
                 trim = true;
             }
+            tool = super::modify::buttons(ui, &states);
             // Align (AL, F7b): a line of the sketch onto a plane, a reference line or another line; its padlock locks them.
             let tip = msg!("Align (AL): pick a reference, then a line of the sketch that moves onto it; its padlock locks them");
             align = crate::small_button(ui, Icon::Align, "Align", aligning, tip).clicked();
@@ -1734,6 +1790,12 @@ impl BimApp {
             ed.views.dimensioning = None;
             if let Some(s) = ed.sketch.as_mut() {
                 s.trim_tool();
+            }
+        }
+        if let Some(t) = tool {
+            match ed.modify_tool_on(t) {
+                Ok(()) => self.status = Status::default(),
+                Err(e) => self.status = Status { text: e, error: true },
             }
         }
         if finish {

@@ -12,7 +12,8 @@ use bimcraft_core::family::DimKind;
 
 /// Revit's default keys for the family editor's commands, each to the name of its action in `shortcuts::ACTIONS`. A key the
 /// project has too means the same command here (`the_family_table_gives_no_project_key_another_meaning`); the others (DD, AN,
-/// WP, WW, FA, AA, PL, FG, CG, ZX, and FE-3's ZR, ZZ, ZO, ZV, ZP, ZC) are the family's alone.
+/// WP, WW, FA, AA, PL, FG, CG, ZX, FE-3's ZR, ZZ, ZO, ZV, ZP, ZC, and FE-8's RE) are the family's alone. Trim/Extend Single
+/// and Multiple Elements have no key, as in Revit: Keyboard Shortcuts gives them one.
 pub(crate) const FAMILY_SHORTCUTS: &[(&str, &str)] = &[
     ("MD", "Modify"),
     ("PP", "Properties"),
@@ -32,6 +33,11 @@ pub(crate) const FAMILY_SHORTCUTS: &[(&str, &str)] = &[
     ("CO", "Copy"),
     ("RO", "Rotate"),
     ("TR", "Trim/Extend to Corner"),
+    ("MM", "Mirror Pick Axis"),
+    ("DM", "Mirror Draw Axis"),
+    ("OF", "Offset"),
+    ("SL", "Split"),
+    ("RE", "Scale"),
     ("DE", "Delete"),
     ("PL", "Pick Lines"),
     ("FG", "Finish Edit Mode"),
@@ -129,7 +135,13 @@ impl BimApp {
         let ordinary = ed.adaptive.is_none();
         // What a command said: done (the status bar cleared, as Finish and Cancel clear it), or refused and why.
         let mut said: Option<Result<(), String>> = None;
+        // FE-8: Modify's tools in a family that isn't adaptive, where their buttons are enabled; else why not, in the status bar.
+        let modify = if ordinary { super::modify::Tool::of(action) } else { None };
+        if let Some(tool) = modify {
+            said = Some(ed.modify_tool_on(tool));
+        }
         match action {
+            _ if modify.is_some() => {}
             // While a form is sketched, the sketch's Modify: its Draw panel's shape put down, and Align.
             "Modify" => match ed.sketch.as_mut() {
                 Some(s) => {
@@ -180,13 +192,18 @@ impl BimApp {
                 }
             }
             // The sketch's own: Trim/Extend to Corner, the Draw gallery's Pick Lines, and Mode's Finish and Cancel.
-            "Trim/Extend to Corner" => {
-                if let Some(s) = ed.sketch.as_mut() {
+            "Trim/Extend to Corner" => match ed.sketch.as_mut() {
+                Some(s) => {
                     s.trim_tool();
                     ed.views.aligning = None;
                     ed.views.dimensioning = None;
                 }
-            }
+                None if ordinary => {
+                    let why = t("Trim/Extend to Corner works on a sketch's lines: edit a form's sketch (double-click the form) first.");
+                    said = Some(Err(why.to_string()));
+                }
+                None => {}
+            },
             "Pick Lines" => {
                 if let Some(s) = ed.sketch.as_mut() {
                     let axis = s.axis_tool;

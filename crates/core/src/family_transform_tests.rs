@@ -209,6 +209,13 @@ fn a_constraint_between_what_is_taken_and_what_isnt_refuses_it_and_one_among_wha
     let at = t.family.dimensions[0].at;
     assert!((at[0] - -200.0).abs() < 1e-6 && (at[1] - 300.0).abs() < 1e-6, "{at:?}");
     assert_eq!(t.family.dimensions[1], f.dimensions[1]);
+    assert!(t.dropped.is_empty());
+    builds(&t.family);
+    // Turned a quarter, Edge no longer faces Center (Left/Right): the plain dimension between them is deleted.
+    let quarter = Transform::Rotate { centre: [300.0, 300.0, 0.0], axis: UP, degrees: 90.0 };
+    let t = f.transformed(&v, &both, &quarter).unwrap();
+    assert_eq!(t.dropped, vec![f.dimensions[1].guid]);
+    assert_eq!(t.family.dimensions.len(), 1);
     builds(&t.family);
 }
 

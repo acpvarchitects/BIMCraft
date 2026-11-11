@@ -70,6 +70,8 @@ pub struct Transformed {
     pub lines: Vec<Guid>,
     pub forms: Vec<usize>,
     pub dimensions: Vec<Guid>,
+    /// The dimensions deleted: each measured between what is taken and what isn't, and no longer could.
+    pub dropped: Vec<Guid>,
 }
 
 fn unit3(a: P3) -> Option<P3> {
@@ -356,6 +358,16 @@ impl Family {
             };
             return Err(TransformRefused::Unsat(Unsat { message, dims: held, over: true }));
         }
-        Ok(Transformed { family: out, planes, lines, forms, dimensions })
+        // A dimension between what is taken and what isn't whose references no longer face one way is deleted, as Revit
+        // deletes one whose references are no longer valid.
+        let mut dropped = Vec::new();
+        for d in out.dimensions.iter().filter(|d| d.kind == DimKind::Aligned && d.refs.iter().any(inside) && !d.refs.iter().all(inside)) {
+            let ways: Vec<P3> = d.refs.iter().filter_map(|r| direction(&out, r, values).ok().flatten()).collect();
+            if ways.windows(2).any(|w| !parallel(w[0], w[1])) {
+                dropped.push(d.guid);
+            }
+        }
+        out.dimensions.retain(|d| !dropped.contains(&d.guid));
+        Ok(Transformed { family: out, planes, lines, forms, dimensions, dropped })
     }
 }

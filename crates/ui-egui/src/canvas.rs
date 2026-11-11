@@ -1060,7 +1060,7 @@ fn alignment_pick(
 /// Degrees from the ray `centre`→`from` to the ray `centre`→`to`, counter-clockwise, in
 /// (-180, 180]; each ray onto the nearest multiple of `inc` degrees when it's within a few
 /// degrees of one.
-fn angle_between(centre: P2, from: P2, to: P2, inc: f64) -> f64 {
+pub(crate) fn angle_between(centre: P2, from: P2, to: P2, inc: f64) -> f64 {
     let (a, b) = (snap_angle(from - centre, inc), snap_angle(to - centre, inc));
     let d = (b.1.atan2(b.0) - a.1.atan2(a.0)).to_degrees();
     if d > 180.0 {

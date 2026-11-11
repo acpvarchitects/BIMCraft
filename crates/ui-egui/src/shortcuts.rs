@@ -55,6 +55,8 @@ pub const ACTIONS: &[&str] = &[
     "Measure",
     "Align",
     "Trim/Extend to Corner",
+    msg!("Trim/Extend Single Element"),
+    msg!("Trim/Extend Multiple Elements"),
     "Split",
     "Offset",
     "Demolish",
@@ -139,6 +141,7 @@ pub const ACTIONS: &[&str] = &[
     msg!("Zoom In Region"),
     msg!("Zoom Out (2x)"),
     msg!("Previous Pan/Zoom"),
+    msg!("Scale"),
 ];
 
 /// The actions of `ACTIONS` only a family document does (`editor::keys`): a key for one does nothing on a project's tab, and
@@ -153,6 +156,7 @@ pub(crate) const FAMILY_ONLY: &[&str] = &[
     "Zoom In Region",
     "Zoom Out (2x)",
     "Previous Pan/Zoom",
+    "Scale",
 ];
 
 /// Whether `action` is a family document's alone.
@@ -359,6 +363,8 @@ impl BimApp {
             "Measure" => self.set_tool(Tool::Measure(None)),
             "Align" => self.set_tool(Tool::Align(None)),
             "Trim/Extend to Corner" => self.set_tool(Tool::Trim(None)),
+            "Trim/Extend Single Element" => self.set_tool(Tool::TrimTo { boundary: None, many: false }),
+            "Trim/Extend Multiple Elements" => self.set_tool(Tool::TrimTo { boundary: None, many: true }),
             "Split" => self.set_tool(Tool::Split),
             "Offset" => self.set_tool(Tool::Offset),
             "Demolish" => self.set_tool(Tool::Demolish),

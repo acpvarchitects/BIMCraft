@@ -49,6 +49,8 @@ pub(crate) enum Retry {
     Align(DimRef, DimRef),
     /// Family Types' Apply (or OK, which closes it).
     Types { ok: bool },
+    /// A rotation, a mirror or a scale (FE-8).
+    Modify(super::modify::Again),
 }
 
 /// Create Parameter…, for the selected dimension's label: the Parameter Properties a label needs.
@@ -650,6 +652,7 @@ impl FamilyEditor {
                 s.points.clear();
                 s.align_from = None;
                 s.trim = None;
+                s.edit = None;
                 s.selected_dim = None;
                 self.views.dimensioning = None;
                 self.views.aligning = Some(None);
@@ -669,6 +672,7 @@ impl FamilyEditor {
         self.views.aligning = None;
         self.views.align_lock = None;
         self.views.pivoting = None;
+        self.views.modify = None;
         self.let_everything_go();
     }
 
@@ -954,6 +958,7 @@ impl FamilyEditor {
                         self.align_through(a, b, at, which);
                     }
                 }
+                Retry::Modify(a) => self.modify_again(a),
                 Retry::Types { ok } => {
                     self.document.dialog_saved = Some(self.draft());
                     if ok {
