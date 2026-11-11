@@ -34,8 +34,11 @@ that of the solid's faces that lie in the plane of the layer's own face and look
 `Model::part_facing`): for a wall's part the face toward the wall's exterior side (its elevation, less doors and windows), for
 a floor's, a roof's or a ceiling's part its top (less openings and shafts; a sloped one's along its slope). A component's part
 has a volume and no area. `part_layer`, `part_material` (its own, else its layer's, else its host's structure's),
-`part_thickness`, `parts_of`, `part_divisions` and `part_state` (all of it at once) give the rest. `Material` holds a colour,
-patterns, a texture and a transparency: no density or thermal values yet, so a part has none to show.
+`part_thickness`, `parts_of`, `part_divisions` and `part_state` (all of it at once) give the rest. A material may say how heavy
+it is and how it carries and holds heat (`Material::density`, kg/m³, `conductivity`, W/(m·K), `specific_heat`, J/(kg·K); the
+`material` command, each null for not said, written to a file only when said): a part made of it then shows them, its
+`mass_kg` (density by its net volume) and, one layer of one material, its `thermal_resistance` (its thickness in metres over
+the conductivity, m²·K/W).
 
 ## Conflicts
 
@@ -72,7 +75,8 @@ uses for forms of decay, or `Custom(text)`; the words only, never a standard's d
 
 `schedule::fields(m, "part")` lists a part's fields and `schedule::field_text`, `picks` and `check_rules` read them from
 `parts::json` (what `elements` shows): `Id`, `Host`, `Host Category`, `Host Type`, `Level`, `Layer`, `Function`, `Material`,
-`Thickness`, `Net Area`, `Net Volume`, `Predefined Type`, `Object Type`, `Excluded`, the five heritage names, `Conflict`,
+`Thickness`, `Net Area`, `Net Volume`, `Density`, `Mass`, `Thermal Conductivity`, `Thermal Resistance`, `Specific Heat`,
+`Predefined Type`, `Object Type`, `Excluded`, the five heritage names, `Conflict`,
 `Count`, the phases and the design option. A value nobody gave is no value, never 0 (`From::Held`). `part` is in
 `schedule::MORE`: there is no schedule of parts and no view filter of them yet. A part that parts were divided from lists them
 (`divisions`) and no area or volume: they hold them.
@@ -82,7 +86,10 @@ uses for forms of decay, or `Custom(text)`; the words only, never a standard's d
 Each part that is not excluded and not in conflict (`parts::exported`) is an `IfcBuildingElementPart`: its GlobalId its GUID,
 its name what it is made of (else its host's type), its `ObjectType` and `PredefinedType` as it says, placed relative to its
 host's placement with its body a closed `IfcTriangulatedFaceSet` in the host's axes, associated with its `IfcMaterial`, with
-`BIMCraft_PartQuantities` (`Width`, `NetArea`, `NetVolume`) and, for what was said, `BIMCraft_Heritage`. Its host is the sum
+`BIMCraft_PartQuantities` (`Width`, `NetArea`, `NetVolume`) and, for what was said, `BIMCraft_Heritage`. A material that says
+its weight or its heat carries `Pset_MaterialCommon` (`MassDensity`) and `Pset_MaterialThermal` (`ThermalConductivity`,
+`SpecificHeatCapacity`) as `IfcMaterialProperties`, and the project's units then name kg/m³, W/(m·K) and J/(kg·K); the import
+does not read them back yet. Its host is the sum
 of its parts (`IfcRelAggregates`, the same relation that holds a host's bars), and so is a part of its divisions. **What is
 decomposed has no `Body` of its own** (a wall keeps its `Axis`), as a stair has none beside its flights: IFC asks it, and a
 body on both would be drawn and measured twice. Parts are in no storey but through their host. An element with no part
@@ -108,4 +115,5 @@ the category `part`, which an older one refuses on opening, saying so.
 Divide Parts (the engine is `divide.rs`; a division is a new `Source`, its cuts in the host's own coordinates, and the divided
 part the sum of its divisions), edge offsets and gaps, parts in plans, sections and the 3D view with Parts Visibility (Show
 Original, Show Parts, Show Both) and colours by `Decay_Pathology` or `Historical_Period`, schedules and tags of parts, the
-desktop's tools, reading parts from IFC, density and thermal values on materials, and the `FORMAT` step.
+desktop's tools (the material's weight and heat among them), reading parts and a material's values from IFC, and the
+`FORMAT` step.

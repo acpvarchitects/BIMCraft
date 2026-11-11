@@ -506,6 +506,26 @@ pub struct Material {
     /// How much of what lies behind its surfaces shows through them in the 3D view, percent: 0 (opaque) to 100.
     #[serde(default, skip_serializing_if = "is_clear")]
     pub transparency: u8,
+    /// How heavy it is, kg/m³: what a part made of it weighs by. None, not said.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub density: Option<f64>,
+    /// How well it carries heat, W/(m·K): what a layer of it resists heat by. None, not said.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub conductivity: Option<f64>,
+    /// How much heat it holds, J/(kg·K). None, not said.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub specific_heat: Option<f64>,
+}
+
+impl Material {
+    /// What a material may say of its weight and its heat: each value's key, its unit and the most it may be (above 0).
+    pub const PHYSICS: [(&'static str, &'static str, f64); 3] =
+        [("density", "kg/m³", 1e5), ("conductivity", "W/(m·K)", 1e4), ("specific_heat", "J/(kg·K)", 1e6)];
+
+    /// Its values of [`Material::PHYSICS`], in that order.
+    pub fn physics(&self) -> [Option<f64>; 3] {
+        [self.density, self.conductivity, self.specific_heat]
+    }
 }
 
 fn is_clear(x: &u8) -> bool {
@@ -522,6 +542,9 @@ impl Default for Material {
             surface_pattern: None,
             texture: None,
             transparency: 0,
+            density: None,
+            conductivity: None,
+            specific_heat: None,
         }
     }
 }
@@ -6210,6 +6233,11 @@ impl Model {
             }
             if x.transparency > 100 {
                 return Err(format!("material `{n}`: transparency is a percent, 0 to 100, not {}", x.transparency));
+            }
+            for ((key, unit, most), v) in Material::PHYSICS.iter().zip(x.physics()) {
+                if let Some(v) = v.filter(|v| !(*v > 0.0 && v <= most)) {
+                    return Err(format!("material `{n}`: {key} is {unit}, above 0 and at most {most}, not {v}"));
+                }
             }
             if let Some(t) = &x.texture {
                 t.check(&self.images).map_err(|e| format!("material `{n}`: texture: {e}"))?;

@@ -1015,8 +1015,10 @@ other_files(
         "Materials",
         &[],
         "{name, color?: \"#rrggbb\" | [r, g, b], transparency?: 0-100, cut?, surface?, texture?: {kind?, size?: [w, h], angle?, offset?: [x, y], path?, \
-         image?} | null, rename?, delete?: true} a material of the project's library, created or changed: its colour in shaded 3D \
+         image?} | null, density?, conductivity?, specific_heat?, rename?, delete?: true} a material of the project's library, created or changed: its colour in shaded 3D \
          views, its `transparency` there (percent of what lies behind it that shows through, 0 opaque; the starter Glass has 70), \
+         how heavy it is (`density`, kg/m³), how well it carries heat (`conductivity`, W/(m·K)) and how much it holds \
+         (`specific_heat`, J/(kg·K)), each null for not said: what a part made of it (`parts`) weighs and resists heat by, \
          the pattern its cut shows in plans and sections (where a layer is wide enough to hold it), and the one its \
          surfaces show at its size in the building (a floor's top in plan, a ceiling's underside in its ceiling plan). Patterns: \
          none, solid, diagonal, crosshatch, horizontal, vertical, grid, brick, concrete, insulation, or the name of one of the \
@@ -10349,6 +10351,19 @@ fn material(s: &mut Session, p: &Value) -> R {
             .filter(|t| *t <= 100)
             .and_then(|t| u8::try_from(t).ok())
             .ok_or_else(|| bad(c, format!("`transparency` is a whole percent, 0 to 100, not {v}")))?;
+    }
+    // How heavy it is and how it carries and holds heat: a number above nothing, or null for not said.
+    for ((key, unit, most), slot) in
+        crate::model::Material::PHYSICS.iter().zip([&mut mat.density, &mut mat.conductivity, &mut mat.specific_heat])
+    {
+        match p.get(*key) {
+            None => {}
+            Some(Value::Null) => *slot = None,
+            Some(v) => {
+                let x = v.as_f64().filter(|x| *x > 0.0 && x <= most);
+                *slot = Some(x.ok_or_else(|| bad(c, format!("`{key}` is {unit}, above 0 and at most {most}, not {v}")))?);
+            }
+        }
     }
     // A pattern drawn in code by its name, or one of the project's fill patterns.
     for (key, slot, fill) in [("cut", &mut mat.cut, &mut mat.cut_pattern), ("surface", &mut mat.surface, &mut mat.surface_pattern)] {

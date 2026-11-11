@@ -396,6 +396,22 @@ impl Step {
             return written;
         }
         let id = self.add(format!("IFCMATERIAL({},$,$)", s(name)));
+        // How heavy it is, and how it carries and holds heat, where it says: IFC's sets for a material.
+        if let Some(x) = m.materials.get(name) {
+            let value = |w: &mut Step, name: &str, measure: &str, v: f64| {
+                w.add(format!("IFCPROPERTYSINGLEVALUE('{name}',$,{measure}({}),$)", real(v)))
+            };
+            if let Some(density) = x.density {
+                let p = value(self, "MassDensity", "IFCMASSDENSITYMEASURE", density);
+                self.add(format!("IFCMATERIALPROPERTIES('Pset_MaterialCommon',$,(#{p}),#{id})"));
+            }
+            let mut thermal = Vec::new();
+            thermal.extend(x.conductivity.map(|v| value(self, "ThermalConductivity", "IFCTHERMALCONDUCTIVITYMEASURE", v)));
+            thermal.extend(x.specific_heat.map(|v| value(self, "SpecificHeatCapacity", "IFCSPECIFICHEATCAPACITYMEASURE", v)));
+            if !thermal.is_empty() {
+                self.add(format!("IFCMATERIALPROPERTIES('Pset_MaterialThermal',$,({}),#{id})", refs(&thermal)));
+            }
+        }
         let style = m.materials.get(name).map(|x| {
             // How see-through the material is, 0 for opaque to 1 for clear; none for an opaque one.
             let clear = if x.transparency == 0 { "$".to_string() } else { real(f64::from(x.transparency.min(100)) / 100.0) };
@@ -812,6 +828,27 @@ pub fn export(m: &Model) -> String {
         "IFCSIUNIT(*,.PLANEANGLEUNIT.,$,.RADIAN.)",
     ]
     .map(|u| w.add(u));
+    let mut units = units.to_vec();
+    // What materials say of their weight and their heat is in units of its own, whatever the lengths are in: kg/m³,
+    // W/(m·K) and J/(kg·K), named once a material says any.
+    if m.materials.values().any(|x| x.physics().iter().any(Option::is_some)) {
+        let [kilogram, metre, kelvin, watt, joule] = [
+            "IFCSIUNIT(*,.MASSUNIT.,.KILO.,.GRAM.)",
+            "IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.)",
+            "IFCSIUNIT(*,.THERMODYNAMICTEMPERATUREUNIT.,$,.KELVIN.)",
+            "IFCSIUNIT(*,.POWERUNIT.,$,.WATT.)",
+            "IFCSIUNIT(*,.ENERGYUNIT.,$,.JOULE.)",
+        ]
+        .map(|u| w.add(u));
+        for (kind, of) in [
+            ("MASSDENSITYUNIT", [(kilogram, 1), (metre, -3)].as_slice()),
+            ("THERMALCONDUCTANCEUNIT", [(watt, 1), (metre, -1), (kelvin, -1)].as_slice()),
+            ("SPECIFICHEATCAPACITYUNIT", [(joule, 1), (kilogram, -1), (kelvin, -1)].as_slice()),
+        ] {
+            let elements: Vec<u64> = of.iter().map(|(unit, power)| w.add(format!("IFCDERIVEDUNITELEMENT(#{unit},{power})"))).collect();
+            units.push(w.add(format!("IFCDERIVEDUNIT(({}),.{kind}.,$)", refs(&elements))));
+        }
+    }
     let units = w.add(format!("IFCUNITASSIGNMENT(({}))", refs(&units)));
     let project = w.add(format!("IFCPROJECT({},$,{},$,$,$,$,(#{ctx}),#{units})", w.guid(PROJECT, 0), s(&m.name)));
     let site_at = w.place(None, (0.0, 0.0, 0.0), None);

@@ -466,6 +466,22 @@ pub(crate) fn json(m: &Model, id: Id, p: &BuildingPart, extra: &mut Map<String, 
     if let Some(s) = h.decay_severity {
         extra.insert(severity.into(), json!(s));
     }
+    // What its material says of its weight and its heat, and what that makes of the part: how much it weighs, and, one
+    // layer of one material, how much it resists heat across its thickness (m²·K/W).
+    if let Some(x) = m.materials.get(&state.material) {
+        let millionth = |v: f64| (v * 1e6).round() / 1e6;
+        for ((key, ..), v) in crate::model::Material::PHYSICS.iter().zip(x.physics()) {
+            if let Some(v) = v {
+                extra.insert((*key).into(), json!(v));
+            }
+        }
+        if let Some(density) = x.density.filter(|_| divisions.is_empty() && state.conflict.is_none()) {
+            extra.insert("mass_kg".into(), json!(millionth(density * state.net_volume / 1e9)));
+        }
+        if let (Some(conductivity), Some(t), Some(_)) = (x.conductivity, state.thickness, state.layer) {
+            extra.insert("thermal_resistance".into(), json!(millionth(t / 1e3 / conductivity)));
+        }
+    }
     if let Some(conflict) = state.conflict {
         extra.insert("conflict".into(), json!(conflict));
     }

@@ -349,3 +349,48 @@ fn a_parts_own_phase_and_its_values_of_the_projects_parameters_go_out_as_any_ele
     assert_eq!(f.values(p, ifc::PHASING), [("Phase Demolished".to_string(), "IFCTEXT('New Construction')".to_string())]);
     assert!(f.values(f.product(parts[1]), ifc::PHASING).is_empty());
 }
+
+#[test]
+fn a_materials_weight_and_heat_go_out_as_its_property_sets_in_units_the_file_names() {
+    let (mut s, _, parts) = historic();
+    let before = File::of(&s);
+    assert!(before.all("IFCMATERIALPROPERTIES").is_empty() && before.all("IFCDERIVEDUNIT").is_empty(), "nothing said, nothing written");
+    run(&mut s, "material", json!({"name": "Rubble Masonry", "density": 2100, "conductivity": 1.4, "specific_heat": 840}));
+    run(&mut s, "material", json!({"name": "Lime Plaster", "density": 1600}));
+    let f = File::of(&s);
+    // Each material's sets, of the properties it says.
+    let sets = |name: &str| -> Vec<(String, Vec<(String, String)>)> {
+        f.all("IFCMATERIALPROPERTIES")
+            .into_iter()
+            .filter(|p| f.args(refs(&f.args(*p)[3])[0])[0] == format!("'{name}'"))
+            .map(|p| {
+                let props = refs(&f.args(p)[2]).into_iter().map(|v| (f.args(v)[0].trim_matches('\'').to_string(), f.args(v)[2].clone()));
+                (f.args(p)[0].trim_matches('\'').to_string(), props.collect())
+            })
+            .collect()
+    };
+    assert_eq!(
+        sets("Rubble Masonry"),
+        [
+            ("Pset_MaterialCommon".to_string(), vec![("MassDensity".to_string(), "IFCMASSDENSITYMEASURE(2100.)".to_string())]),
+            (
+                "Pset_MaterialThermal".to_string(),
+                vec![
+                    ("ThermalConductivity".to_string(), "IFCTHERMALCONDUCTIVITYMEASURE(1.4)".to_string()),
+                    ("SpecificHeatCapacity".to_string(), "IFCSPECIFICHEATCAPACITYMEASURE(840.)".to_string()),
+                ]
+            ),
+        ]
+    );
+    assert_eq!(
+        sets("Lime Plaster"),
+        [("Pset_MaterialCommon".to_string(), vec![("MassDensity".to_string(), "IFCMASSDENSITYMEASURE(1600.)".to_string())])]
+    );
+    // The project's units say what they are measured in: kg/m³, W/(m·K), J/(kg·K), whatever its lengths are in.
+    let assignment = f.all("IFCUNITASSIGNMENT")[0];
+    let derived: Vec<String> =
+        refs(&f.args(assignment)[0]).into_iter().filter(|u| f.class(*u) == "IFCDERIVEDUNIT").map(|u| f.args(u)[1].clone()).collect();
+    assert_eq!(derived, [".MASSDENSITYUNIT.", ".THERMALCONDUCTANCEUNIT.", ".SPECIFICHEATCAPACITYUNIT."]);
+    // The part made of it is associated with the material that holds them.
+    assert_eq!(f.material(f.product(parts[1])).as_deref(), Some("Rubble Masonry"));
+}

@@ -81,3 +81,7 @@ create_parts {"ids": [100352, 100354]}
 part {"id": 100355, "predefined_type": "userdefined", "object_type": "USR", "su_code": "USR 3", "historical_period": "18th century", "decay_pathology": "efflorescence", "decay_severity": 4, "intervention_type": "Cleaning"}
 part {"id": 100357, "material": "Concrete", "decay_pathology": {"custom": "Lacuna"}}
 part {"id": 100361, "excluded": true}
+# What a material says of its weight and its heat (Pset_MaterialCommon and Pset_MaterialThermal on the IfcMaterial, and the units
+# they are in): the wall's brick and its insulation.
+material {"name": "Brick", "density": 1800, "conductivity": 0.8, "specific_heat": 840}
+material {"name": "Insulation", "density": 30, "conductivity": 0.035}
