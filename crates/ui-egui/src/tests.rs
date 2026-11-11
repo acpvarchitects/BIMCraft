@@ -6974,6 +6974,7 @@ mod family_box_select;
 mod family_category_dialog;
 mod family_dimensions;
 mod family_document;
+mod family_drag_move;
 mod family_exit;
 mod family_keys;
 mod family_nav3d;
