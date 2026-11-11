@@ -604,3 +604,49 @@ fn ctrl_z_in_a_sketch_takes_back_its_dimensions_with_its_lines() {
         "the parameter taken back"
     );
 }
+
+#[test]
+fn a_draft_dimension_missing_a_line_is_not_changed_and_comes_back_whole_with_it() {
+    let string = format!(
+        r#", {{"guid": "{SPAN}", "refs": [{{"plane": "{LEFT}"}}, {{"form": "{SLAB}", "line": "{WEST}"}}, {{"form": "{SLAB}", "line": "{EAST}"}}], "at": [0, -450, 0]}}"#
+    );
+    let mut h = sketching(&string, 0);
+    key(&mut h, Key::Escape);
+    click_family(&mut h, [-300.0, 100.0, 0.0]);
+    key(&mut h, Key::Delete);
+    let shown = editor(&h).sketch_dimensions().into_iter().find(|d| d.guid == g(SPAN)).expect("the string, less the line");
+    assert_eq!(shown.refs.len(), 2);
+    assert!(ed_mut(&mut h).toggle_equal(g(SPAN)).is_err(), "refused while its line is gone");
+    assert!(editor(&h).sketch.as_ref().unwrap().changed.is_empty(), "its references kept as they were");
+    h.state_mut().family_undo();
+    h.run();
+    let back = editor(&h).sketch_dimensions().into_iter().find(|d| d.guid == g(SPAN)).unwrap();
+    assert_eq!(back.refs.len(), 3, "whole again with its line");
+}
+
+#[test]
+fn a_value_that_would_move_a_plane_rather_than_the_sketch_is_refused() {
+    // The west line Align-locked to a plane Inner at x -300: a value from Left to it can only move a plane.
+    const INNER: &str = "11111111-1111-4111-8111-000000000009";
+    let script = family(&format!(
+        r#", {{"refs": [{{"plane": "{INNER}"}}, {{"form": "{SLAB}", "line": "{WEST}"}}], "at": [-300, 0, 0], "locked": [{{"segment": 0, "length": 0}}], "alignment": true}}"#
+    ))
+    .replace(
+        r#""ref_planes": ["#,
+        &format!(r#""ref_planes": [{{"guid": "{INNER}", "name": "Inner", "start": [-300, -2000, 0], "end": [-300, 2000, 0], "up": [0, 0, 1]}}, "#),
+    );
+    let (mut h, _) = open(&script, "Box");
+    view(&mut h, Some(Which::Plan));
+    ed_mut(&mut h).edit_form_sketch(0).unwrap();
+    h.run();
+    shortcut(&mut h, "DI");
+    click_family(&mut h, [-700.0, 900.0, 0.0]);
+    click_family(&mut h, [-300.0, 100.0, 0.0]);
+    click_family(&mut h, [-500.0, -600.0, 0.0]);
+    let d = made(&h).last().cloned().expect("a dimension");
+    assert_eq!(d.refs, vec![DimRef::Plane(g(LEFT)), DimRef::Sketch(g(SLAB), g(WEST))], "{}", status(&h));
+    let before = line(&h, WEST);
+    let e = ed_mut(&mut h).set_dimension_value(d.guid, 300.0).expect_err("refused");
+    assert!(e.contains("plane"), "{e}");
+    assert_eq!(line(&h, WEST), before, "nothing moved");
+}

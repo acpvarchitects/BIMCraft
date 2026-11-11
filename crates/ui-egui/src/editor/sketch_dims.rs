@@ -57,14 +57,7 @@ impl FamilyEditor {
     /// Finish (one left with too few references goes).
     pub(crate) fn sketch_dimensions(&self) -> Vec<FamilyDimension> {
         let Some(s) = self.sketch.as_ref() else { return self.dimensions.clone() };
-        let mut out: Vec<FamilyDimension> = self
-            .dimensions
-            .iter()
-            .filter(|d| !s.unlocked.contains(&d.guid))
-            .map(|d| s.changed.iter().find(|c| c.guid == d.guid).unwrap_or(d).clone())
-            .collect();
-        out.extend(s.locks.iter().cloned());
-        out.extend(s.dims.iter().cloned());
+        let out = self.sketch_dimensions_whole();
         let now: BTreeSet<Guid> = s.sketch.lines.iter().chain(s.parts.iter().flatten()).map(|l| l.guid).collect();
         let gone: BTreeSet<Guid> = out
             .iter()
@@ -79,6 +72,20 @@ impl FamilyEditor {
             f.forget_reference(g);
         }
         f.dimensions
+    }
+
+    /// [`FamilyEditor::sketch_dimensions`] before the lines gone are taken from them: each with every reference it holds.
+    fn sketch_dimensions_whole(&self) -> Vec<FamilyDimension> {
+        let Some(s) = self.sketch.as_ref() else { return self.dimensions.clone() };
+        let mut out: Vec<FamilyDimension> = self
+            .dimensions
+            .iter()
+            .filter(|d| !s.unlocked.contains(&d.guid))
+            .map(|d| s.changed.iter().find(|c| c.guid == d.guid).unwrap_or(d).clone())
+            .collect();
+        out.extend(s.locks.iter().cloned());
+        out.extend(s.dims.iter().cloned());
+        out
     }
 
     /// The dimension selected while sketching let go once it is gone (taken back, deleted, its line gone), so the Options Bar
@@ -144,6 +151,14 @@ impl FamilyEditor {
         let mut f = self.sketch_family().map_err(Unsat::from)?;
         let before = f.dimensions.clone();
         change(&mut f.dimensions);
+        // One that has lost a line gone from the sketch keeps the references it holds until Finish: it isn't changed then.
+        let whole = self.sketch_dimensions_whole();
+        let lost = |d: &FamilyDimension| whole.iter().any(|w| w.guid == d.guid && w.refs != d.refs);
+        if f.dimensions.iter().any(|d| !before.contains(d) && lost(d)) {
+            return Err(Unsat::from(
+                t("This dimension measures to a line that is gone: draw the line again (Ctrl+Z) or delete the dimension.").to_string(),
+            ));
+        }
         let values = self.sketch_values(&f);
         let flexed = f.flexed(&values)?.into_owned();
         self.keep_sketch_dimensions(&before, &f.dimensions);
@@ -268,12 +283,23 @@ impl FamilyEditor {
         }
         let locked = d.is_locked(0);
         let before = f.dimensions.clone();
+        let values = self.sketch_values(&f);
+        let base = f.flexed(&values).map(std::borrow::Cow::into_owned).unwrap_or_else(|_| f.clone());
         let d = &mut f.dimensions[at];
         d.locked.retain(|l| l.segment != 0);
         d.locked.push(Lock { segment: 0, length: v });
         d.locked.sort_by_key(|l| l.segment);
-        let values = self.sketch_values(&f);
         let flexed = f.flexed(&values).map_err(dims::said)?.into_owned();
+        // The value is the sketch's to reach: one the solve reaches by moving a plane or a reference line is refused.
+        let off = |a: [f64; 3], b: [f64; 3]| a.iter().zip(b).any(|(x, y)| (x - y).abs() > 1e-6);
+        let planes = base.planes.iter().zip(&flexed.planes).any(|(a, b)| off(a.start, b.start) || off(a.end, b.end));
+        let lines = base.lines.iter().zip(&flexed.lines).any(|(a, b)| off(a.start, b.start) || off(a.end, b.end));
+        if planes || lines {
+            return Err(t(
+                "This value would move a reference plane or a reference line, not the sketch: unlock what holds the line, or change the plane.",
+            )
+            .to_string());
+        }
         if locked {
             self.keep_sketch_dimensions(&before, &f.dimensions);
         }
