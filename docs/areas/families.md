@@ -685,6 +685,33 @@ plane hides it and one behind it is seen through its tint.
 An adaptive family's modelling view keeps its own Work Plane panel and Show. An elevation is framed on what it shows as a project's
 is (`render::section_extent`), so its levels' names past their lines' ends aren't cut at the picture's edge.
 
+FE-1: what is selected in a family that isn't adaptive is one set, the only place the selection is kept (`editor/select_box.rs`,
+`Selection`): forms, planes (a datum too, as a click takes one), reference lines, dimensions, plan symbols, connectors and nested
+instances. Each kind's accessor (`selected_form`, `selected_plane` and the rest) names the one thing selected while the set holds
+exactly one, of any kind, and nothing while it holds several, so Properties, the contextual tab, Align, Pivot, the Start and End
+handles and the grips act on one element as before and never on one of several; a click and the Project Browser make the set what
+they select. In a plan or an elevation, a drag of the primary button that starts on nothing a click would select (nor a handle, a
+grip or a padlock), with no tool in hand, draws a box as Revit's: left to right a window, solid, taking what lies wholly inside it;
+right to left a crossing, dashed, taking what it touches too. It is the rule the adaptive modelling view boxes by, one for both
+(`geom::SelectBox` in the core), drawn as a project's plan draws its box (`canvas::box_shapes`). Each element is boxed by what it is
+drawn with on screen: a form's or a nested instance's outline, a plane's trace, a reference line, a dimension's line, a symbol's
+strokes (in the plans, which draw symbols: `Family::symbol_mark`), a connector's place; a void, which a click doesn't pick in a view,
+and a form hidden for now aren't. Ctrl adds what the box takes, Shift takes it away, else it is the selection; a click on an element
+with Ctrl or Shift adds or takes away that one, and a click on nothing with either keeps the selection. The middle button still
+pans, and a drag from an element, or with a tool in hand, is the element's or the tool's. A crossing box drawn wholly inside a
+form's face, meeting none of its edges, doesn't take the form, as Revit's doesn't: a form is boxed by its outline. A drag from an
+element that isn't selected moves nothing (only a selected plane of the family's own, a handle or a grip is dragged): moving an
+element by dragging it is FE-7's. With several selected, Properties say how
+many (Multi-Select (N)) and show none of their rows, the contextual tab is Modify | Multi-Select, each is drawn selected (in the views,
+in {3D}, and in the Project Browser's lists), Temporary Hide/Isolate takes every form and plane selected, and Delete (the key, DE, the
+ribbon's) takes them all away as one step of the document's history: a dimension, a nested instance, a form, a symbol, a connector,
+then a reference line, then a plane, each list from its end so the places of the rest hold, a datum staying and staying selected.
+Where one can't go (a plane something not selected is drawn on), none does, and the status bar says why. Escape and Modify (MD, the
+ribbon's) let the selection go; MD and DE are the document's own keys (FE-13, `BimApp::family_action`), which do what the ribbon's
+Modify and Delete do with the set. What goes from the draft another way (undone, redone, changed while another tab was in front) goes
+from the set (`FamilyEditor::prune_selection`); the history keeps the reference lines too (`Draft`), so Undo brings back a line
+deleted. {3D} has no box: a drag there turns the view, as before.
+
 The Work Plane dialog (T12, `editor/work_plane.rs`), as Revit's: Current Work Plane names the plane as `Planes::listed` does, with Show
 (the ribbon's toggle) and Dissociate, greyed (a family's work plane is always one of its planes or lines, which forms are drawn on).
 Specify a new Work Plane: Name, the family's planes as `Planes::listed` lists them; Pick a plane, a reference plane's or a datum's
@@ -1257,3 +1284,4 @@ In `crates/ui-egui`, the Family Editor:
   in Properties. `editor/connector_marks.rs`: their symbols and arrows over {3D}, plans and elevations, lit and picked (an
   overlay drawn through a view's projection alone).
 - `editor/lit3d.rs`: {3D} staged for the project's 3D view (`FamilyScene`), its selection and hover highlight. `editor/visibility.rs`: Family Element Visibility Settings.
+- `editor/select_box.rs`: the selection, one set (FE-1), and the box a plan or an elevation selects with, window or crossing.
