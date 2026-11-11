@@ -101,7 +101,8 @@ know, so it leaves it out and names it (`left_out`).
 
 ## Next
 
-Divide Parts (the engine is `divide.rs`; the divided part holds its cuts, in the host's own coordinates, and the divided
+Divide Parts (the engine is `divide.rs`, written up in [parts-geometry](parts-geometry.md); the divided part holds its
+cuts, in the host's own coordinates, and the divided
 part the sum of its divisions), edge offsets and gaps, parts in plans, sections and the 3D view with Parts Visibility (Show
 Original, Show Parts, Show Both) and colours by `Decay_Pathology` or `Historical_Period`, schedules and tags of parts, the
 desktop's tools (the material's weight and heat among them), and parts and a material's values to IFC and back.
