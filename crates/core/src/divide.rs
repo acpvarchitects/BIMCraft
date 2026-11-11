@@ -63,7 +63,7 @@ use crate::model::MAX_COORD;
 use crate::view3d::{P3, add, cross, dot, mul, sub, unit};
 
 pub use mesh::{area, area_facing, is_closed, volume};
-pub use prism::{Prism, divide_prism};
+pub use prism::{MAX_HOLES, Prism, divide_prism};
 
 /// A closed surface of triangles, each counter-clockwise seen from outside.
 pub type Mesh = Vec<[P3; 3]>;
