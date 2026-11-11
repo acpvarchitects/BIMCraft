@@ -24,7 +24,8 @@
 //! it; right to left a crossing, dashed, taking what it touches too, by the one rule the adaptive family's modelling view
 //! boxes by (`geom::SelectBox`), drawn as the project's plans draw theirs (`canvas::box_shapes`). Ctrl adds what it takes,
 //! Shift takes that away, else it is the selection; a click on an element with Ctrl or Shift does the same with it. Each
-//! element is boxed by what it is drawn with on screen: a form's or a nested instance's outline, a plane's trace, a
+//! element is boxed by what it is drawn with on screen: a form's or a nested instance's edges as the view draws them (an L's
+//! inner corner, never the hull's chord across it, `views::outline_edges`), a plane's trace, a
 //! reference line, a dimension's line, a symbol's strokes (in the plans, where symbols are drawn), a connector's place.
 //! Select Elements by Face (FE-20, `selection.rs`) says what a face does: on, a click on a form's or a nested instance's
 //! face selects it and a crossing box takes one by its faces too, so one drawn wholly inside a face takes what the face
@@ -40,7 +41,7 @@ use bimcraft_core::family::{FamilyDimension, Val};
 use bimcraft_core::geom::{P2, SelectBox};
 use bimcraft_core::ids::Guid;
 use bimcraft_core::render::{Drawing, View};
-use egui::{Modifiers, Painter, Pos2, Response, Shape};
+use egui::{Modifiers, Painter, Pos2, Response};
 
 /// One thing selected in a family document that isn't adaptive: the core's, with what any front end needs of a selection
 /// (`family::select`: Filter's kinds, Select by ID, Select All Instances).
@@ -373,24 +374,19 @@ impl Scene<'_> {
         self.screen(self.staged.to_view(self.which, p))
     }
 
-    /// The outline form or nested instance `p` is seen with, on screen; none for anything else.
-    pub(super) fn outline(&self, p: Picked) -> Vec<Pos2> {
-        let ring = match p {
-            Picked::Form(i) => fv::outline(self.family, self.values, self.staged, self.which, i),
-            Picked::Nested(i) => fv::nested_outline(self.family, self.values, self.staged, self.which, i),
+    /// The edges form or nested instance `p` is seen with, on screen, as the view draws them (`views::outline_edges`: an L's
+    /// inner corner, never the hull's chord across it); none for anything else.
+    fn edges(&self, p: Picked) -> Vec<[Pos2; 2]> {
+        let edges = match p {
+            Picked::Form(i) => fv::outline_edges(self.family, self.values, self.staged, self.which, i),
+            Picked::Nested(i) => fv::nested_outline_edges(self.family, self.values, self.staged, self.which, i),
             _ => Vec::new(),
         };
-        ring.into_iter().map(|q| self.screen(q)).collect()
+        edges.into_iter().map(|(a, b)| [self.screen(a), self.screen(b)]).collect()
     }
 
     /// What `p` is drawn with on screen, as segments (a point, one of no length): what a box takes it by, and what lights it.
     pub(super) fn pieces(&self, p: Picked) -> Vec<[Pos2; 2]> {
-        let closed = |ring: Vec<Pos2>| -> Vec<[Pos2; 2]> {
-            if ring.len() < 2 {
-                return ring.iter().map(|q| [*q, *q]).collect();
-            }
-            (0..ring.len()).map(|k| [ring[k], ring[(k + 1) % ring.len()]]).collect()
-        };
         let open = |pts: &[P2]| -> Vec<[Pos2; 2]> {
             let on: Vec<Pos2> = pts.iter().map(|q| self.at([q.0, q.1, 0.0])).collect();
             match on.as_slice() {
@@ -399,7 +395,7 @@ impl Scene<'_> {
             }
         };
         match p {
-            Picked::Form(_) | Picked::Nested(_) => closed(self.outline(p)),
+            Picked::Form(_) | Picked::Nested(_) => self.edges(p),
             Picked::Plane(g) => {
                 let strokes = super::views::plane_strokes(self.drawing, self.staged, g, self.min);
                 if !strokes.is_empty() {
@@ -484,7 +480,7 @@ impl Scene<'_> {
 
     /// What a box from `from` to `to` on screen takes: left to right what lies wholly inside it, right to left what it
     /// touches too. With Select Elements by Face on, a crossing takes a form or a nested instance by its faces as by its
-    /// outline, so one drawn wholly inside a face takes what the face is of (`views::face_in_box`).
+    /// edges, so one drawn wholly inside a face takes what the face is of (`views::face_in_box`).
     pub(super) fn in_box(&self, from: Pos2, to: Pos2) -> Vec<Picked> {
         let mm = |p: Pos2| P2(f64::from(p.x), f64::from(p.y));
         let boxed = SelectBox::dragged(mm(from), mm(to));
@@ -514,7 +510,7 @@ impl Scene<'_> {
     }
 
     /// The form a click at `q` (the view's millimetres) takes: with Select Elements by Face on, the one whose face is
-    /// there; else, and off, the one an edge of whose outline passes within the click's reach.
+    /// there; else, and off, the one an edge of which, as the view draws it, passes within the click's reach.
     pub(super) fn form_hit(&self, q: P2) -> Option<usize> {
         let face = if self.by_face { fv::form_at(self.family, self.values, self.staged, self.which, q) } else { None };
         face.or_else(|| fv::form_edge_at(self.family, self.values, self.staged, self.which, q, self.reach()))
@@ -527,7 +523,7 @@ impl Scene<'_> {
     }
 
     /// What a click at `q` takes where no reference line and no plane is: the form whose face is there (while a face
-    /// selects), else the nested instance, else the form, an edge of whose outline passes within the click's reach. An
+    /// selects), else the nested instance, else the form, an edge of which, as the view draws it, passes within the click's reach. An
     /// edge comes after a plane and a line, so one aligned to a plane leaves the plane beside it to be clicked.
     pub(super) fn body_hit(&self, q: P2) -> Option<Picked> {
         let reach = self.reach();
@@ -538,7 +534,7 @@ impl Scene<'_> {
     }
 
     /// Whether a drag from `p` is an element's and so draws no box: a connector, a reference line, a plane, or a form or a
-    /// nested instance by an edge of its outline. The face of a form or a nested instance is the box's to begin in, as
+    /// nested instance by an edge the view draws it with. The face of a form or a nested instance is the box's to begin in, as
     /// Revit's (FE-20), but for one of `selected` while a face selects: dragging what is selected is its own.
     pub(super) fn under(&self, p: Pos2, selected: &[Picked]) -> bool {
         let q = self.view.mm((p.x - self.min.x, p.y - self.min.y));
@@ -569,8 +565,7 @@ impl Scene<'_> {
         if let Some(i) = self.nested_face(q) {
             return Some(Picked::Nested(i));
         }
-        let line =
-            self.staged.line_at(self.which, q, self.reach()).and_then(|i| self.family.lines.get(i)).map(|l| Picked::Line(l.guid));
+        let line = self.staged.line_at(self.which, q, self.reach()).and_then(|i| self.family.lines.get(i)).map(|l| Picked::Line(l.guid));
         let body = || self.body_hit(q);
         let symbol = || {
             selected.iter().copied().filter(|s| matches!(s, Picked::Symbol(_))).find(|s| {
@@ -583,23 +578,18 @@ impl Scene<'_> {
         line.or(plane.map(Picked::Plane)).or_else(body).or_else(symbol)
     }
 
-    /// What is selected, over the picture, as one selected alone is drawn: a form's edges as seen, a nested instance's outline,
-    /// a plane's trace, a reference line, a symbol's strokes, in the selection's colour. A dimension and a connector are lit by their own
-    /// painters.
+    /// What is selected, over the picture, as one selected alone is drawn: a form's and a nested instance's edges as seen, a
+    /// plane's trace, a reference line, a symbol's strokes, in the selection's colour. A dimension and a connector are lit by
+    /// their own painters.
     pub(super) fn paint_selected(&self, painter: &Painter, selected: &[Picked]) {
         let picked = super::views::PICKED;
         for p in selected {
             match p {
-                // A form by its own edges as the view sees it (its notches, its holes), not the outline it is picked by.
-                Picked::Form(i) => {
-                    for (a, b) in fv::outline_edges(self.family, self.values, self.staged, self.which, *i) {
-                        painter.line_segment([self.screen(a), self.screen(b)], Stroke::new(2.0, picked));
-                    }
-                }
-                Picked::Nested(_) => {
-                    let ring = self.outline(*p);
-                    if ring.len() > 2 {
-                        painter.add(Shape::closed_line(ring, Stroke::new(2.0, picked)));
+                // A form or a nested instance by its own edges as the view sees it (its notches, its holes): what it is
+                // picked and boxed by too.
+                Picked::Form(_) | Picked::Nested(_) => {
+                    for s in self.edges(*p) {
+                        painter.line_segment(s, Stroke::new(2.0, picked));
                     }
                 }
                 Picked::Plane(_) | Picked::Line(_) => {

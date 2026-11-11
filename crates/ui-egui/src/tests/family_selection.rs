@@ -723,3 +723,49 @@ fn sa_takes_what_the_view_in_front_shows_and_keeps_the_selection_where_it_shows_
     assert_eq!(selected(&h), vec![Picked::Nested(3)], "no Long is placed: the selection stays");
     assert_eq!(project(&h), before, "nothing of it reaches the project");
 }
+
+/// An L-shaped extrusion, its inner corner at (600, 600): the two edges that meet there run back into what its hull spans,
+/// whose chord from (1200, 600) to (600, 1200) crosses empty space.
+const ELL: &str = concat!(
+    r#"family {"name": "Ell", "category": "generic", "types": {"T": {}}, "#,
+    r#""forms": [{"profile": [[200, 200], [1200, 200], [1200, 600], [600, 600], [600, 1200], [200, 1200]], "to": 500}]}"#
+);
+
+/// With Select Elements by Face off an edge is one the view draws, not a side of the form's hull: an inner edge of an
+/// L-shaped form selects it, the hull's chord over empty space doesn't, and a box goes by the same edges.
+#[test]
+fn an_edge_is_one_the_view_draws_of_a_form_not_a_side_of_its_hull() {
+    let (mut h, _) = super::family_views::open(ELL, "Ell");
+    view(&mut h, Some(Which::Plan));
+    let form = vec![Picked::Form(0)];
+    for by_face in [false, true] {
+        h.state_mut().select_by_face = by_face;
+        h.run();
+        key(&mut h, Key::Escape);
+        // Its inner edges, each at its middle, and an outer one.
+        for at in [[900.0, 600.0, 0.0], [600.0, 900.0, 0.0], [1200.0, 400.0, 0.0]] {
+            click_family(&mut h, at);
+            assert_eq!(selected(&h), form, "an edge at {at:?}, by face {by_face}");
+            key(&mut h, Key::Escape);
+        }
+        // The middle of the hull's chord, in the empty corner: nothing there to click.
+        click_family(&mut h, [900.0, 900.0, 0.0]);
+        assert!(selected(&h).is_empty(), "the hull's chord over empty space, by face {by_face}");
+        // A crossing box across an inner edge takes the form; one in the empty corner, over the chord alone, doesn't.
+        boxed(&mut h, [1000.0, 700.0, 0.0], [800.0, 500.0, 0.0], Modifiers::NONE);
+        assert_eq!(selected(&h), form, "a crossing over an inner edge, by face {by_face}");
+        boxed(&mut h, [950.0, 950.0, 0.0], [850.0, 850.0, 0.0], Modifiers::NONE);
+        assert!(selected(&h).is_empty(), "a crossing over the chord alone takes nothing, and begins there, by face {by_face}");
+        // A window round all of it takes it, as before.
+        boxed(&mut h, [100.0, 1300.0, 0.0], [1300.0, 100.0, 0.0], Modifiers::NONE);
+        assert_eq!(selected(&h), form, "a window round it, by face {by_face}");
+    }
+    // An elevation goes by its edges too: Front sees the L as a rectangle, its inner corner hidden behind its front face.
+    h.state_mut().select_by_face = false;
+    view(&mut h, Some(Which::Elevation(Side::Front)));
+    key(&mut h, Key::Escape);
+    click_family(&mut h, [900.0, 0.0, 250.0]);
+    assert!(selected(&h).is_empty(), "the face between its edges, off");
+    click_family(&mut h, [1200.0, 0.0, 250.0]);
+    assert_eq!(selected(&h), form, "its right side");
+}

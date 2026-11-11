@@ -700,7 +700,7 @@ window's axes rise from its sill, so the sill's plane and Ref. Level are one; wi
 share a Height's change between them); a door's blank has none, as Revit's door template. The selected form is drawn by its own
 edges as the view sees them (`views::outline_edges`: each edge between a face toward the eye and one not, and each crease between
 two faces toward it, where no face of the form lies in front of it: an L's notch, a hole seen from above, a Blend's top, and an
-elevation's real silhouette; it is still picked and boxed by its outline), the selected plane's trace drawn heavier.
+elevation's real silhouette; it is picked and boxed by them too, FE-20), the selected plane's trace drawn heavier.
 A plane of the family's own, selected, moves square to itself by a drag; a datum doesn't.
 Reference Plane (RP, the Create tab's Datum) draws one by two clicks: in plan upright (`up` the vertical), in an elevation
 `up` the way it looks, so its normal lies in the elevation's plane (`views::new_plane`); it has no name, is Weak, and is a step
@@ -725,16 +725,17 @@ they select. In a plan or an elevation, a drag of the primary button that starts
 grip or a padlock), with no tool in hand, draws a box as Revit's: left to right a window, solid, taking what lies wholly inside it;
 right to left a crossing, dashed, taking what it touches too. It is the rule the adaptive modelling view boxes by, one for both
 (`geom::SelectBox` in the core), drawn as a project's plan draws its box (`canvas::box_shapes`). Each element is boxed by what it is
-drawn with on screen: a form's or a nested instance's outline, a plane's trace, a reference line, a dimension's line, a symbol's
+drawn with on screen: a form's or a nested instance's edges as the view draws them (`views::outline_edges`, `nested_outline_edges`:
+an L's inner corner, never its hull's chord across the empty corner), a plane's trace, a reference line, a dimension's line, a symbol's
 strokes (in the plans, which draw symbols: `Family::symbol_mark`), a connector's place; a void, which a click doesn't pick in a view,
 and a form hidden for now aren't. Ctrl adds what the box takes, Shift takes it away, else it is the selection; a click on an element
 with Ctrl or Shift adds or takes away that one, and a click on nothing with either keeps the selection. The middle button still
-pans, and a drag with a tool in hand is the tool's. A drag from an element's edge (a form's or a nested instance's outline, a
+pans, and a drag with a tool in hand is the tool's. A drag from an element's edge (one a form or a nested instance is drawn with, a
 plane's trace, a reference line, a connector) is the element's and draws no box; the face of a form or a nested instance that
 isn't selected is the box's to begin in, as Revit's, so a box can be drawn inside one (changed with FE-20: until then a drag from
 a face drew none). What a face does is Select Elements by Face's to say (below): on, a click on it selects and a crossing box
 drawn inside it takes what it is of; off, a crossing box wholly inside a face, meeting none of its edges, doesn't take the
-form, as Revit's doesn't, and a click selects by an edge alone: a form is boxed and clicked by its outline.
+form, as Revit's doesn't, and a click selects by an edge alone: a form is boxed and clicked by the edges the view draws it with.
 A drag from an element moves the selection (FE-7, below), and with Ctrl copies it (FE-4); so does a drag from the face of one
 selected while a face selects, which draws no box. With several selected, Properties say how
 many (Multi-Select (N)) and show none of their rows, the contextual tab is Modify | Multi-Select, each is drawn selected (in the views,
@@ -784,9 +785,10 @@ of the document's history, and nothing reaches the project.
 - **Select Elements by Face** (BF; the toggle left of the status bar's funnel on the tab of a family that isn't adaptive,
   lit while on and crossed out while off; the window's setting, `select_by_face` in `settings.json`, on to begin with since a
   click has always taken a form by its face, where Revit begins with it off): on, a click on a form's or a nested instance's
-  face selects it, and a crossing box takes one by its faces as by its outline, so one drawn wholly inside a face takes what
-  the face is of (`views::face_in_box`, `geom::SelectBox::touches`); off, each is taken by an edge of its outline alone
-  (`views::form_edge_at`, `nested_edge_at`), by a click and by a box. It is of the plans and elevations: greyed, and BF
+  face selects it, and a crossing box takes one by its faces as by its edges, so one drawn wholly inside a face takes what
+  the face is of (`views::face_in_box`, `geom::SelectBox::touches`); off, each is taken by an edge the view draws it with alone
+  (`views::form_edge_at`, `nested_edge_at`, over `outline_edges`: an L's inner corner, never its hull's chord), by a click
+  and by a box. It is of the plans and elevations: greyed, and BF
   nothing, in {3D}, which takes a form by its face either way as the project's 3D view does, and while a form is sketched.
 
 Revit's Select Pinned Elements (PE) waits for Pin (FE-17). Tests: `tests/family_selection.rs`; the core's in `family/select.rs`,

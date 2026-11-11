@@ -17,8 +17,8 @@
 //!   symbols alone in a plan); where it shows none, the selection stays.
 //! - **Select Elements by Face** (BF; the status bar's toggle on a family's tab, a setting the window keeps): on, a click
 //!   on a form's or a nested instance's face selects it and a crossing box drawn inside one takes it; off, each is taken
-//!   by an edge of its outline alone (`views.rs`, `select_box::Scene`). Either way a box may begin inside the face of what
-//!   isn't selected. It is of the plans and elevations: greyed in {3D}, which takes a form by its face either way as the
+//!   by an edge the view draws it with alone, an L's inner corner and never its hull's chord (`views.rs`,
+//!   `select_box::Scene`). Either way a box may begin inside the face of what isn't selected. It is of the plans and elevations: greyed in {3D}, which takes a form by its face either way as the
 //!   project's 3D view does, and while a form is sketched.
 //!
 //! None of it is a step of the document's history or reaches the project: the selection is the session's.
