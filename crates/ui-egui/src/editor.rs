@@ -15,6 +15,7 @@ mod nested;
 pub(crate) mod options;
 mod pivot;
 pub(crate) mod select_box;
+pub(crate) mod shape_handles;
 pub(crate) mod sketch;
 pub(crate) mod tabs;
 mod temp_hide;
