@@ -15,8 +15,10 @@ use crate::ids::{Guid, Id};
 use crate::model::{Lock, TOL};
 use crate::view3d::{dot, sub};
 
+mod copying;
 mod moving;
 mod pivot;
+pub use copying::{Copies, CopyRefused, Copying};
 pub use moving::{MoveRefused, Moving, Stays};
 pub use pivot::{MAX_SWING, Pivot, PivotAt, PivotFrom, PivotMark, PivotPoint, Pivoted, Rotation, pivot_marks, pivot_targets};
 

@@ -12,19 +12,19 @@ use bimcraft_core::family::views::{Side, Which};
 use bimcraft_core::family::{Expr, Family};
 use bimcraft_core::ids::Guid;
 
-const A: &str = "fe700000-0000-4000-8000-000000000001";
-const EDGE: &str = "fe700000-0000-4000-8000-000000000002";
-const LINE: &str = "fe700000-0000-4000-8000-000000000003";
-const DIM: &str = "fe700000-0000-4000-8000-000000000004";
-const A_LINE: &str = "fe700000-0000-4000-8000-0000000000a";
-const CENTER_LR: &str = "9e3c0a10-1f0b-4d8c-8a5e-0000000000a3";
+pub(super) const A: &str = "fe700000-0000-4000-8000-000000000001";
+pub(super) const EDGE: &str = "fe700000-0000-4000-8000-000000000002";
+pub(super) const LINE: &str = "fe700000-0000-4000-8000-000000000003";
+pub(super) const DIM: &str = "fe700000-0000-4000-8000-000000000004";
+pub(super) const A_LINE: &str = "fe700000-0000-4000-8000-0000000000a";
+pub(super) const CENTER_LR: &str = "9e3c0a10-1f0b-4d8c-8a5e-0000000000a3";
 
-fn g(s: &str) -> Guid {
+pub(super) fn g(s: &str) -> Guid {
     Guid::parse(s).expect("a GUID")
 }
 
 /// A square's sketch from (x0, y0) to (x1, y1), its lines' GUIDs `<prefix>0` to `3` (south, east, north, west) when given.
-fn square(x0: i32, y0: i32, x1: i32, y1: i32, prefix: Option<&str>) -> String {
+pub(super) fn square(x0: i32, y0: i32, x1: i32, y1: i32, prefix: Option<&str>) -> String {
     let pts = [(x0, y0), (x1, y0), (x1, y1), (x0, y1)];
     let lines: Vec<String> = (0..4)
         .map(|i| {
@@ -38,7 +38,7 @@ fn square(x0: i32, y0: i32, x1: i32, y1: i32, prefix: Option<&str>) -> String {
 
 /// Box A (100 to 500 square, 300 high) and box B west of it (-1000 to -600), a plane Edge at x 1000, a reference line north,
 /// a symbolic line south and a dimension from Center (Left/Right) to Edge; `dims`, more dimensions (JSON after it).
-fn family_with(dims: &str) -> String {
+pub(super) fn family_with(dims: &str) -> String {
     format!(
         r#"family {{"name": "Movers", "category": "generic", "parameters": [{{"name": "Len", "value": 100}}], "types": {{"T": {{}}}}, "ref_planes": [{{"guid": "{EDGE}", "name": "Edge", "start": [1000, -1500, 0], "end": [1000, 1500, 0], "up": [0, 0, 1]}}], "ref_lines": [{{"guid": "{LINE}", "start": [-200, 1200, 0], "end": [200, 1200, 0]}}], "symbols": [{{"line": [[-200, -800], [200, -800]]}}], "forms": [{{"guid": "{A}", "sketch": {}, "from": 0, "to": 300}}, {{"sketch": {}, "from": 0, "to": 300}}], "dimensions": [{{"guid": "{DIM}", "refs": [{{"plane": "{CENTER_LR}"}}, {{"plane": "{EDGE}"}}], "view": "plan", "at": [500, -1200, 0]}}{dims}]}}"#,
         square(100, 100, 500, 500, Some(A_LINE)),
@@ -46,31 +46,31 @@ fn family_with(dims: &str) -> String {
     )
 }
 
-fn plan_of(script: &str) -> Harness<'static, BimApp> {
+pub(super) fn plan_of(script: &str) -> Harness<'static, BimApp> {
     let (mut h, _) = open(script, "Movers");
     view(&mut h, Some(Which::Plan));
     h
 }
 
-fn plan() -> Harness<'static, BimApp> {
+pub(super) fn plan() -> Harness<'static, BimApp> {
     plan_of(&family_with(""))
 }
 
-fn ed<'a>(h: &'a mut Harness<'_, BimApp>) -> &'a mut crate::editor::FamilyEditor {
+pub(super) fn ed<'a>(h: &'a mut Harness<'_, BimApp>) -> &'a mut crate::editor::FamilyEditor {
     h.state_mut().active_family_mut().expect("a family open")
 }
 
-fn pick(h: &mut Harness<BimApp>, items: &[Picked]) {
+pub(super) fn pick(h: &mut Harness<BimApp>, items: &[Picked]) {
     ed(h).selection.apply(items, How::Replace);
     h.run();
 }
 
-fn family(h: &Harness<BimApp>) -> Family {
+pub(super) fn family(h: &Harness<BimApp>) -> Family {
     editor(h).draft_family().unwrap()
 }
 
 /// Form `i`'s sketch's points as numbers (a formula infinite).
-fn points(h: &Harness<BimApp>, i: usize) -> Vec<[f64; 2]> {
+pub(super) fn points(h: &Harness<BimApp>, i: usize) -> Vec<[f64; 2]> {
     let v = |e: &Expr| match e {
         Expr::Number(x) => *x,
         _ => f64::INFINITY,
@@ -86,7 +86,7 @@ fn points(h: &Harness<BimApp>, i: usize) -> Vec<[f64; 2]> {
 }
 
 /// How far each of `after` is from `before`, which must be the same for all (a rigid move): that shift.
-fn shift(before: &[[f64; 2]], after: &[[f64; 2]]) -> [f64; 2] {
+pub(super) fn shift(before: &[[f64; 2]], after: &[[f64; 2]]) -> [f64; 2] {
     let d = [after[0][0] - before[0][0], after[0][1] - before[0][1]];
     for (a, b) in before.iter().zip(after) {
         assert!((b[0] - a[0] - d[0]).abs() < 1e-6 && (b[1] - a[1] - d[1]).abs() < 1e-6, "not rigid: {before:?} {after:?}");
@@ -94,26 +94,26 @@ fn shift(before: &[[f64; 2]], after: &[[f64; 2]]) -> [f64; 2] {
     d
 }
 
-fn near(a: f64, b: f64) -> bool {
+pub(super) fn near(a: f64, b: f64) -> bool {
     (a - b).abs() < 15.0
 }
 
-fn status(h: &Harness<BimApp>) -> String {
+pub(super) fn status(h: &Harness<BimApp>) -> String {
     h.state().status.text.clone()
 }
 
-fn untouched(h: &Harness<BimApp>) -> bool {
+pub(super) fn untouched(h: &Harness<BimApp>) -> bool {
     editor(h).steps() == 0 && !editor(h).unsaved()
 }
 
 /// Screen points of family points `p` and `p + by`.
-fn ends(h: &Harness<BimApp>, p: [f64; 3], by: [f64; 3]) -> (egui::Pos2, egui::Pos2) {
+pub(super) fn ends(h: &Harness<BimApp>, p: [f64; 3], by: [f64; 3]) -> (egui::Pos2, egui::Pos2) {
     let v = &editor(h).views;
     (v.screen_of(p).expect("a view shown"), v.screen_of([p[0] + by[0], p[1] + by[1], p[2] + by[2]]).expect("a view shown"))
 }
 
 /// A press at family point `p`, `mods` held, moved by `by` (mm) in steps, the button still held: where the pointer is.
-fn press_and_move(h: &mut Harness<BimApp>, p: [f64; 3], by: [f64; 3], mods: Modifiers) -> egui::Pos2 {
+pub(super) fn press_and_move(h: &mut Harness<BimApp>, p: [f64; 3], by: [f64; 3], mods: Modifiers) -> egui::Pos2 {
     let (a, b) = ends(h, p, by);
     h.event(Event::ModifiersChanged(mods));
     h.hover_at(a);

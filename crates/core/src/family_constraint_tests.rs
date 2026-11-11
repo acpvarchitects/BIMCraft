@@ -442,3 +442,47 @@ fn a_reference_line_drawn_on_a_plane_a_drag_or_a_move_moves_goes_with_it() {
     let edits = free.move_by(&v, &Moving { planes: vec![g(WALL)], ..Moving::default() }, [0.0, 200.0, 0.0]).unwrap();
     assert_eq!(line_y(&edits), Some((2000.0, 2000.0)), "{edits:?}");
 }
+
+#[test]
+fn a_copy_gives_new_guids_and_takes_the_constraints_among_what_it_copies() {
+    use crate::family::constraints::{CopyRefused, Copying, DimRef, Moving};
+    let s = boxed();
+    let f = &s.model.families["Box"];
+    let bar = f.forms.iter().position(|x| x.guid == g(BAR)).unwrap();
+    // The bar alone: a new GUID for it and each of its lines, its numbers as they are; its locks to Left and Right dropped.
+    let c = f.copies(&Copying { forms: vec![bar], ..Copying::default() }).unwrap();
+    let copy = &c.forms[0];
+    assert_ne!(copy.guid, g(BAR));
+    assert_eq!(c.guids[&g(BAR)], copy.guid);
+    assert_eq!((copy.from.clone(), copy.to.clone(), copy.host), (f.forms[bar].from.clone(), f.forms[bar].to.clone(), f.forms[bar].host));
+    for (a, b) in f.forms[bar].all_lines().zip(copy.all_lines()) {
+        assert_eq!(a.curve, b.curve);
+        assert!(a.guid != b.guid && !b.guid.is_nil() && b.id == 0);
+    }
+    assert!(c.dimensions.is_empty(), "{:?}", c.dimensions);
+    // The bar, Left and Right: both Align locks and Width's label come along, naming the copies; EQ, which measures
+    // Center (Left/Right), doesn't.
+    let c = f.copies(&Copying { forms: vec![bar], planes: vec![g(LEFT), g(RIGHT)], ..Copying::default() }).unwrap();
+    assert_eq!(c.planes.len(), 2);
+    assert!(c.planes.iter().all(|p| p.name.is_empty() && p.guid != g(LEFT) && p.guid != g(RIGHT)), "a name is one plane's");
+    assert_eq!(c.dimensions.len(), 3, "{:?}", c.dimensions);
+    let width = c.dimensions.iter().find(|d| d.label.is_some()).unwrap();
+    assert_eq!(width.label.as_deref(), Some("Width"));
+    assert_eq!(width.refs, vec![DimRef::Plane(c.guids[&g(LEFT)]), DimRef::Plane(c.guids[&g(RIGHT)])]);
+    let locks: Vec<_> = c.dimensions.iter().filter(|d| d.alignment).collect();
+    assert_eq!(locks.len(), 2);
+    assert!(locks.iter().all(|d| d.refs.iter().all(|r| !r.names(g(BAR)) && !r.names(g(LEFT)) && !r.names(g(RIGHT)))), "{locks:?}");
+    assert!(c.selected.is_empty(), "none was selected");
+    // Added and moved together, the family solves: the copy's Width holds the copies' planes.
+    let mut with = f.clone();
+    let n = with.forms.len();
+    with.planes.extend(c.planes.iter().cloned());
+    with.forms.extend(c.forms.iter().cloned());
+    with.dimensions.extend(c.dimensions.iter().cloned());
+    let v = with.values("Small", &BTreeMap::new()).unwrap();
+    let moving = Moving { forms: vec![n], planes: c.planes.iter().map(|p| p.guid).collect(), ..Moving::default() };
+    with.move_by(&v, &moving, [0.0, 2000.0, 0.0]).unwrap();
+    // A datum isn't copied.
+    let e = f.copies(&Copying { planes: vec![CENTER_LEFT_RIGHT], ..Copying::default() }).unwrap_err();
+    assert!(matches!(e, CopyRefused::Datum(_)), "{e:?}");
+}

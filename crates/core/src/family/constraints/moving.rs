@@ -95,7 +95,7 @@ impl Moving {
 }
 
 /// A plane's name as a refusal says it.
-fn plane_said(f: &Family, g: Guid) -> String {
+pub(super) fn plane_said(f: &Family, g: Guid) -> String {
     let named = f.planes.iter().position(|p| p.guid == g).map(|i| (i, f.planes[i].name.clone()));
     match named {
         Some((_, n)) if !n.is_empty() => n,

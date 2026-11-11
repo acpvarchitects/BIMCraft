@@ -731,7 +731,7 @@ and a form hidden for now aren't. Ctrl adds what the box takes, Shift takes it a
 with Ctrl or Shift adds or takes away that one, and a click on nothing with either keeps the selection. The middle button still
 pans, and a drag from an element, or with a tool in hand, is the element's or the tool's. A crossing box drawn wholly inside a
 form's face, meeting none of its edges, doesn't take the form, as Revit's doesn't: a form is boxed by its outline. A drag from an
-element moves the selection (FE-7, below). With several selected, Properties say how
+element moves the selection (FE-7, below), and with Ctrl copies it (FE-4). With several selected, Properties say how
 many (Multi-Select (N)) and show none of their rows, the contextual tab is Modify | Multi-Select, each is drawn selected (in the views,
 in {3D}, and in the Project Browser's lists), Temporary Hide/Isolate takes every form and plane selected, and Delete (the key, DE, the
 ribbon's) takes them all away as one step of the document's history: a dimension, a nested instance, a form, a symbol, a connector,
@@ -771,6 +771,31 @@ its box. Over something selected the status bar says a drag moves it. Shift on a
 it nor draws a box, as before; on one selected it moves the selection. Known, as Align and a plane's drag have it: an arc a
 constraint turns while what it follows moves is given its turn as a number, its formula lost. Shift (Ortho, FE-2) isn't wired yet: the delta is worked
 out in one place (`drag_move::delta`) for it. Tests: `tests/family_drag_move.rs`, `family_constraint_tests.rs`.
+
+FE-4 (`editor/drag_move.rs`, `family/constraints/copying.rs`): Ctrl held as such a drag is let go copies the selection there
+instead, as Revit's Ctrl+drag does: the copies follow the pointer, selected in place of the originals while Ctrl is held (the
+originals selected and moving while it isn't, so the preview says which), and once the button is up they are added as one step
+of the history and stay the selection; the originals stay where they were. Ctrl may be pressed or let go during the drag: Ctrl as
+the button comes up decides (`settle_drag`). Ctrl on an element not selected adds it first, as FE-7 has it, and a Ctrl-click
+without a drag still adds or takes away (FE-1); with Ctrl, a lone plane of the family's own is copied by the same drag, not F4's
+(let go of Ctrl mid-drag, it is moved through `move_by`, not F4's drag). `Family::copies` (`Copying`, `Copies`) makes the copies
+where the originals are: a form with a new GUID and a new one for every line of its sketch, top and profiles (its formulas and
+what is typed for it as they are, `FormText::copied`), a reference plane or line (a plane's name and a named reference, Left
+through Top, being one plane's, the copy has neither), a symbol, a connector and a nested instance (the same type, a new GUID),
+ids left to be given; what a copy is drawn on is the copy of it where that is copied too. A dimension is copied where every
+reference of it is, naming the copies: one selected (its copy selected too), or one that holds a constraint among what is copied
+(a label, which keeps its parameter, so the copy is driven as the original is; a lock; EQ; an Align lock), while one that
+reaches past the copies isn't, so a lock to what isn't copied is dropped, as in Revit. Parameters aren't copied. A datum or a
+plane that defines the origin refuses the copy ("Center (Left/Right) is a datum: it isn't copied."). The copies are then put
+where they go by FE-7's move of them (`move_picked`), so its rules hold: edge-on, an extrusion's or a blend's Start and End
+move, a revolve, a sweep and a reference line refuse; a number that would change and is a formula refuses (a copy across a box
+whose x is `W`'s; north it keeps `-W` and moves its y), the refusal naming the original, not its copy (`renamed`); every type
+must still solve and build and the family pass `Family::check` (one copy past `MAX_SYMBOLS` is refused). Refused, the draft and
+the selection are as they were, with no step and no Unsaved mark. Escape, Undo, Redo and another view give it up as they give a
+move up; let go where it began, it makes no copies and leaves no step, saying nothing (Revit would stack them). Only what the
+view shows is copied. Over something selected with Ctrl held, the status bar says a drag copies it, and while copying, that
+letting Ctrl go first moves instead. The drag goes through `drag_move::delta` too, so Shift (Ortho) will apply to both. Tests:
+`tests/family_drag_copy.rs`, `family_constraint_tests.rs`.
 
 The Work Plane dialog (T12, `editor/work_plane.rs`), as Revit's: Current Work Plane names the plane as `Planes::listed` does, with Show
 (the ribbon's toggle) and Dissociate, greyed (a family's work plane is always one of its planes or lines, which forms are drawn on).
@@ -1354,7 +1379,8 @@ planes, components hosted on them or on faces (Place on Face), and where a compo
 - `family/sketch.rs`: forms' sketches. `family/handles.rs`: shape handles on a profile's edges (FE-5).
 - `family/forms.rs`: Blend, Sweep and Swept Blend: their kinds, paths, vertex mapping and triangles.
 - `family/constraints.rs`: its dimensions, labels, locks and EQ, solved as a type flexes; `family/constraints/pivot.rs`,
-  lines and planes that turn about a pivot; `family/constraints/moving.rs`, what a drag moves together through them (FE-7).
+  lines and planes that turn about a pivot; `family/constraints/moving.rs`, what a drag moves together through them (FE-7); `family/constraints/copying.rs`, the copies a
+  Ctrl+drag makes (FE-4).
 - `family/nested.rs`: nested families and their instances, built into the host.
 - `family/visibility.rs`: Visibility Settings: which views and detail levels draw a form, a symbol or a nested instance.
 
@@ -1375,4 +1401,4 @@ In `crates/ui-egui`, the Family Editor:
   overlay drawn through a view's projection alone).
 - `editor/lit3d.rs`: {3D} staged for the project's 3D view (`FamilyScene`), its selection and hover highlight. `editor/visibility.rs`: Family Element Visibility Settings.
 - `editor/select_box.rs`: the selection, one set (FE-1), and the box a plan or an elevation selects with, window or crossing.
-  `editor/drag_move.rs`: the selection moved by a drag (FE-7).
+  `editor/drag_move.rs`: the selection moved by a drag (FE-7), or copied with Ctrl (FE-4).
