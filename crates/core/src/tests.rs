@@ -2997,6 +2997,9 @@ fn hostile_params_never_panic_or_break_the_model() {
     let exports = temp("sweep-exports");
     targeted.extend(crate::export_tests::sweep_payloads(&exports));
     let hostile: Vec<Value> = hostile.into_iter().chain(finishes).collect();
+    // A wall and a floor taken apart into parts, last so that no id moves, and the payloads that name them.
+    let (of_parts, parts_targeted) = crate::parts_tests::sweep_payloads(&mut base);
+    let hostile: Vec<Value> = hostile.into_iter().chain(of_parts).collect();
     // Each command against each value, on a copy of the same session; the commands shared out between the cores.
     let cmds: Vec<_> = commands().iter().filter(|c| !matches!(c.id, "open" | "save")).collect();
     let threads = std::thread::available_parallelism().map_or(4, |n| n.get());
@@ -3031,7 +3034,7 @@ fn hostile_params_never_panic_or_break_the_model() {
             });
         }
     });
-    for (cmd, p) in &targeted {
+    for (cmd, p) in targeted.iter().chain(&parts_targeted) {
         let mut s = base.clone();
         let made = s.execute(cmd, p).is_ok();
         assert_eq!(s.model.check(), Ok(()), "{cmd} {p} left a broken model");
@@ -3106,8 +3109,11 @@ fn hostile_params_never_panic_or_break_the_model() {
 }
 
 /// Draws every level's plan and ceiling plan, and every section and elevation, at the smallest size, which builds all that
-/// they hold.
+/// they hold; and works out what every part is of its host as the command left it: its solid, its area and its volume.
 fn draw_plans(m: &Model) {
+    for (id, _) in m.elements.iter().filter(|(_, e)| matches!(e, crate::model::Element::Part(_))) {
+        let _ = m.part_state(*id);
+    }
     for (level, _) in m.levels() {
         for d in [crate::render::plan(m, level, 16, 16), crate::render::ceiling_plan(m, level, 16, 16)] {
             let _ = crate::render::png(&d);

@@ -61,6 +61,20 @@ impl Model {
         Some((cat, name, self.type_layers(cat, name)))
     }
 
+    /// The parts divided from part `id`, in order of id: it is the sum of them, so where they are counted or exported
+    /// it is not.
+    pub fn part_divisions(&self, id: impl Key) -> Vec<Id> {
+        let Some(guid) = self.elements.guid(id) else { return Vec::new() };
+        let mut ids: Vec<Id> = self
+            .lookup()
+            .referrers(&guid)
+            .filter(|other| matches!(self.elements.get(*other), Some(Element::Part(p)) if p.parent == Some(guid)))
+            .collect();
+        ids.sort_unstable();
+        ids.dedup();
+        ids
+    }
+
     /// The layer part `p` is of, in its host's type as it is now: its place there, counting from zero, and the layer. None
     /// for a part of all of its host. An error, which says what to fix, when the recipe no longer applies: the host's type
     /// has no layer of that GUID (the type was swapped, or lost the layer), or the host is of a kind with no layers.
@@ -68,20 +82,24 @@ impl Model {
         let host = self.elements.get(p.host).ok_or("the element it is a part of is gone: delete it")?;
         let Source::Layer(guid) = p.source else { return Ok(None) };
         let who = format!("{} {}", host.category(), self.shown(p.host));
-        let again = format!("delete it and make the {}'s parts again with `create_parts`", host.category());
         let Some((cat, name, layers)) = self.host_layers(host) else {
-            return Err(format!("it is a layer, and {who} has no layers: {again}"));
+            return Err(format!(
+                "it is a layer, and {who} has no layers: make it all of the {} (`part` with `layer: null`), or delete it",
+                host.category()
+            ));
         };
+        // What to do keeps what was said of it: it is told which layer it is now.
+        let say = format!("say which layer of that type it is now (`part` with `layer`, null for all of the {})", host.category());
         match layers.iter().enumerate().find(|(_, l)| l.guid == guid) {
             Some(found) => Ok(Some(found)),
             // Where the layer is now, if the project still has it: in the type the host was of.
             None => match self.library.parts().find(|(_, part)| part.guid == guid) {
                 Some((_, part)) => Err(format!(
-                    "it is {}, and {who} is of {cat} type `{name}` now, which has no such layer: {again}, or give the {} its type back",
+                    "it is {}, and {who} is of {cat} type `{name}` now, which has no such layer: {say}, give the {} its type back, or delete it",
                     part.name(),
                     host.category()
                 )),
-                None => Err(format!("the layer it was made of is gone from {cat} type `{name}`, which {who} is of: {again}")),
+                None => Err(format!("the layer it was made of is gone from {cat} type `{name}`, which {who} is of: {say}, or delete it")),
             },
         }
     }
@@ -170,8 +188,9 @@ impl Model {
         })
     }
 
-    /// Why part `p`'s recipe no longer applies to its host, and what to do about it; none while it applies. The part of
-    /// a part in conflict is in conflict with it.
+    /// Why part `p`'s recipe no longer applies to its host, and what to do about it; none while it applies. A part
+    /// divided from one in conflict is in conflict with it, and so is a part of all of an element that has parts of its
+    /// layers too: the two would be counted twice.
     pub fn part_conflict(&self, p: &BuildingPart) -> Option<String> {
         self.part_shape(p).err()
     }
@@ -227,6 +246,26 @@ impl Model {
         }
         let host = self.elements.get(p.host).ok_or("the element it is a part of is gone: delete it")?;
         let id = self.elements.id(p.host).unwrap_or_default();
+        // All of an element that has parts of its layers too would be counted twice with them.
+        if p.parent.is_none() && p.source.is_whole() {
+            let layered: Vec<String> = self
+                .parts_of(id)
+                .into_iter()
+                .filter(|other| {
+                    matches!(self.elements.get(*other), Some(Element::Part(o)) if o.parent.is_none()
+                        && self.part_layer(o).is_ok_and(|l| l.is_some_and(|(_, l)| l.thickness > 0.0)))
+                })
+                .map(|other| other.to_string())
+                .collect();
+            if !layered.is_empty() {
+                return Err(format!(
+                    "it is all of {} {id}, which has parts of its layers too ({}), and would be counted twice with them: delete it, \
+                     or them",
+                    host.category(),
+                    layered.join(", ")
+                ));
+            }
+        }
         let k = layer.map(|(k, _)| k);
         Ok(match host {
             Element::Wall(w) => {
@@ -337,8 +376,9 @@ impl Model {
 
 /// What a listing shows of part `id`, `p`, beside its own fields (`element_json`): the level it stands on, its host's
 /// category and type, its layer's place in its host's type (from 1, as a type's layers are numbered) and what the layer
-/// does, what it is made of, how thick it is, its net area and volume, what kind of part it is, the heritage set's values
-/// under the names they are shown by ([`Heritage::NAMES`]), and its conflict, when it is in one. These are what a part's
+/// does, what it is made of, how thick it is, its net area and volume (or, where parts were divided from it, those
+/// `divisions`, which hold them between them), what kind of part it is, the heritage set's values under the names they
+/// are shown by ([`Heritage::NAMES`]), and its conflict, when it is in one. These are what a part's
 /// values are read from by name (`schedule::fields` of `part`): by a view filter's rules, a schedule's fields, Filter on
 /// a selection and a tag.
 pub(crate) fn json(m: &Model, id: Id, p: &BuildingPart, extra: &mut Map<String, Value>) {
@@ -371,11 +411,17 @@ pub(crate) fn json(m: &Model, id: Id, p: &BuildingPart, extra: &mut Map<String, 
     if let Some(t) = state.thickness {
         extra.insert("thickness".into(), json!(t));
     }
-    // To the square centimetre and the cubic centimetre: a patch of plaster is small.
-    if let Some(area) = state.net_area {
-        extra.insert("area_m2".into(), json!((area / 1e2).round() / 1e4));
+    // What was divided from it holds what it measures: it is their sum, and is counted in them.
+    let divisions = m.part_divisions(id);
+    if divisions.is_empty() {
+        // To the square centimetre and the cubic centimetre: a patch of plaster is small.
+        if let Some(area) = state.net_area {
+            extra.insert("area_m2".into(), json!((area / 1e2).round() / 1e4));
+        }
+        extra.insert("volume_m3".into(), json!((state.net_volume / 1e3).round() / 1e6));
+    } else {
+        extra.insert("divisions".into(), json!(divisions));
     }
-    extra.insert("volume_m3".into(), json!((state.net_volume / 1e3).round() / 1e6));
     let h = &p.heritage;
     let [su, period, decay, severity, intervention] = Heritage::NAMES;
     for (name, text) in [(su, &h.su_code), (period, &h.historical_period), (intervention, &h.intervention_type)] {
