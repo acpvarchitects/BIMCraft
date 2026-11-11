@@ -21,8 +21,8 @@ use crate::model::{Element, Elements, Guid, Id, MAX_TEXT, Model};
 pub mod solid;
 mod state;
 
-pub use state::PartState;
 pub(crate) use state::json;
+pub use state::{PartState, exported};
 
 /// The categories of element that may have parts.
 pub const HOSTS: [&str; 5] = ["wall", "floor", "roof", "ceiling", "component"];

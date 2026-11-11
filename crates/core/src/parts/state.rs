@@ -28,6 +28,37 @@ pub struct PartState {
     pub conflict: Option<String>,
 }
 
+/// The parts an export writes, each with its solid: those not excluded whose recipe applies, and that were divided
+/// from none an export leaves out.
+pub fn exported(m: &Model) -> std::collections::BTreeMap<Id, Vec<[P3; 3]>> {
+    let mut out = std::collections::BTreeMap::new();
+    for (&id, e) in &m.elements {
+        if let Element::Part(p) = e
+            && !p.excluded
+            && let Ok(tris) = m.part_solid(p)
+        {
+            out.insert(id, tris);
+        }
+    }
+    // What was divided from a part left out is left out with it, down to the last division.
+    loop {
+        let orphans: Vec<Id> = out
+            .keys()
+            .copied()
+            .filter(|id| match m.elements.get(*id) {
+                Some(Element::Part(p)) => p.parent.is_some_and(|g| !m.elements.id(g).is_some_and(|parent| out.contains_key(&parent))),
+                _ => false,
+            })
+            .collect();
+        if orphans.is_empty() {
+            return out;
+        }
+        for id in orphans {
+            out.remove(&id);
+        }
+    }
+}
+
 /// A part's solid before it is triangles: prisms side by side, or the triangles a family's forms are.
 enum Shape {
     Prisms(Vec<Prism>, Facing),

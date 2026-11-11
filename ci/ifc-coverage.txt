@@ -70,3 +70,14 @@ beam {"points": [[0,9500],[6000,9500]], "offset": 3000, "type": "B 150x600", "ju
 beam {"points": [[0,10000],[6000,10000]], "offset": 3000, "type": "B 150x600"}
 beam {"points": [[0,10500],[6000,10500]], "offset": 3000, "end_offset": 3500, "type": "Steel Tube 150", "justify": "centre"}
 beam {"points": [[0,11000],[6000,11000]], "offset": 3000, "type": "B 120x300"}
+# Parts of elements (IfcBuildingElementPart, each a part of its host by IfcRelAggregates, the host with no body of its own): a wall of
+# four layers with a window (100352) and a floor of three with an opening (100354) taken apart into their layers' parts (100355 to
+# 100358 the wall's from its exterior in, 100359 to 100361 the floor's from its top down): what the survey says of one, a user-defined
+# kind, a material of its own, and one left out; last, so the ids above stay put.
+wall {"points": [[0,-12000],[6000,-12000]], "type": "Exterior - 300mm"}
+window {"at": [3000,-12000]}
+floor {"boundary": [[80000,0],[86000,0],[86000,4000],[80000,4000]], "type": "Terrace", "openings": [[[81000,1000],[82000,1000],[82000,2000],[81000,2000]]]}
+create_parts {"ids": [100352, 100354]}
+part {"id": 100355, "predefined_type": "userdefined", "object_type": "USR", "su_code": "USR 3", "historical_period": "18th century", "decay_pathology": "efflorescence", "decay_severity": 4, "intervention_type": "Cleaning"}
+part {"id": 100357, "material": "Concrete", "decay_pathology": {"custom": "Lacuna"}}
+part {"id": 100361, "excluded": true}
