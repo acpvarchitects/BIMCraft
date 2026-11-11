@@ -5,7 +5,7 @@
 use super::family_views::{click_family, editor, open, view};
 use super::*;
 use bimcraft_core::family::views::Which;
-use bimcraft_core::family::{DimKind, DimRef, FamilyDimension};
+use bimcraft_core::family::{DimKind, DimRef, Expr, FamilyDimension};
 use bimcraft_core::ids::Guid;
 use std::collections::BTreeMap;
 
@@ -454,4 +454,52 @@ fn family_sketch_dimensions_screenshots() {
     h.hover_at(egui::pos2(1500.0, 900.0));
     h.run();
     h.render().unwrap().save(std::path::Path::new(&folder).join("fe12-sketch-profile.png")).unwrap();
+}
+
+const BOX: &str = "66666666-6666-4666-8666-000000000001";
+const BOX_BOTTOM: &str = "66666666-6666-4666-8666-000000000002";
+const BOX_TOP: &str = "66666666-6666-4666-8666-000000000003";
+const BOX_SPAN: &str = "66666666-6666-4666-8666-000000000004";
+
+/// A box whose east corners are formulas of `Width`, its bottom and top 300 apart; `Depth` 300 (T: 500); `dims`, dimensions.
+fn formula_box(dims: &str) -> String {
+    format!(
+        r#"family {{"name": "Fx", "category": "generic", "parameters": [{{"name": "Width", "value": 400}}, {{"name": "Depth", "value": 300}}], "types": {{"T": {{"Depth": 500}}}}, "forms": [{{"guid": "{BOX}", "sketch": [{{"guid": "{BOX_BOTTOM}", "start": [0, 0], "end": ["Width", 0]}}, {{"start": ["Width", 0], "end": ["Width", 300]}}, {{"guid": "{BOX_TOP}", "start": ["Width", 300], "end": [0, 300]}}, {{"start": [0, 300], "end": [0, 0]}}], "from": 0, "to": 100}}], "dimensions": [{dims}]}}"#
+    )
+}
+
+#[test]
+fn a_label_set_while_sketching_keeps_the_lines_formulas_as_one_set_after_finish() {
+    // Labelled in sketch mode, then finished.
+    let (mut h, _) = open(&formula_box(""), "Fx");
+    view(&mut h, Some(Which::Plan));
+    ed_mut(&mut h).edit_form_sketch(0).unwrap();
+    h.run();
+    shortcut(&mut h, "DI");
+    click_family(&mut h, [200.0, 0.0, 0.0]);
+    click_family(&mut h, [200.0, 300.0, 0.0]);
+    click_family(&mut h, [-200.0, 150.0, 0.0]);
+    key(&mut h, Key::Escape);
+    let d = made(&h).last().cloned().expect("a dimension");
+    assert_eq!(d.refs, vec![DimRef::Sketch(g(BOX), g(BOX_BOTTOM)), DimRef::Sketch(g(BOX), g(BOX_TOP))], "{}", status(&h));
+    ed_mut(&mut h).set_label(d.guid, Some("Depth".into())).unwrap();
+    let (b, t) = (line(&h, BOX_BOTTOM), line(&h, BOX_TOP));
+    assert!(((t.0.1 - b.0.1) - 500.0).abs() < 1e-6, "shown at Depth at once: {b:?} {t:?}");
+    press(&mut h, "Finish Edit Mode");
+    assert!(!editor(&h).sketching(), "{}", status(&h));
+    let in_sketch = editor(&h).draft_family().unwrap().forms[0].sketch.clone();
+    assert!(
+        in_sketch.iter().filter(|l| l.exprs().contains(&&Expr::Formula("Width".into()))).count() >= 2,
+        "the lines still follow Width: {in_sketch:?}"
+    );
+    // Labelled outside sketch mode: the same lines.
+    let span = format!(
+        r#"{{"guid": "{BOX_SPAN}", "refs": [{{"form": "{BOX}", "line": "{BOX_BOTTOM}"}}, {{"form": "{BOX}", "line": "{BOX_TOP}"}}], "at": [-200, 150, 0]}}"#
+    );
+    let (mut h2, _) = open(&formula_box(&span), "Fx");
+    view(&mut h2, Some(Which::Plan));
+    ed_mut(&mut h2).set_label(g(BOX_SPAN), Some("Depth".into())).unwrap();
+    let outside = editor(&h2).draft_family().unwrap().forms[0].sketch.clone();
+    let strip = |ls: &[bimcraft_core::family::sketch::FormLine]| ls.iter().map(|l| l.curve.clone()).collect::<Vec<_>>();
+    assert_eq!(strip(&in_sketch), strip(&outside));
 }

@@ -42,7 +42,7 @@ impl SketchDims {
 }
 
 /// Whether curves `a` and `b` are the same line, to a millionth of a millimetre.
-fn same(a: &Curve, b: &Curve) -> bool {
+pub(super) fn same(a: &Curve, b: &Curve) -> bool {
     let (p, q) = (a.handles(), b.handles());
     matches!(a, Curve::Circle { .. }) == matches!(b, Curve::Circle { .. })
         && p.len() == q.len()
@@ -89,8 +89,13 @@ impl FamilyEditor {
     /// The family as Finish would make it now, unchecked: the draft with the form being sketched made of its lines as they
     /// are, the dimensions in effect and the parameters made while sketching.
     pub(crate) fn sketch_family(&self) -> Result<Family, String> {
-        let s = self.sketch.as_ref().ok_or_else(|| t("Nothing is being sketched.").to_string())?;
         let (index, form, _) = self.sketched_form()?;
+        self.family_with_form(index, form)
+    }
+
+    /// The draft with `form` at `index` (a new one last), the dimensions in effect and the parameters made while sketching.
+    pub(crate) fn family_with_form(&self, index: Option<usize>, form: Form) -> Result<Family, String> {
+        let s = self.sketch.as_ref().ok_or_else(|| t("Nothing is being sketched.").to_string())?;
         let mut f = self.family()?;
         for p in &s.params {
             f.parameters.push(p.parameter()?);
@@ -164,14 +169,24 @@ impl FamilyEditor {
             form.plane_lines().filter(|l| !l.guid.is_nil()).filter_map(|l| Some((l.guid, l.curve(&mut num).ok()?.curve))).collect();
         let Some(s) = self.sketch.as_mut() else { return };
         let mut any = false;
+        let mut driven = std::mem::take(&mut s.driven);
         for l in s.sketch.lines.iter_mut().chain(s.parts.iter_mut().flatten()) {
             if let Some((_, c)) = moved.iter().find(|(g, _)| *g == l.guid)
                 && !same(&l.curve, c)
             {
+                // Where it was drawn before the dimensions first moved it, kept for Finish.
+                match driven.iter_mut().find(|(g, _, to)| *g == l.guid && same(&l.curve, to)) {
+                    Some(entry) => entry.2 = c.clone(),
+                    None => {
+                        driven.retain(|(g, ..)| *g != l.guid);
+                        driven.push((l.guid, l.curve.clone(), c.clone()));
+                    }
+                }
                 l.curve = c.clone();
                 any = true;
             }
         }
+        s.driven = driven;
         if any {
             let picked = std::mem::take(&mut s.sketch.picked);
             s.sketch.changed();

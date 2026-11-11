@@ -123,6 +123,10 @@ pub(crate) struct FormSketch {
     pub(super) params: Vec<ParamText>,
     /// The dimension selected while sketching (its padlocks, its EQ and the Options Bar's Label and Value).
     pub(crate) selected_dim: Option<Guid>,
+    /// Lines the sketch's dimensions moved (`drive_sketch`): each line's GUID, where it was drawn before, and where they put
+    /// it. One still where they put it is the line as drawn to Finish (its formulas kept, as outside sketch mode a label
+    /// leaves the lines as drawn and the solve flexes them); one moved since is the line where it is.
+    pub(crate) driven: Vec<(Guid, Curve, Curve)>,
     /// Pick Lines' Lock, on the Options Bar (F10a): a line picked from a reference is locked to it, as Align's padlock locks.
     pub(crate) lock: bool,
     /// Trim/Extend to Corner (TR), on: the first line picked, where it was clicked (the part kept).
@@ -208,6 +212,16 @@ impl FormSketch {
     /// The Axis Line's ends.
     fn axis(&self) -> Option<[P2; 2]> {
         self.sketch.lines.iter().find(|l| is_axis(l)).map(|l| [l.start(), l.end()])
+    }
+
+    /// Line `l` as drawn: where it was before the sketch's dimensions moved it, while it is still where they put it (FE-12),
+    /// unless `kept` says it is to be taken where it is.
+    pub(crate) fn undriven(&self, l: &SketchLine, kept: &[Guid]) -> SketchLine {
+        let driven = self.driven.iter().find(|(g, _, to)| *g == l.guid && !l.guid.is_nil() && super::sketch_dims::same(&l.curve, to));
+        match driven.filter(|_| !kept.contains(&l.guid)) {
+            Some((_, before, _)) => SketchLine { curve: before.clone(), ..l.clone() },
+            None => l.clone(),
+        }
     }
 
     /// The Options Bar's settings, as the Draw panel's shapes take them.
@@ -670,6 +684,7 @@ impl FamilyEditor {
             changed: Vec::new(),
             params: Vec::new(),
             selected_dim: None,
+            driven: Vec::new(),
             lock: false,
             trim: None,
         }));
@@ -789,6 +804,43 @@ impl FamilyEditor {
     /// place (none, a new one), the form, and the form it was (a default one for a new form). A line kept from the form
     /// keeps its id, its GUID and, where it came back to where it was shown, its formulas.
     pub(crate) fn sketched_form(&self) -> Result<(Option<usize>, Form, Form), String> {
+        // A line the dimensions moved is written as it was drawn (its formulas kept) where the constraints, solved with it so,
+        // put it where it is; one they no longer do (a label taken off, a value typed) is written where it is.
+        let mut kept: Vec<Guid> = Vec::new();
+        let Some(s) = self.sketch.as_ref() else { return self.sketched_form_with(&kept) };
+        for _ in 0..4 {
+            let (index, form, before) = self.sketched_form_with(&kept)?;
+            let mut stale: Vec<Guid> = Vec::new();
+            if s.driven.iter().any(|(g, ..)| !kept.contains(g)) {
+                let f = self.family_with_form(index, form.clone())?;
+                let values = self.sketch_values(&f);
+                let flexed = f.flexed(&values).map(std::borrow::Cow::into_owned).unwrap_or_else(|_| f.clone());
+                let mut num = reader(&values);
+                let now = flexed.forms.iter().find(|x| x.guid == form.guid);
+                for (g, _, to) in s.driven.iter().filter(|(g, ..)| !kept.contains(g)) {
+                    let here = now.and_then(|x| x.plane_lines().find(|l| l.guid == *g)).and_then(|l| l.curve(&mut num).ok());
+                    let current = s
+                        .sketch
+                        .lines
+                        .iter()
+                        .chain(s.parts.iter().flatten())
+                        .any(|l| l.guid == *g && super::sketch_dims::same(&l.curve, to));
+                    if current && !here.is_some_and(|h| super::sketch_dims::same(&h.curve, to)) {
+                        stale.push(*g);
+                    }
+                }
+            }
+            if stale.is_empty() {
+                return Ok((index, form, before));
+            }
+            kept.extend(stale);
+        }
+        let all: Vec<Guid> = s.driven.iter().map(|(g, ..)| *g).collect();
+        self.sketched_form_with(&all)
+    }
+
+    /// [`FamilyEditor::sketched_form`], the lines `kept` taken where they are, the others the dimensions moved as drawn.
+    fn sketched_form_with(&self, kept: &[Guid]) -> Result<(Option<usize>, Form, Form), String> {
         let values = self.values();
         let s = self.sketch.as_ref().ok_or_else(|| t("Nothing is being sketched.").to_string())?;
         let before = match s.index.and_then(|i| self.forms.get(i)) {
@@ -798,9 +850,11 @@ impl FamilyEditor {
         let mut num = reader(&values);
         let material = s.material.trim().to_string();
         let mut form = if matches!(s.kind, FormKind::Extrusion | FormKind::Revolve) {
-            let mut lines = fs::lines_of(&s.boundary());
+            let boundary: Vec<SketchLine> = s.boundary().iter().map(|l| s.undriven(l, kept)).collect();
+            let mut lines = fs::lines_of(&boundary);
+            let axis = s.sketch.lines.iter().find(|l| is_axis(l)).map(|l| s.undriven(l, kept)).map(|l| [l.start(), l.end()]);
             if s.revolve
-                && let Some([a, b]) = s.axis()
+                && let Some([a, b]) = axis
             {
                 let n = |x: f64| Expr::Number(x);
                 let was = before.axis_line();
@@ -818,8 +872,10 @@ impl FamilyEditor {
             form
         } else {
             let kind = s.kind;
-            let drawn: Vec<Vec<FormLine>> =
-                [Part::Main, Part::Top, Part::Profile, Part::End].iter().map(|p| fs::lines_of(s.part_lines(*p))).collect();
+            let drawn: Vec<Vec<FormLine>> = [Part::Main, Part::Top, Part::Profile, Part::End]
+                .iter()
+                .map(|p| fs::lines_of(&s.part_lines(*p).iter().map(|l| s.undriven(l, kept)).collect::<Vec<_>>()))
+                .collect();
             let none = Swept::default();
             let was = before.sweep.as_ref().unwrap_or(&none);
             let mut keep = |old: &[FormLine], k: usize| fs::kept(old, &s.shown[k], drawn[k].clone(), &mut num);
