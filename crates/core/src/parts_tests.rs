@@ -797,6 +797,15 @@ fn a_roofs_a_ceilings_and_a_components_part_have_their_solids_too() {
     let (tris, area, v) = measured(&s.model, plaster);
     assert!(near(area, 7800.0 * 5800.0) && near(v, 7800.0 * 5800.0 * 15.0));
     assert!(near(extent(&tris).0[2], 2600.0) && near(extent(&tris).1[2], 2615.0));
+    // Measured on the face it shows, the underside, as a wall's interior plaster is on the wall's interior face; the
+    // laths above it, the structure, on their top.
+    let lath = put(&mut s, |m| BuildingPart::new(m.guid(ceiling), Source::Layer(layer(m, "ceiling", "Lath and Plaster", 0))));
+    let face = |m: &Model, id: Id| match m.elements.get(id) {
+        Some(Element::Part(p)) => m.part_facing(p).unwrap(),
+        _ => panic!("part {id} is gone"),
+    };
+    assert_eq!(face(&s.model, plaster), Some(solid::Facing::Along(vec![[0.0, 0.0, -1.0]])));
+    assert_eq!(face(&s.model, lath), Some(solid::Facing::Along(vec![[0.0, 0.0, 1.0]])));
     // A component is all of itself: its family's forms where it stands, a volume and no face to name.
     let fixture = put(&mut s, |m| BuildingPart::new(m.guid(wc), Source::Whole));
     let p = part(&s.model, fixture);
