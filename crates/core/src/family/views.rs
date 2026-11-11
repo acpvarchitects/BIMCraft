@@ -566,9 +566,10 @@ pub fn outline(family: &Family, values: &BTreeMap<String, Val>, st: &Staged, whi
 }
 
 /// The edges form `i` of `family` is seen with in view `which`, as segments in the view's millimetres: each edge of its solid
-/// between a face turned toward the eye and one that isn't (or none), so an outline with its notches and holes, and its real
-/// silhouette in an elevation, rather than the hull [`outline`] picks by. What a selected form is drawn with. Empty for a form
-/// that builds nothing.
+/// between a face turned toward the eye and one that isn't (or none), and each crease (more than [`CREASE`] degrees) between two
+/// faces turned toward it, as far as no face of the solid lies in front of it: an outline with its notches and holes, a Blend's
+/// top seen from above, and its real silhouette in an elevation, rather than the hull [`outline`] picks by. What a selected
+/// form is drawn with. Empty for a form that builds nothing.
 pub fn outline_edges(family: &Family, values: &BTreeMap<String, Val>, st: &Staged, which: Which, i: usize) -> Vec<(P2, P2)> {
     if i >= family.forms.len() {
         return Vec::new();
@@ -583,35 +584,85 @@ pub fn outline_edges(family: &Family, values: &BTreeMap<String, Val>, st: &Stage
         }
     };
     let key = |p: &P3| p.map(|x| (x * 1e4).round() as i64);
-    // Each edge, either way round, and whether the triangles along it face the eye.
+    // Each edge, either way round, and the unit normals of the triangles along it.
     type Ends = ([i64; 3], [i64; 3]);
-    let mut edges: BTreeMap<Ends, (P3, P3, Vec<bool>)> = BTreeMap::new();
+    let mut edges: BTreeMap<Ends, (P3, P3, Vec<P3>)> = BTreeMap::new();
+    let mut tris: Vec<[P3; 3]> = Vec::new();
     for t in &piece.tris {
         let n = view3d::cross(view3d::sub(t[1], t[0]), view3d::sub(t[2], t[0]));
         let len = view3d::dot(n, n).sqrt();
         if len.is_nan() || len <= 1e-12 {
             continue;
         }
-        let facing = view3d::dot(n, eye) / len > 1e-6;
+        let n = view3d::mul(n, 1.0 / len);
+        tris.push(*t);
         for k in 0..3 {
             let (a, b) = (t[k], t[(k + 1) % 3]);
             let (ka, kb) = (key(&a), key(&b));
             let k2 = if ka <= kb { (ka, kb) } else { (kb, ka) };
-            edges.entry(k2).or_insert_with(|| (a, b, Vec::new())).2.push(facing);
+            edges.entry(k2).or_insert_with(|| (a, b, Vec::new())).2.push(n);
         }
     }
+    let crease = CREASE.to_radians().cos();
+    let facing = |n: &P3| view3d::dot(*n, eye) > 1e-6;
+    // Past this many triangles, edges are drawn without asking what hides them: the work grows with edges times triangles.
+    let occlude = tris.len() <= MAX_OCCLUDERS;
     let mut out: Vec<(P2, P2)> = Vec::new();
-    for (a, b, faces) in edges.into_values() {
-        let toward = faces.iter().filter(|f| **f).count();
-        if toward == 0 || toward == faces.len() && faces.len() > 1 {
+    for (a, b, normals) in edges.into_values() {
+        let toward: Vec<&P3> = normals.iter().filter(|n| facing(n)).collect();
+        let seen = match (toward.len(), normals.len()) {
+            (0, _) => false,
+            (t, n) if t < n || n == 1 => true,
+            // Every face along it turned to the eye: a crease where two of them turn apart.
+            _ => toward.iter().any(|x| toward.iter().any(|y| view3d::dot(**x, **y) < crease)),
+        };
+        if !seen {
             continue;
         }
-        let (p, q) = (st.to_view(which, a), st.to_view(which, b));
-        if p.dist(q) > 1e-6 {
-            out.push((p, q));
+        // In pieces, each kept where nothing of the solid lies between its middle and the eye.
+        const PIECES: usize = 8;
+        let at = |s: f64| view3d::add(a, view3d::mul(view3d::sub(b, a), s));
+        let mut run: Option<f64> = None;
+        for k in 0..=PIECES {
+            let shown = k < PIECES && (!occlude || !hidden(&tris, at((k as f64 + 0.5) / PIECES as f64), eye));
+            match (shown, run) {
+                (true, None) => run = Some(k as f64 / PIECES as f64),
+                (false, Some(from)) => {
+                    let (p, q) = (st.to_view(which, at(from)), st.to_view(which, at(k as f64 / PIECES as f64)));
+                    if p.dist(q) > 1e-6 {
+                        out.push((p, q));
+                    }
+                    run = None;
+                }
+                _ => {}
+            }
         }
     }
     out
+}
+
+/// How far apart, degrees, two faces both turned to the eye turn at an edge for it to be drawn: the sketch's crease.
+const CREASE: f64 = 20.0;
+/// The most triangles a selected form's edges are hidden behind.
+const MAX_OCCLUDERS: usize = 4000;
+
+/// Whether a triangle of `tris` lies between point `p` and the eye far off along `eye`: met strictly inside, past `p`.
+fn hidden(tris: &[[P3; 3]], p: P3, eye: P3) -> bool {
+    const EPS: f64 = 1e-7;
+    tris.iter().any(|t| {
+        let (e1, e2) = (view3d::sub(t[1], t[0]), view3d::sub(t[2], t[0]));
+        let h = view3d::cross(eye, e2);
+        let det = view3d::dot(e1, h);
+        if det.abs() < 1e-12 {
+            return false;
+        }
+        let s = view3d::sub(p, t[0]);
+        let u = view3d::dot(s, h) / det;
+        let q = view3d::cross(s, e1);
+        let v = view3d::dot(eye, q) / det;
+        let dist = view3d::dot(e2, q) / det;
+        u > EPS && v > EPS && u + v < 1.0 - EPS && dist > 1e-3
+    })
 }
 
 /// Whether `p` is inside triangle `t` (either way round), its edges counting.
@@ -1131,6 +1182,59 @@ mod tests {
         assert!(!x500(&edges, front), "the notch's wall is behind the foot");
         let back = Which::Elevation(Side::Back);
         assert!(x500(&outline_edges(&f, &values, &st, back, 0), back), "seen across the notch");
+    }
+
+    /// The far walls of a hole through a form are behind its face from the front, and drawn from above; a Blend seen from above
+    /// keeps its top's outline, where its top and its leaning sides, both turned to the eye, meet.
+    #[test]
+    fn a_holes_far_walls_are_hidden_and_a_blends_top_is_drawn() {
+        let f: Family = serde_json::from_value(json!({
+            "category": "generic",
+            "types": {"T": {}},
+            "forms": [{"sketch": [
+                {"start": [0, 0], "end": [1000, 0]}, {"start": [1000, 0], "end": [1000, 1000]},
+                {"start": [1000, 1000], "end": [0, 1000]}, {"start": [0, 1000], "end": [0, 0]},
+                {"start": [400, 400], "end": [400, 600]}, {"start": [400, 600], "end": [600, 600]},
+                {"start": [600, 600], "end": [600, 400]}, {"start": [600, 400], "end": [400, 400]}], "from": 0, "to": 1000}],
+        }))
+        .unwrap();
+        let st = staged(&f);
+        let values = f.values("T", &BTreeMap::new()).unwrap();
+        let front = Which::Elevation(Side::Front);
+        let at_x = |edges: &[(P2, P2)], which: Which, x: f64| {
+            let p = st.to_view(which, [x, 0.0, 0.0]).0;
+            edges.iter().any(|(a, b)| (a.0 - p).abs() < 1e-6 && (b.0 - p).abs() < 1e-6)
+        };
+        let edges = outline_edges(&f, &values, &st, front, 0);
+        assert!(at_x(&edges, front, 0.0) && at_x(&edges, front, 1000.0), "{edges:?}");
+        assert!(!at_x(&edges, front, 400.0) && !at_x(&edges, front, 600.0), "the hole's walls are behind the face: {edges:?}");
+        let plan = outline_edges(&f, &values, &st, Which::Plan, 0);
+        let hole = st.to_view(Which::Plan, [400.0, 500.0, 1000.0]);
+        assert!(plan.iter().any(|(a, b)| (a.0 - hole.0).abs() < 1e-6 && (b.0 - hole.0).abs() < 1e-6), "the hole from above: {plan:?}");
+        let blend: Family = serde_json::from_value(json!({
+            "category": "generic",
+            "types": {"T": {}},
+            "forms": [{"sketch": [
+                {"start": [0, 0], "end": [600, 0]}, {"start": [600, 0], "end": [600, 600]},
+                {"start": [600, 600], "end": [0, 600]}, {"start": [0, 600], "end": [0, 0]}],
+                "top": [{"start": [200, 200], "end": [400, 200]}, {"start": [400, 200], "end": [400, 400]},
+                {"start": [400, 400], "end": [200, 400]}, {"start": [200, 400], "end": [200, 200]}], "from": 0, "to": 800}],
+        }))
+        .unwrap();
+        let st = staged(&blend);
+        let plan = outline_edges(&blend, &values, &st, Which::Plan, 0);
+        let (p, q) = (st.to_view(Which::Plan, [200.0, 200.0, 800.0]), st.to_view(Which::Plan, [400.0, 200.0, 800.0]));
+        let has = |p: P2, q: P2| plan.iter().any(|(a, b)| (a.dist(p) < 1e-6 && b.dist(q) < 1e-6) || (a.dist(q) < 1e-6 && b.dist(p) < 1e-6));
+        let along = plan
+            .iter()
+            .filter(|(a, b)| {
+                (a.1 - p.1).abs() < 1e-6
+                    && (b.1 - p.1).abs() < 1e-6
+                    && a.0.min(b.0) >= p.0.min(q.0) - 1e-6
+                    && a.0.max(b.0) <= p.0.max(q.0) + 1e-6
+            })
+            .count();
+        assert!(has(p, q) || along > 0, "the top's edge: {plan:?}");
     }
 
     /// A box family's planes, the datums with Left, Right, Front, Back and Top of its own, drawn in every view: no plane's

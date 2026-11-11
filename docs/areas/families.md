@@ -670,8 +670,9 @@ app's Tab hook leaves Tab to the family document while it is open. The blank win
 plane on Ref. Level seen edge on in the elevations, Align-locked to it, so a Height dimensioned from it moves its head alone (a
 window's axes rise from its sill, so the sill's plane and Ref. Level are one; without the lock the least-change solve would
 share a Height's change between them); a door's blank has none, as Revit's door template. The selected form is drawn by its own
-edges as the view sees them (`views::outline_edges`: each edge between a face toward the eye and one not, so an L's notch, a hole
-and an elevation's real silhouette; it is still picked and boxed by its outline), the selected plane's trace drawn heavier.
+edges as the view sees them (`views::outline_edges`: each edge between a face toward the eye and one not, and each crease between
+two faces toward it, where no face of the form lies in front of it: an L's notch, a hole seen from above, a Blend's top, and an
+elevation's real silhouette; it is still picked and boxed by its outline), the selected plane's trace drawn heavier.
 A plane of the family's own, selected, moves square to itself by a drag; a datum doesn't.
 Reference Plane (RP, the Create tab's Datum) draws one by two clicks: in plan upright (`up` the vertical), in an elevation
 `up` the way it looks, so its normal lies in the elevation's plane (`views::new_plane`); it has no name, is Weak, and is a step
