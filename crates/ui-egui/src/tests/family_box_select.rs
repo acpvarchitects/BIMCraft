@@ -247,16 +247,26 @@ fn a_drag_from_an_element_with_a_tool_in_hand_or_by_the_middle_button_draws_no_b
     let mut h = plan();
     click_family(&mut h, [700.0, 400.0, 0.0]);
     assert_eq!(selected(&h), vec![Picked::Form(1)]);
-    // From A's edge, leftwards over Edge: no box; nor from inside B, which is selected. (Since FE-20 the face of a form
-    // that isn't selected is the box's to begin in, as Revit's, so that a crossing box can be drawn inside a face: Select
-    // Elements by Face, `family_selection`. A drag from an element's edge, or from one selected, is still the element's.)
-    boxed(&mut h, [-500.0, 400.0, 0.0], [-1400.0, 300.0, 0.0], Modifiers::NONE);
-    assert_eq!(selected(&h), vec![Picked::Form(1)], "a drag from a form's edge boxes nothing");
-    boxed(&mut h, [700.0, 400.0, 0.0], [300.0, 300.0, 0.0], Modifiers::NONE);
-    assert_eq!(selected(&h), vec![Picked::Form(1)], "a drag from a selected form boxes nothing");
+    // From A's edge, leftwards over Edge: no box, while it is dragged or once it is let go; the drag is A's, which it selects
+    // and moves (FE-7). (Since FE-20 the face of a form that isn't selected is the box's to begin in, as Revit's, so that a
+    // crossing box can be drawn inside a face: Select Elements by Face, `family_selection`. A drag from an element's edge, or
+    // from one selected, is still the element's.)
+    let (a, b) = (editor(&h).views.screen_of([-500.0, 400.0, 0.0]).unwrap(), editor(&h).views.screen_of([-1400.0, 300.0, 0.0]).unwrap());
+    h.hover_at(a);
+    h.run();
+    h.event(Event::PointerButton { pos: a, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::NONE });
+    h.run();
+    for t in [0.25, 0.5, 0.75, 1.0] {
+        h.hover_at(a + (b - a) * t);
+        h.run();
+        assert!(!editor(&h).boxing(), "a drag from a form's edge draws no box");
+    }
+    h.event(Event::PointerButton { pos: b, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE });
+    h.run();
+    assert_eq!(selected(&h), vec![Picked::Form(0)], "a drag from a form's edge boxes nothing");
     // The middle button pans: no box either.
     drag_family(&mut h, [400.0, 700.0, 0.0], [1000.0, 100.0, 0.0], Modifiers::NONE, PointerButton::Middle);
-    assert_eq!(selected(&h), vec![Picked::Form(1)], "the middle button boxes nothing");
+    assert_eq!(selected(&h), vec![Picked::Form(0)], "the middle button boxes nothing");
     // With Reference Plane in hand, a drag round B draws no box.
     shortcut(&mut h, "RP");
     assert!(editor(&h).views.drawing.is_some());

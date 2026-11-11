@@ -149,6 +149,7 @@ impl BimApp {
                 Some(s) => {
                     s.set_tool(None, false);
                     ed.views.aligning = None;
+                    ed.views.dimensioning = None;
                 }
                 None => ed.modify_tool(),
             },
@@ -161,7 +162,8 @@ impl BimApp {
                 ed.open_work_plane_dialog(target);
             }
             "Load Family" if !sketching => ed.ask.load = true,
-            // The tools check where they work: in a plan or an elevation, not while sketching (Align while sketching too).
+            // The tools check where they work: in a plan or an elevation; while sketching, Align, and the dimensions where the
+            // view sees the sketch's plane flat (FE-12).
             "Aligned Dimension" => ed.dimension_tool(),
             "Angular Dimension" => ed.radial_tool(DimKind::Angular),
             "Align" => ed.align_tool(),
@@ -181,7 +183,10 @@ impl BimApp {
             // Delete, as the Delete key: the lines picked while a form is sketched, else what is selected.
             "Delete" => {
                 if let Some(s) = ed.sketch.as_mut() {
-                    if !s.sketch.picked.is_empty() {
+                    // The dimension selected while sketching, else the lines picked.
+                    if let Some(g) = s.selected_dim {
+                        ed.delete_dimension(g);
+                    } else if !s.sketch.picked.is_empty() {
                         s.delete_picked();
                     }
                 } else if ed.deletable() || !ed.modeller.selection.is_empty() {
@@ -193,6 +198,7 @@ impl BimApp {
                 if let Some(s) = ed.sketch.as_mut() {
                     s.trim_tool();
                     ed.views.aligning = None;
+                    ed.views.dimensioning = None;
                 }
             }
             "Pick Lines" => {

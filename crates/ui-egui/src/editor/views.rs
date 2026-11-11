@@ -41,11 +41,29 @@ pub(crate) struct Views {
     pub(crate) detail: bimcraft_core::graphics::Detail,
     /// The Reference Plane tool, on, with its first click once made.
     pub(crate) drawing: Option<Option<P2>>,
-    /// The plane being dragged: where the pointer was, in the view's millimetres.
-    pub(super) drag: Option<P2>,
+    /// The plane being dragged: where the pointer was, in the view's millimetres, and the view as the drag began, which the
+    /// pointer is read through while it goes on (the view refitting round the plane would otherwise change its scale under
+    /// the hand).
+    pub(super) drag: Option<(P2, View)>,
+    /// The press origin, retained while Shift constrains a drag across frames.
+    drag_origin: Option<P2>,
     /// A selected extrusion's Start or End (true) being dragged by its handle (F5): where the pointer was, in the view's
-    /// millimetres, and the normal it moves along.
-    end_drag: Option<(bool, P2, [f64; 3])>,
+    /// millimetres, the normal it moves along, and the view as it was when the drag began, which the pointer is read through
+    /// while it goes on (a drag that changes what the view frames would otherwise change its scale under the hand).
+    pub(super) end_drag: Option<EndDrag>,
+    /// A profile edge being dragged by its handle (FE-5).
+    pub(super) edge_drag: Option<super::shape_handles::EdgeDrag>,
+    /// The selection being dragged to move it (FE-7, `drag_move.rs`).
+    pub(super) moving: Option<super::drag_move::MoveDrag>,
+    /// Whether the pointer was last over something selected that a drag would move, with no tool in hand: what the status
+    /// bar says (FE-7).
+    pub(crate) over_selected: bool,
+    /// Whether Ctrl was held over the view last frame: over something selected, a drag copies it (FE-4).
+    pub(crate) ctrl: bool,
+    /// Where the selected form's profile handles were last shown on screen (FE-5).
+    pub(crate) shapes_shown: Vec<(egui::Pos2, super::shape_handles::ShapeHandle)>,
+    /// Where the selected form's Start and End handles were last shown on screen, and whether each can be dragged.
+    pub(crate) ends_shown: Vec<(egui::Pos2, bool)>,
     /// The picture shown, and what it was drawn of.
     pub(super) cache: Option<Cached>,
     /// Aligned Dimension (DI): on, with the references picked so far; Radial or Diameter Dimension too (`dim_kind`), its
@@ -86,6 +104,21 @@ pub(crate) struct Views {
     /// a click takes: Tab steps through them, as Revit's Tab does.
     pub(crate) under: Vec<Guid>,
     pub(crate) cycle: usize,
+}
+
+/// A selected extrusion's Start or End (`end`) being dragged by its handle (F5): where the pointer was (the view's
+/// millimetres), the normal it moves along, the view as the drag began (the pointer is read through it), what the end was
+/// typed before and the form's tag (what Escape puts back), and the view it is dragged in with the last pass it was drawn in.
+#[derive(Clone)]
+pub(crate) struct EndDrag {
+    pub(super) end: bool,
+    last: P2,
+    n: [f64; 3],
+    view: View,
+    pub(super) before: String,
+    pub(super) tag: u64,
+    which: Which,
+    seen: u64,
 }
 
 /// The planes the view draws under pixel `(x, y)` of `drawing` (within reach), each once, nearest first.
@@ -158,6 +191,9 @@ pub(crate) const WORK_PLANE_MARGIN: f64 = 300.0;
 pub(crate) const PICKED: Color32 = Color32::from_rgb(40, 120, 230);
 /// How far a dimension's tick reaches from its point, in points: what a padlock keeps clear of.
 const TICK: f32 = 7.0;
+
+/// How near a shape handle, in points, a press takes it.
+const HANDLE: f32 = 10.0;
 
 /// The plane a click would take where several lie on one another (F10c): lit, lighter than one selected.
 const PRESELECT: Color32 = Color32::from_rgb(110, 170, 240);
@@ -307,14 +343,17 @@ impl FamilyEditor {
     fn staged(&self, base: &Model, which: Which) -> Result<Staged, String> {
         let f = self.family()?;
         let values = self.values();
-        let shown = temp_hide::without(&f, |i| self.temp_hidden_form(i)).unwrap_or_else(|| f.clone());
+        // The form being sketched again is left out: its sketch stands for it, as Revit's sketch mode hides the form (FE-12).
+        let editing = self.sketch.as_ref().and_then(|s| s.index);
+        let hidden = |i: usize| self.temp_hidden_form(i) || editing == Some(i);
+        let shown = temp_hide::without(&f, hidden).unwrap_or_else(|| f.clone());
         let mut model = self.scratch(base, &shown)?;
         let mut ghost_id = None;
         // F8: what the view's Visibility Settings leave out, at the document's Detail Level, drawn halftone too.
         let cut = model.levels().first().map_or(bimcraft_core::model::CUT_HEIGHT, |(_, l)| l.view_range.cut);
         let by_view = fv::hidden_in(&f, &values, Some(which), self.views.detail, cut);
         if !self.document.preview_visibility
-            && let Some(g) = ghosts(&f, &values, |i| self.temp_hidden_form(i), &by_view)
+            && let Some(g) = ghosts(&f, &values, hidden, &by_view)
         {
             let mut s = Session::new();
             s.model = Arc::new(model);
@@ -379,6 +418,8 @@ impl FamilyEditor {
             )
                 .hash(&mut h);
             (base.materials.len(), base.images.len()).hash(&mut h);
+            // The form being sketched again, which the view leaves out.
+            self.sketch.as_ref().and_then(|s| s.index).hash(&mut h);
             h.finish()
         };
         if self.views.cache.as_ref().is_some_and(|c| c.key == key) {
@@ -421,6 +462,24 @@ impl FamilyEditor {
     /// on, the plane being drawn; and the clicks and drags in it.
     pub(crate) fn view_2d(&mut self, ui: &mut Ui, base: &Model, which: Which, pane: Rect) -> Option<String> {
         let size = [pane.width().clamp(64.0, 2400.0) as u32, pane.height().clamp(64.0, 1600.0) as u32];
+        // A handle's drag begun in another view, or in this one before something else was shown, is given up (FE-5).
+        let pass = ui.ctx().cumulative_pass_nr();
+        let stale = |w: Which, seen: u64| w != which || seen + 1 < pass;
+        if self.views.edge_drag.as_ref().is_some_and(|d| stale(d.which, d.seen))
+            || self.views.end_drag.as_ref().is_some_and(|d| stale(d.which, d.seen))
+            || self.views.moving.as_ref().is_some_and(|d| stale(d.which, d.seen))
+        {
+            self.cancel_drags();
+        }
+        if let Some(d) = self.views.edge_drag.as_mut() {
+            d.seen = pass;
+        }
+        if let Some(d) = self.views.end_drag.as_mut() {
+            d.seen = pass;
+        }
+        if let Some(d) = self.views.moving.as_mut() {
+            d.seen = pass;
+        }
         self.refresh_view(ui.ctx(), base, which, size);
         let response = ui.interact(pane, UiId::new("family-view-2d"), Sense::click_and_drag());
         self.views.pane = Some(pane);
@@ -555,21 +614,42 @@ impl FamilyEditor {
                 let (x, y) = view.px(super::sketch::in_view(&cache.staged, which, f, q));
                 Some(pane.min + vec2(x, y))
             };
-            let lines = drawn_lines(&cache.drawing, pane.min);
+            let mut lines = drawn_lines(&cache.drawing, pane.min);
+            // The sketch's dimensions (FE-12): those made while sketching and the draft's that measure the form, and the one
+            // being placed. Align's padlocks keep off them too.
+            self.prune_selected_dim();
+            let mm_screen = dims::screen_of(view, pane.min);
+            let plane_here = |p: egui::Pos2| plane_at(&cache.drawing, &cache.staged, p);
+            let sketch_dims = self.sketch_dims(&cache.staged, which, &mm_screen, response.hover_pos(), &at_view, &plane_here);
+            if let Some(sd) = sketch_dims.as_ref() {
+                lines.extend(sd.lines(&mm_screen));
+            }
             let locks = self.sketch_padlocks(&on_screen, &lines);
             let free = self.sketch.as_ref().is_some_and(|s| s.tool.is_none());
-            // A shape of the Draw panel picked puts Align down.
+            // A shape of the Draw panel picked puts Align and the dimension tools down, and lets a dimension go.
             if !free {
                 self.views.aligning = None;
+                self.views.dimensioning = None;
+                if let Some(s) = self.sketch.as_mut() {
+                    s.selected_dim = None;
+                }
             }
             let aligning = self.views.aligning.is_some();
             let mut aligned = None;
+            let mut dims_took = false;
             if response.clicked()
                 && let Some(p) = response.interact_pointer_pos()
             {
                 let near = locks.iter().find(|(at, _)| dims::lock_rect(*at).contains(p)).map(|(_, w)| *w);
                 match near {
-                    Some(what) if aligning || free => self.sketch_padlock(what),
+                    Some(what) if (aligning || free) && self.views.dimensioning.is_none() => self.sketch_padlock(what),
+                    _ if !aligning && let Some(sd) = sketch_dims.as_ref() => {
+                        let (took, e) = self.sketch_dims_click(sd, &cache.staged, which, p, at_view(p), &mm_screen, &plane_here);
+                        dims_took = took;
+                        if e.is_some() {
+                            aligned = Some(e);
+                        }
+                    }
                     _ if aligning => {
                         // What the view shows there besides the sketch: a plane, a reference line, another form's line.
                         let own = self.sketch.as_ref().map(|s| s.guid).unwrap_or_default();
@@ -588,6 +668,15 @@ impl FamilyEditor {
                 }
             }
             let problem = self.sketch_in_view(ui, &response, &painter, &cache.staged, which, &view, pane, &pick);
+            // A click the dimensions took picks no line of the sketch.
+            if (dims_took || self.views.dimensioning.is_some())
+                && let Some(s) = self.sketch.as_mut()
+            {
+                s.sketch.picked.clear();
+            }
+            if let Some(sd) = sketch_dims.as_ref() {
+                self.paint_sketch_dims(&painter, sd, &cache.staged, which, &mm_screen, base.units);
+            }
             // The reference Align picked, and the padlocks, over the lines.
             if let Some((_, (a, b), _)) = self.sketch.as_ref().and_then(|s| s.align_from.as_ref())
                 && let (Some(a), Some(b)) = (on_screen(*a), on_screen(*b))
@@ -617,38 +706,15 @@ impl FamilyEditor {
         let angular = kind == bimcraft_core::family::DimKind::Angular;
         let circles = radial && self.views.dimensioning.is_some();
         let crossing = angular && self.views.dimensioning.is_some();
+        // Radial and Diameter Dimension pick a circle or an arc by its edge, Angular Dimension lines, the others references.
+        let tool_kind = if circles || crossing { kind } else { bimcraft_core::family::DimKind::Aligned };
         let reference_at = |p: egui::Pos2| -> Option<DimRef> {
             let f = family.as_ref()?;
-            if circles {
-                // Radial and Diameter Dimension pick a circle or an arc by its edge.
-                return dims::circle_at(f, &values, &c.staged, which, p, &on_screen).map(|c| c.r);
-            }
-            if crossing {
-                // Angular Dimension picks lines.
-                return dims::line_at(f, &values, &c.staged, which, pick_plane(p), p, &on_screen);
-            }
-            dims::reference_at(f, &values, &c.staged, which, pick_plane(p), p, &on_screen)
+            dims::pick_reference(f, &values, &c.staged, which, tool_kind, pick_plane(p), p, &on_screen)
         };
         // Its dimensions, the one being placed with them, over the picture: the selected one, and those that can't hold, picked.
         let placing = match (&self.views.dimensioning, response.hover_pos(), family.as_ref()) {
-            (Some(refs), Some(h), Some(f)) if radial && refs.len() == 1 => {
-                Some(dims::new_dimension(f, &values, &c.staged, which, refs, at_view(h), kind))
-            }
-            (Some(refs), Some(h), Some(f)) if !refs.is_empty() && angular => {
-                let mut refs = refs.clone();
-                if let Some(r) = reference_at(h).filter(|r| !refs.contains(r) && dims::crosses_last(f, &values, which, &refs, r)) {
-                    refs.push(r);
-                }
-                (refs.len() >= 2).then(|| dims::new_dimension(f, &values, &c.staged, which, &refs, at_view(h), kind))
-            }
-            (Some(refs), Some(h), Some(f)) if !refs.is_empty() && !radial => {
-                let mut refs = refs.clone();
-                if let Some(r) = reference_at(h).filter(|r| !refs.contains(r) && dims::parallel(f, &values, &refs, r)) {
-                    refs.push(r);
-                }
-                (refs.len() >= 2 && dims::has_way(f, &values, &refs))
-                    .then(|| dims::new_dimension(f, &values, &c.staged, which, &refs, at_view(h), kind))
-            }
+            (Some(refs), Some(h), Some(f)) => dims::placing(f, &values, &c.staged, which, kind, refs, reference_at(h), at_view(h)),
             _ => None,
         };
         let marks = match (drawn.as_ref(), family.as_ref()) {
@@ -857,39 +923,83 @@ impl FamilyEditor {
         if let Some(Some(first)) = self.views.drawing
             && let Some(hover) = response.hover_pos()
         {
+            let hover =
+                if ui.input(|i| i.modifiers.shift) { screen(bimcraft_core::snap::orthogonal_step(first, at_view(hover)).0) } else { hover };
             painter.line_segment([screen(first), hover], Stroke::new(1.5, PICKED));
         }
         // A selected extrusion's Start and End, where the view sees its plane edge-on: shape handles to drag (F5); one tied to
-        // a parameter or a formula, greyed.
+        // a parameter, a formula or a dimension, greyed. Its profile's edges' handles too (FE-5), drawn alike.
         let handles = if editable { self.end_handles(&c.staged, which) } else { Vec::new() };
-        for (at, end, free, n) in &handles {
-            let centre = screen(*at);
-            let towards = c.staged.to_view(which, [n[0], n[1], n[2]]) - c.staged.to_view(which, [0.0; 3]);
-            let way = egui::vec2(towards.0 as f32, -towards.1 as f32).normalized() * if *end { 1.0 } else { -1.0 };
+        let shapes = match (drawn.as_ref(), family.as_ref()) {
+            (Some(d), Some(f)) if editable => self.shape_handles(d, f, &c.staged, which),
+            _ => Vec::new(),
+        };
+        let arrow = |at: P2, way: [f64; 3], free: bool| {
+            let centre = screen(at);
+            let towards = c.staged.to_view(which, way) - c.staged.to_view(which, [0.0; 3]);
+            let way = egui::vec2(towards.0 as f32, -towards.1 as f32).normalized();
             let side = egui::vec2(-way.y, way.x);
             let tip = [centre + way * 9.0, centre + side * 6.0, centre - side * 6.0];
-            let colour = if *free { PICKED } else { pal().muted };
+            let colour = if free { PICKED } else { pal().muted };
             painter.add(egui::Shape::convex_polygon(tip.to_vec(), colour, Stroke::new(1.0, Color32::WHITE)));
+        };
+        for (at, end, blocked, n) in &handles {
+            let k = if *end { 1.0 } else { -1.0 };
+            arrow(*at, [n[0] * k, n[1] * k, n[2] * k], blocked.is_none());
         }
+        for h in &shapes {
+            arrow(h.at, h.way, h.blocked.is_none());
+        }
+        self.views.ends_shown = handles.iter().map(|h| (screen(h.0), h.2.is_none())).collect();
+        self.views.shapes_shown = shapes.iter().map(|h| (screen(h.at), h.clone())).collect();
+        let on_handle = |p: egui::Pos2| {
+            handles.iter().any(|h| screen(h.0).distance(p) <= HANDLE) || shapes.iter().any(|h| screen(h.at).distance(p) <= HANDLE)
+        };
         let mut problem = None;
         let mut end_moved: Option<(bool, f64)> = None;
+        let mut edge_moved: Option<[f64; 3]> = None;
         if response.drag_started_by(PointerButton::Primary)
             && let Some(p) = ui.input(|i| i.pointer.press_origin())
-            && let Some((_, end, free, n)) = handles.iter().find(|h| screen(h.0).distance(p) <= 10.0)
         {
-            if *free {
-                self.views.end_drag = Some((*end, at_view(p), *n));
-            } else {
-                problem = Some(t("This end is tied to a parameter or worked out by a formula: change it in Family Types.").to_string());
+            if let Some((_, end, blocked, n)) = handles.iter().find(|h| screen(h.0).distance(p) <= HANDLE) {
+                match blocked {
+                    None => {
+                        if let Some(ft) = self.selected_form().and_then(|i| self.forms.get(i)) {
+                            let before = if *end { ft.to.clone() } else { ft.from.clone() };
+                            let (last, n, tag, end) = (at_view(p), *n, ft.tag, *end);
+                            self.views.end_drag = Some(EndDrag { end, last, n, view, before, tag, which, seen: pass });
+                        }
+                    }
+                    Some(why) => problem = Some(why.clone()),
+                }
+            } else if let Some(h) = shapes
+                .iter()
+                .filter(|h| screen(h.at).distance(p) <= HANDLE)
+                .min_by(|a, b| screen(a.at).distance(p).total_cmp(&screen(b.at).distance(p)))
+                && let Some(f) = family.as_ref()
+            {
+                match self.edge_drag(h, (at_view(p), view, which, pass), f) {
+                    Ok(d) => self.views.edge_drag = Some(d),
+                    Err(e) => problem = Some(e),
+                }
             }
         }
-        if let Some((end, from, n)) = self.views.end_drag
-            && let Some(to) = response.interact_pointer_pos().map(at_view)
+        let held_at = |v: View, p: egui::Pos2| v.mm((p.x - pane.min.x, p.y - pane.min.y));
+        if let Some(EndDrag { end, last: from, n, view: then, .. }) = self.views.end_drag.clone()
+            && let Some(to) = response.interact_pointer_pos().map(|p| held_at(then, p))
             && response.dragged_by(PointerButton::Primary)
         {
             let d = c.staged.vector(which, P2(to.0 - from.0, to.1 - from.1));
             end_moved = Some((end, d[0] * n[0] + d[1] * n[1] + d[2] * n[2]));
-            self.views.end_drag = Some((end, to, n));
+            if let Some(e) = self.views.end_drag.as_mut() {
+                e.last = to;
+            }
+        }
+        if let Some((from, then)) = self.views.edge_drag.as_ref().map(|d| (d.from, d.view))
+            && let Some(to) = response.interact_pointer_pos().map(|p| held_at(then, p))
+            && response.dragged_by(PointerButton::Primary)
+        {
+            edge_moved = Some(c.staged.vector(which, P2(to.0 - from.0, to.1 - from.1)));
         }
         // What a click selects (FE-1): an element, or (inner none) nothing.
         let mut select: Option<Option<Picked>> = None;
@@ -951,6 +1061,7 @@ impl FamilyEditor {
                 match first {
                     None => self.views.drawing = Some(Some(q)),
                     Some(a) => {
+                        let q = if ui.input(|i| i.modifiers.shift) { bimcraft_core::snap::orthogonal_step(a, q).0 } else { q };
                         new_plane = fv::new_plane(&c.staged, which, a, q);
                         self.views.drawing = Some(None);
                     }
@@ -966,50 +1077,13 @@ impl FamilyEditor {
             } else if align_lock.is_some_and(|at| dims::lock_rect(at).contains(p)) {
                 // Align's padlock, waiting: it locks what was aligned, whatever tool is on.
                 on_dims = Some((Clicked::AlignLock, Vec::new()));
-            } else if let Some(refs) = self.views.dimensioning.as_mut().filter(|_| radial) {
-                // Radial or Diameter Dimension: a circle, then a click where it goes.
-                match (refs.first(), reference_at(p), family.as_ref()) {
-                    (None, Some(r), _) => refs.push(r),
-                    (Some(_), _, Some(f)) => {
-                        new_dim = Some(dims::new_dimension(f, &values, &c.staged, which, refs, q, kind));
-                        refs.clear();
-                    }
-                    _ => problem = Some(t("Pick a circle or an arc, then click where the dimension goes.").to_string()),
-                }
-            } else if let Some(refs) = self.views.dimensioning.as_mut().filter(|_| angular) {
-                // Angular Dimension: lines one after another, each crossing the one before; a click on nothing places it.
-                match (reference_at(p), family.as_ref()) {
-                    (Some(r), Some(f)) => {
-                        if !dims::crosses_last(f, &values, which, refs, &r) {
-                            problem = Some(t("Pick a line that crosses the one before.").to_string());
-                        } else if !refs.contains(&r) {
-                            refs.push(r);
-                        }
-                    }
-                    (None, Some(f)) if refs.len() >= 2 => {
-                        new_dim = Some(dims::new_dimension(f, &values, &c.staged, which, refs, q, kind));
-                        refs.clear();
-                    }
-                    _ => problem = Some(t("Pick lines that cross, then click where the dimension goes.").to_string()),
-                }
             } else if let Some(refs) = self.views.dimensioning.as_mut() {
-                // Aligned Dimension: references one after another, parallel to the first; a click on nothing places it.
-                match (reference_at(p), family.as_ref()) {
-                    (Some(r), Some(f)) => {
-                        if !dims::parallel(f, &values, refs, &r) {
-                            problem = Some(t("Pick a reference parallel to the first.").to_string());
-                        } else if !refs.contains(&r) {
-                            refs.push(r);
-                        }
-                    }
-                    (None, Some(f)) if refs.len() >= 2 && dims::has_way(f, &values, refs) => {
-                        new_dim = Some(dims::new_dimension(f, &values, &c.staged, which, refs, q, kind));
-                        refs.clear();
-                    }
-                    (None, Some(_)) if refs.len() >= 2 => {
-                        problem = Some(t("Pick a plane or a line too: points alone face no way to measure along.").to_string())
-                    }
-                    _ => problem = Some(t("Pick two references or more, then click where the dimension goes.").to_string()),
+                // A dimension tool: references picked one after another, then a click where it goes (`dims::dimension_click`).
+                let under = reference_at(p);
+                match family.as_ref().map(|f| dims::dimension_click(f, &values, &c.staged, which, kind, refs, under, q)) {
+                    Some(Ok(made)) => new_dim = made,
+                    Some(Err(e)) => problem = Some(e),
+                    None => problem = Some(t("Pick two references or more, then click where the dimension goes.").to_string()),
                 }
             } else if let Some(first) = self.views.aligning {
                 // Align: the reference to align to, then what moves onto it.
@@ -1021,6 +1095,8 @@ impl FamilyEditor {
                     }
                     _ => problem = Some(t("Pick a reference plane, an extrusion's end or a line of a form.").to_string()),
                 }
+            } else if on_handle(p) {
+                // A click on a handle, with no drag: the selection stays.
             } else if let Some(hit) = dims::clicked(&marks, &self.dimensions, selected_dim, align_lock, &locks, p, &on_screen) {
                 let lengths = match &hit {
                     Clicked::Lock(g, _) => marks
@@ -1053,11 +1129,11 @@ impl FamilyEditor {
                 });
             }
         }
-        // A drag from nothing a click would select, nor a handle, a grip or a padlock, with no tool in hand: a selection box,
-        // a window left to right, a crossing right to left; Ctrl adds what it takes, Shift takes it away (FE-1). The face of
-        // a form or a nested instance that isn't selected is the box's to begin in (FE-20, `Scene::under`).
+        // What a press at `p` is on that a drag moves (FE-7): a dimension's line, else what a click there selects (and the box
+        // doesn't begin on, `Scene::under`: the face of a form or a nested instance that isn't selected is the box's, FE-20),
+        // or a selected symbol's strokes; never a handle, a grip or a padlock.
         let chosen: Vec<Picked> = self.selection.items().to_vec();
-        let free = editable
+        let tools_free = editable
             && self.views.drawing.is_none()
             && self.views.picking.is_none()
             && self.views.pivoting.is_none()
@@ -1065,11 +1141,60 @@ impl FamilyEditor {
             && self.views.aligning.is_none()
             && self.placing.is_none()
             && self.views.end_drag.is_none()
-            && self.views.grip.is_none();
+            && self.views.edge_drag.is_none()
+            && self.views.grip.is_none()
+            && self.views.moving.is_none();
+        let press_hit = |p: egui::Pos2| -> Option<Picked> {
+            if !tools_free || on_handle(p) || grips.iter().any(|(_, at)| at.distance(p) <= super::pivot::REACH) {
+                return None;
+            }
+            match dims::clicked(&marks, &self.dimensions, selected_dim, align_lock, &locks, p, &on_screen) {
+                Some(Clicked::Select(g)) => return Some(Picked::Dimension(g)),
+                Some(_) => return None,
+                None => {}
+            }
+            let s = scene.as_ref()?;
+            let hit = s.hit(p, pick_plane(p), &chosen)?;
+            (matches!(hit, Picked::Symbol(_)) || s.under(p, &chosen)).then_some(hit)
+        };
+        self.views.over_selected =
+            !self.selection.is_empty() && response.hover_pos().and_then(press_hit).is_some_and(|h| self.selection.contains(h));
+        // Ctrl held: a drag of the selection copies it (FE-4), and the status bar says so.
+        let ctrl = ui.input(|i| i.modifiers.ctrl || i.modifiers.command);
+        self.views.ctrl = ctrl;
+        let pressed =
+            response.drag_started_by(PointerButton::Primary).then(|| ui.input(|i| i.pointer.press_origin())).flatten().and_then(press_hit);
+        // What of the selection (and the element pressed) the view shows: a move takes that alone, as Revit's does, leaving a
+        // plan's symbol or dimension where it is when dragged in an elevation.
+        let in_view: Vec<Picked> = match (pressed, scene.as_ref()) {
+            (Some(hit), Some(s)) => self
+                .selection
+                .items()
+                .iter()
+                .copied()
+                .chain([hit])
+                .filter(|p| !matches!(p, Picked::Form(i) if hidden.get(*i).copied().unwrap_or(false)) && !s.pieces(*p).is_empty())
+                .collect(),
+            _ => Vec::new(),
+        };
+        // A drag from nothing a click would select, nor a handle, a grip or a padlock, with no tool in hand: a selection box,
+        // a window left to right, a crossing right to left; Ctrl adds what it takes, Shift takes it away (FE-1).
+        let free = editable
+            && pressed.is_none()
+            && self.views.drawing.is_none()
+            && self.views.picking.is_none()
+            && self.views.pivoting.is_none()
+            && self.views.dimensioning.is_none()
+            && self.views.aligning.is_none()
+            && self.placing.is_none()
+            && self.views.end_drag.is_none()
+            && self.views.edge_drag.is_none()
+            && self.views.grip.is_none()
+            && self.views.moving.is_none();
         let start =
             response.drag_started_by(PointerButton::Primary).then(|| ui.input(|i| i.pointer.press_origin())).flatten().filter(|p| {
                 free && scene.as_ref().is_some_and(|s| !s.under(*p, &chosen))
-                    && handles.iter().all(|h| screen(h.0).distance(*p) > 10.0)
+                    && !on_handle(*p)
                     && grips.iter().all(|(_, at)| at.distance(*p) > super::pivot::REACH)
                     && dims::clicked(&marks, &self.dimensions, selected_dim, align_lock, &locks, *p, &on_screen).is_none()
             });
@@ -1078,30 +1203,70 @@ impl FamilyEditor {
             let taken = scene.in_box(from, to);
             self.selection.apply(&taken, super::select_box::How::of(crate::canvas::click_modifiers(ui)));
         }
+        // The view's ways in the family's axes, for the move below (the view's drawing isn't read past here).
+        let (across, up) = (c.staged.vector(which, P2(1.0, 0.0)), c.staged.vector(which, P2(0.0, 1.0)));
+        // A press on an element and a drag (FE-7): one not selected is selected first, alone or with Ctrl added; then the
+        // selection moves, but a lone plane of the family's own, which F4's drag below moves through its constraints.
+        if let Some(hit) = pressed
+            && let Some(p) = ui.input(|i| i.pointer.press_origin())
+        {
+            if !self.selection.contains(hit) {
+                match super::select_box::How::of(crate::canvas::click_modifiers(ui)) {
+                    super::select_box::How::Add => self.selection.apply(&[hit], super::select_box::How::Add),
+                    super::select_box::How::Remove => {}
+                    super::select_box::How::Replace => self.selection.apply(&[hit], super::select_box::How::Replace),
+                }
+            }
+            let lone_plane =
+                self.selected_plane().is_some_and(|g| self.planes.iter().any(|q| q.guid == g && !q.datum() && q.pivot.is_none()));
+            // With Ctrl, a lone plane is copied too (FE-4): a copy goes as the selection's move does.
+            if self.selection.contains(hit) && (!lone_plane || ctrl) {
+                let lone = self.selected_plane().filter(|_| lone_plane);
+                self.views.moving = Some(self.move_drag((at_view(p), view, which, pass), &in_view, ctrl, lone));
+            }
+        }
+        let mut move_by: Option<[f64; 3]> = None;
+        if let Some((from, then)) = self.views.moving.as_ref().map(|d| (d.from, d.view))
+            && let Some(to) = response.interact_pointer_pos().map(|p| held_at(then, p))
+            && response.dragged_by(PointerButton::Primary)
+        {
+            let P2(dx, dy) = super::drag_move::delta(from, to, ui.input(|i| i.modifiers.shift));
+            move_by = Some(std::array::from_fn(|k| across[k] * dx + up[k] * dy));
+        }
         // A plane of the family's own, selected, dragged square to itself.
         if editable
+            && self.views.moving.is_none()
             && self.views.drawing.is_none()
             && self.views.picking.is_none()
             && self.views.end_drag.is_none()
+            && self.views.edge_drag.is_none()
             && self.views.grip.is_none()
             && response.dragged_by(PointerButton::Primary)
         {
-            let now = response.interact_pointer_pos().map(at_view);
             // From where the button went down: the drag begins only once the hand has moved on.
             if response.drag_started()
                 && let Some(p) = ui.input(|i| i.pointer.press_origin())
             {
                 // A plane its pivot holds turns by its grip, never slides (F7d).
                 let own = self.selected_plane().filter(|g| self.planes.iter().any(|q| q.guid == *g && !q.datum() && q.pivot.is_none()));
-                self.views.drag = own.filter(|g| pick_plane(p) == Some(*g)).map(|_| at_view(p));
+                self.views.drag = own.filter(|g| pick_plane(p) == Some(*g)).map(|_| (at_view(p), view));
+                self.views.drag_origin = self.views.drag.map(|(q, _)| q);
             }
-            if let (Some(from), Some(to), Some(g)) = (self.views.drag, now, self.selected_plane()) {
+            if let (Some((from, then)), Some(g)) = (self.views.drag, self.selected_plane())
+                && let Some(to) = response.interact_pointer_pos().map(|p| held_at(then, p))
+            {
+                let to = if ui.input(|i| i.modifiers.shift) {
+                    self.views.drag_origin.map_or(to, |origin| bimcraft_core::snap::orthogonal_step(origin, to).0)
+                } else {
+                    to
+                };
                 moved = Some((g, c.staged.vector(which, P2(to.0 - from.0, to.1 - from.1))));
-                self.views.drag = Some(to);
+                self.views.drag = Some((to, then));
             }
         }
         if response.drag_stopped() {
             self.views.drag = None;
+            self.views.drag_origin = None;
             self.views.end_drag = None;
             self.views.grip = None;
         }
@@ -1111,6 +1276,28 @@ impl FamilyEditor {
             && let Err(e) = self.drag_end(end, d)
         {
             problem = Some(e);
+        }
+        if let Some(moved) = edge_moved
+            && let Err(e) = self.drag_edge_to(moved)
+        {
+            problem = Some(e);
+        }
+        if let Some(d) = move_by
+            && let Err(e) = self.drag_move_to(d, ctrl)
+        {
+            problem = Some(e);
+        }
+        // The edge or the selection let go: they stay as the drag left them, a step of the history once the button is up.
+        if response.drag_stopped() || !ui.input(|i| i.pointer.primary_down()) {
+            // Ctrl as the button comes up decides between a copy and a move (FE-4, as Revit's).
+            let m = crate::canvas::click_modifiers(ui);
+            if self.moving()
+                && let Err(e) = self.settle_drag(m.ctrl || m.command)
+            {
+                problem = Some(e);
+            }
+            self.views.edge_drag = None;
+            self.views.moving = None;
         }
         if let Some(i) = edit
             && let Err(e) = self.edit_form_sketch(i)
@@ -1170,6 +1357,8 @@ impl FamilyEditor {
         }
         // A plane its dimensions hold is dragged through them: a label it changes takes the new length, what is locked to it
         // follows, and what can't hold says so.
+        // Refused where it leaves the family failing its checks it passed (FE-7 review): put back, saying why.
+        let kept = moved.map(|_| (self.draft(), self.sound()));
         let held = family.as_ref().is_some_and(|f| {
             f.constrained() && f.dimensions.iter().any(|d| d.refs.contains(&DimRef::Plane(moved.map_or(Guid::default(), |m| m.0))))
         });
@@ -1189,6 +1378,14 @@ impl FamilyEditor {
                 p.start[i] += k * along;
                 p.end[i] += k * along;
             }
+            // The reference lines drawn on it go with it (FE-7 review).
+            super::drag_move::carry_lines(&mut self.lines, g, std::array::from_fn(|i| n[i] * along));
+        }
+        if let Some((draft, true)) = kept
+            && let Err(e) = self.family().and_then(|f| f.check(&|_| true))
+        {
+            self.put_back(draft);
+            problem = Some(e);
         }
         if let Some((start, end, up)) = new_plane {
             let guid = Guid::new();

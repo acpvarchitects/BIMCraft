@@ -7,6 +7,7 @@ pub(crate) mod connector_marks;
 pub(crate) mod connectors;
 pub(crate) mod dimensions;
 pub(crate) mod document;
+mod drag_move;
 pub(crate) mod exists;
 mod extrusion;
 pub(crate) mod keys;
@@ -16,7 +17,9 @@ pub(crate) mod options;
 mod pivot;
 pub(crate) mod select_box;
 pub(crate) mod selection;
+pub(crate) mod shape_handles;
 pub(crate) mod sketch;
+mod sketch_dims;
 pub(crate) mod tabs;
 mod temp_hide;
 mod types_dialog;
@@ -142,6 +145,11 @@ struct FormText {
 static TAGS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 impl FormText {
+    /// A copy of it (FE-4): `f`, the copy's form (new GUIDs), with what is typed as it is, and a tag of its own.
+    pub(crate) fn copied(&self, f: &Form) -> FormText {
+        FormText { original: f.clone(), host: f.host, tag: TAGS.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1, ..self.clone() }
+    }
+
     /// Form `f` as typed again, keeping the tag `tag` it is known by while the document is open.
     pub(crate) fn again(f: &Form, tag: u64) -> FormText {
         FormText { tag, ..FormText::of(f) }

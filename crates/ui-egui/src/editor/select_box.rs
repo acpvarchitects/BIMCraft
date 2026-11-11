@@ -31,8 +31,8 @@
 //! is of; off, a crossing box wholly inside a face, meeting none of its edges, doesn't take it, as Revit's doesn't, and a
 //! click selects by an edge alone. The box may begin inside the face of a form or a nested instance that isn't selected
 //! (`Scene::under`); a drag from an element's edge, a plane, a line or a connector, or from one selected while a face
-//! selects, is the element's and draws none. It moves nothing yet: dragging an element to move it is FE-7's. {3D} has no
-//! box: a drag there turns the view.
+//! selects, is the element's and draws none: it moves the selection (FE-7, `drag_move.rs`), the element selected first if
+//! it isn't. {3D} has no box: a drag there turns the view.
 use super::*;
 use bimcraft_core::family::constraints::DimMark;
 use bimcraft_core::family::views::{self as fv, Staged, Which};
@@ -192,6 +192,14 @@ impl Selection {
                 same => same,
             };
         }
+    }
+}
+
+#[cfg(test)]
+impl FamilyEditor {
+    /// Whether a selection box is being dragged: what a test reads mid-drag.
+    pub(crate) fn boxing(&self) -> bool {
+        self.selection.boxing.is_some()
     }
 }
 
@@ -547,14 +555,48 @@ impl Scene<'_> {
             || held
     }
 
-    /// What is selected, over the picture, as one selected alone is drawn: a form's and a nested instance's outline, a plane's
-    /// trace, a reference line, a symbol's strokes, in the selection's colour. A dimension and a connector are lit by their own
+    /// What a press at `p` is on, as a click there would select it (FE-7, in FE-20's order): a connector, a nested instance
+    /// by its face while a face selects, a reference line, a plane (`plane`, the one Tab has come to), then a form by its
+    /// face while a face selects, a nested instance or a form by an edge (`body_hit`); else a symbol of `selected` by its
+    /// strokes, which a click doesn't select in a view but a drag moves. Whether a drag from there is the element's is
+    /// [`under`](Self::under)'s to say.
+    pub(super) fn hit(&self, p: Pos2, plane: Option<Guid>, selected: &[Picked]) -> Option<Picked> {
+        let q = self.view.mm((p.x - self.min.x, p.y - self.min.y));
+        let project = |x: [f64; 3]| Some(self.at(x));
+        if let Some(i) = super::connector_marks::pick(self.connectors, &project, p) {
+            return Some(Picked::Connector(i));
+        }
+        if let Some(i) = self.nested_face(q) {
+            return Some(Picked::Nested(i));
+        }
+        let line =
+            self.staged.line_at(self.which, q, self.reach()).and_then(|i| self.family.lines.get(i)).map(|l| Picked::Line(l.guid));
+        let body = || self.body_hit(q);
+        let symbol = || {
+            selected.iter().copied().filter(|s| matches!(s, Picked::Symbol(_))).find(|s| {
+                self.pieces(*s).iter().any(|[a, b]| {
+                    let (a, b, c) = (P2(a.x.into(), a.y.into()), P2(b.x.into(), b.y.into()), P2(p.x.into(), p.y.into()));
+                    bimcraft_core::geom::dist_to_segment(c, a, b) <= 6.0
+                })
+            })
+        };
+        line.or(plane.map(Picked::Plane)).or_else(body).or_else(symbol)
+    }
+
+    /// What is selected, over the picture, as one selected alone is drawn: a form's edges as seen, a nested instance's outline,
+    /// a plane's trace, a reference line, a symbol's strokes, in the selection's colour. A dimension and a connector are lit by their own
     /// painters.
     pub(super) fn paint_selected(&self, painter: &Painter, selected: &[Picked]) {
         let picked = super::views::PICKED;
         for p in selected {
             match p {
-                Picked::Form(_) | Picked::Nested(_) => {
+                // A form by its own edges as the view sees it (its notches, its holes), not the outline it is picked by.
+                Picked::Form(i) => {
+                    for (a, b) in fv::outline_edges(self.family, self.values, self.staged, self.which, *i) {
+                        painter.line_segment([self.screen(a), self.screen(b)], Stroke::new(2.0, picked));
+                    }
+                }
+                Picked::Nested(_) => {
                     let ring = self.outline(*p);
                     if ring.len() > 2 {
                         painter.add(Shape::closed_line(ring, Stroke::new(2.0, picked)));

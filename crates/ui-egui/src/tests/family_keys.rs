@@ -195,8 +195,16 @@ fn finish_cancel_pick_lines_and_trim_work_while_a_form_is_sketched_and_do_nothin
     assert_eq!(sketch(&h).tool, None, "MD: the sketch's Modify");
     shortcut(&mut h, "TR");
     assert!(sketch(&h).trim.is_some(), "TR: Trim/Extend to Corner");
-    // What the sketch's ribbon doesn't offer does nothing: dimensions, Text, Load Family, Component.
-    for keys in ["DI", "DD", "AN", "TX", "FA", "CM"] {
+    // The dimensions while sketching, in a plan that sees the sketch flat (FE-12); Escape puts them down.
+    for (keys, kind) in [("DI", DimKind::Aligned), ("DD", DimKind::Aligned), ("AN", DimKind::Angular)] {
+        shortcut(&mut h, keys);
+        let ed = editor(&h);
+        assert!(ed.sketching() && ed.views.dimensioning.is_some() && ed.views.dim_kind == kind, "{keys} while sketching");
+        key(&mut h, Key::Escape);
+        assert!(editor(&h).views.dimensioning.is_none(), "{keys}: Escape");
+    }
+    // What the sketch's ribbon doesn't offer does nothing: Text, Load Family, Component.
+    for keys in ["TX", "FA", "CM"] {
         shortcut(&mut h, keys);
         let ed = editor(&h);
         assert!(ed.sketching() && ed.views.dimensioning.is_none() && ed.selected_symbol().is_none(), "{keys} while sketching");
