@@ -85,7 +85,7 @@ pub(crate) fn apply(
                         if first { flat::strip(&reach, by, KERF / 2.0) } else { flat::strip(&reach, KERF / 2.0, by) }.ok_or_else(sharp)?;
                     let (below, above) = extent(soup, axes);
                     let wall = flat::prism(axes, &band, below - MARGIN, above + MARGIN, work)?;
-                    mended(csg::subtract(&soup.mesh(), &wall, &mut work.meter).map_err(from_csg)?, work)?
+                    mended(csg::subtract(&soup.for_cutting(), &wall, &mut work.meter).map_err(from_csg)?, work)?
                 }
                 (None, Shape::Plane { .. }) => return Ok(Err(Conflict::NoSuchFace)),
             }
@@ -110,7 +110,7 @@ pub(crate) fn apply(
                 clip::split(soup, n, w - d, work)?.1
             } else {
                 let slab = flat::slab(&soup.pts, &face, n, PROUD, -d);
-                mended(csg::subtract(&soup.mesh(), &slab, &mut work.meter).map_err(from_csg)?, work)?
+                mended(csg::subtract(&soup.for_cutting(), &slab, &mut work.meter).map_err(from_csg)?, work)?
             }
         }
     };

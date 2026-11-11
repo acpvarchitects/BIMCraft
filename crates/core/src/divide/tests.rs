@@ -1062,14 +1062,22 @@ fn a_solid_of_thousands_of_triangles_is_divided_within_the_budget() {
     }
     let sum: f64 = o.pieces.iter().map(|p| p.volume).sum();
     assert!(near(sum + o.removed, held));
-    // A patch or a bent line goes through a partition, which so many small faces not in one plane make costly: it is
-    // done, or refused as too much, and never hangs.
+    // A patch and a bent line go through a partition, after the planes too: the sections the planes left, each one
+    // face in thousands of triangles, are no more to it than the wall's top.
     let patch = Cut::Sketch { frame: on_face, points: pts(&square(-400.0, 1200.0, 800.0)), closed: true, depth: Some(40.0) };
+    let bent =
+        Cut::Sketch { frame: on_face, points: pts(&[(-900.0, -100.0), (-700.0, 1500.0), (-1000.0, 3100.0)]), closed: false, depth: None };
+    let mut all = r.clone();
+    all.cuts.extend([patch, bent].map(Division::from));
     let t = std::time::Instant::now();
-    let done = divide(&solid, &recipe(vec![patch]));
-    let sizes = done.as_ref().map(|o| o.pieces.iter().map(|p| p.mesh.len()).collect::<Vec<_>>());
-    eprintln!("{} triangles, a patch: {:?}, {sizes:?}", solid.len(), t.elapsed());
-    assert!(matches!(done, Ok(_) | Err(DivideError::TooMuch(_))), "{done:?}");
+    let o = divide(&solid, &all).unwrap();
+    eprintln!("{} triangles, {} pieces by planes, a patch and a bent line: {:?}", solid.len(), o.pieces.len(), t.elapsed());
+    assert!(o.pieces.len() >= 9, "{:?}", keys(&o));
+    for p in &o.pieces {
+        assert!(p.closed && p.mesh.len() <= 8 * FACETS + 600, "{} isn't closed, or has {} triangles", p.key, p.mesh.len());
+    }
+    let sum: f64 = o.pieces.iter().map(|p| p.volume).sum();
+    assert!(near(sum + o.removed, held));
 }
 
 #[test]
