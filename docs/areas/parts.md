@@ -34,7 +34,8 @@ that of the solid's faces that lie in the plane of the layer's own face and look
 `Model::part_facing`): for a wall's part the face on its own side of the wall (its elevation, less doors and windows): a layer past the last
 structure layer, the interior plaster, on the wall's interior face, any other on its exterior face (the structure, as all of a
 wall is, on its exterior one; a type with no structure layer has its thickest stand for it; `parts/state.rs`'s `interior`), for
-a floor's, a roof's or a ceiling's part its top (less openings and shafts; a sloped one's along its slope). A component's part
+a floor's, a roof's or a ceiling's part its top (less openings and shafts; a sloped one's along its slope), but for a
+ceiling's layer under its structure, its plaster, the underside, the face it shows. A component's part
 has a volume and no area. `part_layer`, `part_material` (its own, else its layer's, else its host's structure's),
 `part_thickness`, `parts_of`, `part_divisions` and `part_state` (all of it at once) give the rest. A material may say how heavy
 it is and how it carries and holds heat (`Material::density`, kg/m³, `conductivity`, W/(m·K), `specific_heat`, J/(kg·K); the
