@@ -357,7 +357,8 @@ pub(super) struct Scene<'a> {
     pub(super) connectors: &'a [super::connector_marks::Mark],
     /// The document's Detail Level, which says which symbols its plans draw.
     pub(super) detail: bimcraft_core::graphics::Detail,
-    /// The forms Temporary Hide/Isolate leaves out of the view, by place.
+    /// The forms the view leaves out, by place: Temporary Hide/Isolate's, and while Preview Visibility is on those their
+    /// Visibility Settings hide there (F8). A box takes none of them.
     pub(super) hidden: &'a [bool],
     /// Select Elements by Face (FE-20): a face selects what it is of, by a click and by a crossing box.
     pub(super) by_face: bool,

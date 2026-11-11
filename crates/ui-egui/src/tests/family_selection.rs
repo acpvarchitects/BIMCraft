@@ -769,3 +769,55 @@ fn an_edge_is_one_the_view_draws_of_a_form_not_a_side_of_its_hull() {
     click_family(&mut h, [1200.0, 0.0, 250.0]);
     assert_eq!(selected(&h), form, "its right side");
 }
+
+/// A box takes nothing the view doesn't draw: a form its Visibility Settings leave out of the plan, while Preview Visibility
+/// shows the family as placed (off, the plan draws it halftone, and a box takes it as a click does), and a nested instance
+/// they leave out, which the plan never draws, nor a click takes.
+#[test]
+fn a_box_takes_nothing_the_view_leaves_out_by_its_visibility_settings() {
+    let dir = tempfile::tempdir().unwrap();
+    // A, the west box, left out of the plans.
+    let script = BOXES.replacen(r#""to": 600}, "#, r#""to": 600, "visibility": {"plan": false}}, "#, 1);
+    let (mut h, _) = super::family_views::open(&script, "Boxes");
+    view(&mut h, Some(Which::Plan));
+    let before = project(&h);
+    // Two Shorts in front, the first left out of the plans too.
+    let doc = h.state().active_doc().expect("a family document");
+    h.state_mut().nest_family_file(doc, &small_file(dir.path()));
+    h.run();
+    for x in [200.0, 600.0] {
+        place(&mut h, "Short", [x, -400.0, 0.0]);
+    }
+    editor_mut(&mut h).nested_instances[0].visibility = Some(bimcraft_core::family::Visibility { plan: false, ..Default::default() });
+    h.run();
+    key(&mut h, Key::Escape);
+    // Preview Visibility off: A drawn halftone, taken by a crossing inside its face as by a click on it.
+    boxed(&mut h, [-650.0, 450.0, 0.0], [-750.0, 350.0, 0.0], Modifiers::NONE);
+    assert_eq!(selected(&h), vec![Picked::Form(0)], "A drawn halftone");
+    // The first Short is never drawn in the plan: no box takes it, by its face, across it or round it, nor a click.
+    boxed(&mut h, [270.0, -330.0, 0.0], [230.0, -370.0, 0.0], Modifiers::NONE);
+    assert!(selected(&h).is_empty(), "a crossing inside where the first Short would be");
+    boxed(&mut h, [350.0, -320.0, 0.0], [150.0, -380.0, 0.0], Modifiers::NONE);
+    assert!(selected(&h).is_empty(), "a crossing across it");
+    boxed(&mut h, [100.0, -200.0, 0.0], [400.0, -500.0, 0.0], Modifiers::NONE);
+    assert!(selected(&h).is_empty(), "a window round it");
+    click_family(&mut h, [250.0, -350.0, 0.0]);
+    assert!(selected(&h).is_empty(), "a click on it");
+    // The second, drawn, is taken.
+    boxed(&mut h, [750.0, -320.0, 0.0], [550.0, -380.0, 0.0], Modifiers::NONE);
+    assert_eq!(selected(&h), vec![Picked::Nested(1)], "a crossing across the second Short");
+    // Preview Visibility on: A isn't drawn, and no box takes it.
+    super::preview_visibility::toggle(&mut h);
+    assert!(editor(&h).preview_visibility(), "Preview Visibility on");
+    key(&mut h, Key::Escape);
+    boxed(&mut h, [-650.0, 450.0, 0.0], [-750.0, 350.0, 0.0], Modifiers::NONE);
+    assert!(selected(&h).is_empty(), "a crossing inside where A would be");
+    boxed(&mut h, [-400.0, 500.0, 0.0], [-600.0, 300.0, 0.0], Modifiers::NONE);
+    assert!(selected(&h).is_empty(), "a crossing over its edge");
+    boxed(&mut h, [-1000.0, 700.0, 0.0], [-400.0, 100.0, 0.0], Modifiers::NONE);
+    assert!(selected(&h).is_empty(), "a window round it");
+    // B, which the plan draws, still is.
+    boxed(&mut h, [750.0, 450.0, 0.0], [650.0, 350.0, 0.0], Modifiers::NONE);
+    assert_eq!(selected(&h), vec![Picked::Form(1)], "B");
+    assert_eq!(project(&h), before, "nothing of it reaches the project");
+}

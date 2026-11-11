@@ -868,7 +868,14 @@ impl FamilyEditor {
         super::connector_marks::paint(&painter, &connector_marks, &project, &chosen_connectors, self.connector_hover, lit);
         // What is selected, over the picture: each of it as one selected alone is drawn (FE-1, `select_box.rs`); the
         // reference line selected, its pivots' marks and its grips (F7d).
-        let hidden: Vec<bool> = (0..self.forms.len()).map(|i| self.temp_hidden_form(i)).collect();
+        // The forms the view leaves out: Temporary Hide/Isolate's, and while Preview Visibility shows the family as placed,
+        // those its Visibility Settings hide here (F8), which it otherwise draws halftone (`staged`).
+        let by_view = match drawn.as_ref() {
+            Some(f) if self.document.preview_visibility => fv::hidden_in(f, &values, Some(which), self.views.detail, c.staged.cut()),
+            _ => Vec::new(),
+        };
+        let hidden: Vec<bool> =
+            (0..self.forms.len()).map(|i| self.temp_hidden_form(i) || by_view.get(i).copied().unwrap_or(false)).collect();
         let scene = family.as_ref().map(|f| super::select_box::Scene {
             family: f,
             values: &values,
