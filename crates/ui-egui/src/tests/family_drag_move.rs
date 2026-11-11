@@ -185,6 +185,43 @@ fn shift_keeps_a_move_square_to_the_view() {
 }
 
 #[test]
+fn shift_mid_drag_switches_the_axis_and_comes_and_goes_measured_from_where_the_drag_began() {
+    let mut h = plan();
+    pick(&mut h, &[Picked::Form(0)]);
+    let before = points(&h, 0);
+    let p = [300.0, 300.0, 0.0];
+    // Every pointer place worked out as the drag begins: it reads the pointer through the view as it was then.
+    let (_, mostly_y) = ends(&h, p, [100.0, 400.0, 0.0]);
+    let (_, last) = ends(&h, p, [250.0, 50.0, 0.0]);
+    let moved = |h: &Harness<BimApp>| shift(&before, &points(h, 0));
+    let is = |d: [f64; 2], x: f64, y: f64| near(d[0], x) && near(d[1], y);
+    let mods = |h: &mut Harness<BimApp>, m: Modifiers| {
+        h.event(Event::ModifiersChanged(m));
+        h.run();
+    };
+    // Shift held, mostly across: across only.
+    press_and_move(&mut h, p, [300.0, 100.0, 0.0], Modifiers::SHIFT);
+    assert!(is(moved(&h), 300.0, 0.0) && moved(&h)[1] == 0.0, "{:?}", moved(&h));
+    // On to mostly up, Shift still held: the axis switches, up only.
+    h.hover_at(mostly_y);
+    h.run();
+    assert!(is(moved(&h), 0.0, 400.0) && moved(&h)[0] == 0.0, "{:?}", moved(&h));
+    // Shift let go: free, where the pointer is.
+    mods(&mut h, Modifiers::NONE);
+    assert!(is(moved(&h), 100.0, 400.0), "{:?}", moved(&h));
+    // Pressed again: square again; let go and on: free.
+    mods(&mut h, Modifiers::SHIFT);
+    assert!(is(moved(&h), 0.0, 400.0) && moved(&h)[0] == 0.0, "{:?}", moved(&h));
+    mods(&mut h, Modifiers::NONE);
+    h.hover_at(last);
+    h.run();
+    assert!(is(moved(&h), 250.0, 50.0), "{:?}", moved(&h));
+    release(&mut h, last);
+    assert!(is(moved(&h), 250.0, 50.0), "{:?} {}", moved(&h), status(&h));
+    assert_eq!(editor(&h).steps(), 1, "one step for the whole drag");
+}
+
+#[test]
 fn a_form_a_plane_and_a_symbol_move_together() {
     let mut h = plan();
     pick(&mut h, &[Picked::Form(0), Picked::Plane(g(EDGE)), Picked::Symbol(0)]);
