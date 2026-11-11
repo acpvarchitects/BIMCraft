@@ -5,7 +5,7 @@
 //! family and type, those shown (SA) or all (SV); Select Elements by Face (BF) says whether a face selects what it is of.
 //! A key whose command has nothing to work on does nothing, each key can be given another in Keyboard Shortcuts, and
 //! nothing of it reaches the project.
-use super::family_box_select::{DIM, EDGE, LINE, boxed, click_with_mods, g, plan, selected, set};
+use super::family_box_select::{BOXES, DIM, EDGE, LINE, boxed, click_with_mods, g, plan, selected, set};
 use super::family_views::{click_family, editor, view};
 use super::*;
 use crate::editor::select_box::Picked;
@@ -507,4 +507,39 @@ fn select_elements_by_face_is_greyed_where_it_changes_nothing_and_is_kept_with_t
     assert_eq!(h.query_all_by_label("Select Elements by Face").count(), 0, "no toggle on a project's tab");
     shortcut(&mut h, "BF");
     assert!(h.state().select_by_face);
+}
+
+/// Looking at the result: with `BIMCRAFT_FAMILY_SELECTION_DUMP` naming a folder, the family's plan with several selected
+/// (the Select panel's Filter, the status bar's count, funnel and Select Elements by Face), Filter, Select by ID and IDs of
+/// Selection, each in the three looks.
+#[test]
+fn the_selections_dialogs_and_status_bar_in_the_three_looks() {
+    let Ok(folder) = std::env::var("BIMCRAFT_FAMILY_SELECTION_DUMP") else { return };
+    std::fs::create_dir_all(&folder).unwrap();
+    for (name, dark, light_canvas) in [("light", false, false), ("dark", true, false), ("dark-ui-light-canvas", true, true)] {
+        let mut h = app(BOXES);
+        h.ctx.set_theme(if dark { egui::ThemePreference::Dark } else { egui::ThemePreference::Light });
+        h.state_mut().light_canvas = light_canvas;
+        h.set_size(vec2(1600., 1000.));
+        h.state_mut().edit_family("Boxes");
+        h.run();
+        view(&mut h, Some(Which::Plan));
+        let shot = |h: &mut Harness<BimApp>, what: &str| {
+            h.run();
+            h.render().unwrap().save(std::path::Path::new(&folder).join(format!("selection-{what}-{name}.png"))).unwrap();
+        };
+        all_six(&mut h);
+        shot(&mut h, "several");
+        shortcut(&mut h, "FF");
+        shot(&mut h, "filter");
+        press(&mut h, "Cancel");
+        shortcut(&mut h, "BF");
+        shortcut(&mut h, "ID");
+        type_into(&mut h, "IDs, GUIDs or IFC GlobalIds, as many as you like:", &format!("{EDGE} 123"));
+        shot(&mut h, "by-id-and-face-off");
+        press(&mut h, "Cancel");
+        manage(&mut h);
+        press(&mut h, "IDs of Selection");
+        shot(&mut h, "ids");
+    }
 }

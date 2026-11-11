@@ -13,7 +13,7 @@ use bimcraft_core::ids::Guid;
 /// Two boxes on Ref. Level, west (A) and east (B) of the Center (Left/Right) plane, both behind Center (Front/Back); a plane of
 /// its own, Edge, further west; a reference line north of them; a symbolic line in front; and a dimension in plan from Edge to
 /// Center (Left/Right), in front of everything.
-const BOXES: &str = concat!(
+pub(super) const BOXES: &str = concat!(
     r#"family {"name": "Boxes", "category": "generic", "types": {"T": {}}, "#,
     r#""forms": [{"profile": [[-900, 200], [-500, 200], [-500, 600], [-900, 600]], "to": 600}, "#,
     r#"{"profile": [[500, 200], [900, 200], [900, 600], [500, 600]], "to": 600}], "#,

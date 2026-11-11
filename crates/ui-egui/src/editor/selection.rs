@@ -297,7 +297,7 @@ impl FamilyEditor {
                 ui.add_space(6.0);
                 ScrollArea::vertical().max_height(320.0).show(ui, |ui| {
                     egui::Grid::new("family-ids-of-selection-grid").num_columns(3).striped(true).spacing([14.0, 4.0]).show(ui, |ui| {
-                        for h in ["Name", "ID", "GUID"] {
+                        for h in [msg!("Name"), msg!("ID"), msg!("GUID")] {
                             ui.label(RichText::new(t(h)).strong());
                         }
                         ui.end_row();
@@ -315,7 +315,7 @@ impl FamilyEditor {
                 if d.rows.iter().any(|(_, id, _)| bimcraft_core::ids::unset(id)) {
                     ui.label(
                         RichText::new(t(
-                            "What was made since the family was last loaded into a project has no ID yet: loaded, it is given one.",
+                            "What was made since the family was opened has no ID yet: it is given one when the family is loaded into a project.",
                         ))
                         .weak(),
                     );
