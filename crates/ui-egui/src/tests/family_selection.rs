@@ -67,6 +67,12 @@ fn filter_counts_the_selection_by_kind_and_keeps_the_kinds_checked() {
         assert!(h.query_by_role_and_label(Role::CheckBox, kind).is_some(), "{kind} listed");
     }
     assert!(h.query_by_role_and_label(Role::CheckBox, "Connectors").is_none(), "only the kinds selected");
+    // In an order of their own, the same in every language: forms first, then datums, dimensions and symbols.
+    let tops: Vec<f32> = ["Extrusions", "Reference Planes", "Reference Lines", "Dimensions", "Symbols"]
+        .iter()
+        .map(|kind| h.get_by_role_and_label(Role::CheckBox, kind).rect().top())
+        .collect();
+    assert!(tops.windows(2).all(|w| w[0] < w[1]), "the kinds in their fixed order, not by name: {tops:?}");
     h.get_by_label("Total selected items: 6");
     // Each with its count: the two extrusions cleared leave four, Edge three.
     pick(&mut h, Role::CheckBox, "Extrusions");

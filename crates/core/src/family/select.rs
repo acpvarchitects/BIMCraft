@@ -49,6 +49,30 @@ pub enum Kind {
 }
 
 impl Kind {
+    /// Where Filter lists it, the same in every language: the forms first, each kind solid then void as the Create tab
+    /// has them (Extrusion, Blend, Revolve, Sweep, Swept Blend), and a file's meshes; then the datums (reference planes,
+    /// then lines), dimensions, symbols, connectors and nested instances, in the order a family's lists hold them.
+    pub fn rank(self) -> u8 {
+        let form = |k: FormKind| match k {
+            FormKind::Extrusion => 0,
+            FormKind::Blend => 1,
+            FormKind::Revolve => 2,
+            FormKind::Sweep => 3,
+            FormKind::SweptBlend => 4,
+        };
+        match self {
+            Kind::Form(k) => form(k),
+            Kind::Void(k) => 5 + form(k),
+            Kind::Mesh => 10,
+            Kind::ReferencePlane => 11,
+            Kind::ReferenceLine => 12,
+            Kind::Dimension => 13,
+            Kind::Symbol => 14,
+            Kind::Connector => 15,
+            Kind::Nested => 16,
+        }
+    }
+
     /// What Filter's list calls it, in English: several of it, as Revit's list names categories.
     pub fn name(self) -> &'static str {
         match self {
@@ -120,7 +144,8 @@ pub struct Group {
 }
 
 /// Filter's list for `picked`, a selection of `family`'s: each kind it holds with what is of it (each thing once), the kinds
-/// in the order of their names. What the family hasn't is left out.
+/// in an order of their own ([`Kind::rank`]), never by their names, which a translation would reorder. What the family
+/// hasn't is left out.
 pub fn groups(family: &Family, picked: &[Picked]) -> Vec<Group> {
     let mut out: Vec<Group> = Vec::new();
     for p in picked {
@@ -131,7 +156,7 @@ pub fn groups(family: &Family, picked: &[Picked]) -> Vec<Group> {
             None => out.push(Group { kind, items: vec![*p] }),
         }
     }
-    out.sort_by_key(|g| g.kind.name());
+    out.sort_by_key(|g| g.kind.rank());
     out
 }
 
@@ -296,17 +321,18 @@ mod tests {
         assert_eq!(
             listed,
             [
-                ("Connectors", 1),
-                ("Dimensions", 1),
                 ("Extrusions", 2),
-                ("Nested Instances", 1),
-                ("Reference Lines", 1),
-                ("Reference Planes", 1),
                 ("Revolves", 1),
-                ("Symbols", 2),
                 ("Void Extrusions", 1),
+                ("Reference Planes", 1),
+                ("Reference Lines", 1),
+                ("Dimensions", 1),
+                ("Symbols", 2),
+                ("Connectors", 1),
+                ("Nested Instances", 1),
             ],
-            "each kind once, by name, what the family hasn't and what is there twice left out"
+            "each kind once, in an order of their own that no language changes: forms, solid then void, then datums, dimensions, \
+             symbols, connectors and nested instances; what the family hasn't and what is there twice left out"
         );
         let extrusions = groups(&f, &picked).into_iter().find(|g| g.kind == Kind::Form(FormKind::Extrusion)).unwrap();
         assert_eq!(extrusions.items, [Picked::Form(1), Picked::Form(0)], "in the order selected");

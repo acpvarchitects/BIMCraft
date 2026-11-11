@@ -3,7 +3,8 @@
 //! buttons, which look as the project's do.
 //!
 //! - **Filter** (FF; the Select panel's button while several are selected, and the status bar's funnel): the kinds the
-//!   selection holds, each with how many of it, checked to keep or cleared to leave out, Check All and Check None; OK keeps
+//!   selection holds, in an order of their own whatever the language (forms, datums, dimensions, symbols, connectors,
+//!   nested instances: `select::Kind::rank`), each with how many of it, checked to keep or cleared to leave out, Check All and Check None; OK keeps
 //!   what is checked selected. The list is the project's Filter's (`filter::checklist`).
 //! - **Select Previous** (PR): the selection as it was before it was last let go or replaced, again
 //!   (`Selection::restore_previous`): one set, without what is gone from the draft since.

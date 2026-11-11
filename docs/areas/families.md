@@ -759,9 +759,10 @@ of the document's history, and nothing reaches the project.
 - **Filter** (FF; the Select panel's Filter on Modify | Multi-Select, where Revit has it; the status bar's funnel, which on a
   family's tab counts and filters the family's selection, never the project's) lists the kinds the selection holds, each with
   how many of it (`select::groups`): forms by what they are (Extrusions, Blends, Revolves, Sweeps, Swept Blends, the void ones
-  apart, a file's Meshes), Reference Planes, Reference Lines, Dimensions, Symbols, Connectors and Nested Instances. Each is
-  checked to keep or cleared to leave out, with Check All and Check None, and OK keeps what is checked selected
-  (`select::kept`). The list is the project's Filter's own (`filter::checklist`).
+  apart, a file's Meshes), Reference Planes, Reference Lines, Dimensions, Symbols, Connectors and Nested Instances, in that
+  order whatever the language (`Kind::rank`; sorted by name, a translation would reorder them). Each is checked to keep or
+  cleared to leave out, with Check All and Check None, and OK keeps what is checked selected (`select::kept`). The list is
+  the project's Filter's own (`filter::checklist`).
 - **Select Previous** (PR) brings back the selection as it was before it was last let go (Escape, Modify, a click on nothing)
   or replaced by another (a click, a box, Filter, Select by ID, Select All Instances): one set (`Selection::previous`), kept in
   step with the draft as the selection is, so what was deleted since is skipped. What it replaces becomes the previous one,
