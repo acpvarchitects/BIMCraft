@@ -399,10 +399,10 @@ mod tests {
         f.nested.push(serde_json::from_value(json!({"name": "Mark", "family": flat})).unwrap());
         f.nested_instances.push(serde_json::from_value(json!({"family": "Mark", "type": "M", "at": [0, 2000]})).unwrap());
         assert!(f.instance_pieces(4, &values).is_empty() && f.instance_marked(4, &values, Detail::Fine));
-        assert_eq!(nested_shown(&f, &values, Some(Which::Plan), Detail::Fine, 1200.0)[4], true);
-        assert_eq!(nested_shown(&f, &values, Some(Which::Plan), Detail::Coarse, 1200.0)[4], false);
-        assert_eq!(nested_shown(&f, &values, Some(Which::Elevation(Side::Front)), Detail::Fine, 1200.0)[4], false);
-        assert_eq!(nested_shown(&f, &values, None, Detail::Fine, 1200.0)[4], false);
+        assert!(nested_shown(&f, &values, Some(Which::Plan), Detail::Fine, 1200.0)[4]);
+        assert!(!nested_shown(&f, &values, Some(Which::Plan), Detail::Coarse, 1200.0)[4]);
+        assert!(!nested_shown(&f, &values, Some(Which::Elevation(Side::Front)), Detail::Fine, 1200.0)[4]);
+        assert!(!nested_shown(&f, &values, None, Detail::Fine, 1200.0)[4]);
         let shown = nested_shown(&f, &values, Some(Which::Plan), Detail::Fine, 1200.0);
         assert_eq!(instances(&f, &[Picked::Nested(4)], Some(&shown)), [Picked::Nested(4)], "found by what the plan draws of it");
     }
