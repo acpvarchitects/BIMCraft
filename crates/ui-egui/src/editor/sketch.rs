@@ -140,6 +140,9 @@ pub(crate) struct FormSketch {
     pub(crate) edit: Option<super::modify::Tool>,
     /// Rotate's Angle typed on the Options Bar and Enter pressed, for the next frame of the view to turn the lines by.
     pub(crate) typed: Option<f64>,
+    /// The lines and those picked as the Modify tool last left them: changed otherwise (Ctrl+Z, Delete, a pick), what it
+    /// clicked is let go, so a boundary or a start that moved or went isn't used.
+    pub(crate) edit_seen: Option<(Vec<SketchLine>, std::collections::BTreeSet<usize>)>,
 }
 
 /// A step of a sketch's own history: what a change while sketching may change, together (FE-12).
@@ -771,6 +774,7 @@ impl FamilyEditor {
             trim: None,
             edit: None,
             typed: None,
+            edit_seen: None,
         }));
         self.let_everything_go();
         self.views.drawing = None;
@@ -1232,6 +1236,10 @@ impl FamilyEditor {
         s.hover = hover;
         s.found = found;
         let hovered = hover.filter(|_| s.tool.is_none()).and_then(|p| s.sketch.line_at(p, reach));
+        // A Modify tool's clicks let go where the lines or the picks changed since it last saw them (FE-8).
+        if s.edit.is_some() && s.edit_seen.as_ref().is_some_and(|(lines, picked)| *lines != s.sketch.lines || *picked != s.sketch.picked) {
+            s.edit = s.edit.map(|t| t.fresh());
+        }
         let mut problem = None;
         // A picked line's end, dragged with Modify: the lines joined there follow it.
         if s.tool.is_none()
@@ -1277,6 +1285,7 @@ impl FamilyEditor {
             problem = problem.or(done.said);
             moved.extend(done.moved);
         }
+        s.edit_seen = s.edit.map(|_| (s.sketch.lines.clone(), s.sketch.picked.clone()));
         s.sketch.track();
         s.track();
         s.paint(painter, screen, hovered);

@@ -144,7 +144,7 @@ impl Origin {
         self.forms.as_ref().and_then(|f| f.get(i).copied()).unwrap_or(i)
     }
 
-    fn named(&self, n: Named) -> Named {
+    pub(super) fn named(&self, n: Named) -> Named {
         match n {
             Named::Plane(g) => Named::Plane(self.guids.get(&g).copied().unwrap_or(g)),
             Named::Line(g) => Named::Line(self.guids.get(&g).copied().unwrap_or(g)),

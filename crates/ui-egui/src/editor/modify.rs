@@ -15,6 +15,7 @@
 use super::drag_move::{Kept, Names, Origin};
 use super::select_box::{How, Picked};
 use super::*;
+use bimcraft_core::curves::Curve;
 use bimcraft_core::family::Unsat;
 use bimcraft_core::family::constraints::{Named, Stays, Transform, TransformRefused, Transforming};
 use bimcraft_core::family::views::Which;
@@ -179,6 +180,8 @@ pub(crate) struct Modifying {
     pub(crate) tool: Tool,
     pub(crate) which: Option<Which>,
     pub(crate) typed: Option<f64>,
+    /// The selection as the tool last saw it: changed otherwise (a click, Delete), the points clicked are let go.
+    pub(crate) selection: Vec<Picked>,
 }
 
 /// What a rotation, a mirror or a scale is asked to do again once Remove Constraints has taken off what held it.
@@ -329,6 +332,47 @@ pub(crate) fn offset_line(line: (P2, P2), q: P2, o: &Options) -> Option<(P2, P2)
     Some((line.0 + n, line.1 + n))
 }
 
+/// `q` (the view's mm) snapped to the traces of the planes and lines `traces` within `reach`: where two cross near it, there;
+/// else onto the nearest. A point clicked for a Modify tool lands on the references it is meant to, as Revit's snaps it, so a
+/// half turn about a point on the level line keeps what is drawn on the level on it.
+pub(crate) fn snap_to(q: P2, traces: &[(P2, P2)], reach: f64) -> P2 {
+    let near: Vec<(f64, (P2, P2))> = traces
+        .iter()
+        .filter(|(a, b)| a.dist(*b) > 1e-9)
+        .map(|s| (bimcraft_core::geom::dist_to_segment(q, s.0, s.1), *s))
+        .filter(|(d, _)| *d <= reach)
+        .collect();
+    let crossing = |(a, b): (P2, P2), (c, d): (P2, P2)| -> Option<P2> {
+        let (r, s) = (b - a, d - c);
+        let den = r.cross(s);
+        if den.abs() < 1e-9 * r.dot(r).sqrt() * s.dot(s).sqrt() {
+            return None;
+        }
+        let t = (c - a).cross(s) / den;
+        Some(a + r * t)
+    };
+    let mut best: Option<(f64, P2)> = None;
+    for (i, (_, s)) in near.iter().enumerate() {
+        for (_, u) in &near[i + 1..] {
+            if let Some(x) = crossing(*s, *u).filter(|x| x.dist(q) <= reach * 1.5)
+                && best.is_none_or(|(d, _)| x.dist(q) < d)
+            {
+                best = Some((x.dist(q), x));
+            }
+        }
+    }
+    if let Some((_, x)) = best {
+        return x;
+    }
+    near.iter()
+        .min_by(|a, b| a.0.total_cmp(&b.0))
+        .map(|(_, (a, b))| {
+            let r = *b - *a;
+            *a + r * ((q - *a).dot(r) / r.dot(r))
+        })
+        .unwrap_or(q)
+}
+
 /// What the status bar asks for while `tool` is in hand.
 pub(crate) fn prompt(tool: &Tool, o: &Options, sketch: bool) -> &'static str {
     match *tool {
@@ -412,6 +456,20 @@ pub(crate) fn options_bar(ui: &mut Ui, o: &mut Options, tool: &mut Tool, units: 
 }
 
 /// What a refusal of a rotation, a mirror or a scale says, naming what it is about as `names` does.
+/// The datum `n` (a form or a reference line, as `names` names it) is drawn on, by its name, if it is drawn on one.
+fn datum_host(names: &Names, n: Named) -> Option<String> {
+    let f = names.family;
+    let host = match names.origin.named(n) {
+        Named::Form(i) => f.forms.get(i)?.host,
+        Named::Line(g) => f.lines.iter().find(|l| l.guid == g)?.host,
+        Named::Plane(_) => return None,
+    };
+    match host {
+        bimcraft_core::family::PlaneRef::Plane(g) if bimcraft_core::family::DATUMS.contains(&g) => Some(f.said(Named::Plane(g))),
+        _ => None,
+    }
+}
+
 fn refused_said(r: &TransformRefused, t: &Transform, names: &Names) -> String {
     let said = |n: &Named| names.said(*n);
     let done = match t {
@@ -425,10 +483,17 @@ fn refused_said(r: &TransformRefused, t: &Transform, names: &Names) -> String {
             Stays::Origin(n) => tf("{} defines the origin: it stays where it is.", &[&said(n)]),
             Stays::Pivot(n) => tf("{} turns about its pivot: turn it by its rotate grip.", &[&said(n)]),
             Stays::Formula(n) => tf("A number of {} it would change is worked out by a formula: change it in Family Types.", &[&said(n)]),
-            Stays::Hosted(n) => tf(
-                "{} would leave the plane it is drawn on: select that plane too, or do it in a view that sees the plane flat.",
-                &[&said(n)],
-            ),
+            Stays::Hosted(n) => match datum_host(names, *n) {
+                // A datum can't be taken along: the view must see it flat.
+                Some(d) => tf(
+                    "{} is drawn on {}, a datum, which stays: it would leave it. Do it in a view that sees {} flat.",
+                    &[&said(n), &d, &d],
+                ),
+                None => tf(
+                    "{} would leave the plane it is drawn on: select that plane too, or do it in a view that sees the plane flat.",
+                    &[&said(n)],
+                ),
+            },
             Stays::Mesh(n) => tf("{} is a file's triangles: it has no sketch to change.", &[&said(n)]),
         },
         TransformRefused::Unsat(u) => names.origin.unsat(u),
@@ -436,7 +501,9 @@ fn refused_said(r: &TransformRefused, t: &Transform, names: &Names) -> String {
             "{} isn't scaled: Scale takes reference planes and reference lines; a form is sized by its dimensions and parameters.",
             &[&said(n)],
         ),
-        TransformRefused::NotMirrored(n) => tf("{} is a sweep: its profile would face the wrong way, so it isn't mirrored.", &[&said(n)]),
+        TransformRefused::NotMirrored(n) => {
+            tf("{} is a sweep: its profile would face the wrong way, so it isn't mirrored or turned over.", &[&said(n)])
+        }
         TransformRefused::Nested(i) => {
             tf("Nested instance {} is placed on what would be {}: move it off first.", &[&(i + 1).to_string(), done])
         }
@@ -476,6 +543,12 @@ impl FamilyEditor {
                 &[t(tool.label())],
             ));
         }
+        if turns && !items.iter().any(|p| matches!(p, Picked::Form(_) | Picked::Plane(_) | Picked::Line(_))) {
+            return Some(tf(
+                "{} takes forms, reference planes and reference lines: a dimension goes with what it measures.",
+                &[t(tool.label())],
+            ));
+        }
         if matches!(tool, Tool::Scale { .. }) && items.iter().any(|p| matches!(p, Picked::Form(_))) {
             return Some(
                 t("Scale takes reference planes and reference lines: a form is sized by its dimensions and parameters.").to_string(),
@@ -494,13 +567,15 @@ impl FamilyEditor {
         if let Some(s) = self.sketch.as_mut() {
             s.set_tool(None, false);
             s.edit = Some(tool);
+            s.edit_seen = None;
             return Ok(());
         }
         self.views.drawing = None;
         self.views.picking = None;
         self.views.pivoting = None;
         self.placing = None;
-        self.views.modify = Some(Modifying { tool, which: self.views.shown, typed: None });
+        let selection = self.selection.items().to_vec();
+        self.views.modify = Some(Modifying { tool, which: self.views.shown, typed: None, selection });
         Ok(())
     }
 
@@ -509,6 +584,19 @@ impl FamilyEditor {
         match self.sketch.as_ref() {
             Some(s) => s.edit,
             None => self.views.modify.as_ref().map(|m| m.tool),
+        }
+    }
+
+    /// The Modify tool in hand back to its first step, what was clicked let go (Rotate's centre found again): what Undo and
+    /// Redo leave it at, as they give a drag up, since what was clicked may be gone or elsewhere.
+    pub(crate) fn modify_fresh(&mut self) {
+        if let Some(m) = self.views.modify.as_mut() {
+            m.tool = m.tool.fresh();
+            m.typed = None;
+        }
+        if let Some(s) = self.sketch.as_mut() {
+            s.edit = s.edit.map(|t| t.fresh());
+            s.edit_seen = None;
         }
     }
 
@@ -589,6 +677,12 @@ impl FamilyEditor {
                 }
             }
         }
+        if taking.planes.is_empty() && taking.lines.is_empty() && taking.forms.is_empty() {
+            return Err(Refused::Said(tf(
+                "{} takes forms, reference planes and reference lines, and none selected is shown in this view.",
+                &[t_label(&t)],
+            )));
+        }
         let f = self.family()?;
         let done = match f.transformed(&self.values(), &taking, &t) {
             Ok(done) => done,
@@ -649,11 +743,21 @@ impl FamilyEditor {
     }
 
     /// Remove Constraints said yes to: what was refused done again.
-    pub(super) fn modify_again(&mut self, a: Again) {
+    /// Whether it was done: refused, the caller puts back the constraints it took off, so nothing is left of either.
+    pub(super) fn modify_again(&mut self, a: Again) -> bool {
         match self.transform_items(&a.items, a.transform, a.copy) {
-            Ok(()) => self.views.modify = None,
-            Err(Refused::Said(s)) => self.views.status = Some(s),
-            Err(Refused::Unsat(u)) => self.views.status = Some(u.message),
+            Ok(()) => {
+                self.views.modify = None;
+                true
+            }
+            Err(Refused::Said(s)) => {
+                self.views.status = Some(s);
+                false
+            }
+            Err(Refused::Unsat(u)) => {
+                self.views.status = Some(u.message);
+                false
+            }
         }
     }
 
@@ -682,6 +786,9 @@ impl FamilyEditor {
         match m.tool {
             Tool::Move { copy, from: None } => set(self, Tool::Move { copy, from: Some(q) }),
             Tool::Move { copy, from: Some(a) } => {
+                if self.taken(shown).is_empty() {
+                    return Some(t("Nothing selected is shown in this view.").to_string());
+                }
                 let d = space.vector(super::drag_move::delta(a, q, shift || o.constrain));
                 let done = self.shift_taken(shown, d, copy, (which, view, seen));
                 match done {
@@ -772,7 +879,7 @@ impl FamilyEditor {
         let Some(k) = factor_of(o, origin, first, to).filter(|k| k.is_finite() && *k > 0.0) else {
             return Some(tf("Scale: `{}` isn't a factor above 0.", &[&o.factor]));
         };
-        let said = self.transform_taken(shown, Transform::Scale { centre: space.point(origin), factor: k }, false);
+        let said = self.transform_taken(shown, Transform::Scale { centre: space.point(origin), factor: k, normal: space.toward() }, false);
         if said.is_none() && self.views.unsatisfied.is_none() {
             self.views.modify = None;
         }
@@ -784,7 +891,9 @@ impl FamilyEditor {
     pub(super) fn modify_typed(&mut self, space: Space, shown: &[Picked]) -> Option<String> {
         let m = self.views.modify.as_mut()?;
         let typed = m.typed.take()?;
-        let Tool::Rotate { centre: Some(c), .. } = m.tool else { return None };
+        let Tool::Rotate { centre: Some(c), .. } = m.tool else {
+            return Some(t("Rotate: nothing selected is shown in this view to turn.").to_string());
+        };
         if !typed.is_finite() {
             return Some(tf("Rotate: `{}` isn't an angle in degrees.", &[&self.views.modify_options.angle]));
         }
@@ -803,17 +912,18 @@ pub(super) fn paint_modify(
     snaps: &bimcraft_core::snap::Snaps,
     painter: &egui::Painter,
     hover: Option<P2>,
-    pieces: &[[Pos2; 2]],
+    (pieces, centred): (&[[Pos2; 2]], &[[Pos2; 2]]),
     screen: &dyn Fn(P2) -> Pos2,
     at_view: &dyn Fn(Pos2) -> P2,
     axis: Option<(P2, P2)>,
     shift: bool,
 ) {
     let Some(m) = modify.as_mut() else { return };
+    // Rotate's centre: the middle of the forms, planes and lines it takes (a dimension goes with them, and alone turns nothing).
     if let Tool::Rotate { centre: centre @ None, .. } = &mut m.tool
-        && !pieces.is_empty()
+        && !centred.is_empty()
     {
-        let pts: Vec<P2> = pieces.iter().flatten().map(|p| at_view(*p)).collect();
+        let pts: Vec<P2> = centred.iter().flatten().map(|p| at_view(*p)).collect();
         let lo = pts.iter().fold(P2(f64::INFINITY, f64::INFINITY), |a, p| P2(a.0.min(p.0), a.1.min(p.1)));
         let hi = pts.iter().fold(P2(f64::NEG_INFINITY, f64::NEG_INFINITY), |a, p| P2(a.0.max(p.0), a.1.max(p.1)));
         *centre = Some(P2((lo.0 + hi.0) / 2.0, (lo.1 + hi.1) / 2.0));
@@ -922,13 +1032,28 @@ pub(crate) struct SketchDone {
 
 /// The lines picked mapped by `f` (copies of them, with `copy`, picked in their place): what moved.
 fn map_picked(s: &mut super::sketch::FormSketch, f: &dyn Fn(P2) -> P2, copy: bool) -> SketchDone {
+    each_picked(s, &|c| c.map(f), copy)
+}
+
+/// A curve scaled by `k` about `o`: its points, and a circle's radius and an ellipse's radii, which a map of its points
+/// alone (a move, a turn or a mirror) leaves as they are.
+pub(crate) fn scaled(c: &Curve, o: P2, k: f64) -> Curve {
+    match c.map(|q| o + (q - o) * k) {
+        Curve::Circle { centre, radius } => Curve::Circle { centre, radius: radius * k },
+        Curve::Ellipse { centre, radii, angle, span } => Curve::Ellipse { centre, radii: [radii[0] * k, radii[1] * k], angle, span },
+        other => other,
+    }
+}
+
+/// The lines picked made again by `f` (copies of them, with `copy`, picked in their place): what moved.
+fn each_picked(s: &mut super::sketch::FormSketch, f: &dyn Fn(&Curve) -> Curve, copy: bool) -> SketchDone {
     let picked: Vec<usize> = s.sketch.picked.iter().copied().collect();
     let mut done = SketchDone::default();
     if copy {
         let mut made = Vec::new();
         for i in picked {
             let Some(l) = s.sketch.lines.get(i).filter(|l| !axis_line(l)).cloned() else { continue };
-            s.sketch.lines.push(SketchLine { id: 0, guid: Guid::new(), curve: l.curve.map(f), ..l });
+            s.sketch.lines.push(SketchLine { id: 0, guid: Guid::new(), curve: f(&l.curve), ..l });
             made.push(s.sketch.lines.len() - 1);
         }
         if made.is_empty() {
@@ -939,7 +1064,7 @@ fn map_picked(s: &mut super::sketch::FormSketch, f: &dyn Fn(P2) -> P2, copy: boo
     } else {
         for i in picked {
             if let Some(l) = s.sketch.lines.get_mut(i) {
-                l.curve = l.curve.map(f);
+                l.curve = f(&l.curve);
                 done.moved.push(l.guid);
             }
         }
@@ -1031,7 +1156,7 @@ pub(crate) fn sketch_click(
                 return SketchDone { said: Some(tf("Scale: `{}` isn't a factor above 0.", &[&o.factor])), moved: Vec::new() };
             };
             s.edit = None;
-            return map_picked(s, &|q| c + (q - c) * k, false);
+            return each_picked(s, &|curve| scaled(curve, c, k), false);
         }
         Tool::Offset => {
             let Some(i) = s.sketch.line_at(p, reach) else { return said(msg!("Pick a line of the sketch to offset.")) };
@@ -1112,7 +1237,9 @@ pub(crate) fn sketch_typed(s: &mut super::sketch::FormSketch, angle: f64, copy: 
         Some(Tool::Rotate { centre, .. }) => centre.or_else(|| picked_centre(s)),
         _ => None,
     };
-    let Some(c) = centre else { return SketchDone::default() };
+    let Some(c) = centre else {
+        return SketchDone { said: Some(t("Pick lines of the sketch first.").to_string()), moved: Vec::new() };
+    };
     if !angle.is_finite() {
         return SketchDone { said: Some(t("Rotate: that isn't an angle in degrees.").to_string()), moved: Vec::new() };
     }

@@ -814,32 +814,42 @@ Multiple making a copy at each click after (each from the last, which is the ori
 the middle of what it takes (found where the view draws it) or a centre Place Centre puts, by the angle between two rays clicked
 (snapped as the project's Rotate) or one typed on the Options Bar's Angle and Enter, with Copy; Mirror - Pick Axis (MM) across a
 reference plane's trace, a reference line or a form's edge clicked, and Mirror - Draw Axis (DM) across a line drawn by two clicks,
-Copy on as Revit's; Scale (RE) of reference planes and reference lines about an origin, Graphical (the origin, a point, where that
-point goes) or Numerical (the origin, by the Options Bar's factor); Offset (OF) of a reference plane or a reference line clicked,
+Copy on as Revit's; Scale (RE) of reference planes and reference lines about an origin, in the view's plane alone (the depth it
+looks along held, a plane's up kept a way), Graphical (the origin, a point, where that point goes) or Numerical (the origin, by
+the Options Bar's factor); Offset (OF) of a reference plane or a reference line clicked,
 moved or copied (Copy) the Options Bar's distance square to its trace toward the side clicked, a dashed preview where it goes.
 Move, Copy and Offset are FE-7's and FE-4's move and copy (`drag_move_to`, `copy_picked`), so their rules and refusals are those;
 Rotate, Mirror and Scale go through `Family::transformed` (`Transform`, `Transforming`): the planes, reference lines and forms taken
 are drawn again where the transform puts them, a plane's ends and up (mirrored, its ends swapped, so its normal is the mirror image
 of its own and what is drawn on it keeps its side), a line's ends, a form's sketch and top in its host's axes, and what is drawn on
 what is taken goes with it (a form or a line on a plane rotated). A form whose host stays and that the transform would take off
-it is refused ("would leave the plane it is drawn on"): a form on Ref. Level turns in a plan, not in an elevation. Only the
+it is refused ("would leave the plane it is drawn on"; drawn on a datum, which can't be taken, the message says so): a form on
+Ref. Level turns in a plan, and in an elevation only by a half turn about a point on the level line. Where the transform turns the
+host's normal over (that half turn, a mirror across the level, a form on a reference line's face mirrored with the line), an
+extrusion's Start and End go to the other side (−End to −Start) and a Blend's base and top each to the other side, a sweep
+refusing. The points a tool clicks in the views snap to the planes' and lines' traces within reach, and to where two cross
+(`modify::snap_to`), so a centre clicked on the level line is on it; Offset's isn't, as it reads the side clicked. Only the
 numbers that change are written; one that is a formula refuses it. A mirrored arc turns the other way and a mirrored revolve
-turns from −End to −Start; a sweep isn't mirrored (its profile would face the wrong way), and Scale leaves forms (a form is sized
+turns from −End to −Start (a turn keeps a revolve's angles); a sweep isn't mirrored (its profile would face the wrong way), and Scale leaves forms (a form is sized
 by its dimensions and parameters, as Revit's Scale leaves it), its button greyed for a selection with one, saying so. A dimension
 whose references are all taken goes with them; one holding a constraint between what is taken and what isn't (a label, a lock,
 EQ, an Align lock), or a label or a lock whose length Scale changes, refuses it as F4's "Constraints are not satisfied: dimension
 2 ties what is rotated to what isn't", the dimensions lit, whose Remove Constraints takes theirs off and does it again
-(`Retry::Modify`). A plain dimension between what is taken and what isn't whose references no longer face one way is deleted,
+(`Retry::Modify`), both one step; refused again, the constraints are put back and nothing is left of either. A plain dimension between what is taken and what isn't whose references no longer face one way is deleted,
 as Revit deletes one that no longer measures. A datum, a plane that defines the origin, what a pivot turns and a form of a file's
 triangles stay, as on a move; symbols, connectors and nested instances are moved and copied but not rotated, mirrored or scaled
-(the tool says to take them out of the selection, or move them). After each, every type must still solve and build and the
+(the tool says to take them out of the selection, or move them), and with only dimensions selected, or what is shown of the
+selection only dimensions, they say what they take rather than do nothing. After each, every type must still solve and build and the
 family pass its checks if it did; refused, everything is as it was and the status bar says why. Each is one step of the
 history. While a tool is in hand the view shows its marks (the start, the centre, the axis, the rubber band) and the selection
 where the click would put it, the status bar says what to click next, and the Options Bar has its options (kept for the
-session); Escape lets go of the points clicked, then the tool; another view starts it again; a press doesn't drag or box. In
+session); Escape lets go of the points clicked, then the tool; another view, Undo, Redo, and another selection (a click, Delete)
+start it again, Rotate's centre found again (`modify_fresh`), and in a sketch so do Ctrl+Z, Delete and another pick (a boundary
+or a start that moved or went is never used, `FormSketch::edit_seen`); a press doesn't drag or box. Rotate's Angle typed with
+nothing of the selection shown says so. In
 sketch mode the same tools act on the lines picked (`FormSketch::edit`), in the plane's own axes: Move, Copy (Multiple), Rotate
 (about the middle of the lines picked), Mirror (a line of the sketch, a reference or a form's edge, or one drawn), Scale and
-Offset (a line clicked, toward the side clicked, Copy), with Trim/Extend Single Element and Trim/Extend Multiple Elements (the
+Offset (a line clicked, toward the side clicked, Copy), Scale taking a circle's radius and an ellipse's radii with it (`modify::scaled`), with Trim/Extend Single Element and Trim/Extend Multiple Elements (the
 boundary, then each line on the part to keep, the project's `draw::meet` and `trim_to`) and Split Element (SL, the line clicked
 cut there) beside TR's Trim/Extend to Corner; a copy is a new line with a GUID of its own, never the Axis Line. A line a sketch
 tool moves keeps its GUID, and its formulas go as a moved line's do (FE-12's `driven`); a lock or an Align lock from it to what

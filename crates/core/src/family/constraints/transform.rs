@@ -16,6 +16,7 @@
 //! does, Remove Constraints then doing it again.
 
 use super::*;
+use crate::family::forms::FormKind;
 use crate::view3d::{cross, sub};
 
 /// How far a point may be off the plane it is drawn on and still be on it, mm.
@@ -31,8 +32,9 @@ pub enum Transform {
     Rotate { centre: P3, axis: P3, degrees: f64 },
     /// Across the plane through `point` square to `normal`.
     Mirror { point: P3, normal: P3 },
-    /// About `centre`, by `factor`.
-    Scale { centre: P3, factor: f64 },
+    /// About `centre`, by `factor`, across the plane square to `normal` alone: what lies along `normal` (the depth the view
+    /// looks along) is held, as Revit's Scale works in the view's plane.
+    Scale { centre: P3, factor: f64, normal: P3 },
 }
 
 /// What a transform takes: the family's own reference planes and its reference lines by GUID, its forms by place. A
@@ -101,7 +103,10 @@ impl Transform {
                 let v = self.vector(sub(p, point));
                 std::array::from_fn(|k| point[k] + v[k])
             }
-            Transform::Scale { centre, factor } => std::array::from_fn(|k| centre[k] + (p[k] - centre[k]) * factor),
+            Transform::Scale { centre, .. } => {
+                let v = self.vector(sub(p, centre));
+                std::array::from_fn(|k| centre[k] + v[k])
+            }
         }
     }
 
@@ -121,7 +126,11 @@ impl Transform {
                 let d = 2.0 * dot(v, n);
                 std::array::from_fn(|i| v[i] - n[i] * d)
             }
-            Transform::Scale { factor, .. } => v.map(|x| x * factor),
+            Transform::Scale { factor, normal, .. } => {
+                let Some(n) = unit3(normal) else { return v.map(|x| x * factor) };
+                let along = dot(v, n) * (1.0 - factor);
+                std::array::from_fn(|i| v[i] * factor + n[i] * along)
+            }
         }
     }
 
@@ -153,7 +162,10 @@ impl Transform {
                     return Err("the mirror's axis is one point: pick or draw a line".into());
                 }
             }
-            Transform::Scale { centre, factor } => {
+            Transform::Scale { centre, factor, normal } => {
+                if unit3(normal).is_none() {
+                    return Err("a scale needs the view it is seen in: the way it holds".into());
+                }
                 if !finite(centre) || !factor.is_finite() || factor <= 0.0 || !(1.0 / MAX_FACTOR..=MAX_FACTOR).contains(&factor) {
                     return Err(format!("a scale of {factor} can't be made: give a factor above 0, from 1/{MAX_FACTOR} to {MAX_FACTOR}"));
                 }
@@ -250,7 +262,8 @@ impl Family {
             let (a, b) = (t.point(p.start), t.point(p.end));
             // Mirrored, its ends swapped: its normal the mirror image of its own, so what is drawn on it keeps its side.
             (p.start, p.end) = if t.reflects() { (b, a) } else { (a, b) };
-            p.up = t.vector(p.up);
+            // A way, not a length: a scale leaves it as long as it was.
+            p.up = unit3(t.vector(p.up)).unwrap_or(p.up);
             if !finite(p.start) || !finite(p.end) {
                 return Err(TransformRefused::Bad(format!("{} would go past {MAX_COORD} mm", self.said(Named::Plane(p.guid)))));
             }
@@ -287,6 +300,12 @@ impl Family {
                 P2(dot(w, now.x), dot(w, now.y))
             };
             let flipped = dir(P2(1.0, 0.0)).cross(dir(P2(0.0, 1.0))) < 0.0;
+            // Whether the host's normal comes back the other way: what was along it is then against it, so an extrusion's
+            // Start and End, and a Blend's base and top, go to the other side.
+            let over = dot(t.vector(was.z), now.z) < 0.0;
+            if over && self.forms[i].kind().swept() {
+                return Err(TransformRefused::NotMirrored(said));
+            }
             let form = &mut out.forms[i];
             let refused = || TransformRefused::Stays(Stays::Formula(said));
             let mut ok = true;
@@ -312,11 +331,17 @@ impl Family {
                     _ => {}
                 }
             }
-            // A revolve mirrored turns the other way round its axis: from −End to −Start.
-            if flipped && drawn.axis().is_some() {
-                let a = worth(&drawn.from, values).map_err(|e| TransformRefused::Unsat(e.into()))?;
-                let b = worth(&drawn.to, values).map_err(|e| TransformRefused::Unsat(e.into()))?;
-                ok &= put(&mut form.from, a, -b) && put(&mut form.to, b, -a);
+            let a = worth(&drawn.from, values).map_err(|e| TransformRefused::Unsat(e.into()))?;
+            let b = worth(&drawn.to, values).map_err(|e| TransformRefused::Unsat(e.into()))?;
+            match drawn.kind() {
+                // A revolve mirrored turns the other way round its axis: from −End to −Start. A turn keeps its angles,
+                // whichever way it leaves the plane.
+                FormKind::Revolve if t.reflects() => ok &= put(&mut form.from, a, -b) && put(&mut form.to, b, -a),
+                // An extrusion turned over spans the other side: from −End to −Start.
+                FormKind::Extrusion if over => ok &= put(&mut form.from, a, -b) && put(&mut form.to, b, -a),
+                // A Blend's base stays its base and its top its top, each on the other side.
+                FormKind::Blend if over => ok &= put(&mut form.from, a, -a) && put(&mut form.to, b, -b),
+                _ => {}
             }
             if !ok {
                 return Err(refused());

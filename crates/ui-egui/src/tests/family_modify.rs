@@ -124,32 +124,153 @@ fn rotate_turns_the_selection_about_its_centre_by_two_clicks_or_a_typed_angle() 
     assert_eq!(editor(&h).steps(), 2);
 }
 
+/// The turn (degrees) of line `k` of form `i`'s sketch, if it is an arc.
+fn turn_of(h: &Harness<BimApp>, i: usize, k: usize) -> Option<f64> {
+    match &family(h).forms[i].sketch[k].curve {
+        bimcraft_core::family::sketch::FormCurve::Line { turn: Some(bimcraft_core::family::Expr::Number(x)), .. } => Some(*x),
+        _ => None,
+    }
+}
+
 #[test]
 fn mirror_pick_axis_copies_across_a_plane_and_draw_axis_mirrors_in_place() {
-    let mut h = plan();
+    // The box's east side an arc bulging 90° to its right as drawn.
+    let script =
+        family_with("").replacen(r#""start": [500, 100], "end": [500, 500]}"#, r#""start": [500, 100], "end": [500, 500], "turn": 90}"#, 1);
+    let mut h = plan_of(&script);
+    assert_eq!(turn_of(&h, 0, 1), Some(90.0));
     pick(&mut h, &[Picked::Form(0)]);
     let before = points(&h, 0);
     let n = family(&h).forms.len();
     shortcut(&mut h, "MM");
     assert!(h.state().prompt().contains("Pick Axis"), "{}", h.state().prompt());
-    // Edge, at x 1000: a mirrored copy (Copy is on, as Revit's), selected.
-    click(&mut h, [1000.0, 0.0]);
+    // Edge, at x 1000: a mirrored copy (Copy is on, as Revit's), selected; each point in its order, the arc the other way.
+    click(&mut h, [1000.0, 600.0]);
     assert_eq!(family(&h).forms.len(), n + 1, "{}", status(&h));
-    for (a, b) in before.iter().zip(points(&h, 1)) {
-        assert!(same(b, [2000.0 - a[0], a[1]]), "{a:?} → {b:?}");
+    let copy = points(&h, 1);
+    assert_eq!(copy.len(), before.len());
+    for (a, b) in before.iter().zip(&copy) {
+        assert!(same(*b, [2000.0 - a[0], a[1]]), "{a:?} → {b:?}");
     }
+    assert_eq!(turn_of(&h, 1, 1), Some(-90.0));
     assert_eq!(points(&h, 0), before);
     assert_eq!(editor(&h).selection.items(), &[Picked::Form(1)]);
-    // Draw Axis with Copy off: the copy mirrored back across x 1000 in place.
+    // Draw Axis with Copy off: the copy mirrored back across x 1000 in place, point for point, the arc as it was drawn.
     shortcut(&mut h, "DM");
     ed(&mut h).views.modify_options.mirror_copy = false;
     click(&mut h, [1000.0, -100.0]);
     click(&mut h, [1000.0, 100.0]);
     assert_eq!(family(&h).forms.len(), n + 1);
     for (a, b) in before.iter().zip(points(&h, 1)) {
-        assert!(same(b, [a[0], a[1]]) || before.iter().any(|q| same(b, *q)), "{a:?} → {b:?} {}", status(&h));
+        assert!(same(b, *a), "{a:?} → {b:?} {}", status(&h));
     }
+    assert_eq!(turn_of(&h, 1, 1), Some(90.0));
     assert_eq!(editor(&h).steps(), 2);
+}
+
+/// A click at family point `p` in the view shown, whatever it is.
+fn click3(h: &mut Harness<BimApp>, p: [f64; 3]) {
+    let at = editor(h).views.screen_of(p).expect("a view shown");
+    click_at(h, at);
+}
+
+/// The family's plan, then its Front elevation shown.
+fn front() -> Harness<'static, BimApp> {
+    let mut h = plan();
+    super::family_views::view(&mut h, Some(Which::Elevation(bimcraft_core::family::views::Side::Front)));
+    h
+}
+
+fn extents(h: &Harness<BimApp>, i: usize) -> (bimcraft_core::family::Expr, bimcraft_core::family::Expr) {
+    let f = family(h);
+    (f.forms[i].from.clone(), f.forms[i].to.clone())
+}
+
+#[test]
+fn in_an_elevation_a_half_turn_and_a_mirror_across_the_level_put_the_box_below_it() {
+    use bimcraft_core::family::Expr;
+    // A half turn about a centre placed on the level line at x 300: x 100..500 stays, the box hangs below the level.
+    let mut h = front();
+    pick(&mut h, &[Picked::Form(0)]);
+    let before = points(&h, 0);
+    shortcut(&mut h, "RO");
+    if let Some(m) = ed(&mut h).views.modify.as_mut() {
+        m.tool = M::Rotate { centre: None, start: None, placing: true };
+    }
+    click3(&mut h, [300.0, 0.0, 0.0]);
+    click3(&mut h, [600.0, 0.0, 0.0]);
+    click3(&mut h, [0.0, 0.0, 0.0]);
+    assert_eq!(extents(&h, 0), (Expr::Number(-300.0), Expr::Number(0.0)), "{}", status(&h));
+    for (a, b) in before.iter().zip(points(&h, 0)) {
+        assert!(same(b, [600.0 - a[0], a[1]]), "{a:?} → {b:?}");
+    }
+    // Mirrored across the level line (Draw Axis, Copy off): back above it, its plan as it now is.
+    let now = points(&h, 0);
+    shortcut(&mut h, "DM");
+    ed(&mut h).views.modify_options.mirror_copy = false;
+    click3(&mut h, [-500.0, 0.0, 0.0]);
+    click3(&mut h, [500.0, 0.0, 0.0]);
+    assert_eq!(extents(&h, 0), (Expr::Number(0.0), Expr::Number(300.0)), "{}", status(&h));
+    assert_eq!(points(&h, 0), now);
+    assert_eq!(editor(&h).steps(), 2);
+}
+
+#[test]
+fn in_an_elevation_scale_holds_the_depth_it_looks_along() {
+    let mut h = front();
+    pick(&mut h, &[Picked::Plane(g(EDGE))]);
+    shortcut(&mut h, "RE");
+    {
+        let o = &mut ed(&mut h).views.modify_options;
+        o.numerical = true;
+        o.factor = "2".into();
+    }
+    click3(&mut h, [0.0, 0.0, 0.0]);
+    let e = family(&h).planes.iter().find(|p| p.guid == g(EDGE)).cloned().unwrap();
+    assert!(near(e.start[0], 2000.0) && near(e.end[0], 2000.0), "{e:?} {}", status(&h));
+    assert_eq!((e.start[1], e.end[1], e.up), (-1500.0, 1500.0, [0.0, 0.0, 1.0]), "its depth and up kept");
+}
+
+#[test]
+fn rotate_mirror_and_scale_with_only_a_dimension_selected_say_why() {
+    let mut h = plan();
+    pick(&mut h, &[Picked::Dimension(g(super::family_drag_move::DIM))]);
+    for keys in ["RO", "MM", "DM", "RE"] {
+        h.state_mut().status = crate::Status::default();
+        shortcut(&mut h, keys);
+        assert!(status(&h).contains("a dimension goes with what it measures"), "{keys}: {}", status(&h));
+        assert_eq!(tool(&h), None);
+    }
+    // A hidden form and a dimension: Rotate is picked, but its click says nothing selected is shown; its typed angle too.
+    pick(&mut h, &[Picked::Form(1)]);
+    shortcut(&mut h, "HH");
+    pick(&mut h, &[Picked::Form(1), Picked::Dimension(g(super::family_drag_move::DIM))]);
+    shortcut(&mut h, "RO");
+    assert!(matches!(tool(&h), Some(M::Rotate { centre: None, .. })), "{:?} {}", tool(&h), status(&h));
+    type_into(&mut h, "Angle:", "45");
+    key(&mut h, Key::Enter);
+    h.run();
+    assert!(status(&h).contains("nothing selected is shown"), "{}", status(&h));
+    assert_eq!(editor(&h).steps(), 0);
+}
+
+#[test]
+fn rotating_in_plan_a_form_drawn_on_a_datum_says_the_datum_stays() {
+    let fb = bimcraft_core::family::CENTER_FRONT_BACK;
+    let script = family_with("").replacen(
+        r#""forms": ["#,
+        &format!(
+            r#""forms": [{{"host": {{"plane": "{fb}"}}, "profile": [[0, 0], [200, 0], [200, 100], [0, 100]], "from": 0, "to": 50}}, "#
+        ),
+        1,
+    );
+    let mut h = plan_of(&script);
+    pick(&mut h, &[Picked::Form(0)]);
+    shortcut(&mut h, "RO");
+    click(&mut h, [500.0, 0.0]);
+    click(&mut h, [100.0, 400.0]);
+    assert!(status(&h).contains("a datum, which stays"), "{}", status(&h));
+    assert!(!status(&h).contains("select that plane too"), "{}", status(&h));
 }
 
 #[test]
@@ -240,6 +361,35 @@ fn rotating_a_form_a_label_ties_to_a_datum_asks_and_remove_constraints_does_it()
     // The label taken off; its dimension, which turned to face across Center (Left/Right), deleted.
     assert!(family(&h).dimensions.iter().all(|d| d.label.is_none()), "the label taken off");
     assert_eq!(family(&h).dimensions.len(), 1);
+    assert_eq!(editor(&h).steps(), 1, "the constraints and the turn one step");
+}
+
+#[test]
+fn remove_constraints_refused_again_leaves_neither_the_constraints_off_nor_a_step() {
+    let dim = format!(
+        r#", {{"refs": [{{"plane": "{CENTER_LR}"}}, {{"form": "{A}", "line": "{A_LINE}3"}}], "view": "plan", "at": [50, 0, 0], "label": "Len"}}"#
+    );
+    let mut h = plan_of(&family_with(&dim));
+    pick(&mut h, &[Picked::Form(0)]);
+    shortcut(&mut h, "RO");
+    click(&mut h, [700.0, 300.0]);
+    click(&mut h, [300.0, 700.0]);
+    assert!(editor(&h).views.unsatisfied.is_some());
+    // Meanwhile another lock ties the box's east side (x 500) to Center (Left/Right): the turn asked again would break it.
+    let lock: bimcraft_core::family::FamilyDimension = serde_json::from_value(serde_json::json!({
+        "refs": [{"plane": CENTER_LR}, {"form": A, "line": format!("{A_LINE}1")}], "view": "plan", "at": [250, -50, 0],
+        "locked": [{"segment": 0, "length": 500}]
+    }))
+    .unwrap();
+    ed(&mut h).dimensions.push(lock);
+    h.run();
+    let before = family(&h);
+    press(&mut h, "Remove Constraints");
+    h.run();
+    let after = family(&h);
+    assert_eq!(after.forms, before.forms, "{}", status(&h));
+    assert_eq!(after.dimensions, before.dimensions, "the label still on");
+    assert!(status(&h).contains("not satisfied"), "{}", status(&h));
 }
 
 #[test]
@@ -330,6 +480,80 @@ fn in_a_sketch_offset_copies_a_line_and_trim_extend_single_brings_one_to_a_bound
 }
 
 #[test]
+fn undo_delete_and_another_selection_let_go_of_what_a_tool_clicked() {
+    // In the views: Move's start goes with an undo, and with another selection.
+    let mut h = plan();
+    pick(&mut h, &[Picked::Form(0)]);
+    shortcut(&mut h, "MV");
+    click(&mut h, [300.0, 300.0]);
+    click(&mut h, [400.0, 300.0]);
+    shortcut(&mut h, "RO");
+    if let Some(m) = ed(&mut h).views.modify.as_mut() {
+        m.tool = M::Rotate { centre: None, start: None, placing: true };
+    }
+    click(&mut h, [0.0, 0.0]);
+    assert!(matches!(tool(&h), Some(M::Rotate { centre: Some(_), placing: false, .. })));
+    h.state_mut().family_undo();
+    h.run();
+    h.run();
+    assert!(matches!(tool(&h), Some(M::Rotate { start: None, placing: false, .. })), "{:?}", tool(&h));
+    let centre = match tool(&h) {
+        Some(M::Rotate { centre: Some(c), .. }) => c,
+        t => panic!("{t:?}"),
+    };
+    assert!(near(centre.0, 300.0) && near(centre.1, 300.0), "the placed centre let go, the selection's found again: {centre:?}");
+    shortcut(&mut h, "CO");
+    click(&mut h, [300.0, 300.0]);
+    assert!(matches!(tool(&h), Some(M::Move { from: Some(_), .. })));
+    pick(&mut h, &[Picked::Form(1)]);
+    assert_eq!(tool(&h), Some(M::Move { copy: true, from: None }));
+    // In a sketch: Trim/Extend's boundary goes when its line is deleted, and with Ctrl+Z.
+    ed(&mut h).edit_form_sketch(0).unwrap();
+    h.run();
+    ed(&mut h).modify_tool_on(M::TrimTo { boundary: None, many: true }).unwrap();
+    h.run();
+    click(&mut h, [100.0, 300.0]);
+    assert!(matches!(tool(&h), Some(M::TrimTo { boundary: Some(3), .. })), "{:?}", tool(&h));
+    {
+        let s = ed(&mut h).sketch.as_mut().unwrap();
+        s.sketch.picked = [3].into();
+        s.delete_picked();
+    }
+    h.run();
+    assert_eq!(tool(&h), Some(M::TrimTo { boundary: None, many: true }));
+    click(&mut h, [500.0, 300.0]);
+    assert!(matches!(tool(&h), Some(M::TrimTo { boundary: Some(_), .. })));
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Z);
+    h.run();
+    assert_eq!(tool(&h), Some(M::TrimTo { boundary: None, many: true }));
+}
+
+#[test]
+fn sketch_scale_scales_a_circles_radius() {
+    let mut h = plan();
+    ed(&mut h).edit_form_sketch(0).unwrap();
+    h.run();
+    {
+        let s = ed(&mut h).sketch.as_mut().unwrap();
+        s.sketch.lines.push(bimcraft_core::sketch::SketchLine::from(bimcraft_core::curves::Curve::Circle {
+            centre: bimcraft_core::geom::P2(300.0, 300.0),
+            radius: 50.0,
+        }));
+        s.sketch.picked = [4].into();
+    }
+    h.run();
+    shortcut(&mut h, "RE");
+    {
+        let o = &mut ed(&mut h).views.modify_options;
+        o.numerical = true;
+        o.factor = "2".into();
+    }
+    click(&mut h, [300.0, 300.0]);
+    let c = ed(&mut h).sketch.as_ref().unwrap().sketch.lines[4].curve.clone();
+    assert!(matches!(c, bimcraft_core::curves::Curve::Circle { radius, .. } if near(radius, 100.0)), "{c:?} {}", status(&h));
+}
+
+#[test]
 fn the_ribbon_greys_a_tool_that_cant_be_used_and_its_button_picks_it() {
     let mut h = plan();
     // Nothing selected: Move greyed; Offset enabled.
@@ -339,7 +563,6 @@ fn the_ribbon_greys_a_tool_that_cant_be_used_and_its_button_picks_it() {
     press(&mut h, "Rotate");
     assert!(matches!(tool(&h), Some(M::Rotate { .. })), "{}", status(&h));
     assert!(editor(&h).modify_blocked(&M::Split).is_some());
-    let _ = Which::Plan;
 }
 
 /// Each tool at work in plan, saved where `BIMCRAFT_FE8_DUMP` says (only then): its marks, the preview of where the click would
@@ -453,4 +676,28 @@ fn family_modify_screenshots() {
     shortcut(&mut h, "OF");
     hover(&mut h, [-800.0, 480.0]);
     save(&mut h, "sketch-offset");
+    // In the Front elevation: a half turn about a centre placed on the level line, under way and done; the box below the level.
+    let mut h = start();
+    super::family_views::view(&mut h, Some(Which::Elevation(bimcraft_core::family::views::Side::Front)));
+    pick(&mut h, &[Picked::Form(0)]);
+    shortcut(&mut h, "RO");
+    if let Some(m) = ed(&mut h).views.modify.as_mut() {
+        m.tool = M::Rotate { centre: None, start: None, placing: true };
+    }
+    click3(&mut h, [300.0, 0.0, 0.0]);
+    click3(&mut h, [700.0, 0.0, 0.0]);
+    let at = editor(&h).views.screen_of([300.0, 0.0, -400.0]).unwrap();
+    h.hover_at(at);
+    h.run();
+    save(&mut h, "elevation-rotate");
+    click3(&mut h, [-100.0, 0.0, 0.0]);
+    // Len ties the box to Center (Left/Right): asked, then done without it.
+    press(&mut h, "Remove Constraints");
+    save(&mut h, "elevation-rotated");
+    // A dimension alone selected: Rotate says why not.
+    pick(&mut h, &[Picked::Dimension(g(super::family_drag_move::DIM))]);
+    super::family_views::view(&mut h, Some(Which::Plan));
+    pick(&mut h, &[Picked::Dimension(g(super::family_drag_move::DIM))]);
+    shortcut(&mut h, "RO");
+    save(&mut h, "dimension-alone-refused");
 }

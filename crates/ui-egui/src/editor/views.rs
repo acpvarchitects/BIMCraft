@@ -492,6 +492,12 @@ impl FamilyEditor {
         {
             (m.which, m.tool) = (Some(which), m.tool.fresh());
         }
+        // Nor do they hold once the selection changed otherwise (a click, Delete): the tool starts again on what is selected.
+        if let Some(m) = self.views.modify.as_mut()
+            && m.selection.as_slice() != self.selection.items()
+        {
+            (m.selection, m.tool) = (self.selection.items().to_vec(), m.tool.fresh());
+        }
         self.refresh_view(ui.ctx(), base, which, size);
         let response = ui.interact(pane, UiId::new("family-view-2d"), Sense::click_and_drag());
         self.views.pane = Some(pane);
@@ -960,9 +966,29 @@ impl FamilyEditor {
             fv::form_at(f, &values, &c.staged, which, q)
                 .map(|_| Err(t("Offset takes reference planes and reference lines: edit a form's sketch to offset its lines.").to_string()))
         };
+        // The planes' and lines' traces a Modify tool's points snap to (FE-8).
+        let traces: Vec<(P2, P2)> = match family.as_ref() {
+            Some(f) if self.views.modify.is_some() => {
+                let planes = f
+                    .planes
+                    .iter()
+                    .cloned()
+                    .chain(bimcraft_core::family::datums().into_iter().filter(|d| !f.planes.iter().any(|p| p.guid == d.guid)));
+                planes
+                    .filter_map(|p| plane_trace(&c.staged, which, &p.frame()))
+                    .chain(f.lines.iter().map(|l| (c.staged.to_view(which, l.start), c.staged.to_view(which, l.end))))
+                    .collect()
+            }
+            _ => Vec::new(),
+        };
+        let snapped = |p: egui::Pos2| super::modify::snap_to(at_view(p), &traces, reach);
         if self.views.modify.is_some() {
             let pieces: Vec<[egui::Pos2; 2]> =
                 scene.as_ref().map(|s| shown_selection.iter().flat_map(|p| s.pieces(*p)).collect()).unwrap_or_default();
+            let centred: Vec<[egui::Pos2; 2]> = scene
+                .as_ref()
+                .map(|s| shown_selection.iter().filter(|p| !matches!(p, Picked::Dimension(_))).flat_map(|p| s.pieces(*p)).collect())
+                .unwrap_or_default();
             let hover = response.hover_pos();
             let axis = hover.and_then(axis_at);
             let shift = ui.input(|i| i.modifiers.shift);
@@ -970,8 +996,8 @@ impl FamilyEditor {
                 (&mut self.views.modify, &self.views.modify_options),
                 &self.snaps,
                 &painter,
-                hover.map(at_view),
-                &pieces,
+                hover.map(snapped),
+                (&pieces, &centred),
                 &screen,
                 &at_view,
                 axis,
@@ -1163,7 +1189,9 @@ impl FamilyEditor {
                     .map(|x| (g, x));
             } else if self.views.modify.is_some() {
                 // A Modify tool (FE-8): the point, the axis or the line clicked, done once the view is drawn.
-                modify_at = Some((q, axis_at(p), offset_at(p)));
+                // Offset reads the side clicked, so its point isn't snapped onto what it offsets.
+                let offsetting = self.views.modify.as_ref().is_some_and(|m| m.tool == super::modify::Tool::Offset);
+                modify_at = Some((if offsetting { q } else { snapped(p) }, axis_at(p), offset_at(p)));
             } else if let Some(first) = self.views.drawing {
                 match first {
                     None => self.views.drawing = Some(Some(q)),
@@ -1471,6 +1499,11 @@ impl FamilyEditor {
             && let Some(e) = self.modify_typed(space, &shown_selection)
         {
             problem = Some(e);
+        }
+        // What the tool selected itself (the copies) is what it goes on with.
+        let now: Vec<Picked> = self.selection.items().to_vec();
+        if let Some(m) = self.views.modify.as_mut() {
+            m.selection = now;
         }
         // A plane its dimensions hold is dragged through them: a label it changes takes the new length, what is locked to it
         // follows, and what can't hold says so.

@@ -198,6 +198,7 @@ impl FamilyEditor {
         // Undo and Redo give up a handle being dragged, the form put back as it was before it (FE-5).
         if ask.undo || ask.redo {
             self.cancel_drags();
+            self.modify_fresh();
         }
         // What the frame took away from the draft goes from the selection too (FE-1).
         self.prune_selection();

@@ -950,6 +950,8 @@ impl FamilyEditor {
         });
         if remove {
             self.views.unsatisfied = None;
+            // What it was before the constraints come off: a retry refused puts it back, leaving neither (FE-8).
+            let before = self.draft();
             self.remove_constraints(&u.dims);
             match u.retry {
                 Retry::Drag(g, to) => self.drag_through(g, to),
@@ -958,7 +960,11 @@ impl FamilyEditor {
                         self.align_through(a, b, at, which);
                     }
                 }
-                Retry::Modify(a) => self.modify_again(a),
+                Retry::Modify(a) => {
+                    if !self.modify_again(a) {
+                        self.put_back(before);
+                    }
+                }
                 Retry::Types { ok } => {
                     self.document.dialog_saved = Some(self.draft());
                     if ok {
