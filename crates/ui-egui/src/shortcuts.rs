@@ -143,6 +143,7 @@ pub const ACTIONS: &[&str] = &[
     msg!("Select Previous"),
     msg!("Select by ID"),
     msg!("Select All Instances in Entire Project"),
+    msg!("Select Elements by Face"),
 ];
 
 /// The actions of `ACTIONS` only a family document does (`editor::keys`): a key for one does nothing on a project's tab, and
@@ -161,6 +162,7 @@ pub(crate) const FAMILY_ONLY: &[&str] = &[
     "Select Previous",
     "Select by ID",
     "Select All Instances in Entire Project",
+    "Select Elements by Face",
 ];
 
 /// Whether `action` is a family document's alone.

@@ -2,7 +2,7 @@
 //! (FE-1). Filter (FF) keeps the kinds checked; Select Previous (PR) brings back the selection before it was let go or
 //! replaced, without what was deleted since; Select by ID (ID) selects what a list of ids and GUIDs names and says what
 //! names nothing, and IDs of Selection shows them; Select All Instances takes the nested instances of a selected one's
-//! family and type, those shown (SA) or all (SV).
+//! family and type, those shown (SA) or all (SV); Select Elements by Face (BF) says whether a face selects what it is of.
 //! A key whose command has nothing to work on does nothing, each key can be given another in Keyboard Shortcuts, and
 //! nothing of it reaches the project.
 use super::family_box_select::{DIM, EDGE, LINE, boxed, click_with_mods, g, plan, selected, set};
@@ -355,6 +355,7 @@ fn each_of_the_selections_keys_can_be_given_another_in_keyboard_shortcuts() {
         ("ID", "Select by ID"),
         ("SA", "Select All Instances"),
         ("SV", "Select All Instances in Entire Project"),
+        ("BF", "Select Elements by Face"),
     ] {
         assert!(FAMILY_SHORTCUTS.contains(&(keys, action)), "{keys} is {action} in the family's table");
         assert_eq!(crate::shortcuts::resolve_action(action), Some(action), "{action} is an action a key can be given");
@@ -404,4 +405,106 @@ fn the_selections_commands_are_not_an_adaptive_familys() {
         assert_eq!(h.state().tool, Tool::Modify, "{keys}: no project tool");
     }
     assert_eq!(h.query_all_by_label("Filter").count(), 0);
+}
+
+/// BF, Revit's Select Elements by Face: on, a face selects what it is of, by a click and by a crossing box drawn inside it;
+/// off, only an edge of its outline does. A box is drawn from inside the face of what isn't selected, either way.
+#[test]
+fn select_elements_by_face_decides_whether_a_face_selects_by_a_click_and_by_a_crossing_box() {
+    let mut h = plan();
+    let before = project(&h);
+    assert!(h.state().select_by_face, "on to begin with: a click has always taken a form by its face");
+    // On: a click inside B selects it, and so does one on its edge.
+    click_family(&mut h, [700.0, 400.0, 0.0]);
+    assert_eq!(selected(&h), vec![Picked::Form(1)], "a click on its face");
+    key(&mut h, Key::Escape);
+    click_family(&mut h, [900.0, 400.0, 0.0]);
+    assert_eq!(selected(&h), vec![Picked::Form(1)], "a click on its edge");
+    key(&mut h, Key::Escape);
+    // A crossing box drawn wholly inside A's face takes A; a window there holds none of it.
+    boxed(&mut h, [-650.0, 450.0, 0.0], [-750.0, 350.0, 0.0], Modifiers::NONE);
+    assert_eq!(selected(&h), vec![Picked::Form(0)], "a crossing inside its face takes it");
+    boxed(&mut h, [650.0, 350.0, 0.0], [750.0, 450.0, 0.0], Modifiers::NONE);
+    assert!(selected(&h).is_empty(), "a window inside a face holds nothing whole");
+    // Ctrl adds what a crossing inside a face takes.
+    boxed(&mut h, [-650.0, 450.0, 0.0], [-750.0, 350.0, 0.0], Modifiers::NONE);
+    boxed(&mut h, [750.0, 450.0, 0.0], [650.0, 350.0, 0.0], Modifiers::COMMAND);
+    assert_eq!(selected(&h), vec![Picked::Form(0), Picked::Form(1)], "Ctrl adds");
+    // From the face of one selected no box is drawn: its drag is its own.
+    boxed(&mut h, [750.0, 450.0, 0.0], [650.0, 350.0, 0.0], Modifiers::NONE);
+    assert_eq!(selected(&h), vec![Picked::Form(0), Picked::Form(1)], "a drag from a selected form's face boxes nothing");
+    // BF turns it off: a face selects nothing, by a click or by a crossing box; an edge still does.
+    shortcut(&mut h, "BF");
+    assert!(!h.state().select_by_face, "BF");
+    key(&mut h, Key::Escape);
+    click_family(&mut h, [700.0, 400.0, 0.0]);
+    assert!(selected(&h).is_empty(), "off, a click on a face selects nothing");
+    click_family(&mut h, [900.0, 400.0, 0.0]);
+    assert_eq!(selected(&h), vec![Picked::Form(1)], "off, a click on an edge selects");
+    boxed(&mut h, [-650.0, 450.0, 0.0], [-750.0, 350.0, 0.0], Modifiers::NONE);
+    assert!(selected(&h).is_empty(), "off, a crossing inside a face takes nothing, and lets the selection go");
+    boxed(&mut h, [-400.0, 500.0, 0.0], [-600.0, 300.0, 0.0], Modifiers::NONE);
+    assert_eq!(selected(&h), vec![Picked::Form(0)], "off, a crossing over its edge takes it");
+    // Off, the face of one selected is nothing a drag belongs to: a box is drawn from it.
+    boxed(&mut h, [-650.0, 450.0, 0.0], [-750.0, 350.0, 0.0], Modifiers::NONE);
+    assert!(selected(&h).is_empty(), "off, a drag from inside a selected form's face is a box");
+    // The status bar's toggle turns it on again.
+    press(&mut h, "Select Elements by Face");
+    assert!(h.state().select_by_face, "the status bar's toggle");
+    click_family(&mut h, [700.0, 400.0, 0.0]);
+    assert_eq!(selected(&h), vec![Picked::Form(1)]);
+    // An elevation picks as a plan does.
+    view(&mut h, Some(Which::Elevation(Side::Front)));
+    key(&mut h, Key::Escape);
+    boxed(&mut h, [-650.0, 0.0, 350.0], [-750.0, 0.0, 250.0], Modifiers::NONE);
+    assert_eq!(selected(&h), vec![Picked::Form(0)], "a crossing inside A's face in the Front elevation");
+    shortcut(&mut h, "BF");
+    click_family(&mut h, [700.0, 0.0, 300.0]);
+    assert!(selected(&h).is_empty(), "off, in an elevation too");
+    click_family(&mut h, [700.0, 0.0, 600.0]);
+    assert_eq!(selected(&h), vec![Picked::Form(1)], "its top edge");
+    assert_eq!(project(&h), before, "nothing of it reaches the project");
+}
+
+#[test]
+fn select_elements_by_face_is_greyed_where_it_changes_nothing_and_is_kept_with_the_settings() {
+    let dir = tempfile::tempdir().unwrap();
+    let settings = dir.path().join("settings.json");
+    std::fs::write(&settings, "{}").unwrap();
+    let mut h = plan();
+    h.state_mut().use_settings(settings.clone());
+    h.run();
+    assert!(h.state().select_by_face, "on, in a settings file that says nothing of it");
+    // {3D} takes a form by its face either way, as the project's 3D view does: there the toggle is greyed and BF does nothing.
+    view(&mut h, None);
+    shortcut(&mut h, "BF");
+    h.get_by_label("Select Elements by Face").click();
+    h.run();
+    assert!(h.state().select_by_face, "greyed in {{3D}}");
+    // In a plan it is the window's, kept in the settings file and not in the family or the project.
+    view(&mut h, Some(Which::Plan));
+    shortcut(&mut h, "BF");
+    assert!(!h.state().select_by_face);
+    let kept: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&settings).unwrap()).unwrap();
+    assert_eq!(kept["select_by_face"], false, "{kept}");
+    let mut again = app("");
+    again.state_mut().use_settings(settings);
+    assert!(!again.state().select_by_face, "the next session begins as this one ended");
+    // While a form is sketched the view picks for the sketch: greyed.
+    h.get_by_role_and_label(Role::Button, "Extrusion").click();
+    h.run();
+    assert!(editor(&h).sketching());
+    shortcut(&mut h, "BF");
+    assert!(!h.state().select_by_face, "greyed while sketching");
+    // An adaptive family selects its own way: no toggle, and BF does nothing.
+    let (mut h, ..) = super::family_temporary_hide::adaptive();
+    let was = h.state().select_by_face;
+    assert_eq!(h.query_all_by_label("Select Elements by Face").count(), 0, "no toggle in an adaptive family");
+    shortcut(&mut h, "BF");
+    assert_eq!(h.state().select_by_face, was);
+    // On the project's tab neither: its views pick as they always have.
+    let mut h = app(BOX);
+    assert_eq!(h.query_all_by_label("Select Elements by Face").count(), 0, "no toggle on a project's tab");
+    shortcut(&mut h, "BF");
+    assert!(h.state().select_by_face);
 }

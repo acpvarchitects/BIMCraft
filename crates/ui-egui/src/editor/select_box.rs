@@ -19,16 +19,20 @@
 //! gone from the draft otherwise (undone, redone, or changed while another tab was in front) is dropped from the set
 //! (`FamilyEditor::prune_selection`, after each undo and redo, on a tab coming to the front and at the end of every frame).
 //!
-//! In a plan or an elevation, a drag of the primary button that starts on nothing a click would select (nor a handle, a
-//! grip or a padlock), with no tool in hand, draws a box: left to right a window, solid, taking what lies wholly inside
+//! In a plan or an elevation, a drag of the primary button that starts on no element (nor a handle, a grip or a padlock),
+//! with no tool in hand, draws a box: left to right a window, solid, taking what lies wholly inside
 //! it; right to left a crossing, dashed, taking what it touches too, by the one rule the adaptive family's modelling view
 //! boxes by (`geom::SelectBox`), drawn as the project's plans draw theirs (`canvas::box_shapes`). Ctrl adds what it takes,
 //! Shift takes that away, else it is the selection; a click on an element with Ctrl or Shift does the same with it. Each
 //! element is boxed by what it is drawn with on screen: a form's or a nested instance's outline, a plane's trace, a
-//! reference line, a dimension's line, a symbol's strokes (in the plans, where symbols are drawn), a connector's place. So
-//! a crossing box wholly inside a form's face, meeting none of its edges, doesn't take it, as Revit's doesn't. A drag from
-//! an element that isn't selected moves nothing: dragging an element to move it is FE-7's. {3D} has no box: a drag there
-//! turns the view.
+//! reference line, a dimension's line, a symbol's strokes (in the plans, where symbols are drawn), a connector's place.
+//! Select Elements by Face (FE-20, `selection.rs`) says what a face does: on, a click on a form's or a nested instance's
+//! face selects it and a crossing box takes one by its faces too, so one drawn wholly inside a face takes what the face
+//! is of; off, a crossing box wholly inside a face, meeting none of its edges, doesn't take it, as Revit's doesn't, and a
+//! click selects by an edge alone. The box may begin inside the face of a form or a nested instance that isn't selected
+//! (`Scene::under`); a drag from an element's edge, a plane, a line or a connector, or from one selected while a face
+//! selects, is the element's and draws none. It moves nothing yet: dragging an element to move it is FE-7's. {3D} has no
+//! box: a drag there turns the view.
 use super::*;
 use bimcraft_core::family::constraints::DimMark;
 use bimcraft_core::family::views::{self as fv, Staged, Which};
@@ -334,6 +338,8 @@ pub(super) struct Scene<'a> {
     pub(super) detail: bimcraft_core::graphics::Detail,
     /// The forms Temporary Hide/Isolate leaves out of the view, by place.
     pub(super) hidden: &'a [bool],
+    /// Select Elements by Face (FE-20): a face selects what it is of, by a click and by a crossing box.
+    pub(super) by_face: bool,
 }
 
 impl Scene<'_> {
@@ -457,29 +463,65 @@ impl Scene<'_> {
     }
 
     /// What a box from `from` to `to` on screen takes: left to right what lies wholly inside it, right to left what it
-    /// touches too.
+    /// touches too. With Select Elements by Face on, a crossing takes a form or a nested instance by its faces as by its
+    /// outline, so one drawn wholly inside a face takes what the face is of (`views::face_in_box`).
     pub(super) fn in_box(&self, from: Pos2, to: Pos2) -> Vec<Picked> {
         let mm = |p: Pos2| P2(f64::from(p.x), f64::from(p.y));
         let boxed = SelectBox::dragged(mm(from), mm(to));
+        // The same box in the view's millimetres, where its faces are.
+        let at = |p: Pos2| self.view.mm((p.x - self.min.x, p.y - self.min.y));
+        let across = SelectBox { crossing: boxed.crossing, ..SelectBox::dragged(at(from), at(to)) };
+        let by_face = |p: Picked| {
+            let part = match p {
+                Picked::Form(i) => fv::Part::Form(i),
+                Picked::Nested(i) => fv::Part::Nested(i),
+                _ => return false,
+            };
+            self.by_face && across.crossing && fv::face_in_box(self.family, self.values, self.staged, self.which, part, &across)
+        };
         self.candidates()
             .into_iter()
             .filter(|p| {
                 let pieces: Vec<(P2, P2)> = self.pieces(*p).into_iter().map(|[a, b]| (mm(a), mm(b))).collect();
-                boxed.takes(&pieces)
+                boxed.takes(&pieces) || by_face(*p)
             })
             .collect()
     }
 
-    /// Whether a click at `p` would select something: a connector, a nested instance, a reference line, a plane or a form.
-    pub(super) fn under(&self, p: Pos2) -> bool {
+    /// How far a click reaches, in the view's millimetres.
+    fn reach(&self) -> f64 {
+        6.0 / self.view.scale.max(1e-9)
+    }
+
+    /// The form a click at `q` (the view's millimetres) takes: with Select Elements by Face on, the one whose face is
+    /// there; else, and off, the one an edge of whose outline passes within the click's reach.
+    pub(super) fn form_hit(&self, q: P2) -> Option<usize> {
+        let face = if self.by_face { fv::form_at(self.family, self.values, self.staged, self.which, q) } else { None };
+        face.or_else(|| fv::form_edge_at(self.family, self.values, self.staged, self.which, q, self.reach()))
+    }
+
+    /// The nested instance a click at `q` takes, as [`Scene::form_hit`] finds a form.
+    pub(super) fn nested_hit(&self, q: P2) -> Option<usize> {
+        let face = if self.by_face { fv::nested_at(self.family, self.values, self.staged, self.which, q) } else { None };
+        face.or_else(|| fv::nested_edge_at(self.family, self.values, self.staged, self.which, q, self.reach()))
+    }
+
+    /// Whether a drag from `p` is an element's and so draws no box: a connector, a reference line, a plane, or a form or a
+    /// nested instance by an edge of its outline. The face of a form or a nested instance is the box's to begin in, as
+    /// Revit's (FE-20), but for one of `selected` while a face selects: dragging what is selected is its own.
+    pub(super) fn under(&self, p: Pos2, selected: &[Picked]) -> bool {
         let q = self.view.mm((p.x - self.min.x, p.y - self.min.y));
-        let reach = 6.0 / self.view.scale.max(1e-9);
+        let reach = self.reach();
         let project = |x: [f64; 3]| Some(self.at(x));
+        let held = self.by_face
+            && (fv::nested_at(self.family, self.values, self.staged, self.which, q).is_some_and(|i| selected.contains(&Picked::Nested(i)))
+                || fv::form_at(self.family, self.values, self.staged, self.which, q).is_some_and(|i| selected.contains(&Picked::Form(i))));
         super::connector_marks::pick(self.connectors, &project, p).is_some()
-            || fv::nested_at(self.family, self.values, self.staged, self.which, q).is_some()
+            || fv::nested_edge_at(self.family, self.values, self.staged, self.which, q, reach).is_some()
             || self.staged.line_at(self.which, q, reach).is_some()
             || self.drawing.pick_all((p.x - self.min.x, p.y - self.min.y), 6.0).into_iter().any(|id| self.staged.plane_of(id).is_some())
-            || fv::form_at(self.family, self.values, self.staged, self.which, q).is_some()
+            || fv::form_edge_at(self.family, self.values, self.staged, self.which, q, reach).is_some()
+            || held
     }
 
     /// What is selected, over the picture, as one selected alone is drawn: a form's and a nested instance's outline, a plane's

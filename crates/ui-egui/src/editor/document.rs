@@ -785,7 +785,7 @@ impl BimApp {
             if big_button(ui, Icon::Modify, "Modify", ed.modeller.tool == Draw::Modify && ed.views.drawing.is_none(), tip).clicked() {
                 ed.modify_tool();
             }
-            // Filter, while something is selected (FE-20), as the project's Select panel has it.
+            // Filter, while several are selected (FE-20): on Modify | Multi-Select, where Revit has it.
             super::selection::filter_button(ui, ed);
         });
         let shown = self.docking.shown(Palette::Properties);
@@ -1195,6 +1195,7 @@ impl BimApp {
     pub(crate) fn family_central(&mut self, ui: &mut Ui) {
         let Some(mut ed) = self.take_family() else { return };
         ed.snaps = self.snaps_now();
+        ed.selecting.by_face = self.select_by_face;
         let pane = ui.available_rect_before_wrap();
         self.view_rect = pane;
         self.pane = pane;

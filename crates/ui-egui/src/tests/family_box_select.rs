@@ -247,9 +247,13 @@ fn a_drag_from_an_element_with_a_tool_in_hand_or_by_the_middle_button_draws_no_b
     let mut h = plan();
     click_family(&mut h, [700.0, 400.0, 0.0]);
     assert_eq!(selected(&h), vec![Picked::Form(1)]);
-    // From inside A, leftwards over Edge: no box.
-    boxed(&mut h, [-700.0, 400.0, 0.0], [-1400.0, 300.0, 0.0], Modifiers::NONE);
-    assert_eq!(selected(&h), vec![Picked::Form(1)], "a drag from a form boxes nothing");
+    // From A's edge, leftwards over Edge: no box; nor from inside B, which is selected. (Since FE-20 the face of a form
+    // that isn't selected is the box's to begin in, as Revit's, so that a crossing box can be drawn inside a face: Select
+    // Elements by Face, `family_selection`. A drag from an element's edge, or from one selected, is still the element's.)
+    boxed(&mut h, [-500.0, 400.0, 0.0], [-1400.0, 300.0, 0.0], Modifiers::NONE);
+    assert_eq!(selected(&h), vec![Picked::Form(1)], "a drag from a form's edge boxes nothing");
+    boxed(&mut h, [700.0, 400.0, 0.0], [300.0, 300.0, 0.0], Modifiers::NONE);
+    assert_eq!(selected(&h), vec![Picked::Form(1)], "a drag from a selected form boxes nothing");
     // The middle button pans: no box either.
     drag_family(&mut h, [400.0, 700.0, 0.0], [1000.0, 100.0, 0.0], Modifiers::NONE, PointerButton::Middle);
     assert_eq!(selected(&h), vec![Picked::Form(1)], "the middle button boxes nothing");

@@ -12,7 +12,7 @@ use bimcraft_core::family::DimKind;
 
 /// Revit's default keys for the family editor's commands, each to the name of its action in `shortcuts::ACTIONS`. A key the
 /// project has too means the same command here (`the_family_table_gives_no_project_key_another_meaning`); the others (DD, AN,
-/// WP, WW, FA, AA, PL, FG, CG, ZX, FE-3's ZR, ZZ, ZO, ZV, ZP, ZC, and FE-20's FF, PR, ID, SV) are the family's alone.
+/// WP, WW, FA, AA, PL, FG, CG, ZX, FE-3's ZR, ZZ, ZO, ZV, ZP, ZC, and FE-20's FF, PR, ID, SV, BF) are the family's alone.
 pub(crate) const FAMILY_SHORTCUTS: &[(&str, &str)] = &[
     ("MD", "Modify"),
     ("PP", "Properties"),
@@ -59,6 +59,7 @@ pub(crate) const FAMILY_SHORTCUTS: &[(&str, &str)] = &[
     ("ID", "Select by ID"),
     ("SA", "Select All Instances"),
     ("SV", "Select All Instances in Entire Project"),
+    ("BF", "Select Elements by Face"),
 ];
 
 /// Whether `action` is a command the family document has: one its table gives a key.
@@ -116,6 +117,13 @@ impl BimApp {
             }
             "Keyboard Shortcuts" => {
                 self.show_shortcuts = true;
+                return true;
+            }
+            // The status bar's toggle (FE-20), the window's own setting: where it changes how the view picks.
+            "Select Elements by Face" => {
+                if self.active_family().is_some_and(FamilyEditor::picks_by_face) {
+                    self.select_by_face = !self.select_by_face;
+                }
                 return true;
             }
             "Temporary Hide Element" => Some(Asked::Hide { category: false }),

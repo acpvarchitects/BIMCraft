@@ -2,7 +2,7 @@
 //! selection set (FE-1, `select_box.rs`). The core says what each finds (`family::select`); this is their dialogs and
 //! buttons, which look as the project's do.
 //!
-//! - **Filter** (FF; the Select panel's button while something is selected, and the status bar's funnel): the kinds the
+//! - **Filter** (FF; the Select panel's button while several are selected, and the status bar's funnel): the kinds the
 //!   selection holds, each with how many of it, checked to keep or cleared to leave out, Check All and Check None; OK keeps
 //!   what is checked selected. The list is the project's Filter's (`filter::checklist`).
 //! - **Select Previous** (PR): the selection as it was before it was last let go or replaced, again
@@ -13,6 +13,11 @@
 //!   project has no id yet, and one the document made without a GUID none of that either.
 //! - **Select All Instances** (SA, Visible in View, as the project's SA; SV, In Entire Project, here the whole family; the
 //!   Project Browser's menu on a nested family's type): every nested instance of the family and type of those selected.
+//! - **Select Elements by Face** (BF; the status bar's toggle on a family's tab, a setting the window keeps): on, a click
+//!   on a form's or a nested instance's face selects it and a crossing box drawn inside one takes it; off, each is taken
+//!   by an edge of its outline alone (`views.rs`, `select_box::Scene`). Either way a box may begin inside the face of what
+//!   isn't selected. It is of the plans and elevations: greyed in {3D}, which takes a form by its face either way as the
+//!   project's 3D view does, and while a form is sketched.
 //!
 //! None of it is a step of the document's history or reaches the project: the selection is the session's.
 use super::select_box::{How, Picked};
@@ -23,12 +28,14 @@ use bimcraft_core::family::select;
 use bimcraft_core::ids::{Guid, Id};
 use egui::{Button, Label};
 
-/// What the selection's commands keep of a family document: their dialogs while they are open.
+/// What the selection's commands keep of a family document: their dialogs while they are open, and how a click picks.
 #[derive(Default)]
 pub(crate) struct Selecting {
     pub(crate) filter: Option<Filter>,
     pub(crate) by_id: Option<ById>,
     pub(crate) ids: Option<Ids>,
+    /// Select Elements by Face, as the window has it (`BimApp::select_by_face`), given each frame.
+    pub(crate) by_face: bool,
     /// What IDs of Selection copied last: the clipboard's, for a test to read.
     pub(crate) copied: Option<String>,
 }
@@ -87,6 +94,12 @@ impl FamilyEditor {
     /// Whether the selection's commands work here: in a family that isn't adaptive, while no form is sketched.
     fn selects(&self) -> bool {
         self.adaptive.is_none() && !self.sketching()
+    }
+
+    /// Whether Select Elements by Face changes anything here: in a plan or an elevation of a family that isn't adaptive,
+    /// while no form is sketched. Elsewhere its toggle is greyed and BF does nothing.
+    pub(crate) fn picks_by_face(&self) -> bool {
+        self.editing_2d() && !self.sketching()
     }
 
     /// Whether a dialog of the selection's is open.
@@ -344,9 +357,10 @@ impl FamilyEditor {
     }
 }
 
-/// The Select panel's Filter, while something is selected, as the project's Select panel has it.
+/// The Select panel's Filter while several are selected, on Modify | Multi-Select where Revit has it; with one selected
+/// FF and the status bar's funnel open it.
 pub(super) fn filter_button(ui: &mut Ui, ed: &mut FamilyEditor) {
-    if !ed.can_filter() {
+    if !ed.can_filter() || ed.selection.len() < 2 {
         return;
     }
     let tip = msg!("Filter (FF): keep some of the selection, by what each thing selected is");
@@ -375,4 +389,29 @@ pub(super) fn inquiry_panel(ui: &mut Ui, ed: &mut FamilyEditor) {
             ed.open_ids_of_selection();
         }
     });
+}
+
+/// The status bar's Select Elements by Face (BF), as Revit's status bar has it left of the funnel: lit while it is `on`,
+/// crossed out while it is off.
+pub(crate) fn face_toggle(ui: &mut Ui, on: bool) -> egui::Response {
+    let label = t("Select Elements by Face");
+    let (rect, r) = ui.allocate_exact_size(vec2(16.0, 16.0), Sense::click());
+    let enabled = ui.is_enabled();
+    r.widget_info(|| WidgetInfo::selected(WidgetType::Button, enabled, on, label));
+    let ink = match (enabled, on) {
+        (false, _) => pal().icon.gamma_multiply(0.35),
+        (true, true) => pal().accent_ink,
+        (true, false) => pal().icon,
+    };
+    if on && enabled {
+        ui.painter().rect(rect.expand(2.0), 3.0, pal().select_fill, Stroke::new(1.0, pal().accent), StrokeKind::Inside);
+    }
+    crate::icons::paint(ui.painter(), Icon::PickFaces, rect, ink);
+    if !on {
+        ui.painter().line_segment([rect.left_bottom(), rect.right_top()], Stroke::new(1.5, ink));
+    }
+    let tip = t(msg!(
+        "Select Elements by Face (BF): on, a click on a face selects what it is of and a crossing box inside one takes it; off, only its edges do"
+    ));
+    r.on_hover_text(tip).on_disabled_hover_text(t(msg!("Select Elements by Face is of a family's plans and elevations.")))
 }

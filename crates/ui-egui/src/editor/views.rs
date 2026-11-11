@@ -816,6 +816,7 @@ impl FamilyEditor {
             connectors: &connector_marks,
             detail: self.views.detail,
             hidden: &hidden,
+            by_face: self.selecting.by_face,
         });
         if editable && let Some(scene) = scene.as_ref() {
             scene.paint_selected(&painter, self.selection.items());
@@ -927,7 +928,7 @@ impl FamilyEditor {
         let edit = (editable && response.double_clicked() && self.views.drawing.is_none() && self.views.picking.is_none())
             .then(|| response.interact_pointer_pos())
             .flatten()
-            .and_then(|p| family.as_ref().and_then(|f| fv::form_at(f, &values, &c.staged, which, at_view(p))));
+            .and_then(|p| scene.as_ref().and_then(|s| s.form_hit(at_view(p))));
         // An adaptive family's views only show it: its tools are in {3D}.
         if editable
             && response.clicked()
@@ -1032,7 +1033,8 @@ impl FamilyEditor {
                 on_dims = Some((hit, lengths));
             } else if let Some(i) = super::connector_marks::pick(&connector_marks, &project, p) {
                 select = Some(Some(Picked::Connector(i)));
-            } else if let Some(i) = family.as_ref().and_then(|f| fv::nested_at(f, &values, &c.staged, which, q)) {
+            } else if let Some(i) = scene.as_ref().and_then(|s| s.nested_hit(q)) {
+                // A nested instance or a form by its face, or with Select Elements by Face off by an edge alone (FE-20).
                 select = Some(Some(Picked::Nested(i)));
             } else {
                 // A reference line where the view draws it (F7d): over the planes' traces and the forms, as it is drawn.
@@ -1041,7 +1043,7 @@ impl FamilyEditor {
                     .line_at(which, q, 6.0 / view.scale.max(1e-9))
                     .and_then(|i| family.as_ref().and_then(|f| f.lines.get(i)).map(|l| l.guid));
                 let plane = if line.is_some() { None } else { pick_plane(p) };
-                let form = family.as_ref().and_then(|f| fv::form_at(f, &values, &c.staged, which, q));
+                let form = scene.as_ref().and_then(|s| s.form_hit(q));
                 select = Some(match (plane, line, form) {
                     (Some(g), _, _) => Some(Picked::Plane(g)),
                     (None, Some(g), _) => Some(Picked::Line(g)),
@@ -1051,7 +1053,9 @@ impl FamilyEditor {
             }
         }
         // A drag from nothing a click would select, nor a handle, a grip or a padlock, with no tool in hand: a selection box,
-        // a window left to right, a crossing right to left; Ctrl adds what it takes, Shift takes it away (FE-1).
+        // a window left to right, a crossing right to left; Ctrl adds what it takes, Shift takes it away (FE-1). The face of
+        // a form or a nested instance that isn't selected is the box's to begin in (FE-20, `Scene::under`).
+        let chosen: Vec<Picked> = self.selection.items().to_vec();
         let free = editable
             && self.views.drawing.is_none()
             && self.views.picking.is_none()
@@ -1063,7 +1067,7 @@ impl FamilyEditor {
             && self.views.grip.is_none();
         let start =
             response.drag_started_by(PointerButton::Primary).then(|| ui.input(|i| i.pointer.press_origin())).flatten().filter(|p| {
-                free && scene.as_ref().is_some_and(|s| !s.under(*p))
+                free && scene.as_ref().is_some_and(|s| !s.under(*p, &chosen))
                     && handles.iter().all(|h| screen(h.0).distance(*p) > 10.0)
                     && grips.iter().all(|(_, at)| at.distance(*p) > super::pivot::REACH)
                     && dims::clicked(&marks, &self.dimensions, selected_dim, align_lock, &locks, *p, &on_screen).is_none()
