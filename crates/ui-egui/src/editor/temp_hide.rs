@@ -10,6 +10,7 @@
 //! draws) and, in the preview of a door or a window, the wall it stands in. Only forms, points and lines can be selected, so
 //! only they are hidden by Hide Category; Isolate Category hides every other one the view draws, and Isolate Element the
 //! reference planes or the wall too, as Revit's hides every element but those selected.
+use super::select_box::Picked;
 use super::*;
 use crate::adaptive_view::Hidden;
 use bimcraft_core::adaptive::{Definition, Operation as Node};
@@ -79,7 +80,7 @@ impl FamilyEditor {
     pub(crate) fn temp_picked(&self) -> bool {
         match &self.adaptive {
             Some(d) => self.modeller.selection.iter().any(|id| d.nodes.iter().any(|n| &n.id == id)),
-            None => self.selected_form().is_some() || self.selected_plane().is_some(),
+            None => self.selection.items().iter().any(|p| matches!(p, Picked::Form(_) | Picked::Plane(_)) && self.holds(*p)),
         }
     }
 
@@ -107,21 +108,28 @@ impl FamilyEditor {
                     )
                 }
                 None => {
-                    let picked = self.selected_form().map(|i| self.forms[i].tag);
+                    // Every form and plane selected (FE-1), and their categories.
+                    let picked: BTreeSet<u64> = self.picked_forms().filter_map(|i| self.forms.get(i).map(|f| f.tag)).collect();
                     let host = if self.category.hosted() { vec![Kind::Host] } else { Vec::new() };
-                    let kind = if self.selected_plane().is_some() { Kind::Planes } else { Kind::Forms };
+                    let mut kinds = BTreeSet::new();
+                    if !picked.is_empty() {
+                        kinds.insert(Kind::Forms);
+                    }
+                    if self.picked_planes().next().is_some() {
+                        kinds.insert(Kind::Planes);
+                    }
                     (
-                        picked.into_iter().collect(),
+                        picked,
                         BTreeSet::new(),
-                        BTreeSet::from([kind]),
+                        kinds,
                         self.forms.iter().map(|f| f.tag).collect::<BTreeSet<_>>(),
                         BTreeSet::new(),
                         host.into_iter().chain([Kind::Forms, Kind::Planes]).collect(),
                     )
                 }
             };
-        // A plane selected in a plan or an elevation, and every plane of the family's own (the datums are Planes alone).
-        let plane: BTreeSet<bimcraft_core::ids::Guid> = self.selected_plane().into_iter().collect();
+        // The planes selected in a plan or an elevation, and every plane of the family's own (the datums are Planes alone).
+        let plane: BTreeSet<bimcraft_core::ids::Guid> = self.picked_planes().collect();
         let every_plane: BTreeSet<bimcraft_core::ids::Guid> = self.planes.iter().filter(|p| !p.level).map(|p| p.guid).collect();
         let t = &mut self.document.temp;
         match asked {
@@ -148,8 +156,7 @@ impl FamilyEditor {
             }
             Asked::Reset => {}
         }
-        self.form = None;
-        self.views.plane = None;
+        self.let_everything_go();
         self.modeller.selection.clear();
         Ok(())
     }
@@ -236,74 +243,6 @@ impl BimApp {
         if ed.temporary().hides() {
             ui.add_space(8.0);
             ui.label(RichText::new(tf("{} (HR resets)", &[t("Temporary Hide/Isolate")])).color(crate::footer::FRAME));
-        }
-    }
-
-    /// The family document's two-letter keys: HH, HC, HI, IC and HR, or what Keyboard Shortcuts made them.
-    pub(super) fn family_typed(&mut self, ctx: &Context) {
-        let typed: String = ctx.input(|i| {
-            i.events
-                .iter()
-                .filter_map(|e| match e {
-                    egui::Event::Text(t) => Some(t.as_str()),
-                    _ => None,
-                })
-                .collect()
-        });
-        for ch in typed.chars().filter(char::is_ascii_alphanumeric) {
-            self.typed.push(ch.to_ascii_uppercase());
-            if self.typed.len() > 2 {
-                self.typed.remove(0);
-            }
-            if self.typed.len() < 2 {
-                continue;
-            }
-            let action = match self.custom_shortcuts.get(&self.typed) {
-                Some(action) => Some(action.as_str()),
-                None => crate::SHORTCUTS.iter().find(|(k, _)| *k == self.typed).map(|(_, a)| *a),
-            };
-            // Reference Plane, in a family's plan or elevation (F4): the family document's own.
-            if self.typed == "RP"
-                && let Some(ed) = super::tabs::active_in(&mut self.families, self.sheet)
-                && ed.editing_2d()
-            {
-                self.typed.clear();
-                ed.reference_plane_tool();
-                continue;
-            }
-            // Trim/Extend to Corner while a form is sketched (F10a).
-            if self.typed == "TR"
-                && let Some(ed) = super::tabs::active_in(&mut self.families, self.sheet)
-                && let Some(s) = ed.sketch.as_mut()
-            {
-                s.trim_tool();
-                ed.views.aligning = None;
-                self.typed.clear();
-                continue;
-            }
-            // Aligned Dimension and Align there too (F7).
-            if matches!(self.typed.as_str(), "DI" | "AL")
-                && let Some(ed) = super::tabs::active_in(&mut self.families, self.sheet)
-                && ed.editing_2d()
-            {
-                if self.typed == "DI" {
-                    ed.dimension_tool();
-                } else {
-                    ed.align_tool();
-                }
-                self.typed.clear();
-                continue;
-            }
-            let asked = match action {
-                Some("Temporary Hide Element") => Asked::Hide { category: false },
-                Some("Temporary Hide Category") => Asked::Hide { category: true },
-                Some("Temporary Isolate Element") => Asked::Isolate { category: false },
-                Some("Temporary Isolate Category") => Asked::Isolate { category: true },
-                Some("Reset Temporary Hide/Isolate") => Asked::Reset,
-                _ => continue,
-            };
-            self.typed.clear();
-            self.family_temp(asked);
         }
     }
 }

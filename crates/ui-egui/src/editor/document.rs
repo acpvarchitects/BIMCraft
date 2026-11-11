@@ -63,6 +63,8 @@ pub(super) struct Draft {
     picked: usize,
     /// Its reference planes: drawn and moved in its plans and elevations.
     planes: Vec<RefPlane>,
+    /// Its reference lines: drawn, pivoted and deleted in its plans and elevations.
+    lines: Vec<RefLine>,
     /// Its dimensions: drawn, labelled and locked in its plans and elevations.
     dimensions: Vec<bimcraft_core::family::FamilyDimension>,
     /// Its options: Family Category and Parameters' table, Properties' Other group.
@@ -86,6 +88,7 @@ impl Draft {
             adaptive: ed.adaptive.clone(),
             picked: ed.picked,
             planes: ed.planes.clone(),
+            lines: ed.lines.clone(),
             dimensions: ed.dimensions.clone(),
             options: ed.options.clone(),
             nested: ed.nested.clone(),
@@ -104,6 +107,7 @@ impl Draft {
         ed.adaptive = self.adaptive;
         ed.picked = self.picked;
         ed.planes = self.planes;
+        ed.lines = self.lines;
         ed.dimensions = self.dimensions;
         ed.options = self.options;
         ed.nested = self.nested;
@@ -111,44 +115,38 @@ impl Draft {
         // What is selected and no longer there goes from the selection.
         let nodes = ed.adaptive.as_ref().map(|d| d.nodes.iter().map(|n| n.id.clone()).collect::<Vec<_>>()).unwrap_or_default();
         ed.modeller.selection.retain(|id| nodes.contains(id));
+        ed.prune_selection();
         ed.problem = None;
     }
 }
 
 impl FamilyEditor {
     /// Whether something of the family's own is selected that Delete takes away: a form, a plane of its own (a datum stays), a
-    /// dimension, a nested instance or a reference line.
+    /// dimension, a nested instance, a reference line, a symbol or a connector, one or several (FE-1).
     pub(crate) fn deletable(&self) -> bool {
-        self.selected_form().is_some()
-            || self.selected_plane().is_some_and(|g| self.planes.iter().any(|p| p.guid == g && !p.datum()))
-            || self.selected_dimension().is_some()
-            || self.selected_nested().is_some()
-            || self.selected_line().is_some()
-            || self.selected_symbol().is_some()
-            || self.selected_connector().is_some()
+        self.deletable_picked()
     }
 
-    /// Delete (DE, the Delete key, the ribbon's Delete): what is selected taken away, with what depends on it, or why not.
+    /// Delete (DE, the Delete key, the ribbon's Delete): what is selected taken away, all of it in one step, with what depends
+    /// on it, or why not (`select_box.rs`).
     pub(crate) fn delete_selected(&mut self) -> Result<(), String> {
-        if let Some(i) = self.selected_nested() {
-            self.nested_instances.remove(i);
-            self.select_nested(None);
-        } else if let Some(g) = self.selected_dimension() {
-            self.delete_dimension(g);
-        } else if let Some(g) = self.selected_line() {
-            self.delete_line(g)?;
-        } else if let Some(g) = self.selected_plane().filter(|g| self.planes.iter().any(|p| p.guid == *g && !p.datum())) {
-            self.delete_plane(g)?;
-        } else if let Some(i) = self.selected_form() {
-            self.remove_form(i);
-        } else if let Some(i) = self.selected_symbol() {
-            self.remove_symbol(i);
-        } else if let Some(i) = self.selected_connector() {
-            self.remove_connector(i);
-        } else if let Some(d) = self.adaptive.as_mut() {
+        if let Some(d) = self.adaptive.as_mut() {
             adaptive_view::delete(d, &mut self.modeller);
+            return Ok(());
         }
-        Ok(())
+        self.delete_picked()
+    }
+
+    /// The Select panel's Modify (MD): every tool put down and the selection let go, all of it (FE-1).
+    pub(crate) fn modify_tool(&mut self) {
+        self.modeller.tool = Draw::Modify;
+        self.modeller.picking_plane = false;
+        self.views.drawing = None;
+        self.views.picking = None;
+        self.views.dimensioning = None;
+        self.views.aligning = None;
+        self.views.pivoting = None;
+        self.let_everything_go();
     }
 
     /// The draft as it is now, for `saved_as` once it has been saved.
@@ -185,6 +183,8 @@ impl FamilyEditor {
     /// last one, once nothing is going on any more (no button held, no field being typed in, no dialog open), so a drag, a
     /// word typed or a dialog's whole visit is one step. Cancel in a dialog puts back what it began from, leaving no step.
     pub(super) fn history(&mut self, ctx: &Context, ask: &Asked) {
+        // What the frame took away from the draft goes from the selection too (FE-1).
+        self.prune_selection();
         let now = Draft::of(self);
         let Some(mark) = self.document.mark.take() else {
             // The document's first frame: the draft as it was opened.
@@ -249,6 +249,10 @@ fn context(ed: &FamilyEditor) -> Option<&'static str> {
         }
         if ed.placing.is_some() {
             return Some(msg!("Modify | Place Component"));
+        }
+        // Several selected (FE-1), as Revit names a selection of more than one.
+        if ed.selection.len() > 1 {
+            return Some(msg!("Modify | Multi-Select"));
         }
         if ed.selected_nested().is_some() {
             return Some(msg!("Modify | Nested Instance"));
@@ -776,17 +780,7 @@ impl BimApp {
         ribbon::panel(ui, msg!("Select"), |ui| {
             let tip = msg!("Modify (MD): select elements");
             if big_button(ui, Icon::Modify, "Modify", ed.modeller.tool == Draw::Modify && ed.views.drawing.is_none(), tip).clicked() {
-                ed.modeller.tool = Draw::Modify;
-                ed.modeller.picking_plane = false;
-                ed.form = None;
-                ed.symbol = None;
-                ed.connector = None;
-                ed.views.drawing = None;
-                ed.views.picking = None;
-                ed.views.plane = None;
-                ed.views.dimensioning = None;
-                ed.views.aligning = None;
-                ed.views.dim = None;
+                ed.modify_tool();
             }
         });
         let shown = self.docking.shown(Palette::Properties);
@@ -880,6 +874,12 @@ impl BimApp {
         let category = category_label(ed.category);
         let selected = ed.modeller.selection.clone();
         let params = ed.parameter_kinds();
+        // Several selected (FE-1): how many, as Revit's Properties say, and none of their rows.
+        if ed.adaptive.is_none() && ed.selection.len() > 1 {
+            selector(ui, Icon::Modify, &tf("Multi-Select ({})", &[&ed.selection.len().to_string()]));
+            self.put_family(ed);
+            return;
+        }
         // A reference line selected (F7d): its pivot.
         if let Some(g) = ed.selected_line() {
             let i = ed.lines.iter().position(|l| l.guid == g).unwrap_or_default();
@@ -1046,9 +1046,9 @@ impl BimApp {
             DeleteConnector(usize),
             Edit(usize),
         }
-        let picked = self.active_family().and_then(FamilyEditor::selected_form);
-        let picked_symbol = self.active_family().and_then(FamilyEditor::selected_symbol);
-        let picked_connector = self.active_family().and_then(FamilyEditor::selected_connector);
+        // What is selected, each row of it lit: one, or several (FE-1).
+        let chosen = self.active_family().map(|ed| ed.selection.items().to_vec()).unwrap_or_default();
+        let picked = |p: super::select_box::Picked| chosen.contains(&p);
         let connectors: Vec<String> = match self.active_family() {
             Some(ed) if ed.adaptive.is_none() => (0..ed.connectors.len()).map(|i| ed.connector_name(i)).collect(),
             _ => Vec::new(),
@@ -1099,7 +1099,7 @@ impl BimApp {
                     egui::CollapsingHeader::new(t("Forms")).id_salt("family-forms").default_open(true).show(ui, |ui| {
                         let last = forms.len() - 1;
                         for (i, (form, mesh, edit)) in forms.iter().enumerate() {
-                            let r = ui.selectable_label(picked == Some(i), form);
+                            let r = ui.selectable_label(picked(super::select_box::Picked::Form(i)), form);
                             if r.clicked() {
                                 asked = Some(Asked::Form(i));
                             }
@@ -1128,7 +1128,7 @@ impl BimApp {
                 if !symbols.is_empty() {
                     egui::CollapsingHeader::new(t("Symbols")).id_salt("family-symbols").default_open(true).show(ui, |ui| {
                         for (i, symbol) in symbols.iter().enumerate() {
-                            let r = ui.selectable_label(picked_symbol == Some(i), symbol);
+                            let r = ui.selectable_label(picked(super::select_box::Picked::Symbol(i)), symbol);
                             if r.clicked() {
                                 asked = Some(Asked::Symbol(i));
                             }
@@ -1147,7 +1147,7 @@ impl BimApp {
                 if !connectors.is_empty() {
                     egui::CollapsingHeader::new(t("Connectors")).id_salt("family-connectors").default_open(true).show(ui, |ui| {
                         for (i, connector) in connectors.iter().enumerate() {
-                            let r = ui.selectable_label(picked_connector == Some(i), connector);
+                            let r = ui.selectable_label(picked(super::select_box::Picked::Connector(i)), connector);
                             if r.clicked() {
                                 asked = Some(Asked::Connector(i));
                             }
@@ -1213,6 +1213,8 @@ impl BimApp {
         } else {
             self.family_3d(ui, &mut ed, pane);
         }
+        // Zoom In Region's drag, over the view (`zoom.rs`).
+        ed.zoom_region_drag(ui, pane);
         // The window's tabs, the project's and each family document's, over the view's top left corner.
         let card = crate::style::card([true, false, true, false]).inner_margin(Margin::same(2));
         let mut over = ui.new_child(UiBuilder::new().id_salt("family-view-tabs").max_rect(pane));
@@ -1243,8 +1245,17 @@ impl BimApp {
                 }
                 ui.label(RichText::new(t("Shaded")).color(pal().muted));
                 if icon_button(ui, Icon::Fit, "Zoom to Fit").clicked() {
-                    ed.modeller.camera = None;
-                    ed.orbit.fit();
+                    ed.zoom_to_fit();
+                }
+                // FE-3: the rest of Revit's zoom commands, beside it.
+                if icon_button(ui, Icon::ZoomRegion, "Zoom In Region").clicked() {
+                    ed.zoom_region_tool();
+                }
+                if icon_button(ui, Icon::ZoomOut, "Zoom Out (2x)").clicked() {
+                    ed.zoom_out();
+                }
+                if icon_button(ui, Icon::ZoomPrevious, "Previous Pan/Zoom").clicked() {
+                    ed.previous_zoom();
                 }
                 // Revit's Preview Visibility: the family as placed, the forms its type hides left out rather than ghosted.
                 if ed.adaptive.is_none() {
@@ -1367,6 +1378,10 @@ impl BimApp {
     /// What the family document's status bar asks for: an adaptive family's modelling view's tool, or how another's preview turns.
     pub(crate) fn family_prompt(&self) -> Option<&'static str> {
         let ed = self.active_family()?;
+        // Zoom In Region armed (FE-3), over whatever else is in hand.
+        if ed.zoom_region_armed() {
+            return Some(msg!("Zoom In Region: drag a rectangle over the view to fit it. Esc cancels."));
+        }
         if let Some(s) = ed.sketch.as_ref() {
             // Align on the sketch's lines (F7b).
             if ed.views.aligning.is_some() {
@@ -1402,7 +1417,7 @@ impl BimApp {
                 msg!("Click the point it turns about: where two planes cross, a line's end, a point of a sketch, or anywhere.")
             }
             (Some(_), false) => msg!(
-                "Click a form, a nested instance, a reference plane, a reference line or a dimension to select it; drag a selected plane to move it, a grip to turn or stretch."
+                "Click a form, a nested instance, a reference plane, a reference line or a dimension to select it, Ctrl to add, Shift to take away; drag from nothing to box (left to right a window, right to left a crossing); drag a selected plane to move it, a grip to turn or stretch."
             ),
             (None, true) => adaptive_view::prompt(&ed.modeller),
             (None, false) => msg!(
@@ -1441,7 +1456,16 @@ impl BimApp {
         if !egui::Popup::is_any_open(ctx) {
             self.family_typed(ctx);
         }
+        // Keyboard Shortcuts, opened over the document (KS), has the keys: Escape and Delete are not the document's then.
+        if self.show_shortcuts {
+            return;
+        }
         let Some(ed) = self.active_family_mut() else { return };
+        // Zoom In Region armed: Escape gives it up, and nothing else.
+        if ed.zoom_region_armed() && ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape)) {
+            ed.cancel_zoom_region();
+            return;
+        }
         // Sketch mode: Escape lets the shape's points go, then its tool; Delete takes the lines picked away; Ctrl+Z takes back
         // the sketch's own last change. The document's history waits for Finish.
         if let Some(s) = ed.sketch.as_mut() {
@@ -1474,11 +1498,11 @@ impl BimApp {
             } else if let Some(first) = ed.views.aligning {
                 ed.views.aligning = first.map(|_| None);
                 ed.views.align_lock = None;
-            } else if ed.views.dim.is_some() {
-                ed.views.dim = None;
+            } else if ed.selected_dimension().is_some() {
+                ed.let_everything_go();
             } else if let Some(first) = ed.views.drawing {
                 ed.views.drawing = first.map(|_| None);
-            } else if ed.views.plane.take().is_none() && ed.views.line.take().is_none() {
+            } else {
                 ed.let_form_go();
             }
         }
@@ -1750,7 +1774,7 @@ fn draw_panel(ui: &mut Ui, ed: &mut FamilyEditor) {
         ui.vertical(|ui| {
             ui.horizontal(|ui| {
                 let line = matches!(ed.modeller.tool, Draw::Line(_));
-                let tip = msg!("Line (LI): click points, or the work plane, in turn; the first again closes a profile");
+                let tip = msg!("Line: click points, or the work plane, in turn; the first again closes a profile");
                 if crate::small_button(ui, Icon::Line, "Line", line, tip).clicked() {
                     ed.modeller.tool = Draw::Line(Vec::new());
                 }
@@ -1988,7 +2012,13 @@ impl BimApp {
         }
         // The connectors over it, at their places in the family's axes.
         let lit = (crate::style::canvas_pal().accent, crate::style::canvas_pal().hover);
-        super::connector_marks::paint(&p, &marks, &project, ed.selected_connector(), ed.connector_hover, lit);
+        let chosen: Vec<usize> = ed
+            .selection
+            .items()
+            .iter()
+            .filter_map(|x| if let super::select_box::Picked::Connector(i) = x { Some(*i) } else { None })
+            .collect();
+        super::connector_marks::paint(&p, &marks, &project, &chosen, ed.connector_hover, lit);
         // A form being sketched on its plane, over the picture (F5), with its padlocks.
         if let Some(e) = ed.sketch_in_3d(ui, &response, &p, &cam, size, pane) {
             self.status = Status { text: e, error: true };

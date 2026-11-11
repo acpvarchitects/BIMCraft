@@ -9,13 +9,16 @@ use bimcraft_core::geom::P2;
 use bimcraft_core::snap::Kind as Snap;
 use egui::{Align, ComboBox, Context, Grid, Id as UiId, Layout, RichText, ScrollArea, TextEdit, vec2};
 
+use bimcraft_i18n::msg;
+
 use crate::graphics;
 use crate::lang::{Lang, t, tf, translated_in};
 use crate::pal;
 use crate::{BimApp, Once, Tab, Tool, phasing};
 
-/// A shortcuts file is a few lines; one over this isn't one.
-const MAX_FILE: u64 = 64 << 10;
+/// A shortcuts file is a list of commands: Revit's export of its keyboard shortcuts, every command with its tabs and
+/// panels, is about 300 KiB. One over this isn't one.
+const MAX_FILE: u64 = 1 << 20;
 
 /// All available actions that can be bound to shortcuts in BIMCraft.
 pub const ACTIONS: &[&str] = &[
@@ -125,6 +128,48 @@ pub const ACTIONS: &[&str] = &[
     "Snap to Nearest",
     "Snaps Off",
     "Turn Snap Override Off",
+    msg!("Reference Plane"),
+    // The family document's alone (`FAMILY_ONLY`).
+    msg!("Work Plane"),
+    msg!("Load Family"),
+    msg!("Angular Dimension"),
+    msg!("Pick Lines"),
+    msg!("Finish Edit Mode"),
+    msg!("Cancel Edit Mode"),
+    msg!("Zoom In Region"),
+    msg!("Zoom Out (2x)"),
+    msg!("Previous Pan/Zoom"),
+];
+
+/// The actions of `ACTIONS` only a family document does (`editor::keys`): a key for one does nothing on a project's tab, and
+/// Find, which runs actions on the project, doesn't list them.
+pub(crate) const FAMILY_ONLY: &[&str] = &[
+    "Work Plane",
+    "Load Family",
+    "Angular Dimension",
+    "Pick Lines",
+    "Finish Edit Mode",
+    "Cancel Edit Mode",
+    "Zoom In Region",
+    "Zoom Out (2x)",
+    "Previous Pan/Zoom",
+];
+
+/// Whether `action` is a family document's alone.
+pub(crate) fn family_only(action: &str) -> bool {
+    FAMILY_ONLY.contains(&action)
+}
+
+/// Revit's names for BIMCraft's actions where they are not the same words, as its export of its keyboard shortcuts writes them:
+/// the name, what the item's `Paths` must hold for it to be that action (for a name as short as Set), and the action.
+const REVIT_NAMES: &[(&str, &str, &str)] = &[
+    ("Default 3D View", "", "3D View"),
+    ("Zoom All to Fit", "", "Zoom to Fit"),
+    ("Place a Component", "", "Component"),
+    ("Split Element", "", "Split"),
+    ("Aligned", ">Dimension", "Aligned Dimension"),
+    ("Angular", ">Dimension", "Angular Dimension"),
+    ("Set", ">Work Plane", "Work Plane"),
 ];
 
 /// State of the Keyboard Shortcuts management modal.
@@ -145,18 +190,47 @@ pub(crate) fn is_key(k: &str) -> bool {
     k.len() == 2 && k.chars().all(|c| c.is_ascii_alphanumeric())
 }
 
-/// The action a description names: its whole name, in English or in any of the interface's languages, in any case.
-pub fn resolve_action(desc: &str) -> Option<&'static str> {
-    let d = desc.trim().to_lowercase();
-    ACTIONS
-        .iter()
-        .copied()
-        .find(|act| act.to_lowercase() == d || Lang::ALL.iter().any(|l| translated_in(*l, act).is_some_and(|w| w.to_lowercase() == d)))
+/// `name`'s words, in lower case, without the punctuation between them: Revit's "Mirror - Pick Axis" is "mirror pick axis".
+fn words(name: &str) -> String {
+    let spaced: String = name.chars().map(|c| if c.is_alphanumeric() { c } else { ' ' }).collect();
+    spaced.split_whitespace().collect::<Vec<_>>().join(" ").to_lowercase()
 }
 
-/// The (key, description) pairs a shortcuts file holds, as written: a JSON object of key to description, Revit's
-/// `<Shortcut CommandName=".." Shortcuts="WA#W1"/>` lines, or lines like `WA - Wall`, `WA = Wall`, `WA: Wall`.
-/// [`BimApp::load_shortcuts_from_file`] checks them.
+/// The action a description names: its whole name, in English or in any of the interface's languages, in any case, whatever
+/// the punctuation between its words.
+pub fn resolve_action(desc: &str) -> Option<&'static str> {
+    let d = words(desc);
+    if d.is_empty() {
+        return None;
+    }
+    ACTIONS.iter().copied().find(|act| words(act) == d || Lang::ALL.iter().any(|l| translated_in(*l, act).is_some_and(|w| words(w) == d)))
+}
+
+/// An XML attribute's text with its entities decoded, once (`&amp;lt;` is the text `&lt;`).
+fn xml_text(s: &str) -> String {
+    s.replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", "\"").replace("&apos;", "'").replace("&amp;", "&")
+}
+
+/// The (key, description) pairs of Revit's `<ShortcutItem CommandName=".." CommandId=".." Shortcuts="WA#W1" Paths=".."/>`
+/// element `item` (the text after its `<`), or of an older `<Shortcut ../>`: each key written, with the command's name, or the
+/// action Revit's name is ([`REVIT_NAMES`]).
+fn shortcut_item(item: &str) -> Vec<(String, String)> {
+    let attr = |name: &str| {
+        let pattern = format!("{name}=\"");
+        item.split(pattern.as_str()).nth(1).and_then(|s| s.split('"').next()).map(xml_text)
+    };
+    let (Some(cmd), Some(keys)) = (attr("CommandName").or_else(|| attr("CommandId")), attr("Shortcuts")) else { return Vec::new() };
+    let paths = attr("Paths").unwrap_or_default();
+    let name = REVIT_NAMES
+        .iter()
+        .find(|(revit, on, _)| words(revit) == words(&cmd) && paths.contains(on))
+        .map_or(cmd.clone(), |(_, _, action)| action.to_string());
+    keys.split('#').map(|k| (k.trim().to_ascii_uppercase(), name.clone())).collect()
+}
+
+/// The (key, description) pairs a shortcuts file holds, as written: a JSON object of key to description, Revit's export of its
+/// keyboard shortcuts (`<ShortcutItem CommandName=".." Shortcuts="WA#W1" Paths=".."/>`, its entities decoded, any number to a
+/// line), or lines like `WA - Wall`, `WA = Wall`, `WA: Wall`. [`BimApp::load_shortcuts_from_file`] checks them.
 pub fn parse_shortcuts_file(content: &str) -> Vec<(String, String)> {
     let mut entries = Vec::new();
     if let Ok(serde_json::Value::Object(obj)) = serde_json::from_str(content) {
@@ -172,13 +246,10 @@ pub fn parse_shortcuts_file(content: &str) -> Vec<(String, String)> {
         if line.is_empty() || line.starts_with('#') {
             continue;
         }
-        if line.contains("<Shortcut") {
-            let attr = |name: &str| {
-                let pattern = format!("{name}=\"");
-                line.split(pattern.as_str()).nth(1).and_then(|s| s.split('"').next())
-            };
-            if let (Some(cmd), Some(keys)) = (attr("CommandName").or_else(|| attr("CommandId")), attr("Shortcuts")) {
-                entries.extend(keys.split('#').map(|k| (k.trim().to_ascii_uppercase(), cmd.to_string())));
+        // XML: its items; its other tags (the declaration, `<Shortcuts>`) are no shortcut.
+        if line.starts_with('<') {
+            for item in line.split('<').filter(|e| e.starts_with("ShortcutItem ") || e.starts_with("Shortcut ")) {
+                entries.extend(shortcut_item(item));
             }
             continue;
         }
@@ -265,6 +336,7 @@ impl BimApp {
             "Room Separator" => self.set_tool(Tool::RoomSeparator(None)),
             "Level" => self.set_tool(Tool::Level),
             "Grid" => self.set_tool(Tool::Grid(None)),
+            "Reference Plane" => self.set_tool(Tool::ReferencePlane(None)),
             "Column" => self.set_tool(Tool::Column),
             "Structural Column" => self.set_tool(Tool::Stand("structuralcolumn")),
             "Floor" => self.set_tool(Tool::Floor),
@@ -482,6 +554,13 @@ impl BimApp {
                         by_action.entry(name.to_string()).or_default().push(letters.to_string());
                     }
                 }
+                // The family document's own commands, by the keys its table gives them, unless a key made here for another of
+                // its commands has it (`editor::keys::family_typed`).
+                for (letters, name) in crate::editor::keys::FAMILY_SHORTCUTS.iter().filter(|(_, a)| family_only(a)) {
+                    if !self.custom_shortcuts.get(*letters).is_some_and(|a| crate::editor::keys::in_family(a)) {
+                        by_action.entry(name.to_string()).or_default().push(letters.to_string());
+                    }
+                }
                 for (key, act) in &self.custom_shortcuts {
                     by_action.entry(act.clone()).or_default().push(key.clone());
                 }
@@ -636,6 +715,52 @@ mod tests {
     }
 
     #[test]
+    fn revit_shortcut_items_are_read_with_their_entities_decoded() {
+        let line = r#"  <ShortcutItem CommandName="Cut &amp; &quot;Fill&quot; &lt;1&gt; &apos;x&apos;" CommandId="ID_X" Shortcuts="zq#Ctrl+Q" Paths="Massing &amp; Site&gt;Modify" />"#;
+        let read = parse_shortcuts_file(line);
+        assert_eq!(
+            read,
+            [("ZQ".to_string(), "Cut & \"Fill\" <1> 'x'".to_string()), ("CTRL+Q".to_string(), "Cut & \"Fill\" <1> 'x'".to_string())]
+        );
+        // Entities are decoded once: what was written `&amp;lt;` is the text `&lt;`.
+        let read = parse_shortcuts_file(r#"<ShortcutItem CommandName="A &amp;lt; B" Shortcuts="ZQ" />"#);
+        assert_eq!(read, [("ZQ".to_string(), "A &lt; B".to_string())]);
+        // Two items on one line, as a file written without line breaks has them, and the file's own tags are no shortcut.
+        let read = parse_shortcuts_file(
+            r#"<?xml version="1.0" encoding="utf-8"?><Shortcuts><ShortcutItem CommandName="Wall" Shortcuts="ZW" /><ShortcutItem CommandName="Door" Shortcuts="ZD" /></Shortcuts>"#,
+        );
+        assert_eq!(read, [("ZW".to_string(), "Wall".to_string()), ("ZD".to_string(), "Door".to_string())]);
+    }
+
+    #[test]
+    fn revits_names_for_bimcrafts_actions_are_its_actions() {
+        for (name, paths, action) in [
+            ("Mirror - Pick Axis", "Modify&gt;Modify", "Mirror Pick Axis"),
+            ("Mirror - Draw Axis", "Modify&gt;Modify", "Mirror Draw Axis"),
+            ("Default 3D View", "Quick Access Toolbar; View&gt;Create", "3D View"),
+            ("Zoom All to Fit", "Navigation Bar", "Zoom to Fit"),
+            ("Place a Component", "Architecture&gt;Build&gt;Component", "Component"),
+            ("Aligned Dimension", "Annotate&gt;Dimension", "Aligned Dimension"),
+            ("Aligned", "Annotate&gt;Dimension; Create&gt;Dimension", "Aligned Dimension"),
+            ("Angular", "Annotate&gt;Dimension", "Angular Dimension"),
+            ("Set", "Architecture&gt;Work Plane; Create&gt;Work Plane", "Work Plane"),
+            ("Load Family", "Insert&gt;Load from Library", "Load Family"),
+            ("Finish Edit Mode", "Modify | Create Extrusion&gt;Mode", "Finish Edit Mode"),
+            ("Cancel Edit Mode", "Modify | Create Extrusion&gt;Mode", "Cancel Edit Mode"),
+            ("Pick Lines", "Modify | Create Extrusion&gt;Draw", "Pick Lines"),
+            ("Reference Plane", "Create&gt;Datum", "Reference Plane"),
+        ] {
+            let line = format!(r#"<ShortcutItem CommandName="{name}" CommandId="ID_X" Shortcuts="ZQ" Paths="{paths}" />"#);
+            let read = parse_shortcuts_file(&line);
+            assert_eq!(read.len(), 1, "{name}");
+            assert_eq!(resolve_action(&read[0].1), Some(action), "{name} on {paths}");
+        }
+        // A name as short as Set is Work Plane's only on its panel.
+        let read = parse_shortcuts_file(r#"<ShortcutItem CommandName="Set" Shortcuts="ZQ" Paths="Manage&gt;Phasing" />"#);
+        assert_eq!(resolve_action(&read[0].1), None);
+    }
+
+    #[test]
     fn a_file_over_the_cap_or_missing_is_refused_with_a_message() {
         let dir = tempfile::tempdir().unwrap();
         let mut app = BimApp::new(Session::new());
@@ -690,7 +815,32 @@ mod tests {
     fn every_action_the_dialog_offers_does_something() {
         for act in ACTIONS {
             let mut app = BimApp::new(Session::new());
-            assert!(app.execute_shortcut_action(act), "{act}");
+            if family_only(act) {
+                // Nothing on the project; something in a family document.
+                assert!(!app.execute_shortcut_action(act), "{act} is a family document's alone");
+                app.new_family(bimcraft_core::family::Category::Generic);
+                assert!(app.family_action(act), "{act} in a family");
+            } else {
+                assert!(app.execute_shortcut_action(act), "{act}");
+            }
+        }
+    }
+
+    #[test]
+    fn the_family_table_gives_no_project_key_another_meaning() {
+        use crate::editor::keys::FAMILY_SHORTCUTS;
+        let project = crate::shortcuts();
+        for (key, action) in FAMILY_SHORTCUTS {
+            assert!(ACTIONS.contains(action), "{key}: {action} is an action a key can be given");
+            for (k, does) in project.iter().filter(|(k, _)| k == key) {
+                assert_eq!(does, action, "{k} means the same in a family as in the project");
+            }
+            if family_only(action) {
+                assert!(project.iter().all(|(k, _)| k != key), "{key}, the family's alone, is no project key");
+            }
+        }
+        for action in FAMILY_ONLY {
+            assert!(ACTIONS.contains(action) && FAMILY_SHORTCUTS.iter().any(|(_, a)| a == action), "{action}");
         }
     }
 }

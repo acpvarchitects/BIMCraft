@@ -6970,10 +6970,12 @@ mod extrusion_properties;
 mod family_already_exists;
 mod family_angles;
 mod family_blend;
+mod family_box_select;
 mod family_category_dialog;
 mod family_dimensions;
 mod family_document;
 mod family_exit;
+mod family_keys;
 mod family_nav3d;
 mod family_open;
 mod family_pivots;
@@ -6988,8 +6990,10 @@ mod family_views;
 mod family_visibility;
 #[cfg(test)]
 mod family_work_plane;
+mod family_zoom;
 mod highlight3d;
 mod nested_families;
 mod preview_visibility;
 
 mod family_ortho;
+mod select_instances;
