@@ -248,8 +248,11 @@ impl FormSketch {
     fn add(&mut self, curves: Vec<Curve>) {
         if self.axis_tool {
             if let Some(c) = curves.into_iter().find(|c| c.kind() == "line") {
+                // The axis drawn again is the same line (its id and GUID), so what measures to it still does (FE-12).
+                let was = self.sketch.lines.iter().find(|l| is_axis(l)).map(|l| (l.id, l.guid)).filter(|(_, g)| !g.is_nil());
+                let (id, guid) = was.unwrap_or((0, Guid::new()));
                 self.sketch.lines.retain(|l| !is_axis(l));
-                self.sketch.lines.push(SketchLine { style: Some(AXIS.into()), guid: Guid::new(), ..SketchLine::from(c) });
+                self.sketch.lines.push(SketchLine { style: Some(AXIS.into()), id, guid, ..SketchLine::from(c) });
                 self.sketch.changed();
             }
             return;
@@ -857,11 +860,13 @@ impl FamilyEditor {
                 && let Some([a, b]) = axis
             {
                 let n = |x: f64| Expr::Number(x);
+                // The sketch's axis line's GUID, which its dimensions name; the form's where it has none.
                 let was = before.axis_line();
-                let axis_guid = s.sketch.lines.iter().find(|l| is_axis(l)).map(|l| l.guid);
+                let axis_guid = s.sketch.lines.iter().find(|l| is_axis(l)).map(|l| l.guid).filter(|g| !g.is_nil());
+                let guid = axis_guid.or(was.map(|l| l.guid)).unwrap_or_default();
                 lines.push(FormLine {
-                    id: was.map_or(0, |l| l.id),
-                    guid: was.map(|l| l.guid).or(axis_guid).unwrap_or_default(),
+                    id: was.filter(|l| l.guid == guid).map_or(0, |l| l.id),
+                    guid,
                     axis: true,
                     ..FormLine::line([n(a.0), n(a.1)], [n(b.0), n(b.1)])
                 });

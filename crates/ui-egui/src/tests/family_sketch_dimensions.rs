@@ -503,3 +503,67 @@ fn a_label_set_while_sketching_keeps_the_lines_formulas_as_one_set_after_finish(
     let strip = |ls: &[bimcraft_core::family::sketch::FormLine]| ls.iter().map(|l| l.curve.clone()).collect::<Vec<_>>();
     assert_eq!(strip(&in_sketch), strip(&outside));
 }
+
+const REV: &str = "77777777-7777-4777-8777-000000000001";
+const AXIS_LINE: &str = "77777777-7777-4777-8777-000000000002";
+const POST: &str = "77777777-7777-4777-8777-000000000003";
+const TO_AXIS: &str = "77777777-7777-4777-8777-000000000004";
+
+/// A revolve on Ref. Level, its profile from x 100 to 300, its axis upright at x 50; a plane Post at x -400 and a dimension
+/// from it to the axis.
+fn revolve() -> String {
+    format!(
+        r#"family {{"name": "Rv", "category": "generic", "types": {{"T": {{}}}}, "ref_planes": [{{"guid": "{POST}", "name": "Post", "start": [-400, -2000, 0], "end": [-400, 2000, 0], "up": [0, 0, 1]}}], "forms": [{{"guid": "{REV}", "sketch": [{{"start": [100, -200], "end": [300, -200]}}, {{"start": [300, -200], "end": [300, 200]}}, {{"start": [300, 200], "end": [100, 200]}}, {{"start": [100, 200], "end": [100, -200]}}, {{"guid": "{AXIS_LINE}", "start": [50, -500], "end": [50, 500], "axis": true}}], "from": 0, "to": 360}}], "dimensions": [{{"guid": "{TO_AXIS}", "refs": [{{"plane": "{POST}"}}, {{"form": "{REV}", "line": "{AXIS_LINE}"}}], "at": [0, -800, 0]}}]}}"#
+    )
+}
+
+#[test]
+fn a_revolves_axis_drawn_again_keeps_its_dimensions_and_takes_new_ones() {
+    let (mut h, _) = open(&revolve(), "Rv");
+    view(&mut h, Some(Which::Plan));
+    ed_mut(&mut h).edit_form_sketch(0).unwrap();
+    h.run();
+    h.get_by_role_and_label(Role::Button, "Axis Line").click();
+    h.run();
+    click_family(&mut h, [50.0, -700.0, 0.0]);
+    click_family(&mut h, [50.0, 700.0, 0.0]);
+    key(&mut h, Key::Escape);
+    // A dimension from Post to the axis drawn again.
+    shortcut(&mut h, "DI");
+    click_family(&mut h, [-400.0, 900.0, 0.0]);
+    click_family(&mut h, [50.0, 600.0, 0.0]);
+    click_family(&mut h, [-200.0, 1000.0, 0.0]);
+    let d = made(&h).last().cloned().expect("a dimension to the axis");
+    press(&mut h, "Finish Edit Mode");
+    assert!(!editor(&h).sketching(), "{}", status(&h));
+    let f = editor(&h).draft_family().unwrap();
+    let axis = f.forms[0].axis_line().expect("its axis").guid;
+    for want in [g(TO_AXIS), d.guid] {
+        let dim = f.dimensions.iter().find(|x| x.guid == want).unwrap_or_else(|| panic!("dimension {want} kept: {:?}", f.dimensions));
+        assert_eq!(dim.refs[1], DimRef::Sketch(g(REV), axis), "it names the axis the form has");
+    }
+    // The axis deleted and drawn anew: a new line, which a dimension placed on it names at Finish; those of the old one go.
+    ed_mut(&mut h).edit_form_sketch(0).unwrap();
+    h.run();
+    key(&mut h, Key::Escape);
+    click_family(&mut h, [50.0, 600.0, 0.0]);
+    key(&mut h, Key::Delete);
+    h.get_by_role_and_label(Role::Button, "Axis Line").click();
+    h.run();
+    click_family(&mut h, [50.0, -700.0, 0.0]);
+    click_family(&mut h, [50.0, 700.0, 0.0]);
+    key(&mut h, Key::Escape);
+    shortcut(&mut h, "DI");
+    click_family(&mut h, [-400.0, 900.0, 0.0]);
+    click_family(&mut h, [50.0, 600.0, 0.0]);
+    click_family(&mut h, [-200.0, 1100.0, 0.0]);
+    let e = made(&h).last().cloned().expect("a dimension to the new axis");
+    press(&mut h, "Finish Edit Mode");
+    assert!(!editor(&h).sketching(), "{}", status(&h));
+    let f = editor(&h).draft_family().unwrap();
+    let axis = f.forms[0].axis_line().expect("its axis").guid;
+    assert_ne!(axis, g(AXIS_LINE), "a new line");
+    let dim = f.dimensions.iter().find(|x| x.guid == e.guid).expect("kept");
+    assert_eq!(dim.refs[1], DimRef::Sketch(g(REV), axis));
+    assert!(f.dimensions.iter().all(|x| x.guid != g(TO_AXIS)), "the old axis's went with it");
+}
