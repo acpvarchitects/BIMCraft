@@ -126,6 +126,27 @@ impl Soup {
         self.tris.iter().map(|t| self.corners(t)).collect()
     }
 
+    /// Its triangles as a partition takes them best: those of the planes that hold most triangles first. A partition
+    /// makes a plane of the first triangle it meets and cuts every other by it, so a face in many triangles (a section
+    /// filled in, a curved wall's top) met after a curve's facets is cut by every facet; met first, by none.
+    pub fn for_cutting(&self) -> Mesh {
+        let plane = |t: &[u32; 3]| {
+            let [a, b, c] = self.corners(t);
+            let n = unit(cross(sub(b, a), sub(c, a)));
+            let key = |v: f64, by: f64| (v * by).round() as i64;
+            [key(n[0], 1e6), key(n[1], 1e6), key(n[2], 1e6), key(dot(n, a), 1e3)]
+        };
+        let planes: Vec<[i64; 4]> = self.tris.iter().map(plane).collect();
+        let mut held: HashMap<[i64; 4], usize> = HashMap::new();
+        for p in &planes {
+            *held.entry(*p).or_default() += 1;
+        }
+        let mut order: Vec<usize> = (0..self.tris.len()).collect();
+        let count = |i: usize| planes.get(i).and_then(|p| held.get(p)).copied().unwrap_or(0);
+        order.sort_by(|&i, &j| count(j).cmp(&count(i)).then(i.cmp(&j)));
+        order.iter().filter_map(|&i| self.tris.get(i)).map(|t| self.corners(t)).collect()
+    }
+
     pub fn volume(&self) -> f64 {
         let o = self.tris.first().map_or([0.0; 3], |t| self.at(t[0]));
         self.tris.iter().map(|t| self.corners(t)).map(|[a, b, c]| dot(sub(a, o), cross(sub(b, o), sub(c, o))) / 6.0).sum()

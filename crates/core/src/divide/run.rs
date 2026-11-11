@@ -329,7 +329,7 @@ pub(crate) fn ring_sides(
     if lo.is_some_and(|l| l + shrink >= above - WELD) || hi.is_some_and(|u| u - shrink <= below + WELD) {
         return Ok((Soup::default(), soup.clone()));
     }
-    let mesh = soup.mesh();
+    let mesh = soup.for_cutting();
     let range = |by: f64| (lo.map_or(below - MARGIN, |l| l + by), hi.map_or(above + MARGIN, |u| u - by));
     let inside = match inner {
         Some(inner) => {
@@ -371,7 +371,7 @@ fn line_sides(soup: &Soup, axes: &Axes, line: &[P2], gap: f64, work: &mut Work) 
     }
     let reach = flat::reaching(line);
     let (below, above) = extent(soup, axes);
-    let mesh = soup.mesh();
+    let mesh = soup.for_cutting();
     // How far the wall reaches on the left of the line, and on its right.
     let walls: &[(f64, f64)] = if gap > 0.0 { &[(gap / 2.0, gap / 2.0)] } else { &[(0.0, KERF), (KERF, 0.0)] };
     let (mut a, mut b) = (Vec::new(), Vec::new());
