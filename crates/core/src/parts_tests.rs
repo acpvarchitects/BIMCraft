@@ -969,6 +969,11 @@ fn a_parts_values_are_fields_read_by_name_as_any_elements() {
             "Thickness",
             "Net Area",
             "Net Volume",
+            "Density",
+            "Mass",
+            "Thermal Conductivity",
+            "Thermal Resistance",
+            "Specific Heat",
             "Predefined Type",
             "Object Type",
             "Excluded",
@@ -1531,4 +1536,83 @@ fn a_part_is_found_by_its_id_its_guid_and_its_ifc_globalid_and_shown_where_its_h
     let with = crate::render::svg(&crate::render::plan(&s.model, level, 400, 300));
     run(&mut s, "delete", json!({"ids": ids}));
     assert_eq!(crate::render::svg(&crate::render::plan(&s.model, level, 400, 300)), with);
+}
+
+// ---------- what a part's material weighs and how it carries heat ----------
+
+#[test]
+fn a_material_may_say_its_weight_and_its_heat_and_a_part_made_of_it_weighs_and_resists() {
+    let (mut s, wall) = historic();
+    let ids = made(&run(&mut s, "create_parts", json!({"id": wall})));
+    // Nothing said: a part shows none of it.
+    let bare = shown(&mut s, ids[1]);
+    assert!(["density", "conductivity", "specific_heat", "mass_kg", "thermal_resistance"].iter().all(|k| bare.get(*k).is_none()), "{bare}");
+    let said = run(&mut s, "material", json!({"name": "Rubble Masonry", "density": 2100, "conductivity": 1.4, "specific_heat": 840}));
+    assert_eq!(
+        (&said["material"]["density"], &said["material"]["conductivity"], &said["material"]["specific_heat"]),
+        (&json!(2100.0), &json!(1.4), &json!(840.0))
+    );
+    // The masonry, 4 by 3 m and 460 mm thick: 5.52 m³ of it, and 0.46 m of it for heat to cross.
+    let core = shown(&mut s, ids[1]);
+    assert_eq!((&core["density"], &core["conductivity"], &core["specific_heat"]), (&json!(2100.0), &json!(1.4), &json!(840.0)));
+    assert_eq!(core["mass_kg"], json!(11592.0));
+    assert_eq!(core["thermal_resistance"], json!(0.328571));
+    // The plaster's material says nothing, so its parts show nothing; given a density alone, a weight and no resistance.
+    assert!(shown(&mut s, ids[0]).get("mass_kg").is_none());
+    run(&mut s, "material", json!({"name": "Lime Plaster", "density": 1600}));
+    let plaster = shown(&mut s, ids[0]);
+    assert_eq!((&plaster["mass_kg"], plaster.get("thermal_resistance")), (&json!(384.0), None));
+    // By name, as its other values.
+    let text = |s: &Session, id: Id, name: &str| schedule::field_text(&s.model, id, name);
+    assert_eq!(text(&s, ids[1], "Density").as_deref(), Some("2100"));
+    assert_eq!(text(&s, ids[1], "Mass").as_deref(), Some("11592"));
+    assert_eq!(text(&s, ids[1], "Thermal Conductivity").as_deref(), Some("1.4"));
+    assert_eq!(text(&s, ids[1], "Thermal Resistance").as_deref(), Some("0.33"));
+    assert_eq!(text(&s, ids[1], "Specific Heat").as_deref(), Some("840"));
+    assert_eq!(text(&s, ids[2], "Thermal Resistance"), None);
+    // A part made of another material is as heavy as that one.
+    run(&mut s, "material", json!({"name": "Cocciopesto", "density": 1800, "conductivity": 0.9}));
+    run(&mut s, "part", json!({"id": ids[0], "material": "Cocciopesto"}));
+    let own = shown(&mut s, ids[0]);
+    assert_eq!((&own["mass_kg"], &own["thermal_resistance"]), (&json!(432.0), &json!(0.022222)));
+    // All of a wall of several layers weighs what its structure's material would, and resists as nothing one could say.
+    let other = run(&mut s, "wall", json!({"points": [[0, 5000], [4000, 5000]], "type": "Historic - 500mm", "height": 3000}))["ids"][0]
+        .as_u64()
+        .unwrap();
+    let whole = put(&mut s, |m| BuildingPart::new(m.guid(other), Source::Whole));
+    let all = shown(&mut s, whole);
+    assert_eq!((&all["mass_kg"], all.get("thermal_resistance")), (&json!(12600.0), None));
+    // In a file only what was said, and read back; null takes a value away.
+    let file: Value = serde_json::from_str(&s.model.to_json().unwrap()).unwrap();
+    let held = file["materials"].as_object().unwrap();
+    assert_eq!(held.values().filter(|m| m.get("density").is_some()).count(), 3);
+    assert_eq!(held.values().filter(|m| m.get("specific_heat").is_some()).count(), 1);
+    let back = Model::from_json(&s.model.to_json().unwrap()).unwrap();
+    assert_eq!(back.materials["Rubble Masonry"], s.model.materials["Rubble Masonry"]);
+    run(&mut s, "material", json!({"name": "Rubble Masonry", "density": null, "conductivity": null, "specific_heat": null}));
+    assert_eq!(s.model.materials["Rubble Masonry"].density, None);
+    assert!(shown(&mut s, ids[1]).get("mass_kg").is_none());
+}
+
+#[test]
+fn a_materials_weight_and_heat_are_numbers_above_nothing_and_within_reason() {
+    let (mut s, _) = historic();
+    for (p, said) in [
+        (json!({"name": "Lime Plaster", "density": 0}), "`density` is kg/m³, above 0 and at most 100000, not 0"),
+        (json!({"name": "Lime Plaster", "density": -5}), "`density` is kg/m³, above 0 and at most 100000, not -5"),
+        (json!({"name": "Lime Plaster", "density": 1e300}), "`density` is kg/m³, above 0 and at most 100000"),
+        (json!({"name": "Lime Plaster", "density": "heavy"}), "`density` is kg/m³, above 0 and at most 100000, not \"heavy\""),
+        (json!({"name": "Lime Plaster", "conductivity": 0}), "`conductivity` is W/(m·K), above 0 and at most 10000, not 0"),
+        (json!({"name": "Lime Plaster", "conductivity": [1]}), "`conductivity` is W/(m·K), above 0 and at most 10000"),
+        (json!({"name": "Lime Plaster", "specific_heat": 1e9}), "`specific_heat` is J/(kg·K), above 0 and at most 1000000"),
+    ] {
+        let e = fails(&mut s, "material", p.clone());
+        assert!(e.contains(said), "{p}: {e}");
+    }
+    // The model asks the same of one that comes another way.
+    let mut m = (*s.model).clone();
+    if let Some(x) = m.materials.get_mut("Lime Plaster") {
+        x.conductivity = Some(f64::NAN);
+    }
+    assert_eq!(m.check().unwrap_err(), "material `Lime Plaster`: conductivity is W/(m·K), above 0 and at most 10000, not NaN");
 }

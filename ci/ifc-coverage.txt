@@ -88,3 +88,7 @@ type {"category":"structuralcolumn","name":"RHS steel","shape":"RHS","width":200
 structural_column {"at":[3000,14000],"type":"RHS steel","height":3000}
 type {"category":"beam","name":"CHS steel","shape":"CHS","width":168.3,"thickness":6}
 beam {"points":[[0,17000],[6000,17000]],"type":"CHS steel","offset":3000,"end_offset":4000}
+# What a material says of its weight and its heat (Pset_MaterialCommon and Pset_MaterialThermal on the IfcMaterial, and the units
+# they are in): the brick and the insulation.
+material {"name": "Brick", "density": 1800, "conductivity": 0.8, "specific_heat": 840}
+material {"name": "Insulation", "density": 30, "conductivity": 0.035}
