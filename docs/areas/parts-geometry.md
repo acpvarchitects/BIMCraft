@@ -133,7 +133,8 @@ The tidied surface is kept only if it is still closed and holds the same volume;
   output).
 - **Bounded**: numbers are checked finite and within `MAX_COORD`; `csg::MAX_TRIANGLES` (20 000) triangles in the solid,
   `MAX_CUTS` (64) cuts and as many offsets, `MAX_LINE_POINTS` (2 000) points a line, `MAX_PIECES` (256) pieces,
-  `MAX_GAP` (10 m); every loop spends from a budget (`Work`: its own steps and a `csg::Meter` of eight cuts' worth).
+  `MAX_GAP` (10 m); every loop spends from a budget (`Work`: its own steps and a `csg::Meter` of eight cuts' worth;
+  the worst a hostile solid and recipe take before they are refused is a few seconds).
   Nothing panics; `hostile_input_is_refused_and_never_panics_or_hangs` and
   `random_recipes_never_panic_and_what_they_make_adds_up` sweep it.
 - **Precision** is `f64`'s at the coordinates given: a part kilometres from the origin loses the hundred-thousandths of
@@ -150,7 +151,8 @@ the rest round a patch cut to a depth still shows the whole elevation; the patch
 ## The prism's way
 
 A wall's layer is a prism: `Prism { frame, outline, holes, thickness }`, the frame on its face with the normal pointing
-out, the solid `thickness` behind it. `Prism::mesh` is its closed surface. `divide_prism` does a recipe of lines drawn
+out, the solid `thickness` behind it (an outline and each opening of `MAX_LINE_POINTS` points at most, `MAX_HOLES`,
+256, openings, none reaching outside the outline or over another). `Prism::mesh` is its closed surface. `divide_prism` does a recipe of lines drawn
 on the face (or on a plane level with it, seen from either side) that cut through with no gap in the plane itself: the
 outline is divided by `geom::faces` and each region raised into its piece, exact and closed by construction, with the
 same keys, sides, lump order, noise rule and conflicts as the general way (two tests hold the two to each other, one on

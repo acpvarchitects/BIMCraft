@@ -940,11 +940,11 @@ fn random_recipes_never_panic_and_what_they_make_adds_up() {
             r.cuts.push(Division { cut, gap, of: None });
         }
         // Now and then: an offset on whatever piece comes first, by the cut that made it or by a plane.
-        if let Ok(o) = regenerate(solid, &r) {
-            if let Some(step) = o.pieces.first().and_then(|p| p.key.0.last()).filter(|_| dice.below(2) == 0) {
-                let face = if dice.below(2) == 0 { FaceRef::Cut(step.cut) } else { FaceRef::Plane { point: [0.0; 3], normal: OUT } };
-                r.offsets.push(Offset { piece: o.pieces[0].key.clone(), face, distance: num(&mut dice, 0.0, 60.0) });
-            }
+        if let Ok(o) = regenerate(solid, &r)
+            && let Some(step) = o.pieces.first().and_then(|p| p.key.0.last()).filter(|_| dice.below(2) == 0)
+        {
+            let face = if dice.below(2) == 0 { FaceRef::Cut(step.cut) } else { FaceRef::Plane { point: [0.0; 3], normal: OUT } };
+            r.offsets.push(Offset { piece: o.pieces[0].key.clone(), face, distance: num(&mut dice, 0.0, 60.0) });
         }
         for o in [regenerate(solid, &r), divide(solid, &r)] {
             match o {
