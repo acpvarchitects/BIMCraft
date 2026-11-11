@@ -51,6 +51,25 @@ fn move_by_two_clicks_moves_the_selection_as_one_step_and_puts_the_tool_down() {
 }
 
 #[test]
+fn what_temporary_hide_hides_isnt_moved_or_rotated() {
+    let mut h = plan();
+    pick(&mut h, &[Picked::Form(1)]);
+    shortcut(&mut h, "HH");
+    pick(&mut h, &[Picked::Form(0), Picked::Form(1)]);
+    let (a, b) = (points(&h, 0), points(&h, 1));
+    shortcut(&mut h, "MV");
+    click(&mut h, [300.0, 300.0]);
+    click(&mut h, [300.0, 800.0]);
+    assert!(same(points(&h, 0)[0], [a[0][0], a[0][1] + 500.0]), "{:?} {}", points(&h, 0), status(&h));
+    assert_eq!(points(&h, 1), b, "the hidden box stays");
+    shortcut(&mut h, "RO");
+    click(&mut h, [700.0, 800.0]);
+    click(&mut h, [300.0, 1200.0]);
+    assert_eq!(points(&h, 1), b, "the hidden box stays");
+    assert_eq!(editor(&h).steps(), 2, "{}", status(&h));
+}
+
+#[test]
 fn copy_with_multiple_makes_a_copy_at_each_click_and_escape_steps_back() {
     let mut h = plan();
     pick(&mut h, &[Picked::Form(0)]);

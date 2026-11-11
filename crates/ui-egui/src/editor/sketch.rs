@@ -714,6 +714,8 @@ impl FamilyEditor {
     pub(super) fn start_form_sketch(&mut self, index: Option<usize>, kind: FormKind, void: bool, host: PlaneRef, lines: Vec<SketchLine>) {
         let edit = index.is_some();
         let revolve = kind == FormKind::Revolve;
+        // A Modify tool of the views put down: the sketch has its own (FE-8).
+        self.views.modify = None;
         let (from, to) = match kind {
             FormKind::Revolve => ("0", "360"),
             FormKind::Sweep | FormKind::SweptBlend => ("0", "0"),

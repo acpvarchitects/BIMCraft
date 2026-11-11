@@ -365,7 +365,7 @@ fn context(ed: &FamilyEditor) -> Option<&'static str> {
             return Some(msg!("Modify | Connectors"));
         }
         // A Modify tool in hand with nothing selected (Offset, FE-8): its Options Bar still shows.
-        return ed.selected_form().map(|i| form_context(ed, i)).or_else(|| ed.views.modify.as_ref().map(|_| "Modify"));
+        return ed.selected_form().map(|i| form_context(ed, i)).or_else(|| ed.views.modify.as_ref().map(|_| msg!("Modify | Offset")));
     }
     let d = ed.adaptive.as_ref()?;
     let r = d.evaluate(&ed.values(), &d.preview);
