@@ -969,3 +969,135 @@ fn random_recipes_never_panic_and_what_they_make_adds_up() {
     assert!(made > 100 && refused > 20, "{made} made, {refused} refused");
     assert!(open.is_empty(), "pieces not closed: {open:?}");
 }
+
+#[test]
+fn random_lines_divide_a_prism_the_same_in_its_plane_and_as_a_solid() {
+    let mut layer = doorway();
+    layer.holes = vec![pts(&square(2600.0, 1000.0, 800.0))];
+    let solid = layer.mesh().unwrap();
+    let whole = DOORWAY - 800.0 * 800.0 * 300.0;
+    let mut dice = Dice(0x1234_5678_9abc_def1);
+    let (mut same, mut refused) = (0, 0);
+    for round in 0..150 {
+        let mut r = Recipe::default();
+        for _ in 0..1 + dice.below(3) {
+            // Whole centimetres, so lines run through corners and along edges now and then.
+            let mut at = |lo: f64, hi: f64| (dice.range(lo, hi) / 100.0).round() * 100.0;
+            let cut = match round % 5 {
+                0 => line(&[(-200.0, at(100.0, 2900.0)), (4200.0, at(100.0, 2900.0))]),
+                1 => line(&[(at(100.0, 3900.0), -200.0), (at(100.0, 3900.0), 3200.0)]),
+                2 => line(&[(-200.0, at(100.0, 2900.0)), (at(500.0, 3500.0), at(100.0, 2900.0)), (4200.0, at(100.0, 2900.0))]),
+                3 => patch(
+                    &[
+                        (at(-200.0, 2000.0), at(-200.0, 1500.0)),
+                        (at(2100.0, 4200.0), at(-200.0, 1500.0)),
+                        (at(1000.0, 3000.0), at(1600.0, 3200.0)),
+                    ],
+                    None,
+                ),
+                _ => line(&[(at(-300.0, 4300.0), at(-300.0, 3300.0)), (at(-300.0, 4300.0), at(-300.0, 3300.0))]),
+            };
+            r.cuts.push(Division::from(cut));
+        }
+        match (divide_prism(&layer, &r), divide(&solid, &r)) {
+            (Ok(flat), Ok(full)) => {
+                same += 1;
+                assert_eq!(keys(&flat), keys(&full), "round {round}: {r:?}");
+                for (what, o) in [("in the plane", &flat), ("as a solid", &full)] {
+                    for p in &o.pieces {
+                        let none: Vec<&[P3; 3]> = p.mesh.iter().filter(|t| height(t) < 1e-4).collect();
+                        assert!(none.is_empty(), "round {round}, {what}: {} has triangles with no area: {none:?}\n{r:?}", p.key);
+                        assert!(p.closed, "round {round}, {what}: {} isn't closed\n{r:?}", p.key);
+                    }
+                }
+                sound(&flat, whole);
+                sound(&full, whole);
+                for (a, b) in flat.pieces.iter().zip(&full.pieces) {
+                    assert!(
+                        near(a.volume, b.volume),
+                        "round {round}, {}: {} in the plane, {} as a solid\n{r:?}",
+                        a.key,
+                        a.volume,
+                        b.volume
+                    );
+                }
+            }
+            (Err(a), Err(b)) => {
+                refused += 1;
+                assert_eq!(a, b, "round {round}: {r:?}");
+            }
+            (a, b) => panic!("round {round}: in the plane {:?}, as a solid {:?}\n{r:?}", a.map(|o| keys(&o)), b.map(|o| keys(&o))),
+        }
+    }
+    assert!(same > 60 && refused > 5, "{same} the same, {refused} refused");
+}
+
+#[test]
+fn a_solid_of_thousands_of_triangles_is_divided_within_the_budget() {
+    // A curved wall in 900 facets: 7200 triangles.
+    const FACETS: usize = 900;
+    let at = |r: f64, k: usize| {
+        let a = k as f64 / FACETS as f64 * std::f64::consts::FRAC_PI_2;
+        P2(r * a.cos(), r * a.sin())
+    };
+    let outline: Vec<P2> = (0..=FACETS).map(|k| at(3300.0, k)).chain((0..=FACETS).rev().map(|k| at(3000.0, k))).collect();
+    let top = Frame { origin: [0.0, 0.0, 3000.0], x: [1.0, 0.0, 0.0], normal: [0.0, 0.0, 1.0] };
+    let held = crate::geom::area(&outline) * 3000.0;
+    let solid = Prism { frame: top, outline, holes: Vec::new(), thickness: 3000.0 }.mesh().unwrap();
+    assert!(solid.len() == 8 * FACETS + 4 && is_closed(&solid));
+    // Planes, and a straight line that spans it, clip it triangle by triangle: thousands are no matter.
+    let h = 0.5_f64.sqrt();
+    let on_face = Frame { origin: [3300.0 * h, 3300.0 * h, 0.0], x: [-h, h, 0.0], normal: [h, h, 0.0] };
+    let r = recipe(vec![
+        Cut::Plane { point: [0.0, 0.0, 1000.0], normal: [0.0, 0.0, 1.0] },
+        Cut::Plane { point: [2000.0, 2000.0, 1500.0], normal: [0.3, -0.5, 1.0] },
+        Cut::Sketch { frame: on_face, points: pts(&[(-9000.0, 2200.0), (9000.0, 2300.0)]), closed: false, depth: None },
+    ]);
+    let t = std::time::Instant::now();
+    let o = divide(&solid, &r).unwrap();
+    eprintln!("{} triangles, {} pieces by planes: {:?}", solid.len(), o.pieces.len(), t.elapsed());
+    assert!(o.pieces.len() >= 5, "{:?}", keys(&o));
+    for p in &o.pieces {
+        assert!(p.closed && p.mesh.len() <= 8 * FACETS + 40, "{} isn't closed, or has {} triangles", p.key, p.mesh.len());
+    }
+    let sum: f64 = o.pieces.iter().map(|p| p.volume).sum();
+    assert!(near(sum + o.removed, held));
+    // A patch or a bent line goes through a partition, which so many small faces not in one plane make costly: it is
+    // done, or refused as too much, and never hangs.
+    let patch = Cut::Sketch { frame: on_face, points: pts(&square(-400.0, 1200.0, 800.0)), closed: true, depth: Some(40.0) };
+    let t = std::time::Instant::now();
+    let done = divide(&solid, &recipe(vec![patch]));
+    let sizes = done.as_ref().map(|o| o.pieces.iter().map(|p| p.mesh.len()).collect::<Vec<_>>());
+    eprintln!("{} triangles, a patch: {:?}, {sizes:?}", solid.len(), t.elapsed());
+    assert!(matches!(done, Ok(_) | Err(DivideError::TooMuch(_))), "{done:?}");
+}
+
+#[test]
+fn lumps_that_touch_at_a_corner_are_one_and_so_is_a_solid_with_a_face_inside_it() {
+    // Two patches corner to corner are two pieces; the rest round them is one.
+    let o =
+        divide(&wall(), &recipe(vec![patch(&square(1000.0, 500.0, 500.0), None), patch(&square(1500.0, 1000.0, 500.0), None)])).unwrap();
+    assert_eq!(keys(&o), ["0.inside.0", "0.outside.0/1.inside.0", "0.outside.0/1.outside.0"]);
+    sound(&o, WALL);
+    // A line whose corner only touches the top of the wall leaves two parts above it that meet along an edge: one
+    // lump, one piece, in the plane and as a solid.
+    let layer = Prism { frame: face(), outline: pts(&square(0.0, 0.0, 3000.0)), holes: Vec::new(), thickness: 300.0 };
+    let peak = recipe(vec![line(&[(-100.0, 1000.0), (1500.0, 3000.0), (3100.0, 1000.0)])]);
+    let (flat, full) = (divide_prism(&layer, &peak).unwrap(), divide(&layer.mesh().unwrap(), &peak).unwrap());
+    assert_eq!(keys(&full), ["0.left.0", "0.right.0"]);
+    assert_eq!(keys(&flat), keys(&full));
+    for o in [&flat, &full] {
+        sound(o, 3000.0 * 3000.0 * 300.0);
+        assert!(near(held(o, &[(0, Side::Left, 0)]), 2.0 * (1500.0 * 1875.0 / 2.0) * 300.0));
+    }
+    // Two boxes side by side, each closed, sharing a face: a solid with a face inside it, as a part's prisms may come.
+    // A plane across both leaves one lump each side, not two; so does a line.
+    let twin: Mesh =
+        cuboid([0.0, 0.0, 0.0], [2000.0, 300.0, 3000.0]).into_iter().chain(cuboid([2000.0, 0.0, 0.0], [4000.0, 300.0, 3000.0])).collect();
+    let o = divide(&twin, &recipe(vec![Cut::Plane { point: [0.0, 0.0, 1000.0], normal: [0.0, 0.0, 1.0] }])).unwrap();
+    assert_eq!(keys(&o), ["0.front.0", "0.back.0"]);
+    assert!(o.pieces.iter().all(|p| p.closed) && near(o.pieces[0].volume, 4000.0 * 300.0 * 2000.0));
+    let o = divide(&twin, &recipe(vec![line(&[(-100.0, 1000.0), (1500.0, 2000.0), (4100.0, 1000.0)])])).unwrap();
+    assert_eq!(keys(&o), ["0.left.0", "0.right.0"]);
+    assert!(o.pieces.iter().all(|p| p.closed) && near(o.pieces.iter().map(|p| p.volume).sum::<f64>(), WALL));
+}

@@ -18,8 +18,9 @@
 //!   pieces of a closed solid are closed by construction;
 //! - a closed line drawn on a face, through the part or to a depth, and a closed profile extruded over a range: the
 //!   inside is the solid and the profile's prism shared, the outside the solid less it, by the binary space partitions
-//!   of [`crate::csg`]. A partition leaves corners of one triangle on another's edge, so each piece is mended after it
-//!   (`Soup::mend`): corners within [`WELD`] become one and an edge is cut at every corner on it;
+//!   of [`crate::csg`]. A partition leaves corners of one triangle on another's edge, and drops triangles too small to
+//!   have a plane, so each piece is mended after it (`Soup::mend`): corners within [`WELD`] become one, an edge is cut
+//!   at every corner on it, and a pinhole is closed;
 //! - an open line drawn on a face: it cuts where it is drawn and nowhere else (a line across one jamb of a door leaves
 //!   the other whole), so no plane or half space will do. The solid loses a wall as thin as [`KERF`] along the line,
 //!   what is left falls into lumps, and each is on the left or the right of the line by the face the wall left on it.
@@ -249,7 +250,7 @@ pub enum Side {
 /// One cut's share in a piece's name: the cut's place in the recipe (from 0), the side of it the piece is on, and which
 /// lump of that side: where a cut leaves several lumps apart on one side, they are counted from 0 in order of their
 /// centres of volume in the cut's frame, by x, then y, then along its normal, each compared to the millimetre (a
-/// plane's frame is a work plane's: x level across it). Lumps that touch only along an edge or at a corner are one.
+/// plane's frame is a work plane's: x level across it). Lumps that touch along an edge or at a corner are one.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Step {

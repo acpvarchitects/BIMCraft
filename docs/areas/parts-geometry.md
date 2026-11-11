@@ -40,8 +40,9 @@ lump of that side.
 - **Lumps**: where a cut leaves several lumps apart on one side (a line across a door leaves two feet), they are
   counted from 0 in order of their centres of volume in the cut's frame: by x, then y, then along the normal, each
   compared to the millimetre first, so two lumps one above the other don't swap on a rounding. A plane's frame is a
-  work plane's (x level across it; east on a level plane). Lumps that touch only along an edge or at a corner are one.
-  A hollow inside a lump belongs to it.
+  work plane's (x level across it; east on a level plane). Lumps that touch along an edge or at a corner are one (their
+  surfaces share corners), and so are the prisms of a solid that comes with faces inside it. A hollow inside a lump
+  belongs to it.
 - **Order**: the pieces come in the order of their keys: a divided piece's parts take its place, first side first.
 - **A cut divides every piece it meets**, or only the piece named in `of` and what was made of it since (as Revit
   divides the part selected). A piece it passes by keeps its key. A cut that divides none of its pieces is a conflict.
@@ -66,8 +67,9 @@ bridged to their outlines, and cut ear by ear using the rings' own corners and n
 solid are closed by construction, whatever the numbers.
 
 **A closed line or a profile** is a prism, and a prism against a general solid is what `csg`'s binary space partitions
-do. A partition leaves T-junctions (a corner of one triangle on another's edge), so each result is welded and mended
-(`Soup::mend`: an open edge is cut at every corner lying on it) and then tidied.
+do. A partition leaves T-junctions (a corner of one triangle on another's edge) and drops triangles too small to have
+a plane, so each result is welded and mended (`Soup::mend`: an open edge is cut at every corner lying on it, and a
+pinhole, a ring of open edges round less than 0.0001 mm², is closed with its own corners) and then tidied.
 
 **An open line cuts where it is drawn and nowhere else.** A line across one jamb of a door, ending in the opening,
 takes the foot of that jamb and leaves the other jamb whole; so the cut can be no plane and no half space, whose far
@@ -122,7 +124,7 @@ The tidied surface is kept only if it is still closed and holds the same volume;
 
 - **Closed**: pieces of plane cuts are closed by construction. Pieces of the other cuts are closed after mending in
   every case the tests cover (boxes, walls with doors and windows, a faceted curved wall, leaning profiles, sequences
-  of cuts), but a partition gives no proof, so every `Piece` says so itself (`closed`, by `is_closed`: with corners
+  of cuts, 240 random recipes on three solids), but a partition gives no proof, so every `Piece` says so itself (`closed`, by `is_closed`: with corners
   within `WELD` made one, every edge has as many triangles running one way along it as the other).
 - **Volumes add up**: the pieces and `removed` make the solid; the tests hold each to a millionth of it.
 - **Noise**: a lump of less than `MIN_VOLUME` (1 mm³) or thinner than `THIN` (0.01 mm: twice its volume over its
@@ -132,7 +134,8 @@ The tidied surface is kept only if it is still closed and holds the same volume;
 - **Bounded**: numbers are checked finite and within `MAX_COORD`; `csg::MAX_TRIANGLES` (20 000) triangles in the solid,
   `MAX_CUTS` (64) cuts and as many offsets, `MAX_LINE_POINTS` (2 000) points a line, `MAX_PIECES` (256) pieces,
   `MAX_GAP` (10 m); every loop spends from a budget (`Work`: its own steps and a `csg::Meter` of eight cuts' worth).
-  Nothing panics; `hostile_input_is_refused_and_never_panics_or_hangs` and `random_recipes_never_panic` sweep it.
+  Nothing panics; `hostile_input_is_refused_and_never_panics_or_hangs` and
+  `random_recipes_never_panic_and_what_they_make_adds_up` sweep it.
 - **Precision** is `f64`'s at the coordinates given: a part kilometres from the origin loses the hundred-thousandths of
   a millimetre the welding relies on. Divide in the host's coordinates.
 
@@ -150,8 +153,8 @@ A wall's layer is a prism: `Prism { frame, outline, holes, thickness }`, the fra
 out, the solid `thickness` behind it. `Prism::mesh` is its closed surface. `divide_prism` does a recipe of lines drawn
 on the face (or on a plane level with it, seen from either side) that cut through with no gap in the plane itself: the
 outline is divided by `geom::faces` and each region raised into its piece, exact and closed by construction, with the
-same keys, sides, lump order, noise rule and conflicts as the general way (a test holds the two to each other). Any
-other recipe (a plane, a depth, a gap, a profile, an offset) goes to `divide` on the prism's surface.
+same keys, sides, lump order, noise rule and conflicts as the general way (two tests hold the two to each other, one on
+150 random recipes). Any other recipe (a plane, a depth, a gap, a profile, an offset) goes to `divide` on the prism's surface.
 
 ## Wiring it to parts
 
@@ -172,7 +175,12 @@ degree where `area_facing` takes the tolerance it is given).
 - **Outward offsets** are refused. Growing a piece needs the neighbour to give way, which is a recipe on both.
 - **Several lines in one cut**: each line is its own cut, so that a piece's side of it is its name. Two lines that only
   together part a piece (one each side of a window) are drawn as one line across the opening.
-- **Performance**: the partitions are the cost: a few milliseconds a cut on a wall's layer of a few hundred triangles;
-  a solid near the triangle cap with many cuts can spend the budget and be refused (`TooMuch`).
+- **Performance**: planes, and straight lines that span the piece, clip triangle by triangle: a curved wall of 7 200
+  triangles is cut by three of them in tens of milliseconds. The other cuts go through a partition, a few milliseconds
+  a cut on a wall's layer of a few hundred triangles. A partition cuts each face of the cutter by every face of the
+  solid it runs through, so a solid of thousands of small faces that aren't in one plane (a curve in hundreds of
+  facets) is costly, and past ten times the triangle cap in one piece the cut is refused (`TooMuch`), as is a recipe
+  that spends the budget. Cutting only the part of the solid near the cutter (clip it to the cutter's box first, and
+  join what was left out back on) would lift this; it isn't done.
 - **A closed patch touching the outline** is fine; an open line running along an edge of the solid cuts off noise and
   is a `Misses`.

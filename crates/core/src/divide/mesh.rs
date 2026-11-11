@@ -177,7 +177,7 @@ impl Soup {
     }
 
     /// The seams a partition leaves closed: where a corner lies on a triangle's edge that lacks its twin, the triangle
-    /// is cut there, into as many as the corners on it make. Again while that mends anything.
+    /// is cut there, into as many as the corners on it make. Again while that mends anything; then the pinholes.
     pub fn mend(&mut self, work: &mut Work) -> Result<(), DivideError> {
         for _ in 0..16 {
             let mut open = self.open_edges();
@@ -213,7 +213,7 @@ impl Soup {
                 }
             }
             if cuts.is_empty() {
-                return Ok(());
+                break;
             }
             let mut tris = Vec::with_capacity(self.tris.len() + cuts.len());
             for t in &self.tris {
@@ -232,6 +232,53 @@ impl Soup {
                 }
             }
             self.tris = tris;
+        }
+        self.plug(work)
+    }
+
+    /// The pinholes left: a partition drops a triangle too small to have a plane, and where no corner lies on its
+    /// edges nothing mends that. The open edges are chained into rings, and a ring that bounds next to no area (a
+    /// ten-thousandth of a square millimetre) is closed with triangles of its own corners. A larger hole stays: the
+    /// surface is then not closed, and says so.
+    fn plug(&mut self, work: &mut Work) -> Result<(), DivideError> {
+        let open = self.open_edges();
+        if open.is_empty() {
+            return Ok(());
+        }
+        work.spend(open.len() * 4)?;
+        let mut used = vec![false; open.len()];
+        for start in 0..open.len() {
+            if used.get(start).copied().unwrap_or(true) {
+                continue;
+            }
+            let Some(&(first, _)) = open.get(start) else { continue };
+            let (mut ring, mut e, mut whole) = (Vec::new(), start, false);
+            while ring.len() <= open.len() {
+                let Some(&(a, b)) = open.get(e) else { break };
+                if let Some(slot) = used.get_mut(e) {
+                    *slot = true;
+                }
+                ring.push(a);
+                if b == first {
+                    whole = true;
+                    break;
+                }
+                let from = open.partition_point(|x| x.0 < b);
+                let next = (from..open.len()).take_while(|&k| open.get(k).is_some_and(|x| x.0 == b)).find(|&k| used.get(k) == Some(&false));
+                match next {
+                    Some(k) => e = k,
+                    None => break,
+                }
+            }
+            if !whole || ring.len() < 3 {
+                continue;
+            }
+            // The missing triangles run against the open edges: a fan from the ring's first corner, turned round.
+            let fan: Vec<[u32; 3]> = (1..ring.len() - 1).map(|i| [ring[0], ring[i + 1], ring[i]]).collect();
+            let size: f64 = fan.iter().map(|t| self.corners(t)).map(|[a, b, c]| length(cross(sub(b, a), sub(c, a))) / 2.0).sum();
+            if size <= 1e-4 {
+                self.tris.extend(fan);
+            }
         }
         Ok(())
     }
