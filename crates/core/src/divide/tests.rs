@@ -70,9 +70,19 @@ fn near(got: f64, want: f64) -> bool {
     (got - want).abs() <= 1e-6 * want.abs().max(1.0)
 }
 
-/// What every division owes: closed pieces that hold something, and volumes that add up to the solid's.
+/// A triangle's height on its longest edge, mm: none for a triangle with no area.
+fn height(t: &[P3; 3]) -> f64 {
+    let n = cross(sub(t[1], t[0]), sub(t[2], t[0]));
+    let longest = [sub(t[1], t[0]), sub(t[2], t[1]), sub(t[0], t[2])].iter().map(|e| dot(*e, *e).sqrt()).fold(0.0, f64::max);
+    if longest > 0.0 { dot(n, n).sqrt() / longest } else { 0.0 }
+}
+
+/// What every division owes: closed pieces that hold something, made of triangles that have an area, and volumes that
+/// add up to the solid's.
 fn sound(o: &Outcome, whole: f64) {
     for p in &o.pieces {
+        let flat = p.mesh.iter().filter(|t| height(t) < 1e-4).count();
+        assert!(flat == 0, "{} has {flat} triangles with no area, of {}", p.key, p.mesh.len());
         assert!(p.closed && is_closed(&p.mesh), "{} isn't closed", p.key);
         assert!(p.volume > 0.0 && near(volume(&p.mesh), p.volume), "{} holds {}", p.key, p.volume);
     }
@@ -294,6 +304,15 @@ fn a_face_moves_into_its_piece_and_never_out() {
         conflict(divide(&wall(), &with(vec![level.clone()], &upper, FaceRef::Cut(0), 2500.0))),
         (Stage::Offset(0), Conflict::NothingLeft)
     );
+    // A cut's face that a later cut took off the piece: above a second plane, nothing is left of the first one's.
+    let higher = Cut::Plane { point: [0.0, 0.0, 2000.0], normal: [0.0, 0.0, 1.0] };
+    let top = key(&[(0, Side::Front, 0), (1, Side::Front, 0)]);
+    assert_eq!(
+        conflict(divide(&wall(), &with(vec![level.clone(), higher.clone()], &top, FaceRef::Cut(0), 5.0))),
+        (Stage::Offset(0), Conflict::NoSuchFace)
+    );
+    let o = divide(&wall(), &with(vec![level.clone(), higher], &top, FaceRef::Cut(1), 5.0)).unwrap();
+    assert!(near(held(&o, &[(0, Side::Front, 0), (1, Side::Front, 0)]), 4000.0 * 300.0 * 995.0));
     // Regenerating leaves that offset out, says so, and keeps the pieces.
     let o = regenerate(&wall(), &with(vec![level], &upper, nowhere, 5.0)).unwrap();
     assert_eq!(o.conflicts, [(Stage::Offset(0), Conflict::NoSuchFace)]);
@@ -696,7 +715,257 @@ fn a_surface_is_measured_and_checked_for_the_bill_of_quantities() {
     let mut flipped = w.clone();
     flipped[0].swap(1, 2);
     assert!(!is_closed(&flipped));
+    // Corners that aren't numbers make no closed surface, and nothing worse.
+    for bad in [f64::NAN, f64::INFINITY, -f64::INFINITY, 1e300] {
+        let mut odd = w.clone();
+        odd[5][2] = [bad; 3];
+        assert!(!is_closed(&odd));
+        let _ = (volume(&odd), area(&odd), area_facing(&odd, OUT, FACING), area_facing(&w, [bad; 3], bad));
+        assert!(matches!(cut_plane(&odd, [0.0; 3], [0.0, 0.0, 1.0]), Err(DivideError::Input(_))));
+    }
     // Inside out, it holds less than nothing.
     let inside_out: Mesh = w.iter().map(|[a, b, c]| [*a, *c, *b]).collect();
     assert!(near(volume(&inside_out), -WALL));
+}
+
+#[test]
+fn a_piece_has_no_more_triangles_than_its_faces_need() {
+    // A patch through the wall: a box, two triangles a face; the rest, a box with a square hole through it: eight to
+    // each face with the hole in it, two to each of the four sides and of the hole's four.
+    let o = divide(&wall(), &recipe(vec![patch(&square(1000.0, 500.0, 1000.0), None)])).unwrap();
+    sound(&o, WALL);
+    assert_eq!((o.pieces[0].mesh.len(), o.pieces[1].mesh.len()), (12, 32));
+    // A bent line: each piece a prism over five corners.
+    let o = divide(&wall(), &recipe(vec![line(&[(-100.0, 1000.0), (2000.0, 1000.0), (4100.0, 2050.0)])])).unwrap();
+    sound(&o, WALL);
+    assert_eq!((o.pieces[0].mesh.len(), o.pieces[1].mesh.len()), (16, 16));
+    // Cut after cut, the pieces stay as plain: boxes are boxes.
+    let cuts = vec![
+        line(&[(-100.0, 1000.0), (4100.0, 1000.0)]),
+        line(&[(1500.0, -100.0), (1500.0, 3100.0)]),
+        line(&[(2500.0, -100.0), (2500.0, 3100.0)]),
+    ];
+    let o = divide(&wall(), &recipe(cuts)).unwrap();
+    sound(&o, WALL);
+    assert!(
+        o.pieces.len() == 6 && o.pieces.iter().all(|p| p.mesh.len() == 12),
+        "{:?}",
+        o.pieces.iter().map(|p| p.mesh.len()).collect::<Vec<_>>()
+    );
+}
+
+/// A curved wall as it comes: a quarter ring in plan, 3 m to 3.3 m from its centre, in 24 flat facets, 3 m high.
+fn curved() -> (Mesh, f64) {
+    let at = |r: f64, k: usize| {
+        let a = k as f64 / 24.0 * std::f64::consts::FRAC_PI_2;
+        P2(r * a.cos(), r * a.sin())
+    };
+    let outline: Vec<P2> = (0..=24).map(|k| at(3300.0, k)).chain((0..=24).rev().map(|k| at(3000.0, k))).collect();
+    let top = Frame { origin: [0.0, 0.0, 3000.0], x: [1.0, 0.0, 0.0], normal: [0.0, 0.0, 1.0] };
+    let held = crate::geom::area(&outline) * 3000.0;
+    (Prism { frame: top, outline, holes: Vec::new(), thickness: 3000.0 }.mesh().unwrap(), held)
+}
+
+#[test]
+fn a_faceted_curved_wall_is_cut_as_any_solid() {
+    let (solid, held) = curved();
+    assert!(is_closed(&solid) && near(volume(&solid), held));
+    // A frame on its outer face, half way round: x along the wall, y up, looking out.
+    let h = 0.5_f64.sqrt();
+    let on_face = Frame { origin: [3300.0 * h, 3300.0 * h, 0.0], x: [-h, h, 0.0], normal: [h, h, 0.0] };
+    let sketch = |p: &[(f64, f64)], closed: bool, depth: Option<f64>| Cut::Sketch { frame: on_face, points: pts(p), closed, depth };
+    let cuts: Vec<(&str, Cut, usize)> = vec![
+        ("level", Cut::Plane { point: [0.0, 0.0, 1000.0], normal: [0.0, 0.0, 1.0] }, 2),
+        ("leaning", Cut::Plane { point: [2000.0, 2000.0, 1500.0], normal: [0.3, -0.5, 1.0] }, 2),
+        ("a patch through", sketch(&square(-400.0, 1000.0, 800.0), true, None), 2),
+        ("a patch 40 mm deep", sketch(&square(-400.0, 1000.0, 800.0), true, Some(40.0)), 2),
+        ("a bent line", sketch(&[(-200.0, -100.0), (100.0, 1500.0), (-300.0, 3100.0)], false, None), 2),
+        ("a straight line", sketch(&[(50.0, -100.0), (50.0, 3100.0)], false, None), 2),
+        (
+            "a niche",
+            Cut::Profile { frame: on_face, points: pts(&[(-300.0, 500.0), (300.0, 500.0), (0.0, 1100.0)]), from: Some(-150.0), to: None },
+            2,
+        ),
+    ];
+    for (what, cut, pieces) in &cuts {
+        for gap in [0.0, 6.0] {
+            let o = divide(&solid, &gapped(cut.clone(), gap)).unwrap_or_else(|e| panic!("{what}, gap {gap}: {e}"));
+            assert_eq!(o.pieces.len(), *pieces, "{what}, gap {gap}: {:?}", keys(&o));
+            sound(&o, held);
+            assert!(if gap == 0.0 { o.removed.abs() < 1.0 } else { o.removed > 1.0 }, "{what}, gap {gap}: {} removed", o.removed);
+        }
+    }
+    // All of them, one after another, and a face moved in on one of the pieces.
+    let mut all = recipe(cuts.iter().map(|c| c.1.clone()).collect());
+    let o = divide(&solid, &all).unwrap();
+    sound(&o, held);
+    assert!(o.pieces.len() >= 12, "{:?}", keys(&o));
+    let last = o.pieces[0].key.0.last().unwrap().cut;
+    all.offsets.push(Offset { piece: o.pieces[0].key.clone(), face: FaceRef::Cut(last), distance: 25.0 });
+    let less = divide(&solid, &all).unwrap();
+    sound(&less, held);
+    assert!(less.pieces[0].volume < o.pieces[0].volume && keys(&less) == keys(&o));
+    // The outer face of a piece, for its quantities: the facets turn 3.75° each, so the tolerance is wider than a flat face's.
+    let whole_face = area_facing(&solid, [h, h, 0.0], 46.0);
+    assert!((whole_face / (2.0 * 3300.0 * (std::f64::consts::FRAC_PI_2 / 48.0).sin() * 24.0 * 3000.0) - 1.0).abs() < 1e-9, "{whole_face}");
+}
+
+/// Numbers from a seed, the same every run.
+struct Dice(u64);
+
+impl Dice {
+    fn next(&mut self) -> u64 {
+        self.0 ^= self.0 << 13;
+        self.0 ^= self.0 >> 7;
+        self.0 ^= self.0 << 17;
+        self.0
+    }
+    /// From `lo` to `hi`.
+    fn range(&mut self, lo: f64, hi: f64) -> f64 {
+        lo + (hi - lo) * (self.next() % 1_000_000) as f64 / 1.0e6
+    }
+    fn below(&mut self, n: u64) -> u64 {
+        self.next() % n
+    }
+    /// A number as a hostile recipe gives one: now and then no number, or a huge one.
+    fn wild(&mut self, lo: f64, hi: f64) -> f64 {
+        match self.below(40) {
+            0 => f64::NAN,
+            1 => f64::INFINITY,
+            2 => -1.0e300,
+            3 => 0.0,
+            _ => self.range(lo, hi),
+        }
+    }
+}
+
+#[test]
+fn a_ball_cut_by_planes_at_any_angle_stays_closed() {
+    // A ball of 16 by 8 facets, 1 m across.
+    let at = |i: usize, j: usize| {
+        let (a, b) = (i as f64 / 16.0 * std::f64::consts::TAU, j as f64 / 8.0 * std::f64::consts::PI);
+        [500.0 * b.sin() * a.cos(), 500.0 * b.sin() * a.sin(), 500.0 * b.cos()]
+    };
+    let mut ball: Mesh = Vec::new();
+    for i in 0..16 {
+        for j in 0..8 {
+            let (a, b, c, d) = (at(i, j), at(i, j + 1), at(i + 1, j + 1), at(i + 1, j));
+            if j > 0 {
+                ball.push([a, b, d]);
+            }
+            if j < 7 {
+                ball.push([b, c, d]);
+            }
+        }
+    }
+    let held = volume(&ball);
+    assert!(is_closed(&ball) && held > 4.0e8);
+    let mut dice = Dice(0x2545_f491_4f6c_dd1d);
+    for round in 0..40 {
+        let cuts: Vec<Cut> = (0..6)
+            .map(|_| Cut::Plane {
+                point: [dice.range(-300.0, 300.0), dice.range(-300.0, 300.0), dice.range(-300.0, 300.0)],
+                normal: [dice.range(-1.0, 1.0), dice.range(-1.0, 1.0), dice.range(0.1, 1.0)],
+            })
+            .collect();
+        // Through corners and along edges of the ball too: planes through its centre and its poles.
+        let cuts = if round % 4 == 0 {
+            vec![Cut::Plane { point: [0.0; 3], normal: [1.0, 0.0, 0.0] }, Cut::Plane { point: [0.0; 3], normal: [0.0, 0.0, 1.0] }]
+        } else {
+            cuts
+        };
+        let mut r = recipe(cuts);
+        r.cuts[0].gap = if round % 3 == 0 { 8.0 } else { 0.0 };
+        let o = regenerate(&ball, &r).unwrap_or_else(|e| panic!("round {round}: {e}"));
+        for p in &o.pieces {
+            assert!(p.closed, "round {round}: {} isn't closed", p.key);
+        }
+        let sum: f64 = o.pieces.iter().map(|p| p.volume).sum();
+        assert!(near(sum + o.removed, held) && o.removed >= -1.0, "round {round}: {sum} and {}", o.removed);
+    }
+}
+
+#[test]
+fn random_recipes_never_panic_and_what_they_make_adds_up() {
+    let mut layer = doorway();
+    layer.holes = vec![pts(&square(2600.0, 1000.0, 800.0))];
+    let solids = [(wall(), WALL), (layer.mesh().unwrap(), DOORWAY - 800.0 * 800.0 * 300.0), curved()];
+    let mut dice = Dice(0x9e37_79b9_7f4a_7c15);
+    let (mut made, mut refused, mut open) = (0, 0, Vec::new());
+    for round in 0..240 {
+        let (solid, held) = &solids[round % 3];
+        let hostile = round % 4 == 3;
+        let num = |dice: &mut Dice, lo: f64, hi: f64| if hostile { dice.wild(lo, hi) } else { dice.range(lo, hi) };
+        let frame = |dice: &mut Dice| {
+            if dice.below(4) > 0 {
+                face()
+            } else {
+                Frame {
+                    origin: [2000.0, 150.0, 1500.0],
+                    x: [dice.range(-1.0, 1.0), 0.3, 0.2],
+                    normal: [dice.range(-1.0, 1.0), dice.range(-1.0, 1.0), 0.4],
+                }
+            }
+        };
+        let mut r = Recipe::default();
+        for _ in 0..1 + dice.below(4) {
+            let points: Vec<P2> =
+                (0..2 + dice.below(5)).map(|_| P2(num(&mut dice, -500.0, 4500.0), num(&mut dice, -500.0, 3500.0))).collect();
+            let cut = match dice.below(5) {
+                0 => Cut::Plane {
+                    point: [num(&mut dice, 0.0, 4000.0), num(&mut dice, 0.0, 300.0), num(&mut dice, 0.0, 3000.0)],
+                    normal: [num(&mut dice, -1.0, 1.0), num(&mut dice, -1.0, 1.0), num(&mut dice, -1.0, 1.0)],
+                },
+                1 => Cut::Sketch { frame: frame(&mut dice), points, closed: false, depth: None },
+                2 => Cut::Sketch {
+                    frame: frame(&mut dice),
+                    points,
+                    closed: true,
+                    depth: (dice.below(2) == 0).then(|| num(&mut dice, 1.0, 400.0)),
+                },
+                3 => Cut::Sketch {
+                    frame: face(),
+                    points: pts(&[(-600.0, num(&mut dice, 100.0, 2900.0)), (4600.0, num(&mut dice, 100.0, 2900.0))]),
+                    closed: false,
+                    depth: None,
+                },
+                _ => Cut::Profile {
+                    frame: frame(&mut dice),
+                    points,
+                    from: (dice.below(2) == 0).then(|| num(&mut dice, -300.0, 0.0)),
+                    to: (dice.below(3) == 0).then(|| num(&mut dice, 0.0, 300.0)),
+                },
+            };
+            let gap = if dice.below(3) == 0 { num(&mut dice, 0.0, 30.0) } else { 0.0 };
+            r.cuts.push(Division { cut, gap, of: None });
+        }
+        // Now and then: an offset on whatever piece comes first, by the cut that made it or by a plane.
+        if let Ok(o) = regenerate(solid, &r) {
+            if let Some(step) = o.pieces.first().and_then(|p| p.key.0.last()).filter(|_| dice.below(2) == 0) {
+                let face = if dice.below(2) == 0 { FaceRef::Cut(step.cut) } else { FaceRef::Plane { point: [0.0; 3], normal: OUT } };
+                r.offsets.push(Offset { piece: o.pieces[0].key.clone(), face, distance: num(&mut dice, 0.0, 60.0) });
+            }
+        }
+        for o in [regenerate(solid, &r), divide(solid, &r)] {
+            match o {
+                Ok(o) => {
+                    made += 1;
+                    let sum: f64 = o.pieces.iter().map(|p| p.volume).sum();
+                    assert!(
+                        near(sum + o.removed, *held) && o.removed > -1.0,
+                        "round {round}: {sum} in pieces, {} removed, of {held}\n{r:?}",
+                        o.removed
+                    );
+                    assert!(o.pieces.iter().all(|p| p.volume >= MIN_VOLUME), "round {round}");
+                    open.extend(o.pieces.iter().filter(|p| !p.closed).map(|p| format!("round {round}: {}", p.key)));
+                }
+                Err(e) => {
+                    refused += 1;
+                    assert!(!e.to_string().is_empty());
+                }
+            }
+        }
+    }
+    assert!(made > 100 && refused > 20, "{made} made, {refused} refused");
+    assert!(open.is_empty(), "pieces not closed: {open:?}");
 }

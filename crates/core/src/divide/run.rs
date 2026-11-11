@@ -4,7 +4,7 @@
 use super::mesh::Soup;
 use super::{
     Axes, Conflict, Cut, DivideError, Division, KERF, MAX_CUTS, MAX_GAP, MAX_PIECES, MIN_VOLUME, Outcome, Piece, PieceKey, REACH, Recipe,
-    Stage, Step, THIN, WELD, Work, clip, flat, from_csg, place, shave,
+    Stage, Step, THIN, WELD, Work, clip, flat, from_csg, place, shave, tidy,
 };
 use crate::csg;
 use crate::geom::{self, P2};
@@ -205,7 +205,7 @@ fn apply(parts: &[Part], k: usize, shape: &Shape, d: &Division, work: &mut Work)
                     for (n, soup) in lumps.into_iter().enumerate() {
                         let mut key = part.key.clone();
                         key.0.push(Step { cut: k as u32, side, lump: n as u32 });
-                        out.push(Part { key, soup });
+                        out.push(Part { key, soup: tidy::tidy(&soup, work)? });
                     }
                 }
             }
