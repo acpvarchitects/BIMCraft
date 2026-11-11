@@ -17,16 +17,16 @@ msgstr "(mặc định)"
 
 #: crates/ui-egui/src/editor/connectors.rs:256
 #: crates/ui-egui/src/editor/connectors.rs:259
-#: crates/ui-egui/src/editor/document.rs:1659
-#: crates/ui-egui/src/editor/document.rs:1661
+#: crates/ui-egui/src/editor/document.rs:1673
+#: crates/ui-egui/src/editor/document.rs:1675
 #: crates/ui-egui/src/editor/extrusion.rs:239
 #: crates/ui-egui/src/editor/extrusion.rs:242
-#: crates/ui-egui/src/editor/sketch.rs:1620
-#: crates/ui-egui/src/editor/sketch.rs:1623
+#: crates/ui-egui/src/editor/sketch.rs:1641
+#: crates/ui-egui/src/editor/sketch.rs:1644
 #: crates/ui-egui/src/editor/types_dialog.rs:308
 #: crates/ui-egui/src/editor/types_dialog.rs:594
-#: crates/ui-egui/src/editor.rs:953
-#: crates/ui-egui/src/editor.rs:956
+#: crates/ui-egui/src/editor.rs:954
+#: crates/ui-egui/src/editor.rs:957
 #: crates/ui-egui/src/filter.rs:35
 #: crates/ui-egui/src/properties.rs:2493
 msgid "(none)"
@@ -70,12 +70,12 @@ msgstr "Khung nhìn 3D"
 msgid "3D View: {3D}"
 msgstr "Khung nhìn 3D: {3D}"
 
-#: crates/ui-egui/src/editor/views.rs:129
+#: crates/ui-egui/src/editor/views.rs:151
 msgid "3D View: {}"
 msgstr ""
 
 #: crates/ui-egui/src/browser.rs:442
-#: crates/ui-egui/src/editor/document.rs:1081
+#: crates/ui-egui/src/editor/document.rs:1091
 msgid "3D Views"
 msgstr "Khung nhìn 3D"
 
@@ -95,7 +95,7 @@ msgstr "; và {} mục khác"
 msgid "<By Category>"
 msgstr "<Theo danh mục>"
 
-#: crates/ui-egui/src/editor/sketch.rs:1428
+#: crates/ui-egui/src/editor/sketch.rs:1449
 msgid "<By Sketch>"
 msgstr "<Theo phác thảo>"
 
@@ -351,12 +351,12 @@ msgid "Adapt Project Units"
 msgstr "Điều chỉnh đơn vị dự án"
 
 #: crates/ui-egui/src/adaptive_editor.rs:612
-#: crates/ui-egui/src/editor/document.rs:609
-#: crates/ui-egui/src/editor/document.rs:730
+#: crates/ui-egui/src/editor/document.rs:619
+#: crates/ui-egui/src/editor/document.rs:740
 msgid "Adaptive Component"
 msgstr ""
 
-#: crates/ui-egui/src/editor/document.rs:966
+#: crates/ui-egui/src/editor/document.rs:976
 msgid "Adaptive Point"
 msgstr ""
 
@@ -472,11 +472,11 @@ msgstr ""
 msgid "Add the Fields the Texts Name"
 msgstr ""
 
-#: crates/ui-egui/src/editor/document.rs:582
+#: crates/ui-egui/src/editor/document.rs:592
 msgid "Add to Favorites"
 msgstr "Thêm vào mục yêu thích"
 
-#: crates/ui-egui/src/editor/document.rs:581
+#: crates/ui-egui/src/editor/document.rs:591
 msgid "Add to Favorites: the family to your Favorites"
 msgstr ""
 
@@ -541,14 +541,14 @@ msgstr "Kim thu sét"
 msgid "Air Terminal (AT): a captor, where you click on the roof; Space turns it"
 msgstr "Kim thu sét (AT): một kim thu, tại chỗ bạn nhấp trên mái; Space để xoay"
 
-#: crates/ui-egui/src/editor.rs:928
+#: crates/ui-egui/src/editor.rs:929
 msgid "Air Terminals"
 msgstr "Kim thu sét"
 
 #: crates/core/src/commands.rs:1393
-#: crates/ui-egui/src/editor/document.rs:637
-#: crates/ui-egui/src/editor/sketch.rs:1518
-#: crates/ui-egui/src/editor.rs:1092
+#: crates/ui-egui/src/editor/document.rs:647
+#: crates/ui-egui/src/editor/sketch.rs:1539
+#: crates/ui-egui/src/editor.rs:1093
 #: crates/ui-egui/src/lib.rs:383
 #: crates/ui-egui/src/sketch.rs:738
 msgid "Align"
@@ -559,11 +559,11 @@ msgstr "Căn chỉnh"
 msgid "Align (AL): pick a reference line, then what to line up with it"
 msgstr "Căn chỉnh (AL): chọn một đường tham chiếu, rồi chọn đối tượng cần căn thẳng theo nó"
 
-#: crates/ui-egui/src/editor/sketch.rs:1517
+#: crates/ui-egui/src/editor/sketch.rs:1538
 msgid "Align (AL): pick a reference, then a line of the sketch that moves onto it; its padlock locks them"
 msgstr "Căn chỉnh (AL): chọn một tham chiếu, rồi chọn một đường của phác thảo sẽ di chuyển lên nó; biểu tượng khóa sẽ khóa chúng lại"
 
-#: crates/ui-egui/src/editor/document.rs:636
+#: crates/ui-egui/src/editor/document.rs:646
 msgid "Align (AL): pick a reference, then what moves onto it; its padlock locks them"
 msgstr "Căn chỉnh (AL): chọn một tham chiếu, rồi chọn đối tượng sẽ di chuyển lên nó; biểu tượng khóa sẽ khóa chúng lại"
 
@@ -577,11 +577,11 @@ msgid "Aligned"
 msgstr "Căn thẳng"
 
 #: crates/core/src/commands.rs:791
-#: crates/ui-egui/src/editor/document.rs:497
+#: crates/ui-egui/src/editor/document.rs:507
 msgid "Aligned Dimension"
 msgstr "Kích thước căn thẳng"
 
-#: crates/ui-egui/src/editor/document.rs:491
+#: crates/ui-egui/src/editor/document.rs:501
 msgid "Aligned Dimension (DI): pick parallel reference planes, extrusion ends or lines of forms, then click where it goes"
 msgstr "Kích thước căn thẳng (DI): chọn các mặt phẳng tham chiếu song song, đầu khối đùn hoặc đường của khối, rồi nhấp chỗ đặt"
 
@@ -616,7 +616,7 @@ msgstr "Đã bật đường dóng căn chỉnh"
 msgid "All"
 msgstr "Tất cả"
 
-#: crates/ui-egui/src/editor/document.rs:1025
+#: crates/ui-egui/src/editor/document.rs:1035
 msgid "All elements and the test placement"
 msgstr ""
 
@@ -668,7 +668,7 @@ msgstr "Khả năng chịu dòng"
 msgid "Amplitude"
 msgstr "Biên độ"
 
-#: crates/ui-egui/src/editor/document.rs:1396
+#: crates/ui-egui/src/editor/document.rs:1406
 msgid "An adaptive family's plans and elevations show its test placement; model it in {3D}."
 msgstr "Mặt bằng và mặt đứng của họ thích ứng hiển thị vị trí đặt thử; hãy dựng mô hình trong {3D}."
 
@@ -683,6 +683,14 @@ msgstr "Một tác tử có thể làm việc trên dự án này: bimcraft-cli 
 #: crates/ui-egui/src/start.rs:313
 msgid "An empty project to model in."
 msgstr "Một dự án trống để dựng mô hình."
+
+#: crates/ui-egui/src/editor/shape_handles.rs:68
+msgid "An equality (EQ) holds this edge: take it off to drag it."
+msgstr ""
+
+#: crates/ui-egui/src/editor/shape_handles.rs:69
+msgid "An equality (EQ) holds this end: take it off to drag it."
+msgstr ""
 
 #: crates/ui-egui/src/display.rs:67
 msgid "An outline round what stands in front of what is behind it"
@@ -718,7 +726,7 @@ msgstr "Bước góc"
 msgid "Angle:"
 msgstr "Góc:"
 
-#: crates/ui-egui/src/editor/document.rs:510
+#: crates/ui-egui/src/editor/document.rs:520
 #: crates/ui-egui/src/lib.rs:4009
 msgid "Angular"
 msgstr "Góc"
@@ -727,7 +735,7 @@ msgstr "Góc"
 msgid "Angular Dimension"
 msgstr ""
 
-#: crates/ui-egui/src/editor/document.rs:512
+#: crates/ui-egui/src/editor/document.rs:522
 msgid "Angular Dimension: pick reference lines, reference planes or lines of forms that cross, then click where its arc goes"
 msgstr "Kích thước góc: chọn các đường tham chiếu, mặt phẳng tham chiếu hoặc đường của khối cắt nhau, rồi nhấp vào chỗ đặt cung của nó"
 
@@ -782,7 +790,7 @@ msgstr "Áp dụng cho mọi khung nhìn; bắt điểm vào lưới chính ho�
 
 #: crates/ui-egui/src/background_grid.rs:112
 #: crates/ui-egui/src/display.rs:80
-#: crates/ui-egui/src/editor/document.rs:1571
+#: crates/ui-egui/src/editor/document.rs:1585
 #: crates/ui-egui/src/electrical.rs:501
 #: crates/ui-egui/src/graphics.rs:390
 #: crates/ui-egui/src/linestyles.rs:306
@@ -804,15 +812,15 @@ msgstr "Áp dụng Ẩn/Cô lập cho khung nhìn"
 msgid "Apply Overrides"
 msgstr "Áp dụng ghi đè"
 
-#: crates/ui-egui/src/editor/document.rs:823
+#: crates/ui-egui/src/editor/document.rs:833
 msgid "Apply to Instance"
 msgstr ""
 
-#: crates/ui-egui/src/editor/document.rs:822
+#: crates/ui-egui/src/editor/document.rs:832
 msgid "Apply to Instance: the instance the family was opened on takes the test placement"
 msgstr ""
 
-#: crates/ui-egui/src/editor/document.rs:554
+#: crates/ui-egui/src/editor/document.rs:564
 msgid "Arc"
 msgstr "Cung"
 
@@ -835,11 +843,11 @@ msgstr "Kiến trúc"
 
 #: crates/core/src/schedule.rs:194
 #: crates/core/src/schedule.rs:233
-#: crates/ui-egui/src/editor.rs:260
+#: crates/ui-egui/src/editor.rs:261
 msgid "Area"
 msgstr "Diện tích"
 
-#: crates/core/src/family.rs:3218
+#: crates/core/src/family.rs:3219
 msgid "Arm Width"
 msgstr "Chiều rộng tay"
 
@@ -939,11 +947,11 @@ msgstr "Tự động lưu trong nền"
 msgid "Available fields:"
 msgstr "Các trường có sẵn:"
 
-#: crates/ui-egui/src/editor/sketch.rs:1474
+#: crates/ui-egui/src/editor/sketch.rs:1495
 msgid "Axis Line"
 msgstr "Đường trục"
 
-#: crates/ui-egui/src/editor/sketch.rs:1473
+#: crates/ui-egui/src/editor/sketch.rs:1494
 msgid "Axis Line: the line the profile turns about, drawn by two clicks or picked"
 msgstr "Đường trục: đường mà biên dạng quay quanh, vẽ bằng hai lần nhấp hoặc chọn"
 
@@ -963,9 +971,9 @@ msgstr ""
 msgid "BIMCraft couldn't start"
 msgstr "BIMCraft không thể khởi động"
 
-#: crates/ui-egui/src/editor.rs:1280
-#: crates/ui-egui/src/editor.rs:1421
-#: crates/ui-egui/src/editor.rs:1440
+#: crates/ui-egui/src/editor.rs:1281
+#: crates/ui-egui/src/editor.rs:1422
+#: crates/ui-egui/src/editor.rs:1441
 #: crates/ui-egui/src/sketch.rs:814
 msgid "BIMCraft family"
 msgstr "Họ BIMCraft"
@@ -1075,7 +1083,7 @@ msgstr "Thanh thép"
 msgid "Base"
 msgstr "Chân"
 
-#: crates/core/src/family.rs:3262
+#: crates/core/src/family.rs:3263
 msgid "Base Cabinet"
 msgstr "Tủ bếp dưới"
 
@@ -1103,7 +1111,7 @@ msgstr "Đường cơ sở"
 msgid "Baseline Spacing"
 msgstr "Khoảng cách đường cơ sở"
 
-#: crates/core/src/family.rs:3316
+#: crates/core/src/family.rs:3317
 msgid "Bathtub"
 msgstr "Bồn tắm"
 
@@ -1115,7 +1123,7 @@ msgstr "Dầm"
 msgid "Beam (BM): click its start and its end; a chain of clicks makes a beam for each step"
 msgstr "Dầm (BM): nhấp điểm đầu và điểm cuối; một chuỗi lần nhấp tạo một dầm cho mỗi bước"
 
-#: crates/core/src/family.rs:3203
+#: crates/core/src/family.rs:3204
 msgid "Bed"
 msgstr "Giường"
 
@@ -1137,14 +1145,14 @@ msgstr "Thanh thép uốn xiên"
 msgid "Black and White"
 msgstr "Đen trắng"
 
-#: crates/ui-egui/src/editor/document.rs:427
-#: crates/ui-egui/src/editor/sketch.rs:1383
-#: crates/ui-egui/src/editor/sketch.rs:1593
-#: crates/ui-egui/src/editor.rs:197
+#: crates/ui-egui/src/editor/document.rs:437
+#: crates/ui-egui/src/editor/sketch.rs:1404
+#: crates/ui-egui/src/editor/sketch.rs:1614
+#: crates/ui-egui/src/editor.rs:198
 msgid "Blend"
 msgstr ""
 
-#: crates/ui-egui/src/editor/document.rs:426
+#: crates/ui-egui/src/editor/document.rs:436
 msgid "Blend: sketch a base and a top on the work plane, joined between their two ends"
 msgstr "Khối chuyển tiếp: phác thảo mặt đáy và mặt trên trên mặt phẳng làm việc, nối liền giữa hai đầu của chúng"
 
@@ -1191,7 +1199,7 @@ msgstr "Lớp dưới, thanh theo hướng đông"
 msgid "Bottom, bars along north"
 msgstr "Lớp dưới, thanh theo hướng bắc"
 
-#: crates/ui-egui/src/editor/sketch.rs:1468
+#: crates/ui-egui/src/editor/sketch.rs:1489
 #: crates/ui-egui/src/sketch.rs:870
 msgid "Boundary Line"
 msgstr "Đường biên"
@@ -1208,7 +1216,7 @@ msgstr "Đường biên: phác thảo hình chiếu bằng của mái, trên t�
 msgid "Boundary Line: sketch the shaft opening's outline"
 msgstr "Đường biên: phác thảo đường bao của lỗ mở thông tầng"
 
-#: crates/ui-egui/src/editor/sketch.rs:1467
+#: crates/ui-egui/src/editor/sketch.rs:1488
 msgid "Boundary Line: the lines of the profile"
 msgstr "Đường biên: các đường của biên dạng"
 
@@ -1224,7 +1232,7 @@ msgstr "Gạch 225 x 75"
 msgid "Build"
 msgstr "Xây dựng"
 
-#: crates/ui-egui/src/editor/document.rs:1930
+#: crates/ui-egui/src/editor/document.rs:1944
 #: crates/ui-egui/src/orbit.rs:1341
 msgid "Building 3D view…"
 msgstr ""
@@ -1316,14 +1324,14 @@ msgstr "Camera: nhấp chỗ đặt mắt nhìn, rồi chỗ nó nhìn tới: m�
 #: crates/ui-egui/src/display.rs:81
 #: crates/ui-egui/src/editor/dimensions.rs:901
 #: crates/ui-egui/src/editor/dimensions.rs:958
-#: crates/ui-egui/src/editor/document.rs:1570
+#: crates/ui-egui/src/editor/document.rs:1584
 #: crates/ui-egui/src/editor/exists.rs:442
 #: crates/ui-egui/src/editor/types_dialog.rs:482
 #: crates/ui-egui/src/editor/types_dialog.rs:620
 #: crates/ui-egui/src/editor/visibility.rs:108
 #: crates/ui-egui/src/editor/work_plane.rs:237
 #: crates/ui-egui/src/editor/work_plane.rs:287
-#: crates/ui-egui/src/editor.rs:1330
+#: crates/ui-egui/src/editor.rs:1331
 #: crates/ui-egui/src/electrical.rs:502
 #: crates/ui-egui/src/filter.rs:115
 #: crates/ui-egui/src/graphics.rs:391
@@ -1346,13 +1354,13 @@ msgstr "Camera: nhấp chỗ đặt mắt nhìn, rồi chỗ nó nhìn tới: m�
 msgid "Cancel"
 msgstr "Hủy"
 
-#: crates/ui-egui/src/editor/sketch.rs:1374
+#: crates/ui-egui/src/editor/sketch.rs:1395
 #: crates/ui-egui/src/shortcuts.rs:138
 #: crates/ui-egui/src/sketch.rs:801
 msgid "Cancel Edit Mode"
 msgstr "Hủy chế độ chỉnh sửa"
 
-#: crates/ui-egui/src/editor/sketch.rs:1374
+#: crates/ui-egui/src/editor/sketch.rs:1395
 #: crates/ui-egui/src/sketch.rs:801
 msgid "Cancel Edit Mode: drop the lines, keep it as it was"
 msgstr "Hủy chế độ chỉnh sửa: bỏ các đường, giữ nguyên như cũ"
@@ -1369,11 +1377,11 @@ msgstr "Màu vùng vẽ"
 msgid "Capture & Descent"
 msgstr "Thu sét và dẫn xuống"
 
-#: crates/ui-egui/src/editor/document.rs:818
+#: crates/ui-egui/src/editor/document.rs:828
 msgid "Capture Placement"
 msgstr ""
 
-#: crates/ui-egui/src/editor/document.rs:817
+#: crates/ui-egui/src/editor/document.rs:827
 msgid "Capture Placement: the adaptive instances selected in the project give their points as the test placement"
 msgstr ""
 
@@ -1381,11 +1389,11 @@ msgstr ""
 msgid "Card: {}"
 msgstr "Card đồ họa: {}"
 
-#: crates/core/src/family.rs:3505
+#: crates/core/src/family.rs:3506
 msgid "Casement Window"
 msgstr "Cửa sổ mở quay"
 
-#: crates/ui-egui/src/editor.rs:920
+#: crates/ui-egui/src/editor.rs:921
 msgid "Casework"
 msgstr "Tủ kệ"
 
@@ -1399,7 +1407,7 @@ msgid "Categories not overridden are drawn as Object Styles sets them."
 msgstr "Các danh mục không bị ghi đè được vẽ theo thiết lập trong Kiểu đối tượng."
 
 #: crates/core/src/schedule.rs:224
-#: crates/ui-egui/src/editor/document.rs:1844
+#: crates/ui-egui/src/editor/document.rs:1858
 #: crates/ui-egui/src/objectstyles.rs:65
 #: crates/ui-egui/src/properties.rs:2102
 #: crates/ui-egui/src/standards.rs:193
@@ -1411,7 +1419,7 @@ msgid "Category name search:"
 msgstr "Tìm theo tên danh mục:"
 
 #: crates/ui-egui/src/editor/types_dialog.rs:593
-#: crates/ui-egui/src/editor.rs:1316
+#: crates/ui-egui/src/editor.rs:1317
 #: crates/ui-egui/src/properties.rs:3091
 msgid "Category:"
 msgstr "Danh mục:"
@@ -1429,12 +1437,12 @@ msgstr "Đèn trần"
 msgid "Ceiling Plan"
 msgstr "Mặt bằng trần"
 
-#: crates/ui-egui/src/editor/views.rs:131
+#: crates/ui-egui/src/editor/views.rs:153
 msgid "Ceiling Plan: {}"
 msgstr "Mặt bằng trần: {}"
 
 #: crates/ui-egui/src/browser.rs:441
-#: crates/ui-egui/src/editor/document.rs:1080
+#: crates/ui-egui/src/editor/document.rs:1090
 msgid "Ceiling Plans"
 msgstr "Mặt bằng trần"
 
@@ -1466,7 +1474,7 @@ msgid "Center Marks"
 msgstr "Dấu tâm"
 
 #: crates/core/src/draw.rs:109
-#: crates/ui-egui/src/editor/document.rs:1786
+#: crates/ui-egui/src/editor/document.rs:1800
 msgid "Center-ends Arc"
 msgstr "Cung tâm-đầu mút"
 
@@ -1483,8 +1491,8 @@ msgid "Centimetres"
 msgstr "Xentimét"
 
 #: crates/core/src/lines.rs:182
-#: crates/ui-egui/src/editor.rs:1061
-#: crates/ui-egui/src/editor.rs:1095
+#: crates/ui-egui/src/editor.rs:1062
+#: crates/ui-egui/src/editor.rs:1096
 msgid "Centre"
 msgstr "Tâm"
 
@@ -1496,14 +1504,14 @@ msgstr "Đường tâm"
 msgid "Ceramic tile"
 msgstr "Gạch men"
 
-#: crates/ui-egui/src/editor/sketch.rs:1328
+#: crates/ui-egui/src/editor/sketch.rs:1349
 #: crates/ui-egui/src/lib.rs:5097
 #: crates/ui-egui/src/linestyles.rs:390
 #: crates/ui-egui/src/structure.rs:152
 msgid "Chain"
 msgstr "Chuỗi"
 
-#: crates/core/src/family.rs:3188
+#: crates/core/src/family.rs:3189
 msgid "Chair"
 msgstr "Ghế"
 
@@ -1603,7 +1611,7 @@ msgstr "Khoảng hở"
 msgid "Click a base point to measure from."
 msgstr "Nhấp một điểm gốc để đo từ đó."
 
-#: crates/ui-egui/src/editor/document.rs:1408
+#: crates/ui-egui/src/editor/document.rs:1418
 msgid "Click a circle or an arc, then click where the dimension goes."
 msgstr "Nhấp một đường tròn hoặc một cung, rồi nhấp vào vị trí đặt kích thước."
 
@@ -1635,15 +1643,15 @@ msgstr "Nhấp một sàn hoặc mái: độ dốc điểm cho biết mặt trê
 msgid "Click a floor, a roof, a stair or a wall: the spot elevation reads the height of its top there."
 msgstr "Nhấp một sàn, mái, cầu thang hoặc tường: cao độ điểm đọc chiều cao mặt trên của nó tại đó."
 
-#: crates/ui-egui/src/editor/document.rs:1424
+#: crates/ui-egui/src/editor/document.rs:1437
 msgid "Click a form or a nested instance to select it. A drag or Shift and the middle button orbit, the middle button pans, the wheel zooms."
 msgstr "Nhấp một khối hoặc một đối tượng lồng để chọn. Kéo hoặc Shift và nút giữa để xoay quanh, nút giữa để kéo, con lăn để thu phóng."
 
-#: crates/ui-egui/src/editor/document.rs:1420
+#: crates/ui-egui/src/editor/document.rs:1433
 msgid "Click a form, a nested instance, a reference plane, a reference line or a dimension to select it, Ctrl to add, Shift to take away; drag from nothing to box (left to right a window, right to left a crossing); drag a selected plane to move it, a grip to turn or stretch."
 msgstr ""
 
-#: crates/ui-egui/src/editor/sketch.rs:1287
+#: crates/ui-egui/src/editor/sketch.rs:1308
 msgid "Click a line to pick it, Shift to add; drag a picked line's end; Delete takes the lines picked away."
 msgstr "Nhấp một đường để chọn, Shift để thêm; kéo đầu của đường đã chọn; Delete để bỏ các đường đã chọn."
 
@@ -1683,23 +1691,23 @@ msgstr "Nhấp vào đường đa tuyến hoặc spline tại chỗ đặt đỉ
 msgid "Click a polyline's corner or a spline's point to take it out."
 msgstr "Nhấp vào góc của đường đa tuyến hoặc điểm của spline để bỏ nó."
 
-#: crates/ui-egui/src/editor/document.rs:1398
+#: crates/ui-egui/src/editor/document.rs:1408
 msgid "Click a reference line: the work plane it was sketched in. Esc goes back to the dialog."
 msgstr "Nhấp một đường tham chiếu: mặt phẳng làm việc mà nó được phác thảo trên đó. Esc để quay lại hộp thoại."
 
-#: crates/ui-egui/src/editor/document.rs:1401
+#: crates/ui-egui/src/editor/document.rs:1411
 msgid "Click a reference plane or a datum for the work plane. Esc goes back to the dialog."
 msgstr "Nhấp một mặt phẳng tham chiếu hoặc một mốc tham chiếu làm mặt phẳng làm việc. Esc để quay lại hộp thoại."
 
-#: crates/ui-egui/src/editor/sketch.rs:1290
+#: crates/ui-egui/src/editor/sketch.rs:1311
 msgid "Click a reference plane, a reference line or a form's edge: a line along it, locked to it."
 msgstr "Nhấp một mặt phẳng tham chiếu, một đường tham chiếu hoặc một cạnh của khối: một đường dọc theo nó, được khóa vào nó."
 
-#: crates/ui-egui/src/editor/sketch.rs:1292
+#: crates/ui-egui/src/editor/sketch.rs:1313
 msgid "Click a reference plane, a reference line or a form's edge: a line along it."
 msgstr "Nhấp một mặt phẳng tham chiếu, một đường tham chiếu hoặc một cạnh của khối: tạo đường dọc theo nó."
 
-#: crates/ui-egui/src/editor/sketch.rs:1282
+#: crates/ui-egui/src/editor/sketch.rs:1303
 msgid "Click a reference plane, a reference line or a form's edge: a line of the path along it."
 msgstr "Nhấp một mặt phẳng tham chiếu, một đường tham chiếu hoặc một cạnh của khối: tạo một đoạn của đường dẫn dọc theo nó."
 
@@ -1811,7 +1819,7 @@ msgstr "Nhấp điểm điều khiển tiếp theo; Enter để kết thúc. Esc
 msgid "Click its next point; Enter finishes it, the first point again closes it. Esc cancels."
 msgstr "Nhấp điểm tiếp theo; Enter để kết thúc, nhấp lại điểm đầu tiên để khép kín. Esc để hủy."
 
-#: crates/ui-egui/src/editor/document.rs:1405
+#: crates/ui-egui/src/editor/document.rs:1415
 msgid "Click lines that cross (reference lines, reference planes, lines of forms), then click where the dimension goes."
 msgstr "Nhấp các đường cắt nhau (đường tham chiếu, mặt phẳng tham chiếu, đường của khối), rồi nhấp vào vị trí đặt kích thước."
 
@@ -1840,7 +1848,7 @@ msgstr ""
 msgid "Click one end of its axis."
 msgstr "Nhấp một đầu trục của nó."
 
-#: crates/ui-egui/src/editor/document.rs:1411
+#: crates/ui-egui/src/editor/document.rs:1421
 msgid "Click parallel reference planes, extrusion ends or lines of forms, then click where the dimension goes."
 msgstr "Nhấp các mặt phẳng tham chiếu song song, đầu khối đùn hoặc đường của khối, rồi nhấp vào vị trí đặt kích thước."
 
@@ -1896,7 +1904,7 @@ msgstr "Nhấp điểm đầu tiên mà spline đi qua."
 msgid "Click the footprint's next corner. Esc cancels."
 msgstr "Nhấp góc tiếp theo của hình chiếu bằng. Esc để hủy."
 
-#: crates/ui-egui/src/editor/document.rs:1390
+#: crates/ui-egui/src/editor/document.rs:1400
 msgid "Click the line of the sketch that moves onto it; its padlock locks them."
 msgstr "Nhấp vào đường của phác thảo sẽ di chuyển lên nó; biểu tượng khóa sẽ khóa chúng lại."
 
@@ -1944,19 +1952,19 @@ msgstr "Nhấp đầu còn lại."
 msgid "Click the path's next point. Enter finishes, Esc cancels."
 msgstr "Nhấp điểm tiếp theo của đường dẫn. Enter để kết thúc, Esc để hủy."
 
-#: crates/ui-egui/src/editor/document.rs:1417
+#: crates/ui-egui/src/editor/document.rs:1427
 msgid "Click the point it turns about: where two planes cross, a line's end, a point of a sketch, or anywhere."
 msgstr "Nhấp điểm mà nó xoay quanh: nơi hai mặt phẳng giao nhau, đầu của một đường, một điểm của phác thảo, hoặc bất kỳ đâu."
 
-#: crates/ui-egui/src/editor/sketch.rs:1294
+#: crates/ui-egui/src/editor/sketch.rs:1315
 msgid "Click the points of the shape; Finish Edit Mode when the lines close into loops."
 msgstr "Nhấp các điểm của hình; Hoàn tất chế độ chỉnh sửa khi các đường khép thành vòng kín."
 
-#: crates/ui-egui/src/editor/document.rs:1413
+#: crates/ui-egui/src/editor/document.rs:1423
 msgid "Click the reference to align to."
 msgstr "Nhấp vào tham chiếu cần căn theo."
 
-#: crates/ui-egui/src/editor/document.rs:1389
+#: crates/ui-egui/src/editor/document.rs:1399
 msgid "Click the reference to align to: a reference plane, a reference line or a line."
 msgstr "Nhấp vào tham chiếu cần căn theo: một mặt phẳng tham chiếu, một đường tham chiếu hoặc một đường."
 
@@ -2072,19 +2080,19 @@ msgstr "Nhấp để chọn, kéo một khung để chọn nhiều. Shift và n�
 msgid "Click to size the arc. Esc cancels."
 msgstr "Nhấp để định kích thước cung. Esc để hủy."
 
-#: crates/ui-egui/src/editor/sketch.rs:1293
+#: crates/ui-egui/src/editor/sketch.rs:1314
 msgid "Click two lines that meet: they are rounded by an arc of the Options Bar's radius."
 msgstr "Nhấp hai đường gặp nhau: chúng được bo góc bằng cung có bán kính trên thanh tùy chọn."
 
-#: crates/ui-egui/src/editor/document.rs:1403
+#: crates/ui-egui/src/editor/document.rs:1413
 msgid "Click two points: a reference plane through them."
 msgstr "Nhấp hai điểm: tạo mặt phẳng tham chiếu đi qua chúng."
 
-#: crates/ui-egui/src/editor/sketch.rs:1288
+#: crates/ui-egui/src/editor/sketch.rs:1309
 msgid "Click two points: the axis the profile turns about."
 msgstr "Nhấp hai điểm: trục mà biên dạng quay quanh."
 
-#: crates/ui-egui/src/editor/document.rs:1414
+#: crates/ui-egui/src/editor/document.rs:1424
 msgid "Click what moves onto it."
 msgstr "Nhấp vào đối tượng sẽ di chuyển lên nó."
 
@@ -2148,7 +2156,7 @@ msgstr "Nhấp chỗ đặt điểm gốc, hoặc nhập khoảng cách rồi nh
 msgid "Click where the camera's eye stands: it looks at the point you click next."
 msgstr "Nhấp chỗ đặt mắt camera: nó nhìn về điểm bạn nhấp tiếp theo."
 
-#: crates/ui-egui/src/editor/document.rs:1415
+#: crates/ui-egui/src/editor/document.rs:1425
 msgid "Click where the component goes, on the view's work plane."
 msgstr "Nhấp vào vị trí đặt thành phần, trên mặt phẳng làm việc của khung nhìn."
 
@@ -2220,14 +2228,14 @@ msgstr "Nhấp hướng thang đi lên: các bậc đứng đưa nó lên tầng
 msgid "Click which way the next run goes from the landing: on, left, right, or back beside it."
 msgstr "Nhấp hướng của vế tiếp theo từ chiếu nghỉ: thẳng, trái, phải hoặc quay ngược bên cạnh."
 
-#: crates/ui-egui/src/editor/document.rs:628
+#: crates/ui-egui/src/editor/document.rs:638
 msgid "Clipboard"
 msgstr ""
 
 #: crates/ui-egui/src/favorites.rs:179
 #: crates/ui-egui/src/graphics.rs:512
 #: crates/ui-egui/src/inquiry.rs:203
-#: crates/ui-egui/src/lib.rs:5463
+#: crates/ui-egui/src/lib.rs:5467
 #: crates/ui-egui/src/phasing.rs:278
 #: crates/ui-egui/src/phasing.rs:400
 #: crates/ui-egui/src/plugins.rs:254
@@ -2243,7 +2251,7 @@ msgstr ""
 msgid "Close"
 msgstr "Đóng"
 
-#: crates/ui-egui/src/lib.rs:5437
+#: crates/ui-egui/src/lib.rs:5441
 msgid "Close Family"
 msgstr ""
 
@@ -2251,7 +2259,7 @@ msgstr ""
 msgid "Close Inactive"
 msgstr "Đóng các khung nhìn khác"
 
-#: crates/ui-egui/src/editor/document.rs:597
+#: crates/ui-egui/src/editor/document.rs:607
 msgid "Close Inactive Views"
 msgstr ""
 
@@ -2269,7 +2277,7 @@ msgstr "Đóng mọi khung nhìn trừ khung nhìn này"
 
 #: crates/ui-egui/src/dock.rs:583
 #: crates/ui-egui/src/dock.rs:716
-#: crates/ui-egui/src/lib.rs:5437
+#: crates/ui-egui/src/lib.rs:5441
 msgid "Close {}"
 msgstr "Đóng {}"
 
@@ -2338,7 +2346,7 @@ msgid "Comparison"
 msgstr "So sánh"
 
 #: crates/core/src/commands.rs:1340
-#: crates/ui-egui/src/editor/document.rs:471
+#: crates/ui-egui/src/editor/document.rs:481
 msgid "Component"
 msgstr "Thành phần"
 
@@ -2346,7 +2354,7 @@ msgstr "Thành phần"
 msgid "Component (CM): a family's type, where you click; Space turns it"
 msgstr "Thành phần (CM): một kiểu của họ, tại chỗ bạn nhấp; Space để xoay"
 
-#: crates/ui-egui/src/editor/document.rs:469
+#: crates/ui-egui/src/editor/document.rs:479
 msgid "Component (CM): an instance of a family loaded into this one, placed by a click in a plan or an elevation"
 msgstr "Thành phần (CM): một đối tượng của họ được nạp vào họ này, đặt bằng một lần nhấp trong mặt bằng hoặc mặt đứng"
 
@@ -2358,7 +2366,7 @@ msgstr "Chiều cao tính toán"
 msgid "Conceptual Mass"
 msgstr "Khối ý tưởng"
 
-#: crates/core/src/family.rs:3127
+#: crates/core/src/family.rs:3128
 msgid "Concrete"
 msgstr "Bê tông"
 
@@ -2383,7 +2391,7 @@ msgid "Configure national and international technical drawing standards (NBR, IS
 msgstr "Cấu hình các tiêu chuẩn bản vẽ kỹ thuật quốc gia và quốc tế (NBR, ISO, ANSI, EU). Điều chỉnh chương trình sẽ áp dụng độ dày nét, khổ bản vẽ, kiểu đối tượng và quy ước ghi kích thước theo tiêu chuẩn."
 
 #: crates/ui-egui/src/editor/connectors.rs:161
-#: crates/ui-egui/src/editor/document.rs:1747
+#: crates/ui-egui/src/editor/document.rs:1761
 msgid "Connector"
 msgstr "Đầu nối"
 
@@ -2435,12 +2443,12 @@ msgstr "Hệ thống đầu nối"
 msgid "Connector Voltage"
 msgstr "Điện áp đầu nối"
 
-#: crates/ui-egui/src/editor/document.rs:1746
+#: crates/ui-egui/src/editor/document.rs:1760
 msgid "Connector: a pipe, power, switch, data or earthing connector, where the family joins a system"
 msgstr "Đầu nối: đầu nối ống, nguồn điện, công tắc, dữ liệu hoặc nối đất, nơi họ kết nối vào một hệ thống"
 
-#: crates/ui-egui/src/editor/document.rs:1148
-#: crates/ui-egui/src/editor/document.rs:1745
+#: crates/ui-egui/src/editor/document.rs:1158
+#: crates/ui-egui/src/editor/document.rs:1759
 msgid "Connectors"
 msgstr ""
 
@@ -2453,15 +2461,15 @@ msgstr "Ràng buộc"
 msgid "Constrained"
 msgstr ""
 
-#: crates/core/src/family.rs:349
+#: crates/core/src/family.rs:350
 #: crates/ui-egui/src/adaptive_editor.rs:585
 #: crates/ui-egui/src/editor/connectors.rs:284
 #: crates/ui-egui/src/editor/extrusion.rs:180
 #: crates/ui-egui/src/editor/nested.rs:272
 #: crates/ui-egui/src/editor/pivot.rs:284
 #: crates/ui-egui/src/editor/pivot.rs:304
-#: crates/ui-egui/src/editor/sketch.rs:1605
-#: crates/ui-egui/src/editor.rs:1053
+#: crates/ui-egui/src/editor/sketch.rs:1626
+#: crates/ui-egui/src/editor.rs:1054
 #: crates/ui-egui/src/properties.rs:140
 msgid "Constraints"
 msgstr "Ràng buộc"
@@ -2470,7 +2478,11 @@ msgstr "Ràng buộc"
 msgid "Constraints are not satisfied"
 msgstr "Các ràng buộc không được thỏa mãn"
 
-#: crates/core/src/family.rs:350
+#: crates/ui-egui/src/editor/shape_handles.rs:218
+msgid "Constraints are not satisfied: a lock or a dimension holds the profile where it is."
+msgstr ""
+
+#: crates/core/src/family.rs:351
 #: crates/ui-egui/src/properties.rs:459
 msgid "Construction"
 msgstr "Cấu tạo"
@@ -2529,7 +2541,7 @@ msgid "Copper"
 msgstr "Đồng"
 
 #: crates/core/src/commands.rs:1423
-#: crates/ui-egui/src/editor/document.rs:662
+#: crates/ui-egui/src/editor/document.rs:672
 #: crates/ui-egui/src/inquiry.rs:176
 #: crates/ui-egui/src/lib.rs:4919
 #: crates/ui-egui/src/lib.rs:5080
@@ -2542,7 +2554,7 @@ msgstr "Sao chép"
 msgid "Copy (CO): click a base point, then where the copy goes"
 msgstr "Sao chép (CO): nhấp một điểm gốc, rồi chỗ đặt bản sao"
 
-#: crates/ui-egui/src/editor/document.rs:659
+#: crates/ui-egui/src/editor/document.rs:669
 msgid "Copy (CO): copies of what is selected, from a point clicked to another"
 msgstr ""
 
@@ -2586,7 +2598,7 @@ msgstr "Mặt lõi: phía ngoài"
 msgid "Core Face: Interior"
 msgstr "Mặt lõi: phía trong"
 
-#: crates/ui-egui/src/editor/document.rs:1934
+#: crates/ui-egui/src/editor/document.rs:1948
 #: crates/ui-egui/src/orbit.rs:1345
 msgid "Could not fit the 3D view: {}"
 msgstr ""
@@ -2640,7 +2652,7 @@ msgstr "Số lượng"
 msgid "Cover"
 msgstr "Lớp bảo vệ"
 
-#: crates/ui-egui/src/editor/document.rs:358
+#: crates/ui-egui/src/editor/document.rs:368
 #: crates/ui-egui/src/lib.rs:5125
 #: crates/ui-egui/src/templates.rs:497
 #: crates/ui-egui/src/typeprops.rs:100
@@ -2667,11 +2679,11 @@ msgstr "Tạo sàn"
 msgid "Create Floor Boundary"
 msgstr "Tạo biên sàn"
 
-#: crates/ui-egui/src/editor/document.rs:843
+#: crates/ui-egui/src/editor/document.rs:853
 msgid "Create Form"
 msgstr ""
 
-#: crates/ui-egui/src/editor/document.rs:842
+#: crates/ui-egui/src/editor/document.rs:852
 msgid "Create Form: a solid or a void of the lines selected: one closed profile extruded, two or more lofted"
 msgstr ""
 
@@ -2801,7 +2813,7 @@ msgstr "Cắt bằng khối rỗng khi nạp"
 msgid "Cuts"
 msgstr "Cắt"
 
-#: crates/ui-egui/src/editor.rs:201
+#: crates/ui-egui/src/editor.rs:202
 msgid "Cylinder"
 msgstr "Hình trụ"
 
@@ -2833,7 +2845,7 @@ msgstr "Gạch chấm"
 msgid "Dashed"
 msgstr "Nét đứt"
 
-#: crates/core/src/family.rs:361
+#: crates/core/src/family.rs:362
 #: crates/ui-egui/src/lib.rs:1236
 msgid "Data"
 msgstr "Dữ liệu"
@@ -2854,11 +2866,11 @@ msgstr "Ổ cắm dữ liệu"
 msgid "Data Outlet (DT): a data point, where you click on the wall; Space turns it"
 msgstr "Ổ cắm dữ liệu (DT): một điểm dữ liệu, tại chỗ bạn nhấp trên tường; Space để xoay"
 
-#: crates/ui-egui/src/editor.rs:931
+#: crates/ui-egui/src/editor.rs:932
 msgid "Data Outlets"
 msgstr "Ổ cắm dữ liệu"
 
-#: crates/ui-egui/src/editor/document.rs:477
+#: crates/ui-egui/src/editor/document.rs:487
 #: crates/ui-egui/src/lib.rs:3968
 msgid "Datum"
 msgstr "Mốc tham chiếu"
@@ -2893,12 +2905,12 @@ msgid "Default Thickness"
 msgstr "Chiều dày mặc định"
 
 #: crates/ui-egui/src/adaptive_editor.rs:806
-#: crates/ui-egui/src/editor/document.rs:684
-#: crates/ui-egui/src/editor/document.rs:1121
-#: crates/ui-egui/src/editor/document.rs:1139
-#: crates/ui-egui/src/editor/document.rs:1158
+#: crates/ui-egui/src/editor/document.rs:694
+#: crates/ui-egui/src/editor/document.rs:1131
+#: crates/ui-egui/src/editor/document.rs:1149
+#: crates/ui-egui/src/editor/document.rs:1168
 #: crates/ui-egui/src/editor/nested.rs:393
-#: crates/ui-egui/src/editor/sketch.rs:1521
+#: crates/ui-egui/src/editor/sketch.rs:1542
 #: crates/ui-egui/src/electrical.rs:279
 #: crates/ui-egui/src/fillpatterns.rs:398
 #: crates/ui-egui/src/fillpatterns.rs:581
@@ -2921,11 +2933,11 @@ msgstr "Xóa"
 msgid "Delete (DE) the selection"
 msgstr "Xóa (DE) vùng chọn"
 
-#: crates/ui-egui/src/editor/sketch.rs:1519
+#: crates/ui-egui/src/editor/sketch.rs:1540
 msgid "Delete (DE): the lines picked"
 msgstr "Xóa (DE): các đường đã chọn"
 
-#: crates/ui-egui/src/editor/document.rs:683
+#: crates/ui-egui/src/editor/document.rs:693
 msgid "Delete (DE): what is selected, with what depends on it"
 msgstr ""
 
@@ -3010,15 +3022,15 @@ msgstr "Phụ thuộc"
 msgid "Depends on: {}"
 msgstr ""
 
-#: crates/core/src/family.rs:3125
+#: crates/core/src/family.rs:3126
 #: crates/ui-egui/src/editor/extrusion.rs:328
-#: crates/ui-egui/src/editor/sketch.rs:1305
+#: crates/ui-egui/src/editor/sketch.rs:1326
 #: crates/ui-egui/src/properties.rs:466
 #: crates/ui-egui/src/properties.rs:467
 msgid "Depth"
 msgstr "Chiều sâu"
 
-#: crates/ui-egui/src/editor/document.rs:1347
+#: crates/ui-egui/src/editor/document.rs:1357
 msgid "Depth (mm)"
 msgstr ""
 
@@ -3041,7 +3053,7 @@ msgstr "Phương án thiết kế"
 msgid "Design Options (DO): sets of options for a part of the design, and the one new elements are made in"
 msgstr "Phương án thiết kế (DO): các bộ phương án cho một phần của thiết kế, và phương án mà cấu kiện mới được tạo trong đó"
 
-#: crates/core/src/family.rs:3234
+#: crates/core/src/family.rs:3235
 msgid "Desk"
 msgstr "Bàn làm việc"
 
@@ -3054,7 +3066,7 @@ msgid "Detach Top/Base: the walls' tops and bases their own again"
 msgstr "Tách đỉnh/chân: đỉnh và chân tường trở lại là của riêng chúng"
 
 #: crates/ui-egui/src/draw.rs:654
-#: crates/ui-egui/src/editor/document.rs:550
+#: crates/ui-egui/src/editor/document.rs:560
 msgid "Detail"
 msgstr "Chi tiết"
 
@@ -3081,12 +3093,12 @@ msgstr "Mức chi tiết: Thô vẽ phần bị cắt bằng một mảng tô đ
 msgid "Detail Level: the family forms the 3D view draws, as their Visibility Settings say"
 msgstr "Mức chi tiết: các khối của họ mà khung nhìn 3D vẽ, theo cài đặt hiển thị của chúng"
 
-#: crates/ui-egui/src/editor/document.rs:1236
+#: crates/ui-egui/src/editor/document.rs:1246
 msgid "Detail Level: the forms and symbols each view of the family draws, as their Visibility Settings say"
 msgstr "Mức chi tiết: các khối và ký hiệu mà mỗi khung nhìn của họ vẽ, theo cài đặt hiển thị của chúng"
 
 #: crates/ui-egui/src/editor/visibility.rs:96
-#: crates/ui-egui/src/editor.rs:1129
+#: crates/ui-egui/src/editor.rs:1130
 msgid "Detail Levels"
 msgstr "Mức chi tiết"
 
@@ -3124,7 +3136,7 @@ msgid "Diagonal Up"
 msgstr "Xiên lên"
 
 #: crates/core/src/fixtures.rs:216
-#: crates/ui-egui/src/editor/document.rs:524
+#: crates/ui-egui/src/editor/document.rs:534
 #: crates/ui-egui/src/lib.rs:4021
 #: crates/ui-egui/src/reinforce.rs:51
 #: crates/ui-egui/src/reinforce.rs:59
@@ -3142,7 +3154,7 @@ msgstr "Xiên lên"
 msgid "Diameter"
 msgstr "Đường kính"
 
-#: crates/ui-egui/src/editor/document.rs:525
+#: crates/ui-egui/src/editor/document.rs:535
 msgid "Diameter Dimension: pick a circle or an arc of a form's sketch, then click where it goes"
 msgstr "Kích thước đường kính: chọn một đường tròn hoặc một cung trong phác thảo của khối, rồi nhấp chỗ đặt"
 
@@ -3155,7 +3167,7 @@ msgid "Diameter Symbol"
 msgstr "Ký hiệu đường kính"
 
 #: crates/ui-egui/src/dimtypes.rs:94
-#: crates/ui-egui/src/editor/document.rs:489
+#: crates/ui-egui/src/editor/document.rs:499
 #: crates/ui-egui/src/lang.rs:31
 msgid "Dimension"
 msgstr "Kích thước"
@@ -3184,6 +3196,14 @@ msgstr "Vị trí chữ kích thước:"
 msgid "Dimension Value"
 msgstr ""
 
+#: crates/ui-egui/src/editor/shape_handles.rs:64
+msgid "Dimension label {} sets this edge: change it in Family Types."
+msgstr ""
+
+#: crates/ui-egui/src/editor/shape_handles.rs:65
+msgid "Dimension label {} sets this end: change it in Family Types."
+msgstr ""
+
 #: crates/ui-egui/src/standards.rs:210
 msgid "Dimension lines, witness lines, terminators, text placement, and level marker symbols."
 msgstr "Đường kích thước, đường gióng, ký hiệu đầu mút, vị trí chữ và ký hiệu cao độ tầng."
@@ -3192,7 +3212,7 @@ msgstr "Đường kích thước, đường gióng, ký hiệu đầu mút, vị
 msgid "Dimension {}"
 msgstr ""
 
-#: crates/core/src/family.rs:351
+#: crates/core/src/family.rs:352
 #: crates/ui-egui/src/lang.rs:32
 #: crates/ui-egui/src/properties.rs:460
 msgid "Dimensions"
@@ -3222,7 +3242,7 @@ msgstr ""
 msgid "Discard"
 msgstr "Loại bỏ"
 
-#: crates/ui-egui/src/lib.rs:5368
+#: crates/ui-egui/src/lib.rs:5372
 msgid "Dismiss"
 msgstr "Bỏ qua"
 
@@ -3284,7 +3304,7 @@ msgstr "Neo {}"
 msgid "Domain"
 msgstr "Miền"
 
-#: crates/ui-egui/src/lib.rs:5646
+#: crates/ui-egui/src/lib.rs:5650
 msgid "Don't Save"
 msgstr "Không lưu"
 
@@ -3320,12 +3340,12 @@ msgstr "Cửa mái: nhấp vào mặt dốc của mái tại chỗ đặt tườ
 
 #: crates/core/src/lines.rs:179
 #: crates/ui-egui/src/dimtypes.rs:121
-#: crates/ui-egui/src/editor/document.rs:566
-#: crates/ui-egui/src/editor.rs:1178
+#: crates/ui-egui/src/editor/document.rs:576
+#: crates/ui-egui/src/editor.rs:1179
 msgid "Dot"
 msgstr "Chấm"
 
-#: crates/ui-egui/src/editor/document.rs:565
+#: crates/ui-egui/src/editor/document.rs:575
 msgid "Dot: a filled circle the family's plans draw"
 msgstr "Chấm: một hình tròn tô đặc mà mặt bằng của họ vẽ ra"
 
@@ -3333,7 +3353,7 @@ msgstr "Chấm: một hình tròn tô đặc mà mặt bằng của họ vẽ ra
 msgid "Dotted"
 msgstr "Nét chấm"
 
-#: crates/core/src/family.rs:3412
+#: crates/core/src/family.rs:3413
 msgid "Double Door"
 msgstr "Cửa đi hai cánh"
 
@@ -3379,9 +3399,13 @@ msgstr "Tải xuống và kiểm tra bản cập nhật; sau đó BIMCraft sẽ 
 msgid "Drafting"
 msgstr "Bản vẽ"
 
+#: crates/ui-egui/src/editor/document.rs:1430
+msgid "Drag a selected form's arrows to move its sides and ends; click a form, a nested instance, a reference plane, a reference line or a dimension to select it, Ctrl to add, Shift to take away; drag from nothing to box."
+msgstr ""
+
 #: crates/ui-egui/src/draw.rs:305
-#: crates/ui-egui/src/editor/document.rs:1766
-#: crates/ui-egui/src/editor/sketch.rs:1465
+#: crates/ui-egui/src/editor/document.rs:1780
+#: crates/ui-egui/src/editor/sketch.rs:1486
 msgid "Draw"
 msgstr "Vẽ"
 
@@ -3397,7 +3421,7 @@ msgstr "Hãy vẽ một đường bao, với các lỗ mở bên trong nó: các
 msgid "Draw the 3D view on the graphics card"
 msgstr "Vẽ khung nhìn 3D bằng card đồ họa"
 
-#: crates/ui-egui/src/editor/sketch.rs:1285
+#: crates/ui-egui/src/editor/sketch.rs:1306
 msgid "Draw the path: lines and arcs end to end, open or closed; then Edit Profile."
 msgstr "Vẽ đường dẫn: các đường thẳng và cung nối tiếp nhau, mở hoặc kín; sau đó Sửa biên dạng."
 
@@ -3493,7 +3517,7 @@ msgstr "Cọc nối đất"
 msgid "Earthing Electrode (EG): a rod driven down from the level, where you click; Space turns it"
 msgstr "Cọc nối đất (EG): một cọc đóng xuống từ tầng, tại chỗ bạn nhấp; Space để xoay"
 
-#: crates/ui-egui/src/editor.rs:929
+#: crates/ui-egui/src/editor.rs:930
 msgid "Earthing Electrodes"
 msgstr "Cọc nối đất"
 
@@ -3510,20 +3534,20 @@ msgstr "Sửa"
 msgid "Edit Background Grids"
 msgstr "Sửa lưới nền"
 
-#: crates/ui-egui/src/editor/sketch.rs:1385
+#: crates/ui-egui/src/editor/sketch.rs:1406
 msgid "Edit Base"
 msgstr "Sửa mặt đáy"
 
-#: crates/ui-egui/src/editor/sketch.rs:1385
+#: crates/ui-egui/src/editor/sketch.rs:1406
 msgid "Edit Base: sketch the blend's base, at its First End"
 msgstr "Sửa mặt đáy: phác thảo mặt đáy của khối chuyển tiếp, tại đầu thứ nhất"
 
 #: crates/ui-egui/src/editor/extrusion.rs:352
-#: crates/ui-egui/src/editor/sketch.rs:1571
+#: crates/ui-egui/src/editor/sketch.rs:1592
 msgid "Edit Blend"
 msgstr "Sửa khối chuyển tiếp"
 
-#: crates/ui-egui/src/editor/sketch.rs:1571
+#: crates/ui-egui/src/editor/sketch.rs:1592
 msgid "Edit Blend: sketch its base and its top again"
 msgstr "Sửa khối chuyển tiếp: phác thảo lại mặt đáy và mặt trên của nó"
 
@@ -3535,13 +3559,13 @@ msgstr "Sửa biên"
 msgid "Edit Boundary: sketch its outline and holes again"
 msgstr "Sửa biên: phác thảo lại đường bao và các lỗ của nó"
 
-#: crates/ui-egui/src/editor/document.rs:1063
+#: crates/ui-egui/src/editor/document.rs:1073
 #: crates/ui-egui/src/editor/extrusion.rs:355
-#: crates/ui-egui/src/editor/sketch.rs:1574
+#: crates/ui-egui/src/editor/sketch.rs:1595
 msgid "Edit Extrusion"
 msgstr "Sửa khối đùn"
 
-#: crates/ui-egui/src/editor/sketch.rs:1574
+#: crates/ui-egui/src/editor/sketch.rs:1595
 msgid "Edit Extrusion: sketch its profile again"
 msgstr "Sửa khối đùn: phác thảo lại biên dạng của nó"
 
@@ -3576,38 +3600,38 @@ msgstr "Sửa phương án: cấu kiện mới được tạo trong phương án
 msgid "Edit Parameter"
 msgstr "Sửa tham số"
 
-#: crates/ui-egui/src/editor/sketch.rs:1408
+#: crates/ui-egui/src/editor/sketch.rs:1429
 msgid "Edit Profile"
 msgstr "Sửa biên dạng"
 
-#: crates/ui-egui/src/editor/sketch.rs:1409
+#: crates/ui-egui/src/editor/sketch.rs:1430
 msgid "Edit Profile: sketch the profile on its plane, square to the path at its first line's middle"
 msgstr "Sửa biên dạng: phác thảo biên dạng trên mặt phẳng của nó, vuông góc với đường dẫn tại trung điểm đoạn đầu tiên"
 
 #: crates/ui-egui/src/editor/extrusion.rs:351
-#: crates/ui-egui/src/editor/sketch.rs:1570
+#: crates/ui-egui/src/editor/sketch.rs:1591
 msgid "Edit Revolve"
 msgstr "Sửa khối tròn xoay"
 
-#: crates/ui-egui/src/editor/sketch.rs:1570
+#: crates/ui-egui/src/editor/sketch.rs:1591
 msgid "Edit Revolve: sketch its profile and its axis again"
 msgstr "Sửa khối tròn xoay: phác thảo lại biên dạng và trục của nó"
 
 #: crates/ui-egui/src/editor/extrusion.rs:353
-#: crates/ui-egui/src/editor/sketch.rs:1572
+#: crates/ui-egui/src/editor/sketch.rs:1593
 msgid "Edit Sweep"
 msgstr "Sửa khối quét"
 
-#: crates/ui-egui/src/editor/sketch.rs:1572
+#: crates/ui-egui/src/editor/sketch.rs:1593
 msgid "Edit Sweep: sketch its path and its profile again"
 msgstr "Sửa khối quét: phác thảo lại đường dẫn và biên dạng của nó"
 
 #: crates/ui-egui/src/editor/extrusion.rs:354
-#: crates/ui-egui/src/editor/sketch.rs:1573
+#: crates/ui-egui/src/editor/sketch.rs:1594
 msgid "Edit Swept Blend"
 msgstr "Sửa khối quét chuyển tiếp"
 
-#: crates/ui-egui/src/editor/sketch.rs:1573
+#: crates/ui-egui/src/editor/sketch.rs:1594
 msgid "Edit Swept Blend: sketch its path and its profiles again"
 msgstr "Sửa khối quét chuyển tiếp: phác thảo lại đường dẫn và các biên dạng của nó"
 
@@ -3620,11 +3644,11 @@ msgstr ""
 msgid "Edit Tools"
 msgstr "Sửa công cụ"
 
-#: crates/ui-egui/src/editor/sketch.rs:1387
+#: crates/ui-egui/src/editor/sketch.rs:1408
 msgid "Edit Top"
 msgstr "Sửa mặt trên"
 
-#: crates/ui-egui/src/editor/sketch.rs:1387
+#: crates/ui-egui/src/editor/sketch.rs:1408
 msgid "Edit Top: sketch the blend's top, at its Second End"
 msgstr "Sửa mặt trên: phác thảo mặt trên của khối chuyển tiếp, tại đầu thứ hai"
 
@@ -3632,7 +3656,7 @@ msgstr "Sửa mặt trên: phác thảo mặt trên của khối chuyển tiếp
 msgid "Edit Type"
 msgstr "Sửa kiểu"
 
-#: crates/ui-egui/src/editor/sketch.rs:1436
+#: crates/ui-egui/src/editor/sketch.rs:1457
 msgid "Edit Vertices"
 msgstr "Sửa đỉnh"
 
@@ -3665,7 +3689,7 @@ msgid "Editing"
 msgstr "Chỉnh sửa"
 
 #: crates/ui-egui/src/editor/extrusion.rs:224
-#: crates/ui-egui/src/editor.rs:1130
+#: crates/ui-egui/src/editor.rs:1131
 #: crates/ui-egui/src/graphics.rs:608
 #: crates/ui-egui/src/graphics.rs:630
 #: crates/ui-egui/src/properties.rs:2107
@@ -3677,7 +3701,7 @@ msgstr "Sửa…"
 msgid "Elbow 90"
 msgstr "Cút 90"
 
-#: crates/core/src/family.rs:357
+#: crates/core/src/family.rs:358
 #: crates/ui-egui/src/editor/connectors.rs:297
 #: crates/ui-egui/src/lib.rs:1234
 msgid "Electrical"
@@ -3687,7 +3711,7 @@ msgstr "Điện"
 msgid "Electrical Ceiling"
 msgstr "Điện trần"
 
-#: crates/ui-egui/src/editor.rs:925
+#: crates/ui-egui/src/editor.rs:926
 msgid "Electrical Equipment"
 msgstr "Thiết bị điện"
 
@@ -3746,12 +3770,12 @@ msgstr "Cao độ:"
 msgid "Elevation: click beside the building, on the side to look at"
 msgstr "Mặt đứng: nhấp bên cạnh công trình, ở phía cần nhìn"
 
-#: crates/ui-egui/src/editor/views.rs:132
+#: crates/ui-egui/src/editor/views.rs:154
 #: crates/ui-egui/src/lib.rs:3083
 msgid "Elevation: {}"
 msgstr "Mặt đứng: {}"
 
-#: crates/ui-egui/src/editor/document.rs:1082
+#: crates/ui-egui/src/editor/document.rs:1092
 msgid "Elevations"
 msgstr ""
 
@@ -3783,7 +3807,7 @@ msgid "End"
 msgstr "Cuối"
 
 #: crates/ui-egui/src/editor/extrusion.rs:190
-#: crates/ui-egui/src/editor/sketch.rs:1607
+#: crates/ui-egui/src/editor/sketch.rs:1628
 msgid "End Angle"
 msgstr "Góc kết thúc"
 
@@ -3832,7 +3856,7 @@ msgstr "Hiển thị bằng nhau"
 msgid "Equality Text"
 msgstr "Chữ bằng nhau"
 
-#: crates/ui-egui/src/lib.rs:5360
+#: crates/ui-egui/src/lib.rs:5364
 #: crates/ui-egui/src/plugins.rs:410
 msgid "Error"
 msgstr "Lỗi"
@@ -3889,25 +3913,25 @@ msgstr "Xuất..."
 msgid "Extents"
 msgstr "Phạm vi"
 
-#: crates/ui-egui/src/editor/document.rs:423
-#: crates/ui-egui/src/editor/sketch.rs:1591
-#: crates/ui-egui/src/editor.rs:203
+#: crates/ui-egui/src/editor/document.rs:433
+#: crates/ui-egui/src/editor/sketch.rs:1612
+#: crates/ui-egui/src/editor.rs:204
 msgid "Extrusion"
 msgstr "Khối đùn"
 
 #: crates/ui-egui/src/editor/extrusion.rs:192
-#: crates/ui-egui/src/editor/sketch.rs:1609
+#: crates/ui-egui/src/editor/sketch.rs:1630
 #: crates/ui-egui/src/properties.rs:364
 msgid "Extrusion End"
 msgstr "Điểm cuối khối đùn"
 
 #: crates/ui-egui/src/editor/extrusion.rs:192
-#: crates/ui-egui/src/editor/sketch.rs:1609
+#: crates/ui-egui/src/editor/sketch.rs:1630
 #: crates/ui-egui/src/properties.rs:363
 msgid "Extrusion Start"
 msgstr "Điểm đầu khối đùn"
 
-#: crates/ui-egui/src/editor/document.rs:422
+#: crates/ui-egui/src/editor/document.rs:432
 msgid "Extrusion: sketch a profile on the work plane, extruded along its normal"
 msgstr "Khối đùn: phác thảo biên dạng trên mặt phẳng làm việc, đùn theo pháp tuyến của nó"
 
@@ -3927,7 +3951,7 @@ msgstr "Chiều cao mắt nhìn:"
 msgid "FRONT"
 msgstr ""
 
-#: crates/core/src/family.rs:3127
+#: crates/core/src/family.rs:3128
 msgid "Fabric"
 msgstr "Vải"
 
@@ -3951,7 +3975,7 @@ msgid "Families of parallel lines: drafting ones mm on paper, the same at any sc
 msgstr "Các nhóm đường song song: loại bản vẽ tính bằng mm trên giấy, như nhau ở mọi tỷ lệ; loại mô hình tính bằng mm trên công trình."
 
 #: crates/core/src/schedule.rs:192
-#: crates/ui-egui/src/editor/document.rs:573
+#: crates/ui-egui/src/editor/document.rs:583
 msgid "Family"
 msgstr "Họ"
 
@@ -3959,20 +3983,20 @@ msgstr "Họ"
 msgid "Family Already Exists"
 msgstr "Họ đã tồn tại"
 
-#: crates/ui-egui/src/editor/document.rs:1633
+#: crates/ui-egui/src/editor/document.rs:1647
 msgid "Family Category"
 msgstr "Danh mục họ"
 
-#: crates/ui-egui/src/editor/document.rs:792
-#: crates/ui-egui/src/editor/document.rs:1556
+#: crates/ui-egui/src/editor/document.rs:802
+#: crates/ui-egui/src/editor/document.rs:1570
 msgid "Family Category and Parameters"
 msgstr ""
 
-#: crates/ui-egui/src/editor/document.rs:791
+#: crates/ui-egui/src/editor/document.rs:801
 msgid "Family Category and Parameters: the family's name and category"
 msgstr ""
 
-#: crates/ui-egui/src/editor/document.rs:751
+#: crates/ui-egui/src/editor/document.rs:761
 msgid "Family Editor"
 msgstr "Trình chỉnh sửa họ"
 
@@ -3984,29 +4008,29 @@ msgstr "Cài đặt hiển thị cấu kiện họ"
 msgid "Family Element Visibility Settings: the views and detail levels it is drawn in"
 msgstr "Cài đặt hiển thị cấu kiện họ: các khung nhìn và mức chi tiết mà nó được vẽ"
 
-#: crates/ui-egui/src/editor/document.rs:1648
+#: crates/ui-egui/src/editor/document.rs:1662
 msgid "Family Parameters"
 msgstr "Tham số họ"
 
-#: crates/ui-egui/src/editor.rs:263
+#: crates/ui-egui/src/editor.rs:264
 msgid "Family Type"
 msgstr ""
 
-#: crates/ui-egui/src/editor/document.rs:798
-#: crates/ui-egui/src/editor/document.rs:1555
+#: crates/ui-egui/src/editor/document.rs:808
+#: crates/ui-egui/src/editor/document.rs:1569
 msgid "Family Types"
 msgstr "Kiểu họ"
 
-#: crates/ui-egui/src/editor/document.rs:797
+#: crates/ui-egui/src/editor/document.rs:807
 msgid "Family Types: the family's parameters, their formulas, and its types"
 msgstr "Kiểu họ: các tham số của họ, công thức của chúng và các kiểu của họ"
 
-#: crates/ui-egui/src/lib.rs:5427
+#: crates/ui-egui/src/lib.rs:5431
 msgid "Family document: {}"
 msgstr "Tài liệu họ: {}"
 
-#: crates/ui-egui/src/editor/document.rs:1628
-#: crates/ui-egui/src/editor/document.rs:1841
+#: crates/ui-egui/src/editor/document.rs:1642
+#: crates/ui-egui/src/editor/document.rs:1855
 msgid "Family name"
 msgstr "Tên họ"
 
@@ -4022,8 +4046,8 @@ msgstr ""
 msgid "Family:"
 msgstr "Họ:"
 
-#: crates/ui-egui/src/editor/document.rs:953
-#: crates/ui-egui/src/editor/document.rs:964
+#: crates/ui-egui/src/editor/document.rs:963
+#: crates/ui-egui/src/editor/document.rs:974
 msgid "Family: {}"
 msgstr ""
 
@@ -4135,7 +4159,7 @@ msgstr "Cung bo góc: chọn hai đường, rồi nhấp để định kích th�
 msgid "Fills"
 msgstr ""
 
-#: crates/ui-egui/src/editor/document.rs:1635
+#: crates/ui-egui/src/editor/document.rs:1649
 #: crates/ui-egui/src/filter.rs:68
 #: crates/ui-egui/src/graphics.rs:455
 #: crates/ui-egui/src/lib.rs:3800
@@ -4146,8 +4170,8 @@ msgstr "Lọc"
 msgid "Filter Rules"
 msgstr "Quy tắc lọc"
 
-#: crates/ui-egui/src/lib.rs:5334
 #: crates/ui-egui/src/lib.rs:5335
+#: crates/ui-egui/src/lib.rs:5336
 msgid "Filter Selection"
 msgstr "Lọc vùng chọn"
 
@@ -4213,13 +4237,13 @@ msgstr "Hoàn tất"
 msgid "Finish Drawing"
 msgstr "Hoàn tất vẽ"
 
-#: crates/ui-egui/src/editor/sketch.rs:1373
+#: crates/ui-egui/src/editor/sketch.rs:1394
 #: crates/ui-egui/src/shortcuts.rs:137
 #: crates/ui-egui/src/sketch.rs:798
 msgid "Finish Edit Mode"
 msgstr "Hoàn tất chế độ chỉnh sửa"
 
-#: crates/ui-egui/src/editor/sketch.rs:1372
+#: crates/ui-egui/src/editor/sketch.rs:1393
 msgid "Finish Edit Mode: the lines, closed into loops, become the form"
 msgstr "Hoàn tất chế độ chỉnh sửa: các đường, khép thành vòng kín, trở thành khối"
 
@@ -4244,7 +4268,7 @@ msgid "Finish or cancel the sketch first: a pattern's lines are picked in the pl
 msgstr "Hãy hoàn tất hoặc hủy phác thảo trước: các đường của mẫu được chọn trên mặt bằng."
 
 #: crates/ui-egui/src/editor/extrusion.rs:191
-#: crates/ui-egui/src/editor/sketch.rs:1608
+#: crates/ui-egui/src/editor/sketch.rs:1629
 msgid "First End"
 msgstr "Đầu thứ nhất"
 
@@ -4256,7 +4280,7 @@ msgstr ""
 msgid "Fixed"
 msgstr "Cố định"
 
-#: crates/core/src/family.rs:3480
+#: crates/core/src/family.rs:3481
 msgid "Fixed Window"
 msgstr "Cửa sổ cố định"
 
@@ -4302,7 +4326,7 @@ msgstr "Lật hướng tay"
 
 #: crates/ui-egui/src/dock.rs:609
 #: crates/ui-egui/src/dock.rs:859
-#: crates/ui-egui/src/lib.rs:5459
+#: crates/ui-egui/src/lib.rs:5463
 msgid "Float"
 msgstr "Tách nổi"
 
@@ -4322,14 +4346,14 @@ msgstr "Phễu thu sàn"
 msgid "Floor Plan"
 msgstr "Mặt bằng tầng"
 
-#: crates/ui-egui/src/editor/views.rs:130
+#: crates/ui-egui/src/editor/views.rs:152
 #: crates/ui-egui/src/lib.rs:3078
 #: crates/ui-egui/src/lib.rs:3079
 msgid "Floor Plan: {}"
 msgstr "Mặt bằng tầng: {}"
 
 #: crates/ui-egui/src/browser.rs:440
-#: crates/ui-egui/src/editor/document.rs:1079
+#: crates/ui-egui/src/editor/document.rs:1089
 msgid "Floor Plans"
 msgstr "Mặt bằng tầng"
 
@@ -4401,13 +4425,13 @@ msgstr "Màu tiền cảnh"
 msgid "Foreground Pattern"
 msgstr "Mẫu tiền cảnh"
 
-#: crates/ui-egui/src/editor/document.rs:841
-#: crates/ui-egui/src/editor/document.rs:969
+#: crates/ui-egui/src/editor/document.rs:851
+#: crates/ui-egui/src/editor/document.rs:979
 msgid "Form"
 msgstr ""
 
-#: crates/ui-egui/src/editor/document.rs:419
-#: crates/ui-egui/src/editor/document.rs:1099
+#: crates/ui-egui/src/editor/document.rs:429
+#: crates/ui-egui/src/editor/document.rs:1109
 #: crates/ui-egui/src/editor/extrusion.rs:274
 msgid "Forms"
 msgstr "Khối"
@@ -4426,23 +4450,23 @@ msgstr "Công thức"
 msgid "Foundation"
 msgstr "Móng"
 
-#: crates/ui-egui/src/editor/document.rs:617
+#: crates/ui-egui/src/editor/document.rs:627
 msgid "Four-Point Panel"
 msgstr "Tấm bốn điểm"
 
-#: crates/ui-egui/src/editor/document.rs:616
+#: crates/ui-egui/src/editor/document.rs:626
 msgid "Four-Point Panel: the family made adaptive, as a panel on four placement points"
 msgstr "Tấm bốn điểm: họ được chuyển thành thích ứng, dưới dạng một tấm trên bốn điểm đặt"
 
-#: crates/core/src/family.rs:3352
+#: crates/core/src/family.rs:3353
 msgid "Frame Depth"
 msgstr "Chiều sâu khung"
 
-#: crates/core/src/family.rs:3354
+#: crates/core/src/family.rs:3355
 msgid "Frame Material"
 msgstr "Vật liệu khung"
 
-#: crates/core/src/family.rs:3352
+#: crates/core/src/family.rs:3353
 msgid "Frame Width"
 msgstr "Chiều rộng khung"
 
@@ -4450,7 +4474,7 @@ msgstr "Chiều rộng khung"
 msgid "Frequency (cycles per segment)"
 msgstr "Tần số (chu kỳ mỗi đoạn)"
 
-#: crates/ui-egui/src/editor.rs:1080
+#: crates/ui-egui/src/editor.rs:1081
 msgid "From (degrees)"
 msgstr "Từ (độ)"
 
@@ -4471,7 +4495,7 @@ msgstr "Đầy đủ"
 msgid "Function"
 msgstr "Chức năng"
 
-#: crates/ui-egui/src/editor.rs:919
+#: crates/ui-egui/src/editor.rs:920
 msgid "Furniture"
 msgstr "Nội thất"
 
@@ -4507,7 +4531,7 @@ msgstr "Khe hở tới cấu kiện"
 msgid "Gate Valve"
 msgstr "Van cổng"
 
-#: crates/ui-egui/src/editor.rs:936
+#: crates/ui-egui/src/editor.rs:937
 msgid "Generic"
 msgstr "Chung"
 
@@ -4515,7 +4539,7 @@ msgstr "Chung"
 msgid "Geometry"
 msgstr "Hình học"
 
-#: crates/core/src/family.rs:3354
+#: crates/core/src/family.rs:3355
 msgid "Glass"
 msgstr "Kính"
 
@@ -4555,13 +4579,13 @@ msgstr "Ghi đè đồ họa"
 msgid "Graphic segments in mm on paper, repeating along the centerline."
 msgstr "Các đoạn hình, tính bằng mm trên giấy, lặp lại dọc theo đường tâm."
 
-#: crates/core/src/family.rs:352
+#: crates/core/src/family.rs:353
 #: crates/ui-egui/src/adaptive_editor.rs:559
 #: crates/ui-egui/src/adaptive_editor.rs:651
-#: crates/ui-egui/src/editor/document.rs:592
+#: crates/ui-egui/src/editor/document.rs:602
 #: crates/ui-egui/src/editor/extrusion.rs:219
 #: crates/ui-egui/src/editor/nested.rs:299
-#: crates/ui-egui/src/editor.rs:1103
+#: crates/ui-egui/src/editor.rs:1104
 #: crates/ui-egui/src/graphics.rs:537
 msgid "Graphics"
 msgstr "Đồ họa"
@@ -4634,7 +4658,7 @@ msgstr "Một nửa"
 msgid "Halftone"
 msgstr "Nửa tông"
 
-#: crates/core/src/family.rs:3196
+#: crates/core/src/family.rs:3197
 msgid "Headboard Height"
 msgstr "Chiều cao đầu giường"
 
@@ -4642,8 +4666,8 @@ msgstr "Chiều cao đầu giường"
 msgid "Heading"
 msgstr "Tiêu đề"
 
-#: crates/core/src/family.rs:256
-#: crates/ui-egui/src/editor.rs:1067
+#: crates/core/src/family.rs:257
+#: crates/ui-egui/src/editor.rs:1068
 #: crates/ui-egui/src/properties.rs:464
 #: crates/ui-egui/src/properties.rs:465
 #: crates/ui-egui/src/properties.rs:470
@@ -4826,32 +4850,32 @@ msgstr "ISO 5457: lề lưu trữ 20 mm"
 msgid "ISO 7200: 180 mm"
 msgstr "ISO 7200: 180 mm"
 
-#: crates/core/src/family.rs:353
+#: crates/core/src/family.rs:354
 #: crates/ui-egui/src/adaptive_editor.rs:568
 #: crates/ui-egui/src/adaptive_editor.rs:664
 #: crates/ui-egui/src/editor/connectors.rs:220
-#: crates/ui-egui/src/editor/document.rs:900
-#: crates/ui-egui/src/editor/document.rs:1840
+#: crates/ui-egui/src/editor/document.rs:910
+#: crates/ui-egui/src/editor/document.rs:1854
 #: crates/ui-egui/src/editor/extrusion.rs:253
-#: crates/ui-egui/src/editor/sketch.rs:1631
+#: crates/ui-egui/src/editor/sketch.rs:1652
 #: crates/ui-egui/src/properties.rs:156
 msgid "Identity Data"
 msgstr "Dữ liệu nhận dạng"
 
-#: crates/ui-egui/src/lib.rs:5642
+#: crates/ui-egui/src/lib.rs:5646
 msgid "If you don't, the changes since it was last saved are lost."
 msgstr "Nếu không, các thay đổi kể từ lần lưu cuối sẽ bị mất."
 
-#: crates/ui-egui/src/editor/document.rs:588
+#: crates/ui-egui/src/editor/document.rs:598
 msgid "Image"
 msgstr ""
 
-#: crates/ui-egui/src/editor/document.rs:586
+#: crates/ui-egui/src/editor/document.rs:596
 #: crates/ui-egui/src/lib.rs:4302
 msgid "Import"
 msgstr "Nhập"
 
-#: crates/ui-egui/src/editor/document.rs:587
+#: crates/ui-egui/src/editor/document.rs:597
 #: crates/ui-egui/src/lib.rs:4306
 msgid "Import CAD"
 msgstr "Nhập CAD"
@@ -4918,7 +4942,7 @@ msgid "Inquiry"
 msgstr "Truy vấn"
 
 #: crates/core/src/draw.rs:105
-#: crates/ui-egui/src/editor/document.rs:1782
+#: crates/ui-egui/src/editor/document.rs:1796
 msgid "Inscribed Polygon"
 msgstr "Đa giác nội tiếp"
 
@@ -4926,7 +4950,7 @@ msgstr "Đa giác nội tiếp"
 msgid "Inscribed Polygon: click its centre, then a corner; Sides on the Options Bar"
 msgstr "Đa giác nội tiếp: nhấp tâm, rồi một góc; số cạnh trên thanh tùy chọn"
 
-#: crates/ui-egui/src/editor/document.rs:359
+#: crates/ui-egui/src/editor/document.rs:369
 #: crates/ui-egui/src/lib.rs:1237
 msgid "Insert"
 msgstr "Chèn"
@@ -4951,7 +4975,7 @@ msgstr "Hộp kiểm tra"
 msgid "Inspection Box (IB): over an electrode, flush with the level, where you click; Space turns it"
 msgstr "Hộp kiểm tra (IB): trên một cọc nối đất, bằng mặt tầng, tại chỗ bạn nhấp; Space để xoay"
 
-#: crates/ui-egui/src/editor.rs:930
+#: crates/ui-egui/src/editor.rs:931
 msgid "Inspection Boxes"
 msgstr "Hộp kiểm tra"
 
@@ -4998,7 +5022,7 @@ msgstr "Cách điện:"
 msgid "Insulation: batt insulation drawn along each line, its width on the Options Bar"
 msgstr "Lớp cách nhiệt: vật liệu cách nhiệt dạng tấm vẽ dọc theo mỗi đường, chiều rộng trên thanh tùy chọn"
 
-#: crates/ui-egui/src/editor.rs:259
+#: crates/ui-egui/src/editor.rs:260
 msgid "Integer"
 msgstr ""
 
@@ -5177,15 +5201,15 @@ msgstr "Đường dẫn chú thích"
 msgid "Leader/Border Offset"
 msgstr "Khoảng cách đường dẫn/viền"
 
-#: crates/core/src/family.rs:3354
+#: crates/core/src/family.rs:3355
 msgid "Leaf Material"
 msgstr "Vật liệu cánh"
 
-#: crates/core/src/family.rs:3352
+#: crates/core/src/family.rs:3353
 msgid "Leaf Thickness"
 msgstr "Chiều dày cánh"
 
-#: crates/ui-egui/src/editor.rs:1095
+#: crates/ui-egui/src/editor.rs:1096
 #: crates/ui-egui/src/titleblocks.rs:231
 #: crates/ui-egui/src/titleblocks.rs:236
 #: crates/ui-egui/src/titleblocks.rs:459
@@ -5211,7 +5235,7 @@ msgstr "Bỏ qua: {}"
 msgid "Left/Right"
 msgstr "Trái/Phải"
 
-#: crates/core/src/family.rs:3126
+#: crates/core/src/family.rs:3127
 msgid "Leg Width"
 msgstr "Chiều rộng chân"
 
@@ -5223,7 +5247,7 @@ msgstr "Bảng chú thích"
 msgid "Legends are coming in a later version."
 msgstr "Bảng chú thích sẽ có trong phiên bản sau."
 
-#: crates/core/src/family.rs:3125
+#: crates/core/src/family.rs:3126
 #: crates/ui-egui/src/linestyles/creator.rs:136
 msgid "Length"
 msgstr "Chiều dài"
@@ -5275,7 +5299,7 @@ msgstr "Bảng thống kê tầng"
 msgid "Light"
 msgstr "Sáng"
 
-#: crates/ui-egui/src/editor.rs:935
+#: crates/ui-egui/src/editor.rs:936
 msgid "Lighting"
 msgstr "Chiếu sáng"
 
@@ -5299,8 +5323,8 @@ msgstr "Tím nhạt"
 msgid "Limit Offset"
 msgstr "Độ lệch giới hạn"
 
-#: crates/ui-egui/src/editor/document.rs:554
-#: crates/ui-egui/src/editor/document.rs:1778
+#: crates/ui-egui/src/editor/document.rs:564
+#: crates/ui-egui/src/editor/document.rs:1792
 msgid "Line"
 msgstr "Đường"
 
@@ -5385,7 +5409,7 @@ msgstr "Đường {}"
 msgid "Line: a line between each two points clicked"
 msgstr "Đường thẳng: một đường giữa mỗi hai điểm được nhấp"
 
-#: crates/ui-egui/src/editor/document.rs:1777
+#: crates/ui-egui/src/editor/document.rs:1791
 msgid "Line: click points, or the work plane, in turn; the first again closes a profile"
 msgstr ""
 
@@ -5487,13 +5511,13 @@ msgstr "Nạp ký hiệu AREI"
 msgid "Load AREI Symbols: the Belgian AREI/RGIE's plan symbols (Table 2.23) as families, named in the project's language; loading them again changes nothing"
 msgstr "Nạp ký hiệu AREI: các ký hiệu mặt bằng của AREI/RGIE của Bỉ (Bảng 2.23) dưới dạng họ, đặt tên theo ngôn ngữ của dự án; nạp lại không thay đổi gì"
 
-#: crates/ui-egui/src/editor/document.rs:575
+#: crates/ui-egui/src/editor/document.rs:585
 #: crates/ui-egui/src/shortcuts.rs:134
 #: crates/ui-egui/src/sketch.rs:813
 msgid "Load Family"
 msgstr "Nạp họ"
 
-#: crates/ui-egui/src/editor/document.rs:574
+#: crates/ui-egui/src/editor/document.rs:584
 msgid "Load Family: a family file loaded into this family, to place with Component"
 msgstr "Nạp họ: một tệp họ được nạp vào họ này, để đặt bằng lệnh Thành phần"
 
@@ -5505,37 +5529,37 @@ msgstr "Nạp họ: một họ được lưu dưới dạng tệp .json, định
 msgid "Load File..."
 msgstr "Nạp tệp..."
 
-#: crates/ui-egui/src/editor/document.rs:754
+#: crates/ui-egui/src/editor/document.rs:764
 msgid "Load into Family"
 msgstr "Nạp vào họ"
 
-#: crates/ui-egui/src/editor/document.rs:765
+#: crates/ui-egui/src/editor/document.rs:775
 #: crates/ui-egui/src/editor/tabs.rs:283
 msgid "Load into Family and Close"
 msgstr "Nạp vào họ và đóng"
 
-#: crates/ui-egui/src/editor/document.rs:765
+#: crates/ui-egui/src/editor/document.rs:775
 msgid "Load into Family and Close: the family it is nested in takes it, and it closes"
 msgstr "Nạp vào họ và đóng: họ chứa nó nhận nó, rồi nó được đóng"
 
-#: crates/ui-egui/src/editor/document.rs:754
+#: crates/ui-egui/src/editor/document.rs:764
 msgid "Load into Family: the family it is nested in takes it as it is here, and it stays open"
 msgstr "Nạp vào họ: họ chứa nó nhận nó đúng như hiện tại, và nó vẫn mở"
 
-#: crates/ui-egui/src/editor/document.rs:757
+#: crates/ui-egui/src/editor/document.rs:767
 msgid "Load into Project"
 msgstr ""
 
-#: crates/ui-egui/src/editor/document.rs:768
+#: crates/ui-egui/src/editor/document.rs:778
 #: crates/ui-egui/src/editor/tabs.rs:283
 msgid "Load into Project and Close"
 msgstr ""
 
-#: crates/ui-egui/src/editor/document.rs:769
+#: crates/ui-egui/src/editor/document.rs:779
 msgid "Load into Project and Close: the project takes the family, and the family closes"
 msgstr ""
 
-#: crates/ui-egui/src/editor/document.rs:758
+#: crates/ui-egui/src/editor/document.rs:768
 msgid "Load into Project: the project takes the family as it is here, and the family stays open"
 msgstr ""
 
@@ -5548,7 +5572,7 @@ msgstr "Đã nạp"
 msgid "Loaded {} shortcuts from file."
 msgstr "Đã nạp {} phím tắt từ tệp."
 
-#: crates/ui-egui/src/editor/document.rs:1999
+#: crates/ui-egui/src/editor/document.rs:2013
 #: crates/ui-egui/src/orbit.rs:1482
 msgid "Loading 3D view onto the card…"
 msgstr ""
@@ -5570,7 +5594,7 @@ msgstr "Đường định vị:"
 msgid "Location line: {}"
 msgstr "Đường định vị: {}"
 
-#: crates/ui-egui/src/editor/sketch.rs:1356
+#: crates/ui-egui/src/editor/sketch.rs:1377
 #: crates/ui-egui/src/editor/types_dialog.rs:254
 #: crates/ui-egui/src/editor/types_dialog.rs:354
 msgid "Lock"
@@ -5580,7 +5604,7 @@ msgstr "Khóa"
 msgid "Lock alignment"
 msgstr ""
 
-#: crates/ui-egui/src/editor/sketch.rs:1354
+#: crates/ui-egui/src/editor/sketch.rs:1375
 msgid "Lock locks a line picked with no Offset, in a plan or an elevation"
 msgstr "Khóa chỉ khóa một đường được chọn khi không có Độ lệch, trong mặt bằng hoặc mặt đứng"
 
@@ -5588,7 +5612,7 @@ msgstr "Khóa chỉ khóa một đường được chọn khi không có Độ l
 msgid "Lock segment {}"
 msgstr "Khóa đoạn {}"
 
-#: crates/ui-egui/src/editor/sketch.rs:1352
+#: crates/ui-egui/src/editor/sketch.rs:1373
 msgid "Lock: each line picked is locked to what it was picked from, as Align's padlock locks it"
 msgstr "Khóa: mỗi đường được chọn sẽ được khóa vào đối tượng mà nó được chọn từ đó, như biểu tượng khóa của Căn chỉnh"
 
@@ -5638,19 +5662,19 @@ msgstr "Khoảng cách chính X"
 msgid "Main spacing Y"
 msgstr "Khoảng cách chính Y"
 
-#: crates/ui-egui/src/editor/document.rs:734
+#: crates/ui-egui/src/editor/document.rs:744
 msgid "Make Adaptive"
 msgstr ""
 
-#: crates/ui-egui/src/editor/document.rs:732
+#: crates/ui-egui/src/editor/document.rs:742
 msgid "Make Adaptive: the points selected become placement points, numbered in the order selected; adaptive already, they go back to reference points"
 msgstr ""
 
-#: crates/ui-egui/src/editor/document.rs:613
+#: crates/ui-egui/src/editor/document.rs:623
 msgid "Make Family Adaptive"
 msgstr "Chuyển họ thành thích ứng"
 
-#: crates/ui-egui/src/editor/document.rs:611
+#: crates/ui-egui/src/editor/document.rs:621
 msgid "Make Family Adaptive: its points are placed where each instance is clicked, as Revit's Generic Model Adaptive"
 msgstr "Chuyển họ thành thích ứng: các điểm của họ được đặt tại nơi nhấp cho mỗi đối tượng, như Generic Model Adaptive của Revit"
 
@@ -5679,7 +5703,7 @@ msgstr ""
 msgid "Make this family adaptive"
 msgstr ""
 
-#: crates/ui-egui/src/editor/document.rs:362
+#: crates/ui-egui/src/editor/document.rs:372
 #: crates/ui-egui/src/lib.rs:1241
 msgid "Manage"
 msgstr "Quản lý"
@@ -5741,7 +5765,7 @@ msgstr "Đã sao chép thuộc tính: áp dụng kiểu “{}” cho {} cấu ki
 #: crates/ui-egui/src/adaptive_editor.rs:494
 #: crates/ui-egui/src/adaptive_editor.rs:555
 #: crates/ui-egui/src/editor/extrusion.rs:228
-#: crates/ui-egui/src/editor/sketch.rs:1619
+#: crates/ui-egui/src/editor/sketch.rs:1640
 #: crates/ui-egui/src/properties.rs:2169
 #: crates/ui-egui/src/properties.rs:2284
 #: crates/ui-egui/src/properties.rs:2476
@@ -5759,10 +5783,10 @@ msgstr "Vật liệu:"
 msgid "Materials"
 msgstr "Vật liệu"
 
-#: crates/core/src/family.rs:354
+#: crates/core/src/family.rs:355
 #: crates/ui-egui/src/adaptive_editor.rs:552
 #: crates/ui-egui/src/editor/extrusion.rs:227
-#: crates/ui-egui/src/editor/sketch.rs:1618
+#: crates/ui-egui/src/editor/sketch.rs:1639
 #: crates/ui-egui/src/properties.rs:2151
 msgid "Materials and Finishes"
 msgstr "Vật liệu và hoàn thiện"
@@ -5796,8 +5820,8 @@ msgid "Maximum Riser Height"
 msgstr "Chiều cao bậc đứng tối đa"
 
 #: crates/core/src/commands.rs:2091
-#: crates/ui-egui/src/editor/document.rs:690
-#: crates/ui-egui/src/editor/document.rs:691
+#: crates/ui-egui/src/editor/document.rs:700
+#: crates/ui-egui/src/editor/document.rs:701
 msgid "Measure"
 msgstr "Đo"
 
@@ -5805,7 +5829,7 @@ msgstr "Đo"
 msgid "Measure (ME): click two points; their length and angle read beside the ruler between them"
 msgstr "Đo (ME): nhấp hai điểm; chiều dài và góc giữa chúng hiện bên cạnh thước đo"
 
-#: crates/core/src/family.rs:358
+#: crates/core/src/family.rs:359
 #: crates/ui-egui/src/editor/connectors.rs:227
 msgid "Mechanical"
 msgstr ""
@@ -5825,7 +5849,7 @@ msgid "Membrane"
 msgstr "Màng"
 
 #: crates/ui-egui/src/editor/extrusion.rs:182
-#: crates/ui-egui/src/editor.rs:196
+#: crates/ui-egui/src/editor.rs:197
 msgid "Mesh"
 msgstr "Lưới"
 
@@ -5837,7 +5861,7 @@ msgstr "Lưới thép theo chiều sâu"
 msgid "Mesh along width"
 msgstr "Lưới thép theo chiều rộng"
 
-#: crates/core/src/family.rs:3354
+#: crates/core/src/family.rs:3355
 msgid "Metal"
 msgstr "Kim loại"
 
@@ -5845,7 +5869,7 @@ msgstr "Kim loại"
 msgid "Metres"
 msgstr "Mét"
 
-#: crates/ui-egui/src/editor.rs:1061
+#: crates/ui-egui/src/editor.rs:1062
 msgid "Middle of the text"
 msgstr "Giữa văn bản"
 
@@ -5885,11 +5909,11 @@ msgstr "Tối thiểu"
 msgid "Minimum Angle"
 msgstr "Góc tối thiểu"
 
-#: crates/ui-egui/src/editor/document.rs:646
+#: crates/ui-egui/src/editor/document.rs:656
 msgid "Mirror - Draw Axis"
 msgstr ""
 
-#: crates/ui-egui/src/editor/document.rs:643
+#: crates/ui-egui/src/editor/document.rs:653
 msgid "Mirror - Pick Axis"
 msgstr ""
 
@@ -5914,13 +5938,13 @@ msgid "Mirrored"
 msgstr "Đối xứng"
 
 #: crates/ui-egui/src/editor/nested.rs:363
-#: crates/ui-egui/src/editor/sketch.rs:1371
-#: crates/ui-egui/src/editor/sketch.rs:1568
+#: crates/ui-egui/src/editor/sketch.rs:1392
+#: crates/ui-egui/src/editor/sketch.rs:1589
 msgid "Mode"
 msgstr "Chế độ"
 
-#: crates/ui-egui/src/editor/document.rs:466
-#: crates/ui-egui/src/editor/document.rs:1768
+#: crates/ui-egui/src/editor/document.rs:476
+#: crates/ui-egui/src/editor/document.rs:1782
 #: crates/ui-egui/src/fillpatterns.rs:548
 msgid "Model"
 msgstr "Mô hình"
@@ -5937,7 +5961,7 @@ msgstr "Hiển thị mô hình"
 msgid "Model Line Weights"
 msgstr "Độ dày nét mô hình"
 
-#: crates/ui-egui/src/editor/document.rs:475
+#: crates/ui-egui/src/editor/document.rs:485
 msgid "Model Text"
 msgstr ""
 
@@ -5945,7 +5969,7 @@ msgstr ""
 msgid "Model by Face"
 msgstr "Mô hình theo mặt"
 
-#: crates/ui-egui/src/editor/document.rs:1768
+#: crates/ui-egui/src/editor/document.rs:1782
 msgid "Model: lines drawn are model lines"
 msgstr ""
 
@@ -5953,10 +5977,10 @@ msgstr ""
 msgid "Models"
 msgstr "Mô hình"
 
-#: crates/ui-egui/src/editor/document.rs:631
-#: crates/ui-egui/src/editor/document.rs:782
-#: crates/ui-egui/src/editor/sketch.rs:1505
-#: crates/ui-egui/src/editor/sketch.rs:1508
+#: crates/ui-egui/src/editor/document.rs:641
+#: crates/ui-egui/src/editor/document.rs:792
+#: crates/ui-egui/src/editor/sketch.rs:1526
+#: crates/ui-egui/src/editor/sketch.rs:1529
 #: crates/ui-egui/src/lib.rs:1539
 #: crates/ui-egui/src/lib.rs:1604
 #: crates/ui-egui/src/lib.rs:1622
@@ -5965,11 +5989,11 @@ msgstr "Mô hình"
 msgid "Modify"
 msgstr "Sửa đổi"
 
-#: crates/ui-egui/src/editor/sketch.rs:1506
+#: crates/ui-egui/src/editor/sketch.rs:1527
 msgid "Modify (MD): pick lines of the sketch, and drag their ends"
 msgstr "Sửa đổi (MD): chọn các đường của phác thảo và kéo đầu mút của chúng"
 
-#: crates/ui-egui/src/editor/document.rs:781
+#: crates/ui-egui/src/editor/document.rs:791
 #: crates/ui-egui/src/lib.rs:3793
 msgid "Modify (MD): select elements"
 msgstr "Sửa đổi (MD): chọn cấu kiện"
@@ -5990,15 +6014,15 @@ msgstr "Sửa thành phần con: chọn một điểm, một góc hoặc một c
 msgid "Modify Wall"
 msgstr "Sửa đổi tường"
 
-#: crates/ui-egui/src/editor/document.rs:264
+#: crates/ui-egui/src/editor/document.rs:274
 msgid "Modify | Align"
 msgstr "Sửa đổi | Căn chỉnh"
 
-#: crates/ui-egui/src/editor/document.rs:311
+#: crates/ui-egui/src/editor/document.rs:321
 msgid "Modify | Blend"
 msgstr "Sửa đổi | Khối chuyển tiếp"
 
-#: crates/ui-egui/src/editor/document.rs:282
+#: crates/ui-egui/src/editor/document.rs:292
 msgid "Modify | Connectors"
 msgstr "Sửa đổi | Đầu nối"
 
@@ -6034,7 +6058,7 @@ msgstr "Sửa đổi | Tạo khối đùn rỗng"
 msgid "Modify | Create Void Revolve"
 msgstr "Sửa đổi | Tạo khối tròn xoay rỗng"
 
-#: crates/ui-egui/src/editor/document.rs:267
+#: crates/ui-egui/src/editor/document.rs:277
 msgid "Modify | Dimensions"
 msgstr "Sửa đổi | Kích thước"
 
@@ -6046,69 +6070,69 @@ msgstr "Sửa đổi | Sửa khối đùn"
 msgid "Modify | Edit Revolve"
 msgstr "Sửa đổi | Sửa khối tròn xoay"
 
-#: crates/ui-egui/src/editor/document.rs:310
+#: crates/ui-egui/src/editor/document.rs:320
 msgid "Modify | Extrusion"
 msgstr "Sửa đổi | Khối đùn"
 
-#: crates/ui-egui/src/editor/document.rs:300
-#: crates/ui-egui/src/editor/document.rs:308
+#: crates/ui-egui/src/editor/document.rs:310
+#: crates/ui-egui/src/editor/document.rs:318
 msgid "Modify | Form"
 msgstr ""
 
-#: crates/ui-egui/src/editor/document.rs:299
+#: crates/ui-egui/src/editor/document.rs:309
 msgid "Modify | Lines"
 msgstr ""
 
-#: crates/ui-egui/src/editor/document.rs:255
-#: crates/ui-egui/src/editor/document.rs:295
+#: crates/ui-egui/src/editor/document.rs:265
+#: crates/ui-egui/src/editor/document.rs:305
 msgid "Modify | Multi-Select"
 msgstr ""
 
-#: crates/ui-egui/src/editor/document.rs:258
+#: crates/ui-egui/src/editor/document.rs:268
 msgid "Modify | Nested Instance"
 msgstr "Sửa đổi | Đối tượng lồng"
 
-#: crates/ui-egui/src/editor/document.rs:270
+#: crates/ui-egui/src/editor/document.rs:280
 msgid "Modify | Pivot"
 msgstr "Sửa đổi | Chốt xoay"
 
-#: crates/ui-egui/src/editor/document.rs:251
+#: crates/ui-egui/src/editor/document.rs:261
 msgid "Modify | Place Component"
 msgstr "Sửa đổi | Đặt thành phần"
 
-#: crates/ui-egui/src/editor/document.rs:261
+#: crates/ui-egui/src/editor/document.rs:271
 msgid "Modify | Place Dimensions"
 msgstr "Sửa đổi | Đặt kích thước"
 
-#: crates/ui-egui/src/editor/document.rs:239
+#: crates/ui-egui/src/editor/document.rs:249
 msgid "Modify | Place Lines"
 msgstr ""
 
-#: crates/ui-egui/src/editor/document.rs:248
+#: crates/ui-egui/src/editor/document.rs:258
 msgid "Modify | Place Reference Plane"
 msgstr "Sửa đổi | Đặt mặt phẳng tham chiếu"
 
-#: crates/ui-egui/src/editor/document.rs:238
+#: crates/ui-egui/src/editor/document.rs:248
 msgid "Modify | Place Reference Point"
 msgstr ""
 
-#: crates/ui-egui/src/editor/document.rs:276
+#: crates/ui-egui/src/editor/document.rs:286
 msgid "Modify | Reference Lines"
 msgstr "Sửa đổi | Đường tham chiếu"
 
-#: crates/ui-egui/src/editor/document.rs:273
+#: crates/ui-egui/src/editor/document.rs:283
 msgid "Modify | Reference Planes"
 msgstr "Sửa đổi | Mặt phẳng tham chiếu"
 
-#: crates/ui-egui/src/editor/document.rs:298
+#: crates/ui-egui/src/editor/document.rs:308
 msgid "Modify | Reference Points"
 msgstr ""
 
-#: crates/ui-egui/src/editor/document.rs:312
+#: crates/ui-egui/src/editor/document.rs:322
 msgid "Modify | Revolve"
 msgstr "Sửa đổi | Khối tròn xoay"
 
-#: crates/ui-egui/src/editor/document.rs:313
+#: crates/ui-egui/src/editor/document.rs:323
 msgid "Modify | Sweep"
 msgstr "Sửa đổi | Khối quét"
 
@@ -6120,7 +6144,7 @@ msgstr "Sửa đổi | Khối quét > Sửa biên dạng"
 msgid "Modify | Sweep > Sketch Path"
 msgstr "Sửa đổi | Khối quét > Phác thảo đường dẫn"
 
-#: crates/ui-egui/src/editor/document.rs:314
+#: crates/ui-egui/src/editor/document.rs:324
 msgid "Modify | Swept Blend"
 msgstr "Sửa đổi | Khối quét chuyển tiếp"
 
@@ -6136,27 +6160,27 @@ msgstr "Sửa đổi | Khối quét chuyển tiếp > Sửa biên dạng 2"
 msgid "Modify | Swept Blend > Sketch Path"
 msgstr "Sửa đổi | Khối quét chuyển tiếp > Phác thảo đường dẫn"
 
-#: crates/ui-egui/src/editor/document.rs:279
+#: crates/ui-egui/src/editor/document.rs:289
 msgid "Modify | Symbols"
 msgstr "Sửa đổi | Ký hiệu"
 
-#: crates/ui-egui/src/editor/document.rs:316
+#: crates/ui-egui/src/editor/document.rs:326
 msgid "Modify | Void Blend"
 msgstr "Sửa đổi | Khối chuyển tiếp rỗng"
 
-#: crates/ui-egui/src/editor/document.rs:315
+#: crates/ui-egui/src/editor/document.rs:325
 msgid "Modify | Void Extrusion"
 msgstr "Sửa đổi | Khối đùn rỗng"
 
-#: crates/ui-egui/src/editor/document.rs:317
+#: crates/ui-egui/src/editor/document.rs:327
 msgid "Modify | Void Revolve"
 msgstr "Sửa đổi | Khối tròn xoay rỗng"
 
-#: crates/ui-egui/src/editor/document.rs:318
+#: crates/ui-egui/src/editor/document.rs:328
 msgid "Modify | Void Sweep"
 msgstr "Sửa đổi | Khối quét rỗng"
 
-#: crates/ui-egui/src/editor/document.rs:319
+#: crates/ui-egui/src/editor/document.rs:329
 msgid "Modify | Void Swept Blend"
 msgstr "Sửa đổi | Khối quét chuyển tiếp rỗng"
 
@@ -6165,7 +6189,7 @@ msgid "Mounting Height"
 msgstr "Chiều cao lắp đặt"
 
 #: crates/core/src/commands.rs:1415
-#: crates/ui-egui/src/editor/document.rs:652
+#: crates/ui-egui/src/editor/document.rs:662
 msgid "Move"
 msgstr "Di chuyển"
 
@@ -6173,17 +6197,17 @@ msgstr "Di chuyển"
 msgid "Move (MV): click a base point, then where it goes"
 msgstr "Di chuyển (MV): nhấp một điểm gốc, rồi chỗ cần đặt"
 
-#: crates/ui-egui/src/editor/document.rs:649
+#: crates/ui-egui/src/editor/document.rs:659
 msgid "Move (MV): what is selected, from a point clicked to another"
 msgstr ""
 
-#: crates/ui-egui/src/editor/document.rs:1117
+#: crates/ui-egui/src/editor/document.rs:1127
 #: crates/ui-egui/src/editor/types_dialog.rs:447
 #: crates/ui-egui/src/properties.rs:3242
 msgid "Move Down"
 msgstr "Chuyển xuống"
 
-#: crates/ui-egui/src/editor/document.rs:1114
+#: crates/ui-egui/src/editor/document.rs:1124
 #: crates/ui-egui/src/editor/types_dialog.rs:444
 #: crates/ui-egui/src/properties.rs:3235
 msgid "Move Up"
@@ -6197,8 +6221,8 @@ msgstr ""
 msgid "Multi-Select"
 msgstr "Chọn nhiều"
 
-#: crates/ui-egui/src/editor/document.rs:879
-#: crates/ui-egui/src/editor/document.rs:972
+#: crates/ui-egui/src/editor/document.rs:889
+#: crates/ui-egui/src/editor/document.rs:982
 msgid "Multi-Select ({})"
 msgstr ""
 
@@ -6254,7 +6278,7 @@ msgstr "KHÔNG KHÉP KÍN"
 #: crates/ui-egui/src/clouds.rs:59
 #: crates/ui-egui/src/editor/connectors.rs:221
 #: crates/ui-egui/src/editor/dimensions.rs:939
-#: crates/ui-egui/src/editor/document.rs:901
+#: crates/ui-egui/src/editor/document.rs:911
 #: crates/ui-egui/src/editor/types_dialog.rs:469
 #: crates/ui-egui/src/editor/work_plane.rs:211
 #: crates/ui-egui/src/electrical.rs:298
@@ -6311,8 +6335,8 @@ msgstr "Xây mới"
 msgid "New Distribution System"
 msgstr "Hệ thống phân phối mới"
 
-#: crates/ui-egui/src/editor.rs:743
-#: crates/ui-egui/src/editor.rs:1313
+#: crates/ui-egui/src/editor.rs:744
+#: crates/ui-egui/src/editor.rs:1314
 #: crates/ui-egui/src/start.rs:339
 msgid "New Family"
 msgstr "Họ mới"
@@ -6451,7 +6475,7 @@ msgstr "Chưa có tham số dự án nào: Mới sẽ tạo một tham số."
 msgid "No recent projects yet"
 msgstr "Chưa có dự án gần đây"
 
-#: crates/ui-egui/src/lib.rs:5508
+#: crates/ui-egui/src/lib.rs:5512
 msgid "No rows yet: the {} is empty."
 msgstr "Chưa có hàng nào: {} đang trống."
 
@@ -6486,8 +6510,8 @@ msgstr ""
 #: crates/ui-egui/src/adaptive_editor.rs:271
 #: crates/ui-egui/src/dimtypes.rs:122
 #: crates/ui-egui/src/editor/pivot.rs:286
-#: crates/ui-egui/src/editor.rs:1118
-#: crates/ui-egui/src/editor.rs:1120
+#: crates/ui-egui/src/editor.rs:1119
+#: crates/ui-egui/src/editor.rs:1121
 #: crates/ui-egui/src/plugins.rs:279
 #: crates/ui-egui/src/properties.rs:2022
 #: crates/ui-egui/src/properties.rs:2348
@@ -6530,11 +6554,11 @@ msgstr "Không khép kín: các tường bao quanh không khép lại."
 msgid "Not found"
 msgstr "Không tìm thấy"
 
-#: crates/ui-egui/src/editor/document.rs:1730
-#: crates/ui-egui/src/editor/document.rs:1761
-#: crates/ui-egui/src/editor/document.rs:1770
-#: crates/ui-egui/src/editor/document.rs:1772
-#: crates/ui-egui/src/editor/document.rs:1815
+#: crates/ui-egui/src/editor/document.rs:1744
+#: crates/ui-egui/src/editor/document.rs:1775
+#: crates/ui-egui/src/editor/document.rs:1784
+#: crates/ui-egui/src/editor/document.rs:1786
+#: crates/ui-egui/src/editor/document.rs:1829
 #: crates/ui-egui/src/editor/temp_hide.rs:233
 msgid "Not in BIMCraft yet"
 msgstr ""
@@ -6543,7 +6567,7 @@ msgstr ""
 msgid "Not on this system: drawn with {}"
 msgstr "Không có trên hệ thống này: vẽ bằng {}"
 
-#: crates/ui-egui/src/lib.rs:5360
+#: crates/ui-egui/src/lib.rs:5364
 msgid "Note"
 msgstr "Lưu ý"
 
@@ -6577,7 +6601,7 @@ msgid "Nothing is unused."
 msgstr "Không có gì chưa dùng."
 
 #: crates/ui-egui/src/browser.rs:290
-#: crates/ui-egui/src/editor/document.rs:1704
+#: crates/ui-egui/src/editor/document.rs:1718
 #: crates/ui-egui/src/editor/types_dialog.rs:286
 msgid "Nothing matches the search."
 msgstr "Không có gì khớp với tìm kiếm."
@@ -6611,12 +6635,12 @@ msgstr "Số cực"
 #: crates/ui-egui/src/dimtypes.rs:318
 #: crates/ui-egui/src/display.rs:82
 #: crates/ui-egui/src/editor/dimensions.rs:959
-#: crates/ui-egui/src/editor/document.rs:1569
+#: crates/ui-egui/src/editor/document.rs:1583
 #: crates/ui-egui/src/editor/types_dialog.rs:483
 #: crates/ui-egui/src/editor/types_dialog.rs:621
 #: crates/ui-egui/src/editor/visibility.rs:109
 #: crates/ui-egui/src/editor/work_plane.rs:238
-#: crates/ui-egui/src/editor.rs:1331
+#: crates/ui-egui/src/editor.rs:1332
 #: crates/ui-egui/src/electrical.rs:503
 #: crates/ui-egui/src/filter.rs:116
 #: crates/ui-egui/src/graphics.rs:392
@@ -6640,7 +6664,7 @@ msgstr "OK"
 msgid "Object Snaps"
 msgstr "Bắt điểm đối tượng"
 
-#: crates/ui-egui/src/editor/document.rs:602
+#: crates/ui-egui/src/editor/document.rs:612
 #: crates/ui-egui/src/objectstyles.rs:56
 msgid "Object Styles"
 msgstr "Kiểu đối tượng"
@@ -6672,7 +6696,7 @@ msgstr "Tắt: không tác nhân nào truy cập được cửa sổ này"
 
 #: crates/core/src/schedule.rs:201
 #: crates/ui-egui/src/editor/nested.rs:296
-#: crates/ui-egui/src/editor/sketch.rs:1343
+#: crates/ui-egui/src/editor/sketch.rs:1364
 #: crates/ui-egui/src/linestyles/creator.rs:76
 #: crates/ui-egui/src/sketch.rs:758
 #: crates/ui-egui/src/sketch.rs:1015
@@ -6826,7 +6850,7 @@ msgid "Open…"
 msgstr "Mở…"
 
 #: crates/core/src/schedule.rs:203
-#: crates/ui-egui/src/editor/document.rs:1658
+#: crates/ui-egui/src/editor/document.rs:1672
 msgid "Operation"
 msgstr "Kiểu mở"
 
@@ -6870,8 +6894,8 @@ msgstr ""
 msgid "Orthogonal Guides"
 msgstr "Đường dóng vuông góc"
 
-#: crates/core/src/family.rs:362
-#: crates/ui-egui/src/editor/document.rs:1855
+#: crates/core/src/family.rs:363
+#: crates/ui-egui/src/editor/document.rs:1869
 #: crates/ui-egui/src/properties.rs:151
 msgid "Other"
 msgstr "Khác"
@@ -6888,7 +6912,7 @@ msgstr "Ngoài"
 msgid "Outlet"
 msgstr "Ổ cắm"
 
-#: crates/ui-egui/src/editor.rs:926
+#: crates/ui-egui/src/editor.rs:927
 msgid "Outlets"
 msgstr "Ổ cắm"
 
@@ -6974,7 +6998,7 @@ msgstr "Khổ giấy, khung viền bản vẽ, lề lưu trữ, khung tên và q
 msgid "Parallel lines at an angle and a spacing, crosshatched or not"
 msgstr "Các đường song song theo một góc và khoảng cách, có gạch chéo lưới hoặc không"
 
-#: crates/ui-egui/src/editor/document.rs:1653
+#: crates/ui-egui/src/editor/document.rs:1667
 #: crates/ui-egui/src/editor/types_dialog.rs:254
 #: crates/ui-egui/src/properties.rs:3004
 #: crates/ui-egui/src/templates.rs:567
@@ -7017,7 +7041,7 @@ msgstr "Elip một phần"
 msgid "Partial Ellipse: click the ends of its axis, then how far it bulges"
 msgstr "Elip một phần: nhấp hai đầu trục, rồi độ phồng của nó"
 
-#: crates/ui-egui/src/editor/document.rs:629
+#: crates/ui-egui/src/editor/document.rs:639
 msgid "Paste"
 msgstr ""
 
@@ -7029,7 +7053,7 @@ msgstr "Patch panel"
 msgid "Patch Panel (PN): a panel on the wall, where you click; Space turns it"
 msgstr "Patch panel (PN): một tấm trên tường, tại chỗ bạn nhấp; Space để xoay"
 
-#: crates/ui-egui/src/editor.rs:933
+#: crates/ui-egui/src/editor.rs:934
 msgid "Patch Panels"
 msgstr "Patch panel"
 
@@ -7167,7 +7191,7 @@ msgid "Pick Again"
 msgstr "Chọn lại"
 
 #: crates/core/src/draw.rs:118
-#: crates/ui-egui/src/editor/document.rs:1797
+#: crates/ui-egui/src/editor/document.rs:1811
 msgid "Pick Faces"
 msgstr "Chọn mặt"
 
@@ -7180,7 +7204,7 @@ msgid "Pick Faces: click a face of a mass for a wall on it, as tall as the mass"
 msgstr "Chọn mặt: nhấp một mặt của khối để tạo tường trên đó, cao bằng khối"
 
 #: crates/core/src/draw.rs:117
-#: crates/ui-egui/src/editor/document.rs:1796
+#: crates/ui-egui/src/editor/document.rs:1810
 #: crates/ui-egui/src/shortcuts.rs:136
 msgid "Pick Lines"
 msgstr "Chọn đường"
@@ -7189,11 +7213,11 @@ msgstr "Chọn đường"
 msgid "Pick Lines: click a line, a wall or a grid to draw along it (beside it, with Offset)"
 msgstr "Chọn đường: nhấp một đường, tường hoặc lưới trục để vẽ dọc theo nó (bên cạnh nó, với Độ lệch)"
 
-#: crates/ui-egui/src/editor/sketch.rs:1400
+#: crates/ui-egui/src/editor/sketch.rs:1421
 msgid "Pick Path"
 msgstr "Chọn đường dẫn"
 
-#: crates/ui-egui/src/editor/sketch.rs:1399
+#: crates/ui-egui/src/editor/sketch.rs:1420
 msgid "Pick Path: pick reference planes, reference lines or forms' edges: lines of the path along them"
 msgstr "Chọn đường dẫn: chọn các mặt phẳng tham chiếu, đường tham chiếu hoặc cạnh của khối: tạo các đoạn đường dẫn dọc theo chúng"
 
@@ -7205,7 +7229,7 @@ msgstr "Chọn tường"
 msgid "Pick Walls: a boundary line along each wall clicked"
 msgstr "Chọn tường: một đường biên dọc theo mỗi tường được nhấp"
 
-#: crates/ui-egui/src/editor/views.rs:976
+#: crates/ui-egui/src/editor/views.rs:1057
 msgid "Pick a circle or an arc, then click where the dimension goes."
 msgstr "Chọn một đường tròn hoặc một cung, rồi nhấp vào vị trí đặt kích thước."
 
@@ -7234,7 +7258,7 @@ msgstr "Chọn một đường và dùng mặt phẳng làm việc mà nó đư�
 msgid "Pick a line of the sketch, on the part to keep."
 msgstr "Chọn một đường của phác thảo, trên phần cần giữ."
 
-#: crates/ui-egui/src/editor/views.rs:983
+#: crates/ui-egui/src/editor/views.rs:1064
 msgid "Pick a line that crosses the one before."
 msgstr "Chọn một đường cắt đường trước đó."
 
@@ -7259,7 +7283,7 @@ msgstr "Hãy chọn một tham số trong tệp tham số dùng chung."
 msgid "Pick a plane"
 msgstr "Chọn một mặt phẳng"
 
-#: crates/ui-egui/src/editor/views.rs:1009
+#: crates/ui-egui/src/editor/views.rs:1090
 msgid "Pick a plane or a line too: points alone face no way to measure along."
 msgstr "Hãy chọn thêm một mặt phẳng hoặc một đường: chỉ có các điểm thì không xác định được hướng để đo."
 
@@ -7283,7 +7307,7 @@ msgstr ""
 msgid "Pick a reference edge or centre line; the line under the cursor is highlighted."
 msgstr "Chọn một cạnh tham chiếu hoặc đường tâm; đường dưới con trỏ được tô sáng."
 
-#: crates/ui-egui/src/editor/views.rs:999
+#: crates/ui-egui/src/editor/views.rs:1080
 msgid "Pick a reference parallel to the first."
 msgstr "Chọn một tham chiếu song song với tham chiếu đầu tiên."
 
@@ -7296,7 +7320,7 @@ msgstr "Chọn một mặt phẳng tham chiếu, một đường tham chiếu ho
 msgid "Pick a reference plane, a reference line or a line, then a line of the sketch."
 msgstr "Chọn một mặt phẳng tham chiếu, một đường tham chiếu hoặc một đường, rồi chọn một đường của phác thảo."
 
-#: crates/ui-egui/src/editor/views.rs:1021
+#: crates/ui-egui/src/editor/views.rs:1102
 msgid "Pick a reference plane, an extrusion's end or a line of a form."
 msgstr "Chọn một mặt phẳng tham chiếu, một đầu của khối đùn hoặc một đường của khối."
 
@@ -7336,7 +7360,7 @@ msgstr "Chọn một tường hoặc lưới trục để lấy đối xứng qu
 msgid "Pick a wall, a grid or another line; then one that meets it."
 msgstr "Chọn một tường, lưới trục hoặc một đường khác; rồi chọn đường gặp nó."
 
-#: crates/ui-egui/src/editor/views.rs:992
+#: crates/ui-egui/src/editor/views.rs:1073
 msgid "Pick lines that cross, then click where the dimension goes."
 msgstr "Chọn các đường cắt nhau, rồi nhấp vào vị trí đặt kích thước."
 
@@ -7360,7 +7384,7 @@ msgstr "Chọn cạnh đang được tô sáng của cấu kiện để di chuy�
 msgid "Pick the first line to round."
 msgstr "Chọn đường thứ nhất cần bo tròn."
 
-#: crates/ui-egui/src/editor/sketch.rs:1276
+#: crates/ui-egui/src/editor/sketch.rs:1297
 msgid "Pick the first line, on the part to keep."
 msgstr "Chọn đường thứ nhất, trên phần cần giữ."
 
@@ -7388,7 +7412,7 @@ msgstr "Chọn lại các đường và các góc của ô mẫu: mẫu vẫn gi
 msgid "Pick the next reference or endpoint."
 msgstr "Chọn tham chiếu hoặc điểm đầu mút tiếp theo."
 
-#: crates/ui-egui/src/editor/sketch.rs:1277
+#: crates/ui-egui/src/editor/sketch.rs:1298
 msgid "Pick the second line, on the part to keep."
 msgstr "Chọn đường thứ hai, trên phần cần giữ."
 
@@ -7416,7 +7440,7 @@ msgstr "Chọn ba điểm"
 msgid "Pick three points: after OK, click three points on the model, each snapping to a corner near the pointer"
 msgstr "Chọn ba điểm: sau khi nhấn OK, nhấp ba điểm trên mô hình, mỗi điểm bắt vào một góc gần con trỏ"
 
-#: crates/ui-egui/src/editor/views.rs:1011
+#: crates/ui-egui/src/editor/views.rs:1092
 msgid "Pick two references or more, then click where the dimension goes."
 msgstr "Chọn hai tham chiếu trở lên, rồi nhấp vào vị trí đặt kích thước."
 
@@ -7424,7 +7448,7 @@ msgstr "Chọn hai tham chiếu trở lên, rồi nhấp vào vị trí đặt k
 msgid "Pick works in a plan or an elevation, where the family's planes and lines are drawn"
 msgstr "Chọn hoạt động trong mặt bằng hoặc mặt đứng, nơi các mặt phẳng và đường của họ được vẽ"
 
-#: crates/ui-egui/src/editor/document.rs:1712
+#: crates/ui-egui/src/editor/document.rs:1726
 msgid "Pick…"
 msgstr ""
 
@@ -7472,7 +7496,7 @@ msgstr "Phụ tùng nối ống"
 msgid "Pipe Fitting (PF): an elbow or a tee, where you click on a pipe's height; Space turns it"
 msgstr "Phụ tùng nối ống (PF): một cút hoặc tê, tại chỗ bạn nhấp ở cao độ của ống; Space để xoay"
 
-#: crates/ui-egui/src/editor/document.rs:703
+#: crates/ui-egui/src/editor/document.rs:713
 msgid "Pivot"
 msgstr "Chốt xoay"
 
@@ -7481,7 +7505,7 @@ msgstr "Chốt xoay"
 msgid "Pivot Point"
 msgstr "Điểm xoay"
 
-#: crates/ui-egui/src/editor/document.rs:701
+#: crates/ui-egui/src/editor/document.rs:711
 msgid "Pivot: click the point it turns about (where two planes cross, a line's end, a point of a sketch, or anywhere); its Swing Angle turns it"
 msgstr "Chốt xoay: nhấp điểm mà nó xoay quanh (nơi hai mặt phẳng giao nhau, đầu của một đường, một điểm của phác thảo, hoặc bất kỳ đâu); góc xoay của nó làm nó xoay"
 
@@ -7575,11 +7599,11 @@ msgstr "Đặt lưới trục"
 msgid "Place Inspection Box"
 msgstr "Đặt hộp kiểm tra"
 
-#: crates/ui-egui/src/editor/document.rs:828
+#: crates/ui-egui/src/editor/document.rs:838
 msgid "Place Instance"
 msgstr ""
 
-#: crates/ui-egui/src/editor/document.rs:827
+#: crates/ui-egui/src/editor/document.rs:837
 msgid "Place Instance: a new instance of the family on the test placement, in the project"
 msgstr ""
 
@@ -7688,7 +7712,7 @@ msgstr "Đặt trên mặt phẳng làm việc"
 msgid "Place:"
 msgstr "Đặt:"
 
-#: crates/ui-egui/src/editor/document.rs:1327
+#: crates/ui-egui/src/editor/document.rs:1337
 msgid "Placement Plane"
 msgstr "Mặt phẳng đặt"
 
@@ -7725,7 +7749,7 @@ msgstr "Mặt bằng dạng SVG…"
 msgid "Plan/RCP"
 msgstr "Mặt bằng/Mặt bằng trần"
 
-#: crates/ui-egui/src/editor/document.rs:1772
+#: crates/ui-egui/src/editor/document.rs:1786
 msgid "Plane"
 msgstr "Mặt phẳng"
 
@@ -7747,7 +7771,7 @@ msgstr ""
 msgid "Plugins: the WASM extensions in your plugin folder, what became of each, their log, and switching them on and off"
 msgstr ""
 
-#: crates/core/src/family.rs:359
+#: crates/core/src/family.rs:360
 #: crates/ui-egui/src/lib.rs:1233
 msgid "Plumbing"
 msgstr "Cấp thoát nước"
@@ -7764,7 +7788,7 @@ msgstr "Thiết bị vệ sinh"
 msgid "Plumbing Fixture (PX): a basin, a WC, a sink, a shower or a drain, where you click; Space turns it"
 msgstr "Thiết bị vệ sinh (PX): chậu rửa, bồn cầu, chậu bếp, vòi sen hoặc phễu thu, tại chỗ bạn nhấp; Space để xoay"
 
-#: crates/ui-egui/src/editor.rs:921
+#: crates/ui-egui/src/editor.rs:922
 msgid "Plumbing Fixtures"
 msgstr "Thiết bị vệ sinh"
 
@@ -7781,11 +7805,11 @@ msgstr "Đám mây điểm"
 msgid "Point Cloud: laser scans (PTS, XYZ, PLY, LAS or E57) brought into the project, one file or a survey's stations as one scan, drawn in the 3D view, plans and sections and snapped to"
 msgstr "Đám mây điểm: các bản quét laser (PTS, XYZ, PLY, LAS hoặc E57) đưa vào dự án, một tệp hoặc các trạm của một đợt khảo sát gộp thành một bản quét, vẽ trong khung nhìn 3D, mặt bằng và mặt cắt, và có thể bắt điểm"
 
-#: crates/ui-egui/src/editor/document.rs:1793
+#: crates/ui-egui/src/editor/document.rs:1807
 msgid "Point Element"
 msgstr ""
 
-#: crates/ui-egui/src/editor/document.rs:1792
+#: crates/ui-egui/src/editor/document.rs:1806
 msgid "Point Element: click the work plane for a reference point, or a line for one hosted on it"
 msgstr ""
 
@@ -7805,7 +7829,7 @@ msgstr "Điểm của phác thảo"
 msgid "Point to a wall or a line: the offset goes to the cursor's side. Click to place it."
 msgstr "Trỏ vào một tường hoặc một đường: bản song song nằm về phía con trỏ. Nhấp để đặt."
 
-#: crates/ui-egui/src/editor.rs:1055
+#: crates/ui-egui/src/editor.rs:1056
 msgid "Points"
 msgstr "Điểm"
 
@@ -7821,7 +7845,7 @@ msgstr ""
 msgid "Polyline: one line through every point clicked; Enter finishes it, the first point again closes it"
 msgstr "Đường đa tuyến: một đường đi qua mọi điểm được nhấp; Enter để kết thúc, nhấp lại điểm đầu tiên để khép kín"
 
-#: crates/core/src/family.rs:3127
+#: crates/core/src/family.rs:3128
 msgid "Porcelain"
 msgstr "Sứ"
 
@@ -7893,11 +7917,11 @@ msgstr "Thiết lập sẵn"
 msgid "Preview"
 msgstr "Xem trước"
 
-#: crates/ui-egui/src/editor/document.rs:1709
+#: crates/ui-egui/src/editor/document.rs:1723
 msgid "Preview Visibility"
 msgstr "Xem trước hiển thị"
 
-#: crates/ui-egui/src/editor/document.rs:1257
+#: crates/ui-egui/src/editor/document.rs:1267
 #: crates/ui-egui/src/shortcuts.rs:141
 msgid "Previous Pan/Zoom"
 msgstr ""
@@ -7913,21 +7937,21 @@ msgstr "Biên dạng"
 
 #: crates/ui-egui/src/editor/extrusion.rs:201
 #: crates/ui-egui/src/editor/sketch.rs:788
-#: crates/ui-egui/src/editor/sketch.rs:1415
+#: crates/ui-egui/src/editor/sketch.rs:1436
 msgid "Profile 1"
 msgstr "Biên dạng 1"
 
-#: crates/ui-egui/src/editor/sketch.rs:1416
+#: crates/ui-egui/src/editor/sketch.rs:1437
 msgid "Profile 1: sketch the profile at the path's start, square to it"
 msgstr "Biên dạng 1: phác thảo biên dạng tại điểm đầu của đường dẫn, vuông góc với nó"
 
 #: crates/ui-egui/src/editor/extrusion.rs:202
 #: crates/ui-egui/src/editor/sketch.rs:790
-#: crates/ui-egui/src/editor/sketch.rs:1418
+#: crates/ui-egui/src/editor/sketch.rs:1439
 msgid "Profile 2"
 msgstr "Biên dạng 2"
 
-#: crates/ui-egui/src/editor/sketch.rs:1418
+#: crates/ui-egui/src/editor/sketch.rs:1439
 msgid "Profile 2: sketch the profile at the path's end, square to it"
 msgstr "Biên dạng 2: phác thảo biên dạng tại điểm cuối của đường dẫn, vuông góc với nó"
 
@@ -7965,7 +7989,7 @@ msgstr "Tham số dự án: các giá trị do bạn định nghĩa mà mỗi c�
 msgid "Project Phasing"
 msgstr "Phân giai đoạn dự án"
 
-#: crates/ui-egui/src/editor/document.rs:604
+#: crates/ui-egui/src/editor/document.rs:614
 #: crates/ui-egui/src/lib.rs:4387
 msgid "Project Units"
 msgstr "Đơn vị dự án"
@@ -8017,13 +8041,13 @@ msgstr "Hình chiếu/Bề mặt"
 msgid "Project…"
 msgstr "Dự án…"
 
-#: crates/ui-egui/src/editor/document.rs:787
-#: crates/ui-egui/src/editor/document.rs:788
+#: crates/ui-egui/src/editor/document.rs:797
+#: crates/ui-egui/src/editor/document.rs:798
 #: crates/ui-egui/src/lib.rs:4472
 msgid "Properties"
 msgstr "Thuộc tính"
 
-#: crates/ui-egui/src/editor/document.rs:788
+#: crates/ui-egui/src/editor/document.rs:798
 #: crates/ui-egui/src/lib.rs:4472
 msgid "Properties (PP): show or hide the palette"
 msgstr "Thuộc tính (PP): hiện hoặc ẩn bảng thuộc tính"
@@ -8065,7 +8089,7 @@ msgstr "THỪA"
 msgid "RIGHT"
 msgstr ""
 
-#: crates/core/src/family.rs:146
+#: crates/core/src/family.rs:147
 msgid "Rack"
 msgstr "Tủ rack"
 
@@ -8073,16 +8097,16 @@ msgstr "Tủ rack"
 msgid "Rack (RK): a floor rack, where you click; Space turns it"
 msgstr "Tủ rack (RK): một tủ rack đặt sàn, tại chỗ bạn nhấp; Space để xoay"
 
-#: crates/ui-egui/src/editor.rs:934
+#: crates/ui-egui/src/editor.rs:935
 msgid "Racks"
 msgstr "Tủ rack"
 
-#: crates/ui-egui/src/editor/document.rs:518
+#: crates/ui-egui/src/editor/document.rs:528
 #: crates/ui-egui/src/lib.rs:4015
 msgid "Radial"
 msgstr "Bán kính"
 
-#: crates/ui-egui/src/editor/document.rs:519
+#: crates/ui-egui/src/editor/document.rs:529
 msgid "Radial Dimension: pick a circle or an arc of a form's sketch, then click where it goes"
 msgstr "Kích thước bán kính: chọn một đường tròn hoặc một cung trong phác thảo của khối, rồi nhấp chỗ đặt"
 
@@ -8091,8 +8115,8 @@ msgid "Radial Dimension: pick a round column, a curved wall, a circle or an arc,
 msgstr "Kích thước bán kính: chọn một cột tròn, tường cong, đường tròn hoặc cung, rồi nhấp chỗ đặt bán kính"
 
 #: crates/ui-egui/src/draw.rs:342
-#: crates/ui-egui/src/editor/sketch.rs:1339
-#: crates/ui-egui/src/editor.rs:1067
+#: crates/ui-egui/src/editor/sketch.rs:1360
+#: crates/ui-egui/src/editor.rs:1068
 msgid "Radius"
 msgstr "Bán kính"
 
@@ -8207,13 +8231,13 @@ msgid "Ref Plane"
 msgstr "MP tham chiếu"
 
 #: crates/ui-egui/src/adaptive_editor.rs:274
-#: crates/ui-egui/src/editor/views.rs:130
-#: crates/ui-egui/src/editor/views.rs:131
+#: crates/ui-egui/src/editor/views.rs:152
+#: crates/ui-egui/src/editor/views.rs:153
 msgid "Ref. Level"
 msgstr ""
 
 #: crates/core/src/graphics.rs:126
-#: crates/ui-egui/src/editor/document.rs:1770
+#: crates/ui-egui/src/editor/document.rs:1784
 msgid "Reference"
 msgstr "Tham chiếu"
 
@@ -8221,18 +8245,18 @@ msgstr "Tham chiếu"
 msgid "Reference Level"
 msgstr "Tầng tham chiếu"
 
-#: crates/ui-egui/src/editor/document.rs:970
+#: crates/ui-egui/src/editor/document.rs:980
 msgid "Reference Line"
 msgstr ""
 
-#: crates/ui-egui/src/editor/document.rs:886
+#: crates/ui-egui/src/editor/document.rs:896
 #: crates/ui-egui/src/editor/pivot.rs:267
 msgid "Reference Line {}"
 msgstr "Đường tham chiếu {}"
 
 #: crates/core/src/commands.rs:204
-#: crates/ui-egui/src/editor/document.rs:481
-#: crates/ui-egui/src/editor/document.rs:896
+#: crates/ui-egui/src/editor/document.rs:491
+#: crates/ui-egui/src/editor/document.rs:906
 #: crates/ui-egui/src/editor/extrusion.rs:84
 #: crates/ui-egui/src/editor/nested.rs:471
 #: crates/ui-egui/src/editor/pivot.rs:262
@@ -8243,7 +8267,7 @@ msgstr "Đường tham chiếu {}"
 msgid "Reference Plane"
 msgstr "Mặt phẳng tham chiếu"
 
-#: crates/ui-egui/src/editor/document.rs:479
+#: crates/ui-egui/src/editor/document.rs:489
 msgid "Reference Plane (RP): a plane drawn by two clicks in a plan or an elevation"
 msgstr "Mặt phẳng tham chiếu (RP): mặt phẳng được vẽ bằng hai lần nhấp trên mặt bằng hoặc mặt đứng"
 
@@ -8252,7 +8276,7 @@ msgid "Reference Plane (RP): click its two ends; work plane-based components are
 msgstr "Mặt phẳng tham chiếu (RP): nhấp hai đầu của nó; các thành phần dựa trên mặt phẳng làm việc được đặt lên nó và di chuyển theo nó"
 
 #: crates/ui-egui/src/adaptive_editor.rs:615
-#: crates/ui-egui/src/editor/document.rs:968
+#: crates/ui-egui/src/editor/document.rs:978
 msgid "Reference Point"
 msgstr ""
 
@@ -8289,7 +8313,7 @@ msgstr "Đã đặt thép: {} thanh, {} kg thép."
 msgid "Reinforcement"
 msgstr "Cốt thép"
 
-#: crates/ui-egui/src/editor/document.rs:997
+#: crates/ui-egui/src/editor/document.rs:1007
 msgid "Relationship"
 msgstr ""
 
@@ -8335,11 +8359,11 @@ msgstr "Gỡ sơn"
 msgid "Remove Paint: take the paint off the face you click in the 3D view"
 msgstr "Gỡ sơn: bỏ lớp sơn khỏi mặt bạn nhấp trong khung nhìn 3D"
 
-#: crates/ui-egui/src/editor/document.rs:709
+#: crates/ui-egui/src/editor/document.rs:719
 msgid "Remove Pivot"
 msgstr "Gỡ bỏ chốt xoay"
 
-#: crates/ui-egui/src/editor/document.rs:707
+#: crates/ui-egui/src/editor/document.rs:717
 msgid "Remove Pivot: it stops turning and stays where it is drawn"
 msgstr "Gỡ bỏ chốt xoay: nó ngừng xoay và giữ nguyên vị trí đã vẽ"
 
@@ -8427,15 +8451,15 @@ msgstr "Thay bằng văn bản:"
 msgid "Replace imported by same name"
 msgstr "Thay thế mục đã nhập cùng tên"
 
-#: crates/ui-egui/src/editor/document.rs:815
+#: crates/ui-egui/src/editor/document.rs:825
 msgid "Replay Instance"
 msgstr ""
 
-#: crates/ui-egui/src/editor/document.rs:813
+#: crates/ui-egui/src/editor/document.rs:823
 msgid "Replay Instance: the family takes the placement, type and parameters of the instance it was opened from, to see it as it is or to model from it"
 msgstr ""
 
-#: crates/ui-egui/src/editor/document.rs:980
+#: crates/ui-egui/src/editor/document.rs:990
 msgid "Replaying instance {} with its exact parameters and placement"
 msgstr ""
 
@@ -8549,17 +8573,17 @@ msgstr "Báo cáo nhập Revit"
 msgid "Revoke file access"
 msgstr ""
 
-#: crates/ui-egui/src/editor/document.rs:431
-#: crates/ui-egui/src/editor/sketch.rs:1592
-#: crates/ui-egui/src/editor.rs:202
+#: crates/ui-egui/src/editor/document.rs:441
+#: crates/ui-egui/src/editor/sketch.rs:1613
+#: crates/ui-egui/src/editor.rs:203
 msgid "Revolve"
 msgstr "Khối tròn xoay"
 
-#: crates/ui-egui/src/editor/document.rs:430
+#: crates/ui-egui/src/editor/document.rs:440
 msgid "Revolve: sketch a profile and an axis line on the work plane, turned about the axis"
 msgstr "Khối tròn xoay: phác thảo biên dạng và đường trục trên mặt phẳng làm việc, quay quanh trục"
 
-#: crates/ui-egui/src/editor.rs:200
+#: crates/ui-egui/src/editor.rs:201
 msgid "Revolved Circle"
 msgstr "Đường tròn xoay"
 
@@ -8567,7 +8591,7 @@ msgstr "Đường tròn xoay"
 msgid "Ribbon"
 msgstr "Dải băng"
 
-#: crates/ui-egui/src/editor.rs:1095
+#: crates/ui-egui/src/editor.rs:1096
 #: crates/ui-egui/src/titleblocks.rs:233
 #: crates/ui-egui/src/titleblocks.rs:238
 #: crates/ui-egui/src/titleblocks.rs:461
@@ -8681,7 +8705,7 @@ msgid "RotZ (degrees)"
 msgstr ""
 
 #: crates/core/src/commands.rs:1430
-#: crates/ui-egui/src/editor/document.rs:672
+#: crates/ui-egui/src/editor/document.rs:682
 msgid "Rotate"
 msgstr "Xoay"
 
@@ -8689,7 +8713,7 @@ msgstr "Xoay"
 msgid "Rotate (RO): click the angle's start, then its end"
 msgstr "Xoay (RO): nhấp điểm đầu của góc, rồi điểm cuối"
 
-#: crates/ui-egui/src/editor/document.rs:669
+#: crates/ui-egui/src/editor/document.rs:679
 msgid "Rotate (RO): what is selected, about its centre, by the angle between two clicks"
 msgstr ""
 
@@ -8707,7 +8731,7 @@ msgstr ""
 msgid "Rotate: click where the angle starts, about the centre shown."
 msgstr ""
 
-#: crates/ui-egui/src/editor/document.rs:699
+#: crates/ui-egui/src/editor/document.rs:709
 msgid "Rotation"
 msgstr "Xoay"
 
@@ -8777,11 +8801,11 @@ msgstr "Lưu"
 msgid "Save As…"
 msgstr "Lưu thành…"
 
-#: crates/ui-egui/src/editor/document.rs:578
+#: crates/ui-egui/src/editor/document.rs:588
 msgid "Save Family"
 msgstr ""
 
-#: crates/ui-egui/src/editor/document.rs:578
+#: crates/ui-egui/src/editor/document.rs:588
 msgid "Save Family: the family to a file"
 msgstr ""
 
@@ -8807,7 +8831,7 @@ msgid "Save as:"
 msgstr "Lưu thành:"
 
 #: crates/ui-egui/src/editor/tabs.rs:284
-#: crates/ui-egui/src/lib.rs:5640
+#: crates/ui-egui/src/lib.rs:5644
 msgid "Save changes to {}?"
 msgstr "Lưu các thay đổi vào {}?"
 
@@ -8815,7 +8839,7 @@ msgstr "Lưu các thay đổi vào {}?"
 msgid "Save to Favorites"
 msgstr "Lưu vào mục yêu thích"
 
-#: crates/ui-egui/src/editor.rs:1458
+#: crates/ui-egui/src/editor.rs:1459
 #: crates/ui-egui/src/properties.rs:2436
 msgid "Saved {} to your Favorites"
 msgstr "Đã lưu {} vào mục yêu thích"
@@ -8892,18 +8916,18 @@ msgid "Search the Project Browser"
 msgstr "Tìm trong trình duyệt dự án"
 
 #: crates/ui-egui/src/browser.rs:267
-#: crates/ui-egui/src/editor/document.rs:1636
+#: crates/ui-egui/src/editor/document.rs:1650
 #: crates/ui-egui/src/editor/types_dialog.rs:197
 #: crates/ui-egui/src/shortcuts.rs:468
 msgid "Search…"
 msgstr "Tìm kiếm…"
 
-#: crates/core/src/family.rs:3126
+#: crates/core/src/family.rs:3127
 msgid "Seat Height"
 msgstr "Chiều cao mặt ghế"
 
 #: crates/ui-egui/src/editor/extrusion.rs:191
-#: crates/ui-egui/src/editor/sketch.rs:1608
+#: crates/ui-egui/src/editor/sketch.rs:1629
 msgid "Second End"
 msgstr "Đầu thứ hai"
 
@@ -8980,10 +9004,10 @@ msgstr "Đoạn {}: chuyển xuống"
 msgid "Segment {}: Up"
 msgstr "Đoạn {}: chuyển lên"
 
-#: crates/ui-egui/src/editor/document.rs:780
-#: crates/ui-egui/src/editor/document.rs:1107
-#: crates/ui-egui/src/editor/document.rs:1136
-#: crates/ui-egui/src/editor/document.rs:1155
+#: crates/ui-egui/src/editor/document.rs:790
+#: crates/ui-egui/src/editor/document.rs:1117
+#: crates/ui-egui/src/editor/document.rs:1146
+#: crates/ui-egui/src/editor/document.rs:1165
 #: crates/ui-egui/src/lib.rs:3792
 msgid "Select"
 msgstr "Chọn"
@@ -9044,9 +9068,9 @@ msgid "Selection colour"
 msgstr "Màu vùng chọn"
 
 #: crates/ui-egui/src/adaptive_editor.rs:122
-#: crates/ui-egui/src/editor/document.rs:1807
-#: crates/ui-egui/src/editor/document.rs:1826
-#: crates/ui-egui/src/editor/sketch.rs:1532
+#: crates/ui-egui/src/editor/document.rs:1821
+#: crates/ui-egui/src/editor/document.rs:1840
+#: crates/ui-egui/src/editor/sketch.rs:1553
 #: crates/ui-egui/src/workplane.rs:194
 msgid "Set"
 msgstr "Đặt"
@@ -9067,19 +9091,19 @@ msgstr "Được xác định bởi kích thước và khóa của kiểu {}: {}
 msgid "Set by view template {}: change the template, or stop following it."
 msgstr "Do mẫu khung nhìn {} thiết lập: hãy thay đổi mẫu, hoặc ngừng theo nó."
 
-#: crates/ui-egui/src/editor/sketch.rs:1530
+#: crates/ui-egui/src/editor/sketch.rs:1551
 msgid "Set: the plane the sketch is drawn on, by name or picked in the view (the Work Plane dialog); its lines go with it"
 msgstr "Đặt: mặt phẳng vẽ phác thảo, theo tên hoặc chọn trong khung nhìn (hộp thoại Mặt phẳng làm việc); các đường của phác thảo đi theo nó"
 
-#: crates/ui-egui/src/editor/document.rs:1824
+#: crates/ui-egui/src/editor/document.rs:1838
 msgid "Set: the view's work plane, by name or picked in the view (the Work Plane dialog)"
 msgstr "Đặt: mặt phẳng làm việc của khung nhìn, theo tên hoặc chọn trong khung nhìn (hộp thoại Mặt phẳng làm việc)"
 
-#: crates/ui-egui/src/editor/document.rs:1806
+#: crates/ui-egui/src/editor/document.rs:1820
 msgid "Set: the work plane, a plane picked in the view (a point's, the level or a reference plane)"
 msgstr ""
 
-#: crates/ui-egui/src/editor/document.rs:601
+#: crates/ui-egui/src/editor/document.rs:611
 #: crates/ui-egui/src/lib.rs:3417
 #: crates/ui-egui/src/settings.rs:380
 msgid "Settings"
@@ -9090,7 +9114,7 @@ msgid "Settings…"
 msgstr "Cài đặt…"
 
 #: crates/core/src/graphics.rs:264
-#: crates/ui-egui/src/editor/document.rs:1246
+#: crates/ui-egui/src/editor/document.rs:1256
 msgid "Shaded"
 msgstr "Tô bóng"
 
@@ -9110,7 +9134,7 @@ msgstr "Lỗ mở thông tầng: nhấp hai góc đối diện; nó cắt qua c�
 msgid "Shape Editing"
 msgstr "Chỉnh sửa hình dạng"
 
-#: crates/ui-egui/src/editor/document.rs:967
+#: crates/ui-egui/src/editor/document.rs:977
 msgid "Shape Handle Point"
 msgstr ""
 
@@ -9193,9 +9217,9 @@ msgstr "Phím tắt gồm hai ký tự, chữ cái hoặc chữ số."
 msgid "Shortcuts"
 msgstr "Phím tắt"
 
-#: crates/ui-egui/src/editor/document.rs:1812
-#: crates/ui-egui/src/editor/document.rs:1831
-#: crates/ui-egui/src/editor/sketch.rs:1537
+#: crates/ui-egui/src/editor/document.rs:1826
+#: crates/ui-egui/src/editor/document.rs:1845
+#: crates/ui-egui/src/editor/sketch.rs:1558
 #: crates/ui-egui/src/editor/work_plane.rs:203
 #: crates/ui-egui/src/workplane.rs:276
 msgid "Show"
@@ -9290,8 +9314,8 @@ msgstr ""
 msgid "Show: open the plan they are in, zoomed to them"
 msgstr "Hiển thị: mở mặt bằng chứa chúng, thu phóng tới chúng"
 
-#: crates/ui-egui/src/editor/document.rs:1830
-#: crates/ui-egui/src/editor/sketch.rs:1536
+#: crates/ui-egui/src/editor/document.rs:1844
+#: crates/ui-egui/src/editor/sketch.rs:1557
 msgid "Show: the view's work plane, tinted"
 msgstr "Hiển thị: mặt phẳng làm việc của khung nhìn, được tô màu"
 
@@ -9299,7 +9323,7 @@ msgstr "Hiển thị: mặt phẳng làm việc của khung nhìn, được tô 
 msgid "Show: the work plane drawn as a grid in the 3D view, on or off"
 msgstr "Hiển thị: mặt phẳng làm việc được vẽ dạng lưới trong khung nhìn 3D, bật hoặc tắt"
 
-#: crates/ui-egui/src/editor/document.rs:1811
+#: crates/ui-egui/src/editor/document.rs:1825
 msgid "Show: the work plane drawn, tinted, with a grid on it"
 msgstr ""
 
@@ -9315,7 +9339,7 @@ msgstr "Vòi sen"
 msgid "Side"
 msgstr "Mặt bên"
 
-#: crates/ui-egui/src/editor/sketch.rs:1335
+#: crates/ui-egui/src/editor/sketch.rs:1356
 #: crates/ui-egui/src/reinforce.rs:182
 msgid "Sides"
 msgstr "Mặt bên"
@@ -9329,11 +9353,11 @@ msgid "Silhouettes"
 msgstr "Đường viền bóng"
 
 #: crates/core/src/schedule.rs:273
-#: crates/ui-egui/src/editor.rs:1509
+#: crates/ui-egui/src/editor.rs:1510
 msgid "Sill"
 msgstr "Bậu cửa"
 
-#: crates/core/src/family.rs:257
+#: crates/core/src/family.rs:258
 msgid "Sill Height"
 msgstr "Chiều cao bậu cửa"
 
@@ -9345,7 +9369,7 @@ msgstr "Đường đơn giản"
 msgid "Simulate placement frames"
 msgstr ""
 
-#: crates/core/src/family.rs:3390
+#: crates/core/src/family.rs:3391
 msgid "Single Door"
 msgstr "Cửa đi một cánh"
 
@@ -9383,11 +9407,11 @@ msgstr "Phác thảo trần"
 msgid "Sketch Ceiling: sketch the ceiling's outline, and any openings in it"
 msgstr "Phác thảo trần: phác thảo đường bao của trần và các lỗ mở trong đó"
 
-#: crates/ui-egui/src/editor/sketch.rs:1396
+#: crates/ui-egui/src/editor/sketch.rs:1417
 msgid "Sketch Path"
 msgstr "Phác thảo đường dẫn"
 
-#: crates/ui-egui/src/editor/sketch.rs:1395
+#: crates/ui-egui/src/editor/sketch.rs:1416
 msgid "Sketch Path: draw the path on the work plane, lines and arcs end to end"
 msgstr "Phác thảo đường dẫn: vẽ đường dẫn trên mặt phẳng làm việc, các đường thẳng và cung nối tiếp nhau"
 
@@ -9416,11 +9440,11 @@ msgstr "Xanh da trời"
 msgid "Sliding"
 msgstr "Trượt"
 
-#: crates/core/src/family.rs:3439
+#: crates/core/src/family.rs:3440
 msgid "Sliding Door"
 msgstr "Cửa đi trượt"
 
-#: crates/core/src/family.rs:3536
+#: crates/core/src/family.rs:3537
 msgid "Sliding Window"
 msgstr "Cửa sổ trượt"
 
@@ -9516,7 +9540,7 @@ msgstr "Tắt bắt điểm (điểm tiếp theo)"
 msgid "Snaps: what a picked point sticks to (ends, middles, crossings, centres, perpendiculars), and the angles it steps by; SE, SM, SI, SC, SP and SN take one alone for the next point, SO none"
 msgstr "Bắt điểm: những gì một điểm được chọn sẽ bám vào (đầu mút, điểm giữa, giao điểm, tâm, chân đường vuông góc), và bước góc của nó; SE, SM, SI, SC, SP và SN chỉ dùng riêng một loại cho điểm tiếp theo, SO không dùng loại nào"
 
-#: crates/core/src/family.rs:3220
+#: crates/core/src/family.rs:3221
 msgid "Sofa"
 msgstr "Sofa"
 
@@ -9538,7 +9562,7 @@ msgstr "Đen đặc"
 msgid "Solid Fill"
 msgstr "Tô đặc"
 
-#: crates/ui-egui/src/editor/document.rs:845
+#: crates/ui-egui/src/editor/document.rs:855
 msgid "Solid Form"
 msgstr ""
 
@@ -9548,7 +9572,7 @@ msgstr "Tô đặc"
 
 #: crates/ui-egui/src/adaptive_editor.rs:569
 #: crates/ui-egui/src/editor/extrusion.rs:254
-#: crates/ui-egui/src/editor/sketch.rs:1632
+#: crates/ui-egui/src/editor/sketch.rs:1653
 msgid "Solid/Void"
 msgstr ""
 
@@ -9607,7 +9631,7 @@ msgid "Spline"
 msgstr "Spline"
 
 #: crates/core/src/draw.rs:113
-#: crates/ui-egui/src/editor/document.rs:1789
+#: crates/ui-egui/src/editor/document.rs:1803
 msgid "Spline Through Points"
 msgstr "Spline qua các điểm"
 
@@ -9623,7 +9647,7 @@ msgstr "Spline: nhấp các điểm điều khiển; Enter để kết thúc"
 msgid "Split"
 msgstr "Chia"
 
-#: crates/ui-egui/src/editor/document.rs:682
+#: crates/ui-egui/src/editor/document.rs:692
 #: crates/ui-egui/src/lib.rs:4554
 #: crates/ui-egui/src/sketch.rs:757
 #: crates/ui-egui/src/sketch.rs:1014
@@ -9700,7 +9724,7 @@ msgid "Start"
 msgstr "Đầu"
 
 #: crates/ui-egui/src/editor/extrusion.rs:190
-#: crates/ui-egui/src/editor/sketch.rs:1607
+#: crates/ui-egui/src/editor/sketch.rs:1628
 msgid "Start Angle"
 msgstr "Góc bắt đầu"
 
@@ -9755,7 +9779,7 @@ msgstr "Thép đai"
 msgid "Straight"
 msgstr "Thẳng"
 
-#: crates/core/src/family.rs:360
+#: crates/core/src/family.rs:361
 #: crates/core/src/schedule.rs:296
 msgid "Structural"
 msgstr "Kết cấu"
@@ -9785,7 +9809,7 @@ msgstr "Kiểu"
 msgid "Styles"
 msgstr "Kiểu"
 
-#: crates/ui-egui/src/editor.rs:1117
+#: crates/ui-egui/src/editor.rs:1118
 msgid "Subcategory"
 msgstr ""
 
@@ -9843,25 +9867,25 @@ msgstr "Bề mặt, {}"
 msgid "Surface, {}°"
 msgstr "Bề mặt, {}°"
 
-#: crates/ui-egui/src/editor/document.rs:435
-#: crates/ui-egui/src/editor/sketch.rs:1394
-#: crates/ui-egui/src/editor/sketch.rs:1594
-#: crates/ui-egui/src/editor.rs:198
+#: crates/ui-egui/src/editor/document.rs:445
+#: crates/ui-egui/src/editor/sketch.rs:1415
+#: crates/ui-egui/src/editor/sketch.rs:1615
+#: crates/ui-egui/src/editor.rs:199
 msgid "Sweep"
 msgstr ""
 
-#: crates/ui-egui/src/editor/document.rs:434
+#: crates/ui-egui/src/editor/document.rs:444
 msgid "Sweep: sketch or pick a path on the work plane, then a profile square to it, swept along it"
 msgstr "Khối quét: phác thảo hoặc chọn một đường dẫn trên mặt phẳng làm việc, rồi một biên dạng vuông góc với nó, quét dọc theo đường dẫn"
 
-#: crates/ui-egui/src/editor/document.rs:439
-#: crates/ui-egui/src/editor/sketch.rs:1394
-#: crates/ui-egui/src/editor/sketch.rs:1595
-#: crates/ui-egui/src/editor.rs:199
+#: crates/ui-egui/src/editor/document.rs:449
+#: crates/ui-egui/src/editor/sketch.rs:1415
+#: crates/ui-egui/src/editor/sketch.rs:1616
+#: crates/ui-egui/src/editor.rs:200
 msgid "Swept Blend"
 msgstr ""
 
-#: crates/ui-egui/src/editor/document.rs:438
+#: crates/ui-egui/src/editor/document.rs:448
 msgid "Swept Blend: a path of one line or arc, and a profile at each end, blended along it"
 msgstr "Khối quét chuyển tiếp: đường dẫn gồm một đường thẳng hoặc một cung, và một biên dạng ở mỗi đầu, chuyển tiếp dọc theo đường dẫn"
 
@@ -9885,64 +9909,64 @@ msgstr "Đầu nối công tắc"
 msgid "Switch Connector: what a switch controls"
 msgstr "Đầu nối công tắc: thứ mà công tắc điều khiển"
 
-#: crates/ui-egui/src/editor.rs:927
+#: crates/ui-egui/src/editor.rs:928
 msgid "Switches"
 msgstr "Công tắc"
 
-#: crates/ui-egui/src/editor.rs:1062
+#: crates/ui-egui/src/editor.rs:1063
 msgid "Symbol Centre X"
 msgstr "Tâm ký hiệu X"
 
-#: crates/ui-egui/src/editor.rs:1062
+#: crates/ui-egui/src/editor.rs:1063
 msgid "Symbol Centre Y"
 msgstr "Tâm ký hiệu Y"
 
-#: crates/ui-egui/src/editor.rs:1080
+#: crates/ui-egui/src/editor.rs:1081
 msgid "Symbol From"
 msgstr "Ký hiệu từ"
 
-#: crates/ui-egui/src/editor.rs:1057
+#: crates/ui-egui/src/editor.rs:1058
 msgid "Symbol Points"
 msgstr "Các điểm ký hiệu"
 
-#: crates/ui-egui/src/editor.rs:1071
+#: crates/ui-egui/src/editor.rs:1072
 msgid "Symbol Radius"
 msgstr "Bán kính ký hiệu"
 
-#: crates/ui-egui/src/editor.rs:1125
+#: crates/ui-egui/src/editor.rs:1126
 msgid "Symbol Subcategory"
 msgstr ""
 
-#: crates/ui-egui/src/editor.rs:1090
+#: crates/ui-egui/src/editor.rs:1091
 msgid "Symbol Text"
 msgstr "Văn bản ký hiệu"
 
-#: crates/ui-egui/src/editor.rs:1080
+#: crates/ui-egui/src/editor.rs:1081
 msgid "Symbol To"
 msgstr "Ký hiệu đến"
 
-#: crates/ui-egui/src/editor.rs:1131
+#: crates/ui-egui/src/editor.rs:1132
 msgid "Symbol Visibility Settings"
 msgstr "Cài đặt hiển thị ký hiệu"
 
-#: crates/ui-egui/src/editor.rs:1104
+#: crates/ui-egui/src/editor.rs:1105
 msgid "Symbol Visible"
 msgstr "Hiển thị ký hiệu"
 
-#: crates/ui-egui/src/editor.rs:1176
+#: crates/ui-egui/src/editor.rs:1177
 msgid "Symbolic Arc"
 msgstr "Cung ký hiệu"
 
-#: crates/ui-egui/src/editor/document.rs:552
-#: crates/ui-egui/src/editor.rs:1179
+#: crates/ui-egui/src/editor/document.rs:562
+#: crates/ui-egui/src/editor.rs:1180
 msgid "Symbolic Line"
 msgstr "Đường ký hiệu"
 
-#: crates/ui-egui/src/editor/document.rs:551
+#: crates/ui-egui/src/editor/document.rs:561
 msgid "Symbolic Line: a line or an arc the family's plans draw, not part of its forms (a door's swing)"
 msgstr "Đường ký hiệu: một đường hoặc một cung mà mặt bằng của họ vẽ ra, không thuộc các khối của nó (đường mở cửa)"
 
-#: crates/ui-egui/src/editor/document.rs:1129
+#: crates/ui-egui/src/editor/document.rs:1139
 #: crates/ui-egui/src/mep.rs:189
 msgid "Symbols"
 msgstr "Ký hiệu"
@@ -9996,7 +10020,7 @@ msgstr ""
 msgid "Tab with {}"
 msgstr "Gộp thẻ với {}"
 
-#: crates/core/src/family.rs:3167
+#: crates/core/src/family.rs:3168
 msgid "Table"
 msgstr "Bàn"
 
@@ -10116,16 +10140,16 @@ msgstr "Cô lập cấu kiện tạm thời"
 msgid "Temporary dimension {}"
 msgstr "Kích thước tạm thời {}"
 
-#: crates/ui-egui/src/editor/document.rs:810
+#: crates/ui-egui/src/editor/document.rs:820
 msgid "Test Placement"
 msgstr ""
 
 #: crates/core/src/commands.rs:829
-#: crates/core/src/family.rs:355
-#: crates/ui-egui/src/editor/document.rs:562
-#: crates/ui-egui/src/editor.rs:258
-#: crates/ui-egui/src/editor.rs:1089
-#: crates/ui-egui/src/editor.rs:1177
+#: crates/core/src/family.rs:356
+#: crates/ui-egui/src/editor/document.rs:572
+#: crates/ui-egui/src/editor.rs:259
+#: crates/ui-egui/src/editor.rs:1090
+#: crates/ui-egui/src/editor.rs:1178
 #: crates/ui-egui/src/notes.rs:503
 #: crates/ui-egui/src/titleblocks.rs:197
 #: crates/ui-egui/src/titleblocks.rs:261
@@ -10167,7 +10191,7 @@ msgstr "Văn bản:"
 msgid "Text: IBM Plex Sans (bundled). Text scales down to fit its segment."
 msgstr "Văn bản: IBM Plex Sans (đi kèm). Chữ được thu nhỏ để vừa với đoạn của nó."
 
-#: crates/ui-egui/src/editor/document.rs:561
+#: crates/ui-egui/src/editor/document.rs:571
 msgid "Text: a label the family's plans draw"
 msgstr "Văn bản: một nhãn mà mặt bằng của họ vẽ ra"
 
@@ -10343,6 +10367,10 @@ msgstr ""
 msgid "The profile"
 msgstr "Biên dạng"
 
+#: crates/ui-egui/src/editor/shape_handles.rs:57
+msgid "The profile can't take this: its lines would cross, overlap or no longer close."
+msgstr ""
+
 #: crates/ui-egui/src/editor/sketch.rs:724
 msgid "The profile crosses the axis line: draw it to one side of the axis."
 msgstr "Biên dạng cắt qua đường trục: hãy vẽ nó về một phía của trục."
@@ -10494,7 +10522,7 @@ msgstr "Các đường này không gặp nhau: hãy chọn hai đường có th�
 msgid "These patterns to a PAT file, but the solid ones"
 msgstr "Các mẫu này ra tệp PAT, trừ các mẫu tô đặc"
 
-#: crates/core/src/family.rs:3126
+#: crates/core/src/family.rs:3127
 #: crates/ui-egui/src/properties.rs:468
 #: crates/ui-egui/src/properties.rs:469
 #: crates/ui-egui/src/properties.rs:803
@@ -10507,7 +10535,7 @@ msgid "Thickness:"
 msgstr "Chiều dày:"
 
 #: crates/core/src/lines.rs:194
-#: crates/ui-egui/src/editor/document.rs:594
+#: crates/ui-egui/src/editor/document.rs:604
 #: crates/ui-egui/src/lib.rs:4140
 msgid "Thin Lines"
 msgstr "Nét mảnh"
@@ -10525,8 +10553,20 @@ msgstr "Bản cài đặt này không kiểm tra cập nhật."
 msgid "This copy has no graphics card it can draw the 3D view on"
 msgstr "Bản cài đặt này không có card đồ họa nào để vẽ khung nhìn 3D"
 
-#: crates/ui-egui/src/editor/sketch.rs:1266
-#: crates/ui-egui/src/editor/views.rs:882
+#: crates/ui-egui/src/editor/shape_handles.rs:66
+msgid "This edge is locked: unlock it to drag it."
+msgstr ""
+
+#: crates/ui-egui/src/editor/shape_handles.rs:56
+msgid "This edge is tied to a parameter or worked out by a formula: change it in Family Types."
+msgstr ""
+
+#: crates/ui-egui/src/editor/shape_handles.rs:67
+msgid "This end is locked: unlock it to drag it."
+msgstr ""
+
+#: crates/ui-egui/src/editor/sketch.rs:1269
+#: crates/ui-egui/src/editor/sketch.rs:1287
 msgid "This end is tied to a parameter or worked out by a formula: change it in Family Types."
 msgstr "Đầu này gắn với một tham số hoặc được tính bằng công thức: hãy thay đổi trong Kiểu họ."
 
@@ -10609,7 +10649,7 @@ msgstr "Kích thước viên gạch"
 msgid "Tile Width"
 msgstr "Chiều rộng viên gạch"
 
-#: crates/core/src/family.rs:3127
+#: crates/core/src/family.rs:3128
 msgid "Timber"
 msgstr "Gỗ"
 
@@ -10643,7 +10683,7 @@ msgstr ""
 msgid "Title bar"
 msgstr "Thanh tiêu đề"
 
-#: crates/ui-egui/src/editor.rs:1080
+#: crates/ui-egui/src/editor.rs:1081
 msgid "To (degrees)"
 msgstr "Đến (độ)"
 
@@ -10706,7 +10746,7 @@ msgstr "Lớp trên, thanh theo hướng bắc"
 msgid "Topology: {} ({} triangles)"
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:5550
+#: crates/ui-egui/src/lib.rs:5554
 msgid "Total"
 msgstr "Tổng"
 
@@ -10728,7 +10768,7 @@ msgstr "Trong suốt"
 msgid "Tread"
 msgstr "Mặt bậc"
 
-#: crates/ui-egui/src/editor/document.rs:681
+#: crates/ui-egui/src/editor/document.rs:691
 msgid "Trim/Extend"
 msgstr ""
 
@@ -10753,13 +10793,13 @@ msgid "Trim/Extend Single Element: pick the line to trim or extend to, then the 
 msgstr "Cắt/Kéo dài một cấu kiện: chọn đường cần cắt hoặc kéo dài tới, rồi đường cần thay đổi, trên phần cần giữ"
 
 #: crates/core/src/commands.rs:1446
-#: crates/ui-egui/src/editor/sketch.rs:1513
+#: crates/ui-egui/src/editor/sketch.rs:1534
 #: crates/ui-egui/src/sketch.rs:741
 #: crates/ui-egui/src/sketch.rs:1016
 msgid "Trim/Extend to Corner"
 msgstr "Cắt/Kéo dài thành góc"
 
-#: crates/ui-egui/src/editor/sketch.rs:1512
+#: crates/ui-egui/src/editor/sketch.rs:1533
 msgid "Trim/Extend to Corner (TR): pick two lines, on the parts to keep"
 msgstr "Cắt/Kéo dài thành góc (TR): chọn hai đường, trên phần cần giữ"
 
@@ -10776,23 +10816,23 @@ msgstr "Tắt ghi đè bắt điểm"
 msgid "Turn the wall about its {}: {}"
 msgstr "Xoay tường quanh {} của nó: {}"
 
-#: crates/ui-egui/src/editor/sketch.rs:1439
+#: crates/ui-egui/src/editor/sketch.rs:1460
 msgid "Twist Left"
 msgstr "Xoắn trái"
 
-#: crates/ui-egui/src/editor/sketch.rs:1438
+#: crates/ui-egui/src/editor/sketch.rs:1459
 msgid "Twist Left: pair the top's vertices with the base's one place on, counter-clockwise"
 msgstr "Xoắn trái: ghép các đỉnh của mặt trên với các đỉnh của mặt đáy lệch đi một vị trí về phía trước, ngược chiều kim đồng hồ"
 
-#: crates/ui-egui/src/editor/sketch.rs:1443
+#: crates/ui-egui/src/editor/sketch.rs:1464
 msgid "Twist Right"
 msgstr "Xoắn phải"
 
-#: crates/ui-egui/src/editor/sketch.rs:1442
+#: crates/ui-egui/src/editor/sketch.rs:1463
 msgid "Twist Right: pair the top's vertices with the base's one place back, clockwise"
 msgstr "Xoắn phải: ghép các đỉnh của mặt trên với các đỉnh của mặt đáy lùi lại một vị trí, theo chiều kim đồng hồ"
 
-#: crates/ui-egui/src/editor/sketch.rs:1446
+#: crates/ui-egui/src/editor/sketch.rs:1467
 msgid "Twist: {}"
 msgstr "Xoắn: {}"
 
@@ -10876,7 +10916,7 @@ msgstr "Kiểu:"
 msgid "UP"
 msgstr "LÊN"
 
-#: crates/ui-egui/src/editor.rs:262
+#: crates/ui-egui/src/editor.rs:263
 msgid "URL"
 msgstr ""
 
@@ -10972,7 +11012,7 @@ msgstr ""
 msgid "Unnamed"
 msgstr "Chưa đặt tên"
 
-#: crates/ui-egui/src/lib.rs:5348
+#: crates/ui-egui/src/lib.rs:5349
 msgid "Unsaved changes"
 msgstr "Thay đổi chưa lưu"
 
@@ -11050,7 +11090,7 @@ msgstr "Bộ lọc Hiển thị/Đồ họa"
 msgid "V/G Overrides"
 msgstr "Ghi đè Hiển thị/Đồ họa"
 
-#: crates/ui-egui/src/editor/document.rs:1654
+#: crates/ui-egui/src/editor/document.rs:1668
 #: crates/ui-egui/src/editor/types_dialog.rs:254
 #: crates/ui-egui/src/templates.rs:567
 #: crates/ui-egui/src/titleblocks.rs:140
@@ -11073,7 +11113,7 @@ msgstr "Phiên bản {}"
 msgid "Vertical"
 msgstr "Đứng"
 
-#: crates/ui-egui/src/editor/document.rs:361
+#: crates/ui-egui/src/editor/document.rs:371
 #: crates/ui-egui/src/lib.rs:1240
 msgid "View"
 msgstr "Khung nhìn"
@@ -11141,7 +11181,7 @@ msgstr "Khung nhìn dạng PNG…"
 msgid "View template {}"
 msgstr "Mẫu khung nhìn {}"
 
-#: crates/ui-egui/src/editor/document.rs:1815
+#: crates/ui-egui/src/editor/document.rs:1829
 msgid "Viewer"
 msgstr ""
 
@@ -11150,7 +11190,7 @@ msgid "Views"
 msgstr "Khung nhìn"
 
 #: crates/ui-egui/src/browser.rs:467
-#: crates/ui-egui/src/editor/document.rs:1074
+#: crates/ui-egui/src/editor/document.rs:1084
 msgid "Views (all)"
 msgstr "Khung nhìn (tất cả)"
 
@@ -11158,8 +11198,8 @@ msgstr "Khung nhìn (tất cả)"
 msgid "Views following it: {}"
 msgstr "Các khung nhìn theo mẫu này: {}"
 
-#: crates/core/src/family.rs:356
-#: crates/ui-egui/src/editor/document.rs:1888
+#: crates/core/src/family.rs:357
+#: crates/ui-egui/src/editor/document.rs:1902
 #: crates/ui-egui/src/graphics.rs:812
 msgid "Visibility"
 msgstr "Hiển thị"
@@ -11173,15 +11213,15 @@ msgstr "Bộ hiển thị"
 msgid "Visibility Set: the view template this view follows, to switch what it shows at a click; <None> for its own"
 msgstr "Bộ hiển thị: mẫu khung nhìn mà khung nhìn này theo, để chuyển đổi những gì nó hiển thị chỉ bằng một lần nhấp; <Không> để dùng thiết lập riêng"
 
-#: crates/ui-egui/src/editor/document.rs:1892
+#: crates/ui-egui/src/editor/document.rs:1906
 msgid "Visibility Settings"
 msgstr "Cài đặt hiển thị"
 
-#: crates/ui-egui/src/editor/document.rs:1890
+#: crates/ui-egui/src/editor/document.rs:1904
 msgid "Visibility Settings: the views it is drawn in (Plan/RCP, Front/Back, Left/Right, only when cut) and at which detail levels"
 msgstr "Cài đặt hiển thị: các khung nhìn mà nó được vẽ (mặt bằng/mặt bằng trần, trước/sau, trái/phải, chỉ khi bị cắt) và ở những mức chi tiết nào"
 
-#: crates/ui-egui/src/editor/document.rs:593
+#: crates/ui-egui/src/editor/document.rs:603
 #: crates/ui-egui/src/lib.rs:4126
 msgid "Visibility/Graphics"
 msgstr "Hiển thị/Đồ họa"
@@ -11208,8 +11248,8 @@ msgstr "Ghi đè Hiển thị/Đồ họa cho {}"
 #: crates/ui-egui/src/editor/extrusion.rs:220
 #: crates/ui-egui/src/editor/extrusion.rs:292
 #: crates/ui-egui/src/editor/nested.rs:300
-#: crates/ui-egui/src/editor.rs:989
-#: crates/ui-egui/src/editor.rs:1110
+#: crates/ui-egui/src/editor.rs:990
+#: crates/ui-egui/src/editor.rs:1111
 msgid "Visible"
 msgstr "Hiển thị"
 
@@ -11235,50 +11275,50 @@ msgstr "Ổ cắm thoại"
 msgid "Voice Outlet (VO): a telephone point, where you click on the wall; Space turns it"
 msgstr "Ổ cắm thoại (VO): một điểm điện thoại, tại chỗ bạn nhấp trên tường; Space để xoay"
 
-#: crates/ui-egui/src/editor.rs:932
+#: crates/ui-egui/src/editor.rs:933
 msgid "Voice Outlets"
 msgstr "Ổ cắm thoại"
 
 #: crates/ui-egui/src/adaptive_editor.rs:900
 #: crates/ui-egui/src/editor/extrusion.rs:255
-#: crates/ui-egui/src/editor/sketch.rs:1633
+#: crates/ui-egui/src/editor/sketch.rs:1654
 msgid "Void"
 msgstr "Khối rỗng"
 
-#: crates/ui-egui/src/editor/document.rs:449
-#: crates/ui-egui/src/editor/sketch.rs:1598
+#: crates/ui-egui/src/editor/document.rs:459
+#: crates/ui-egui/src/editor/sketch.rs:1619
 msgid "Void Blend"
 msgstr "Khối chuyển tiếp rỗng"
 
-#: crates/ui-egui/src/editor/document.rs:448
-#: crates/ui-egui/src/editor/sketch.rs:1596
+#: crates/ui-egui/src/editor/document.rs:458
+#: crates/ui-egui/src/editor/sketch.rs:1617
 msgid "Void Extrusion"
 msgstr "Khối đùn rỗng"
 
-#: crates/ui-egui/src/editor/document.rs:849
+#: crates/ui-egui/src/editor/document.rs:859
 msgid "Void Form"
 msgstr ""
 
-#: crates/ui-egui/src/editor/document.rs:445
+#: crates/ui-egui/src/editor/document.rs:455
 msgid "Void Forms"
 msgstr ""
 
-#: crates/ui-egui/src/editor/document.rs:443
+#: crates/ui-egui/src/editor/document.rs:453
 msgid "Void Forms: a void extrusion, blend, revolve, sweep or swept blend, sketched as a solid one is, which cuts the solids before it"
 msgstr "Khối rỗng: khối đùn, khối chuyển tiếp, khối tròn xoay, khối quét hoặc khối quét chuyển tiếp rỗng, phác thảo như khối đặc, cắt các khối đặc tạo trước nó"
 
-#: crates/ui-egui/src/editor/document.rs:450
-#: crates/ui-egui/src/editor/sketch.rs:1597
+#: crates/ui-egui/src/editor/document.rs:460
+#: crates/ui-egui/src/editor/sketch.rs:1618
 msgid "Void Revolve"
 msgstr "Khối tròn xoay rỗng"
 
-#: crates/ui-egui/src/editor/document.rs:451
-#: crates/ui-egui/src/editor/sketch.rs:1599
+#: crates/ui-egui/src/editor/document.rs:461
+#: crates/ui-egui/src/editor/sketch.rs:1620
 msgid "Void Sweep"
 msgstr "Khối quét rỗng"
 
-#: crates/ui-egui/src/editor/document.rs:452
-#: crates/ui-egui/src/editor/sketch.rs:1600
+#: crates/ui-egui/src/editor/document.rs:462
+#: crates/ui-egui/src/editor/sketch.rs:1621
 msgid "Void Swept Blend"
 msgstr "Khối quét chuyển tiếp rỗng"
 
@@ -11311,7 +11351,7 @@ msgid "Voltages"
 msgstr "Điện áp"
 
 #: crates/core/src/schedule.rs:213
-#: crates/ui-egui/src/editor.rs:261
+#: crates/ui-egui/src/editor.rs:262
 msgid "Volume"
 msgstr "Thể tích"
 
@@ -11319,7 +11359,7 @@ msgstr "Thể tích"
 msgid "Volume (m³)"
 msgstr "Thể tích (m³)"
 
-#: crates/core/src/family.rs:3276
+#: crates/core/src/family.rs:3277
 msgid "WC"
 msgstr "Bồn cầu"
 
@@ -11371,11 +11411,11 @@ msgstr "Đường bao tường"
 msgid "Walls' Outline: the outline the level's walls enclose, along their centre lines, as sketch lines to edit"
 msgstr "Đường bao tường: đường bao mà các tường của tầng bao quanh, theo đường tim của chúng, dưới dạng đường phác thảo để chỉnh sửa"
 
-#: crates/core/src/family.rs:3248
+#: crates/core/src/family.rs:3249
 msgid "Wardrobe"
 msgstr "Tủ quần áo"
 
-#: crates/core/src/family.rs:3295
+#: crates/core/src/family.rs:3296
 msgid "Washbasin"
 msgstr "Chậu rửa mặt"
 
@@ -11460,7 +11500,7 @@ msgstr "Nơi hai tường hoặc hai lưới trục giao nhau"
 msgid "Wide Lines"
 msgstr "Nét đậm"
 
-#: crates/core/src/family.rs:255
+#: crates/core/src/family.rs:256
 #: crates/ui-egui/src/lineweights.rs:112
 #: crates/ui-egui/src/properties.rs:462
 #: crates/ui-egui/src/properties.rs:464
@@ -11500,7 +11540,7 @@ msgstr "Cửa sổ (WN): nhấp vào một tường"
 msgid "Window Schedule"
 msgstr "Bảng thống kê cửa sổ"
 
-#: crates/ui-egui/src/editor/document.rs:596
+#: crates/ui-egui/src/editor/document.rs:606
 #: crates/ui-egui/src/lang.rs:34
 msgid "Windows"
 msgstr "Cửa sổ"
@@ -11574,12 +11614,12 @@ msgid "Witness Line Overshoot:"
 msgstr "Phần vượt của đường gióng:"
 
 #: crates/ui-egui/src/adaptive_editor.rs:587
-#: crates/ui-egui/src/editor/document.rs:1805
-#: crates/ui-egui/src/editor/document.rs:1823
+#: crates/ui-egui/src/editor/document.rs:1819
+#: crates/ui-egui/src/editor/document.rs:1837
 #: crates/ui-egui/src/editor/extrusion.rs:215
 #: crates/ui-egui/src/editor/extrusion.rs:315
 #: crates/ui-egui/src/editor/nested.rs:290
-#: crates/ui-egui/src/editor/sketch.rs:1528
+#: crates/ui-egui/src/editor/sketch.rs:1549
 #: crates/ui-egui/src/editor/work_plane.rs:190
 #: crates/ui-egui/src/lib.rs:4647
 #: crates/ui-egui/src/shortcuts.rs:133
@@ -11609,7 +11649,7 @@ msgstr ""
 msgid "Work plane square to the {} axis"
 msgstr ""
 
-#: crates/core/src/family.rs:3260
+#: crates/core/src/family.rs:3261
 msgid "Worktop"
 msgstr "Mặt bàn bếp"
 
@@ -11637,7 +11677,7 @@ msgstr ""
 msgid "Yes"
 msgstr "Có"
 
-#: crates/ui-egui/src/editor.rs:256
+#: crates/ui-egui/src/editor.rs:257
 msgid "Yes/No"
 msgstr "Có/Không"
 
@@ -11674,12 +11714,12 @@ msgstr "Thu phóng"
 msgid "Zoom In"
 msgstr "Phóng to"
 
-#: crates/ui-egui/src/editor/document.rs:1251
+#: crates/ui-egui/src/editor/document.rs:1261
 #: crates/ui-egui/src/shortcuts.rs:139
 msgid "Zoom In Region"
 msgstr ""
 
-#: crates/ui-egui/src/editor/document.rs:1383
+#: crates/ui-egui/src/editor/document.rs:1393
 msgid "Zoom In Region: drag a rectangle over the view to fit it. Esc cancels."
 msgstr ""
 
@@ -11687,13 +11727,13 @@ msgstr ""
 msgid "Zoom Out"
 msgstr "Thu nhỏ"
 
-#: crates/ui-egui/src/editor/document.rs:1254
+#: crates/ui-egui/src/editor/document.rs:1264
 #: crates/ui-egui/src/shortcuts.rs:140
 msgid "Zoom Out (2x)"
 msgstr ""
 
 #: crates/ui-egui/src/canvas.rs:1792
-#: crates/ui-egui/src/editor/document.rs:1247
+#: crates/ui-egui/src/editor/document.rs:1257
 #: crates/ui-egui/src/orbit.rs:1994
 msgid "Zoom to Fit"
 msgstr "Thu phóng vừa khít"
@@ -11762,15 +11802,15 @@ msgstr "`{}` không phải là góc"
 msgid "`{}` isn't an angle"
 msgstr "`{}` không phải là góc"
 
-#: crates/ui-egui/src/editor/views.rs:287
+#: crates/ui-egui/src/editor/views.rs:312
 msgid "a datum stays: it can't be deleted"
 msgstr "mốc tham chiếu được giữ lại: không thể xóa"
 
-#: crates/ui-egui/src/editor.rs:797
+#: crates/ui-egui/src/editor.rs:798
 msgid "a family needs a name"
 msgstr "họ cần có tên"
 
-#: crates/ui-egui/src/editor.rs:840
+#: crates/ui-egui/src/editor.rs:841
 msgid "a family needs a type"
 msgstr "họ cần có một kiểu"
 
@@ -11870,7 +11910,7 @@ msgstr "chứa"
 msgid "copper"
 msgstr "đồng"
 
-#: crates/ui-egui/src/editor.rs:104
+#: crates/ui-egui/src/editor.rs:105
 msgid "corner {}: each corner is `x, y`"
 msgstr "góc {}: mỗi góc là `x, y`"
 
@@ -12196,7 +12236,7 @@ msgstr "tên chưa dùng tiếp theo"
 msgid "the opening has to stay on its wall"
 msgstr "lỗ mở phải nằm trên tường của nó"
 
-#: crates/ui-egui/src/editor/views.rs:291
+#: crates/ui-egui/src/editor/views.rs:316
 msgid "the plane can't go while {} is drawn on it"
 msgstr "không thể bỏ mặt phẳng khi {} đang được vẽ trên đó"
 
@@ -12223,7 +12263,7 @@ msgstr "không có thư mục nào để lưu mục yêu thích ở đây"
 msgid "this tool works in plan views: open one from the Project Browser"
 msgstr "công cụ này hoạt động trong khung nhìn mặt bằng: hãy mở một mặt bằng từ trình duyệt dự án"
 
-#: crates/ui-egui/src/editor.rs:756
+#: crates/ui-egui/src/editor.rs:757
 msgid "two types are named `{}`"
 msgstr "có hai kiểu cùng tên `{}`"
 
@@ -12243,7 +12283,7 @@ msgstr "mẫu khung nhìn"
 msgid "visual styles are for the 3D view: open it from the Project Browser"
 msgstr "kiểu hiển thị dành cho khung nhìn 3D: hãy mở nó từ trình duyệt dự án"
 
-#: crates/ui-egui/src/editor.rs:205
+#: crates/ui-egui/src/editor.rs:206
 msgid "void"
 msgstr "khối rỗng"
 
@@ -12300,7 +12340,7 @@ msgstr "{} ({})"
 msgid "{} / {}"
 msgstr "{} / {}"
 
-#: crates/ui-egui/src/editor/document.rs:1721
+#: crates/ui-egui/src/editor/document.rs:1735
 msgid "{} : {} plane"
 msgstr ""
 
@@ -12529,7 +12569,7 @@ msgstr "{}: `{}` không phải là chiều dài"
 msgid "{}: `{}` is not a number"
 msgstr "{}: `{}` không phải là số"
 
-#: crates/ui-egui/src/editor.rs:302
+#: crates/ui-egui/src/editor.rs:303
 msgid "{}: `{}` isn't a number"
 msgstr "{}: `{}` không phải là số"
 

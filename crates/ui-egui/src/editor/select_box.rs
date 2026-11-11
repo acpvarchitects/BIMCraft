@@ -467,14 +467,20 @@ impl Scene<'_> {
             || fv::form_at(self.family, self.values, self.staged, self.which, q).is_some()
     }
 
-    /// What is selected, over the picture, as one selected alone is drawn: a form's and a nested instance's outline, a plane's
-    /// trace, a reference line, a symbol's strokes, in the selection's colour. A dimension and a connector are lit by their own
+    /// What is selected, over the picture, as one selected alone is drawn: a form's edges as seen, a nested instance's outline,
+    /// a plane's trace, a reference line, a symbol's strokes, in the selection's colour. A dimension and a connector are lit by their own
     /// painters.
     pub(super) fn paint_selected(&self, painter: &Painter, selected: &[Picked]) {
         let picked = super::views::PICKED;
         for p in selected {
             match p {
-                Picked::Form(_) | Picked::Nested(_) => {
+                // A form by its own edges as the view sees it (its notches, its holes), not the outline it is picked by.
+                Picked::Form(i) => {
+                    for (a, b) in fv::outline_edges(self.family, self.values, self.staged, self.which, *i) {
+                        painter.line_segment([self.screen(a), self.screen(b)], Stroke::new(2.0, picked));
+                    }
+                }
+                Picked::Nested(_) => {
                     let ring = self.outline(*p);
                     if ring.len() > 2 {
                         painter.add(Shape::closed_line(ring, Stroke::new(2.0, picked)));
