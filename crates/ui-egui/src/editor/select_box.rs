@@ -116,6 +116,18 @@ impl Selection {
         &self.previous
     }
 
+    /// What Select Previous would bring back, each thing of it where `to` says it is now (none: let go): after an undo or
+    /// a redo, which may put another in a form's place.
+    pub(crate) fn follow_previous(&mut self, to: impl FnMut(Picked) -> Option<Picked>) {
+        let mut followed: Vec<Picked> = Vec::new();
+        for p in std::mem::take(&mut self.previous).into_iter().filter_map(to) {
+            if !followed.contains(&p) {
+                followed.push(p);
+            }
+        }
+        self.previous = followed;
+    }
+
     /// Select Previous: the selection as it was before it was last let go or replaced, again; what it replaces is the
     /// previous one from then on, so the two change places. Nothing with none before.
     pub(crate) fn restore_previous(&mut self) {

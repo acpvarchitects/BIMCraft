@@ -592,3 +592,50 @@ fn a_click_on_a_plane_beside_a_nested_instance_aligned_to_it_selects_the_plane()
     click_family(&mut h, [50.0, -350.0, 0.0]);
     assert_eq!(selected(&h), vec![Picked::Nested(0)]);
 }
+
+/// What Select Previous brings back names a form by its place, which an undo or a redo may give to another: it follows the
+/// form. What has nothing to follow it by (a symbol, a connector, a nested instance) is let go by an undo, never mistaken.
+#[test]
+fn pr_after_an_undo_brings_back_the_form_that_was_selected_not_the_one_now_in_its_place() {
+    let mut h = plan();
+    let undo = |h: &mut Harness<BimApp>| {
+        h.key_press_modifiers(Modifiers::COMMAND, Key::Z);
+        h.run();
+    };
+    // B selected and let go, then A selected and deleted: B is the first form now, and the one PR would bring back.
+    click_family(&mut h, [700.0, 400.0, 0.0]);
+    assert_eq!(selected(&h), vec![Picked::Form(1)]);
+    key(&mut h, Key::Escape);
+    click_family(&mut h, [-700.0, 400.0, 0.0]);
+    key(&mut h, Key::Delete);
+    assert_eq!(editor(&h).draft_family().unwrap().forms.len(), 1, "A deleted");
+    // Undo puts A back in the first place: PR brings back B, in the second, not A.
+    undo(&mut h);
+    assert_eq!(editor(&h).draft_family().unwrap().forms.len(), 2, "A back");
+    shortcut(&mut h, "PR");
+    assert_eq!(selected(&h), vec![Picked::Form(1)], "B, where it is now");
+    // Move Up, undone: B let go, moved up to the first place and back by Undo, is still the one PR brings back.
+    key(&mut h, Key::Escape);
+    editor_mut(&mut h).move_form(1, -1);
+    h.run();
+    shortcut(&mut h, "PR");
+    assert_eq!(selected(&h), vec![Picked::Form(0)], "B, moved up");
+    key(&mut h, Key::Escape);
+    undo(&mut h);
+    shortcut(&mut h, "PR");
+    assert_eq!(selected(&h), vec![Picked::Form(1)], "B, back in the second place");
+    // Redo moves it up again, and PR follows it.
+    key(&mut h, Key::Escape);
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Y);
+    h.run();
+    shortcut(&mut h, "PR");
+    assert_eq!(selected(&h), vec![Picked::Form(0)], "B, moved up again by Redo");
+    // A plane is followed by its GUID as it always was; the symbol, held by its place alone, is let go by the undo.
+    boxed(&mut h, [-200.0, -600.0, 0.0], [200.0, -800.0, 0.0], Modifiers::NONE);
+    click_with_mods(&mut h, [-1300.0, -300.0, 0.0], Modifiers::COMMAND);
+    assert_eq!(selected(&h), set(vec![Picked::Plane(g(EDGE)), Picked::Symbol(0)]));
+    key(&mut h, Key::Escape);
+    undo(&mut h);
+    shortcut(&mut h, "PR");
+    assert_eq!(selected(&h), vec![Picked::Plane(g(EDGE))], "the plane, not the symbol's place");
+}

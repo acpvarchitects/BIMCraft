@@ -97,6 +97,9 @@ impl Draft {
     }
 
     fn restore(self, ed: &mut FamilyEditor) {
+        // The forms as they stand before the step, each by the tag it keeps while the document is open: what Select Previous
+        // would bring back follows its forms to where the step puts them (FE-20).
+        let tags: Vec<u64> = ed.forms.iter().map(|f| f.tag).collect();
         ed.name = self.name;
         ed.category = self.category;
         ed.operation = self.operation;
@@ -115,6 +118,18 @@ impl Draft {
         // What is selected and no longer there goes from the selection.
         let nodes = ed.adaptive.as_ref().map(|d| d.nodes.iter().map(|n| n.id.clone()).collect::<Vec<_>>()).unwrap_or_default();
         ed.modeller.selection.retain(|id| nodes.contains(id));
+        // What Select Previous would bring back names a form, a symbol, a connector and a nested instance by its place, which
+        // the step may have given to another: a form is followed by its tag, a plane, a line and a dimension are named by
+        // their GUIDs, and what has nothing to follow it by is let go rather than mistaken for another.
+        use super::select_box::Picked;
+        ed.selection.follow_previous(|p| match p {
+            Picked::Form(i) => {
+                let tag = tags.get(i)?;
+                ed.forms.iter().position(|f| f.tag == *tag).map(Picked::Form)
+            }
+            Picked::Plane(_) | Picked::Line(_) | Picked::Dimension(_) => Some(p),
+            Picked::Symbol(_) | Picked::Connector(_) | Picked::Nested(_) => None,
+        });
         ed.prune_selection();
         ed.problem = None;
     }
