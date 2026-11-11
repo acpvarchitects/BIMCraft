@@ -349,6 +349,14 @@ fn constraints_reach_a_blends_top_and_ends_and_a_sweeps_path() {
         let bottom = tris.iter().flatten().map(|p| p[2]).fold(f64::INFINITY, f64::min);
         assert!((top - bottom - d).abs() < 1e-6, "{t}: the profile from {bottom} to {top}");
     }
+    // `solve` lists the sketch (the path) in the host's axes as before, and each profile apart, in its own plane's axes.
+    let r = run(&mut s, "family", json!({"name": "P", "solve": "Big"}));
+    let form = &r["forms"][0];
+    assert_eq!(form["sketch"].as_array().map(Vec::len), Some(1), "{form}");
+    let profile = form["profiles"][0].as_array().expect("its profile");
+    let ys: Vec<f64> = profile.iter().map(|l| l["start"][1].as_f64().unwrap()).collect();
+    let span = ys.iter().copied().fold(f64::NEG_INFINITY, f64::max) - ys.iter().copied().fold(f64::INFINITY, f64::min);
+    assert!((span - 200.0).abs() < 1e-6, "D, 200: {ys:?}");
 }
 
 /// The first piece of `f` as type `t` builds it, flexed by its constraints, and its volume.
