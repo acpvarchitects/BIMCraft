@@ -754,15 +754,22 @@ plane that moves goes with it), and a lock, a label, EQ or an Align lock to what
 not satisfied: dimension 2 holds what is moved where it is". A form moves its sketch where the view sees its plane flat; where it
 sees it edge-on, the drag's part along the normal moves an extrusion's or a blend's Start and End together, a revolve's, a sweep's
 or a reference line's refusing ("would leave the plane it is drawn on"). What is drawn on a plane that moves goes with it, and moves
-by the rest of the drag alone. A nested instance (its `at` and `offset` in its host's axes), a symbol and a connector are placed
+by the rest of the drag alone: a form, a nested instance, and a reference line (and what is drawn on that), whether the plane moves
+in a move or by its own drag (`Family::move_by`'s and `drag_plane`'s edits, `drag_move::carry_lines`). Only what the view shows
+moves (`Scene::pieces`): a plan's symbol or dimension left selected stays where it is when the selection is dragged in an
+elevation, as in Revit. A connector has no host (its place is in the family's axes), so one on a form that moves stays unless it
+is selected too. A nested instance (its `at` and `offset` in its host's axes), a symbol and a connector are placed
 again; a dimension's line (`at`) goes with the drag, never what it measures. Only the numbers that move are written, as numbers:
 one that is a formula refuses the move, the rest keep theirs (a box whose x is `W`'s moves north). A datum, a plane that defines
 the origin, what a pivot turns and a form of a file's triangles stay, refusing it, and after it every type must still solve and
-build, as Finish checks (a form whose Align lock pulls another's side past a hole in another type is refused, naming the type).
+build, as Finish checks, and the family pass its checks if it did before (`Family::check`: a reference line off its plane among
+them; the plane's own drag is refused the same way) (a form whose Align lock pulls another's side past a hole in another type is refused, naming the type).
 Refused, everything is as it was and the status bar says why. The drag is FE-5's: made again from the draft as it was at each
 step, the pointer read through the view as the drag began; a drag back where it began leaves nothing to save; Escape, Undo, Redo and
 another view or tab shown give it up, everything put back. Handles, grips and padlocks keep their drags, and a drag from nothing
-its box. Over something selected the status bar says a drag moves it. Shift (Ortho, FE-2) isn't wired yet: the delta is worked
+its box. Over something selected the status bar says a drag moves it. Shift on an element not selected neither moves
+it nor draws a box, as before; on one selected it moves the selection. Known, as Align and a plane's drag have it: an arc a
+constraint turns while what it follows moves is given its turn as a number, its formula lost. Shift (Ortho, FE-2) isn't wired yet: the delta is worked
 out in one place (`drag_move::delta`) for it. Tests: `tests/family_drag_move.rs`, `family_constraint_tests.rs`.
 
 The Work Plane dialog (T12, `editor/work_plane.rs`), as Revit's: Current Work Plane names the plane as `Planes::listed` does, with Show

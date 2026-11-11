@@ -433,8 +433,9 @@ fn handles_and_grips_still_shape_and_a_drag_from_nothing_still_boxes() {
     assert!(l1.end[0] > 220.0, "{l1:?}");
     // From nothing: a window, taking B; nothing moves.
     let (b, a) = (points(&h, 1), points(&h, 0));
-    let (from, to) = ends(&h, [-1200.0, -100.0, 0.0], [1100.0, 900.0, 0.0]);
-    drag_screen(&mut h, from, to, PointerButton::Primary);
+    let at = press_and_move(&mut h, [-1200.0, -100.0, 0.0], [1100.0, 900.0, 0.0], Modifiers::NONE);
+    assert!(editor(&h).boxing(), "a box is drawn");
+    release(&mut h, at);
     assert_eq!(editor(&h).selection.items(), &[Picked::Form(1)]);
     assert_eq!((points(&h, 1), points(&h, 0)), (b, a));
 }
@@ -478,4 +479,101 @@ fn family_drag_move_screenshots() {
     save(&mut h, "elevation");
     drag(&mut h, [150.0, 0.0, 100.0], [0.0, 0.0, 300.0], Modifiers::NONE);
     save(&mut h, "elevation-moved");
+}
+
+const WALL: &str = "fe700000-0000-4000-8000-000000000005";
+const ON_WALL: &str = "fe700000-0000-4000-8000-000000000006";
+
+/// [`family_with`] and a plane Wall at y 1800 (upright, along x) with a reference line drawn on it, 500 up.
+fn with_wall() -> String {
+    family_with("").replace(
+        r#""ref_planes": ["#,
+        &format!(r#""ref_planes": [{{"guid": "{WALL}", "name": "Wall", "start": [-2000, 1800, 0], "end": [2000, 1800, 0], "up": [0, 0, 1]}}, "#),
+    )
+    .replace(
+        r#""ref_lines": ["#,
+        &format!(r#""ref_lines": [{{"guid": "{ON_WALL}", "host": {{"plane": "{WALL}"}}, "start": [-300, 1800, 500], "end": [300, 1800, 500]}}, "#),
+    )
+}
+
+fn wall_y(h: &Harness<BimApp>) -> f64 {
+    family(h).planes.iter().find(|p| p.guid == g(WALL)).unwrap().start[1]
+}
+
+fn line_on_wall(h: &Harness<BimApp>) -> bimcraft_core::family::RefLine {
+    family(h).lines.iter().find(|l| l.guid == g(ON_WALL)).unwrap().clone()
+}
+
+#[test]
+fn a_reference_line_drawn_on_a_moved_plane_goes_with_it_and_the_family_stays_sound() {
+    let mut h = plan_of(&with_wall());
+    assert!(family(&h).check(&|_| true).is_ok(), "{:?}", family(&h).check(&|_| true));
+    // Wall and A together, north 200.
+    pick(&mut h, &[Picked::Plane(g(WALL)), Picked::Form(0)]);
+    drag(&mut h, [300.0, 300.0, 0.0], [0.0, 200.0, 0.0], Modifiers::NONE);
+    assert!(near(wall_y(&h), 2000.0), "{} {}", wall_y(&h), status(&h));
+    let l = line_on_wall(&h);
+    assert!((l.start[1] - wall_y(&h)).abs() < 1e-6 && (l.end[1] - wall_y(&h)).abs() < 1e-6, "{l:?}");
+    assert_eq!((l.start[0], l.end[0], l.start[2]), (-300.0, 300.0, 500.0), "it moves with the plane alone");
+    assert!(family(&h).check(&|_| true).is_ok(), "{:?}", family(&h).check(&|_| true));
+    // Wall alone, by its own drag (F4): the line goes with it too.
+    pick(&mut h, &[Picked::Plane(g(WALL))]);
+    let was = wall_y(&h);
+    drag(&mut h, [1500.0, was, 0.0], [0.0, 300.0, 0.0], Modifiers::NONE);
+    assert!(near(wall_y(&h), was + 300.0), "{} {}", wall_y(&h), status(&h));
+    assert!((line_on_wall(&h).start[1] - wall_y(&h)).abs() < 1e-6, "{:?}", line_on_wall(&h));
+    assert!(family(&h).check(&|_| true).is_ok(), "{:?}", family(&h).check(&|_| true));
+}
+
+#[test]
+fn what_the_view_doesnt_show_stays_where_it_is() {
+    let mut h = plan();
+    pick(&mut h, &[Picked::Form(0), Picked::Symbol(0), Picked::Dimension(g(DIM))]);
+    view(&mut h, Some(Which::Elevation(Side::Front)));
+    let (symbols, dims) = (family(&h).symbols.clone(), family(&h).dimensions.clone());
+    let before = points(&h, 0);
+    drag(&mut h, [300.0, 0.0, 150.0], [100.0, 0.0, 0.0], Modifiers::NONE);
+    assert!(near(shift(&before, &points(&h, 0))[0], 100.0), "{}", status(&h));
+    assert_eq!(family(&h).symbols, symbols, "a plan's symbol isn't in Front");
+    assert_eq!(family(&h).dimensions, dims, "nor a plan's dimension");
+}
+
+#[test]
+fn a_selected_dimension_dragged_by_its_text_moves_its_line() {
+    let mut h = plan();
+    pick(&mut h, &[Picked::Dimension(g(DIM))]);
+    // Its text sits over the middle of its line.
+    let (line, _) = ends(&h, [500.0, -1200.0, 0.0], [0.0; 3]);
+    let text = line - vec2(0.0, 12.0);
+    drag_screen(&mut h, text, text + vec2(0.0, 40.0), PointerButton::Primary);
+    let at = family(&h).dimensions[0].at;
+    assert!(at[1] < -1250.0 && at[0] == 500.0, "{at:?} {}", status(&h));
+    assert_eq!(editor(&h).selection.items(), &[Picked::Dimension(g(DIM))]);
+}
+
+#[test]
+fn shift_on_an_element_not_selected_neither_moves_it_nor_boxes() {
+    let mut h = plan();
+    pick(&mut h, &[Picked::Form(0)]);
+    let (a, b) = (points(&h, 0), points(&h, 1));
+    let at = press_and_move(&mut h, [-800.0, 300.0, 0.0], [300.0, 300.0, 0.0], Modifiers::SHIFT);
+    assert!(!editor(&h).boxing(), "no box");
+    release(&mut h, at);
+    assert_eq!((points(&h, 0), points(&h, 1)), (a, b));
+    assert_eq!(editor(&h).selection.items(), &[Picked::Form(0)]);
+    assert!(untouched(&h));
+}
+
+#[test]
+fn the_options_bars_depth_is_wide_enough_for_its_value_after_a_multi_select() {
+    let mut h = plan();
+    pick(&mut h, &[Picked::Form(0), Picked::Form(1)]);
+    h.run();
+    view(&mut h, Some(Which::Elevation(Side::Front)));
+    pick(&mut h, &[Picked::Form(0)]);
+    for _ in 0..4 {
+        h.run();
+    }
+    let widest = h.get_all_by_label("Depth").map(|n| n.rect().width()).fold(0.0f32, f32::max);
+    assert!(widest >= 80.0, "the Depth field is {widest} wide");
 }

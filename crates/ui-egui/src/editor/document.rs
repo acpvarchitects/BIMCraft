@@ -154,6 +154,11 @@ impl FamilyEditor {
         Draft::of(self)
     }
 
+    /// The draft made `d` again, as Undo makes a step: what a refused drag puts back.
+    pub(super) fn put_back(&mut self, d: Draft) {
+        d.restore(self);
+    }
+
     /// The draft `d` was saved or loaded into the project: changes are counted from it.
     pub(super) fn saved_as(&mut self, d: Draft) {
         self.document.clean = Some(d);

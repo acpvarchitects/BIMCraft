@@ -2538,8 +2538,8 @@ impl Family {
     /// the sketch points it moved.
     fn edits(&self, s: &Solution, values: &BTreeMap<String, Val>) -> Vec<Edit> {
         let mut out: Vec<Edit> = s.planes.iter().filter_map(|(i, v)| Some(Edit::Plane(self.planes.get(*i)?.guid, *v))).collect();
-        // Reference lines the constraints moved or turned, and those drawn on them (F7c).
-        if !s.lines.is_empty() {
+        // Reference lines the constraints moved or turned, and those drawn on them (F7c), or on a plane that moved or turned.
+        if !s.lines.is_empty() || !s.planes.is_empty() || !s.turned_planes.is_empty() {
             let moved = self.moved(s);
             for (was, now) in self.lines.iter().zip(&moved.lines) {
                 if was.start != now.start || was.end != now.end {

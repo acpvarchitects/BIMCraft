@@ -408,3 +408,37 @@ fn a_move_shifts_what_it_takes_and_is_refused_where_a_constraint_holds_it() {
     let datum = Moving { planes: vec![CENTER_LEFT_RIGHT], ..Moving::default() };
     assert!(matches!(f.move_by(&v, &datum, [10.0, 0.0, 0.0]), Err(MoveRefused::Stays(Stays::Datum(_)))));
 }
+
+#[test]
+fn a_reference_line_drawn_on_a_plane_a_drag_or_a_move_moves_goes_with_it() {
+    use crate::family::constraints::Moving;
+    let mut s = Session::new();
+    const WALL: &str = "33333333-3333-4333-8333-000000000001";
+    const ON: &str = "33333333-3333-4333-8333-000000000002";
+    run(
+        &mut s,
+        "family",
+        json!({"name": "W", "parameters": [{"name": "Gap", "kind": "length", "value": 1800}], "types": {"T": {}},
+               "ref_planes": [{"guid": WALL, "name": "Wall", "start": [-2000, 1800, 0], "end": [2000, 1800, 0], "up": [0, 0, 1]}],
+               "ref_lines": [{"guid": ON, "host": {"plane": WALL}, "start": [-300, 1800, 500], "end": [300, 1800, 500]}],
+               "dimensions": [{"view": "plan", "refs": [{"plane": CENTER_FRONT_BACK}, {"plane": WALL}], "at": [0, 900, 0], "label": "Gap"}]}),
+    );
+    let f = &s.model.families["W"];
+    let v = f.values("T", &BTreeMap::new()).unwrap();
+    let line_y = |edits: &[Edit]| {
+        edits.iter().find_map(|e| match e {
+            Edit::LineEnds(g_, a, b) if *g_ == g(ON) => Some((a[1], b[1])),
+            _ => None,
+        })
+    };
+    // Dragged (F4): Gap takes the new length, and the line goes with Wall.
+    let n = f.planes.iter().find(|p| p.guid == g(WALL)).unwrap().frame().z;
+    let to = 2000.0 * n[1];
+    let edits = f.drag_plane(&v, g(WALL), to).unwrap();
+    assert_eq!(line_y(&edits), Some((2000.0, 2000.0)), "{edits:?}");
+    // Moved with its label taken off (FE-7): the same.
+    let mut free = f.clone();
+    free.dimensions.clear();
+    let edits = free.move_by(&v, &Moving { planes: vec![g(WALL)], ..Moving::default() }, [0.0, 200.0, 0.0]).unwrap();
+    assert_eq!(line_y(&edits), Some((2000.0, 2000.0)), "{edits:?}");
+}

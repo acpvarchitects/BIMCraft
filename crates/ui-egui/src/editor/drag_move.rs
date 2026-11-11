@@ -23,6 +23,7 @@ use bimcraft_core::family::sketch::FormCurve;
 use bimcraft_core::family::views::Which;
 use bimcraft_core::family::{FamilyDimension, NestedInstance, Val};
 use bimcraft_core::geom::P2;
+use bimcraft_core::ids::Guid;
 
 /// What a move may change of the draft, as it was when the drag began: what Escape and a refusal put back.
 #[derive(Clone)]
@@ -72,6 +73,8 @@ pub(crate) struct MoveDrag {
     items: Vec<Picked>,
     before: Kept,
     broken: Vec<String>,
+    /// Whether the family passed its checks (`Family::check`) as it was: then a move that fails them is refused.
+    sound: bool,
     last: [f64; 3],
 }
 
@@ -111,7 +114,8 @@ fn shifted(e: &mut Expr, by: f64) -> bool {
 impl FamilyEditor {
     /// A move of the selection begun at `from` (the view's millimetres, `view` as it was then) in view `which`, drawn in pass
     /// `seen`.
-    pub(super) fn move_drag(&self, (from, view, which, seen): (P2, bimcraft_core::render::View, Which, u64)) -> MoveDrag {
+    /// `shown`: what of the selection the view shows, which alone moves.
+    pub(super) fn move_drag(&self, (from, view, which, seen): (P2, bimcraft_core::render::View, Which, u64), shown: &[Picked]) -> MoveDrag {
         // The types that don't solve or build as it is: a move isn't refused for them.
         let broken = self
             .family()
@@ -123,8 +127,8 @@ impl FamilyEditor {
                     .collect()
             })
             .unwrap_or_default();
-        let items = self.selection.items().iter().copied().filter(|p| self.holds(*p)).collect();
-        MoveDrag { which, seen, from, view, items, before: Kept::of(self), broken, last: [0.0; 3] }
+        let items = self.selection.items().iter().copied().filter(|p| self.holds(*p) && shown.contains(p)).collect();
+        MoveDrag { which, seen, from, view, items, before: Kept::of(self), broken, sound: self.sound(), last: [0.0; 3] }
     }
 
     /// Whether the selection is being dragged.
@@ -147,11 +151,24 @@ impl FamilyEditor {
         if d.iter().all(|v| v.abs() < 1e-9) {
             return Ok(());
         }
-        let done = self.move_picked(&drag.items, d, &drag.broken);
+        let done = self.move_picked(&drag.items, d, &drag.broken).and_then(|()| {
+            // What it leaves must pass the family's checks, a reference line still on its plane among them, if it did before.
+            if drag.sound
+                && let Err(e) = self.family().and_then(|f| f.check(&|_| true))
+            {
+                return Err(e);
+            }
+            Ok(())
+        });
         if done.is_err() {
             drag.before.put_back(self);
         }
         done
+    }
+
+    /// Whether the draft passes the family's checks (`Family::check`, its materials aside): what a drag must leave it doing.
+    pub(super) fn sound(&self) -> bool {
+        self.family().is_ok_and(|f| f.check(&|_| true).is_ok())
     }
 
     /// The move given up, the draft put back as it was before it: whether there was one.
@@ -293,5 +310,23 @@ impl FamilyEditor {
         }
         let tag = ft.tag;
         self.forms[i] = FormText::again(&f, tag);
+    }
+}
+
+/// The reference lines drawn on plane `plane`, and on them, moved `by` (the family's axes) with it.
+pub(super) fn carry_lines(lines: &mut [RefLine], plane: Guid, by: [f64; 3]) {
+    let mut moved: Vec<Guid> = Vec::new();
+    for l in lines.iter_mut() {
+        let on = match l.host {
+            PlaneRef::Plane(h) => h == plane,
+            PlaneRef::Line(h, _) => moved.contains(&h),
+        };
+        if on {
+            for (k, by) in by.iter().enumerate() {
+                l.start[k] += by;
+                l.end[k] += by;
+            }
+            moved.push(l.guid);
+        }
     }
 }

@@ -168,6 +168,14 @@ impl Selection {
     }
 }
 
+#[cfg(test)]
+impl FamilyEditor {
+    /// Whether a selection box is being dragged: what a test reads mid-drag.
+    pub(crate) fn boxing(&self) -> bool {
+        self.selection.boxing.is_some()
+    }
+}
+
 impl FamilyEditor {
     /// `p` alone selected, whatever was selected let go: as a click or the Project Browser selects one.
     pub(crate) fn select_only(&mut self, p: Picked) {
