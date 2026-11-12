@@ -12,6 +12,7 @@ use bimcraft_i18n::msg;
 mod adaptive_editor;
 mod adaptive_place;
 mod adaptive_view;
+mod assistant;
 mod background_grid;
 mod browser;
 mod cad;
@@ -47,6 +48,7 @@ mod minimap;
 mod notes;
 mod objectstyles;
 mod orbit;
+mod panelsched;
 mod paper;
 mod phasing;
 mod plugins;
@@ -373,7 +375,7 @@ type Buttons<'a> = &'a [(Icon, &'a str, &'a str, Option<Tool>, bool)];
 
 /// The desktop's own two-letter shortcuts, which [`BimApp::shortcut`] takes before the commands'
 /// aliases, and what Keyboard Shortcuts (KS) calls them.
-const SHORTCUTS: [(&str, &str); 55] = [
+const SHORTCUTS: [(&str, &str); 56] = [
     ("3D", "3D View"),
     ("MD", "Modify"),
     ("SB", "Floor: Structural"),
@@ -426,6 +428,7 @@ const SHORTCUTS: [(&str, &str); 55] = [
     ("HL", "Hidden Line"),
     ("SD", "Shaded"),
     ("KS", "Keyboard Shortcuts"),
+    ("AI", msg!("Assistant")),
     ("BX", "Section Box"),
     ("GD", "Graphic Display Options"),
     // Revit has none for its title blocks; no command or tool takes TB.
@@ -786,6 +789,8 @@ pub struct BimApp {
     /// Structure > Reinforce, while open, and what was typed in it for each kind of host.
     reinforce_dialog: Option<reinforce::ReinforceDialog>,
     reinforce_kept: BTreeMap<reinforce::Form, BTreeMap<&'static str, String>>,
+    /// The slot picked in the panel schedule on screen.
+    panel_slot: Option<u32>,
     /// Manage > Line Weights, while open.
     line_weights_dialog: Option<lineweights::LineWeightsDialog>,
     /// Manage > Object Styles, while open.
@@ -837,6 +842,8 @@ pub struct BimApp {
     /// The family and type the Component tool places, as picked, and how far it's turned, degrees.
     component: Option<(String, String)>,
     component_angle: f64,
+    /// Hinge hand for this run of the Door tool. Facing follows the pointer.
+    door_flip_hand: bool,
     /// An adaptive component's points clicked so far, in the project, before the last one places it.
     pub(crate) adaptive_clicks: Vec<[f64; 3]>,
     /// An adaptive instance's grip being dragged in a plan: the instance, and its point's number.
@@ -864,6 +871,8 @@ pub struct BimApp {
     styled: bool,
     /// The updater, which the desktop app attaches: a window starts without one, and so never phones home.
     pub updates: Option<bimcraft_update::Updater>,
+    /// The Assistant palette's: the user's provider, model and key, and the chat, which the desktop app gives a network (`assistant::State::attach`): a window starts without one.
+    pub assistant: assistant::State,
     /// The 3D mouse's reader, which the desktop app attaches: a window starts without one, so a test never opens a device.
     pub space_mouse: Option<spacemouse::SpaceMouse>,
     /// The reader of Revit files, which the desktop app attaches (`bimcraft-rvt` is Apache-2.0 only, so this crate never depends on
@@ -1184,6 +1193,9 @@ fn step_name(st: &engine::Step) -> String {
         [(c, n)] => Some(lang::category(c, *n > 1)),
         _ => None,
     };
+    if let Some(asked) = assistant::step_label(&st.label) {
+        return asked;
+    }
     let named = match (st.made.as_slice(), st.removed.as_slice()) {
         (made, []) if !made.is_empty() => one(made).map(|c| tf("Create {}", &[&c])),
         ([], removed) if !removed.is_empty() => one(removed).map(|c| tf("Delete {}", &[&c])),
@@ -1454,6 +1466,7 @@ impl BimApp {
             display_dialog: None,
             reinforce_dialog: None,
             reinforce_kept: BTreeMap::new(),
+            panel_slot: None,
             line_weights_dialog: None,
             object_styles_dialog: None,
             line_styles_dialog: None,
@@ -1481,6 +1494,7 @@ impl BimApp {
             new_schedule: None,
             component: None,
             component_angle: 0.0,
+            door_flip_hand: false,
             adaptive_clicks: Vec::new(),
             adaptive_grip: None,
             placement_plane: None,
@@ -1495,6 +1509,7 @@ impl BimApp {
             title: String::new(),
             styled: false,
             updates: None,
+            assistant: assistant::State::default(),
             space_mouse: None,
             revit: None,
             control: None,
@@ -1646,6 +1661,7 @@ impl BimApp {
             },
             Sheet::Table(id) => match self.session.model.elements.get(id) {
                 Some(Element::Schedule(sc)) => sc.name.clone(),
+                Some(Element::PanelSchedule(ps)) => ps.name.clone(),
                 _ => "Schedule".into(),
             },
             Sheet::Family(..) => self.family_tab_name(sheet),
@@ -1661,6 +1677,7 @@ impl BimApp {
             Sheet::Section(id) if matches!(self.session.model.elements.get(id), Some(Element::Elevation(_))) => "Elevation",
             Sheet::Section(_) => "Section",
             Sheet::Paper(_) => "Sheet",
+            Sheet::Table(id) if matches!(self.session.model.elements.get(id), Some(Element::PanelSchedule(_))) => "Panel Schedule",
             Sheet::Schedule(_) | Sheet::Table(_) => "Schedule",
             Sheet::Family(id, view) => {
                 return self.family_of(id).map(|ed| format!("{} - {}", ed.title(), editor::views::view_title(view))).unwrap_or_default();
@@ -1713,6 +1730,8 @@ impl BimApp {
             self.reopened();
             self.autosave_document();
         }
+        // After that check: a reply that came as the project was replaced is not for the new one (`State::project_replaced`).
+        self.poll_assistant(&ctx);
         self.tidy();
         self.poll_updates(&ctx);
         self.poll_revit(&ctx);
@@ -1954,7 +1973,7 @@ impl BimApp {
             Sheet::Section(id) => m.section(*id).is_some(),
             Sheet::Paper(id) => m.sheet(*id).is_some(),
             Sheet::View3D | Sheet::Schedule(_) => true,
-            Sheet::Table(id) => matches!(m.elements.get(id), Some(Element::Schedule(_))),
+            Sheet::Table(id) => matches!(m.elements.get(id), Some(Element::Schedule(_) | Element::PanelSchedule(_))),
         };
         self.views.retain(exists);
         self.floating.retain(|f| exists(&f.sheet));
@@ -1981,25 +2000,15 @@ impl BimApp {
         }
     }
 
-    fn keys(&mut self, ctx: &Context) {
-        // A note being written takes the keys, but for a field's that has them; another tool finishes it.
-        if self.note_edit.is_some() {
-            if !matches!(self.tool, Tool::Text | Tool::Modify) {
-                self.finish_note();
-            } else if !ctx.egui_wants_keyboard_input() && self.text_type_dialog.is_none() {
-                self.note_keys(ctx);
-                return;
-            }
-        }
-        // A dialog takes the keys while it's open.
-        if self.type_dialog.is_some()
+    /// Whether a dialog, Find or a menu has the keys: the window's shortcuts wait.
+    pub(crate) fn keys_taken(&self, ctx: &Context) -> bool {
+        self.type_dialog.is_some()
             || self.text_type_dialog.is_some()
             || self.dimension_type_dialog.is_some()
             || self.dimension_text_dialog.is_some()
             || self.materials_dialog.is_some()
             || self.family_dialog.is_some()
             || self.favorites_dialog.is_some()
-            || self.active_family().is_some()
             || self.parameters_dialog.is_some()
             || self.schedule_dialog.is_some()
             || self.vg_dialog.is_some()
@@ -2032,7 +2041,20 @@ impl BimApp {
             || self.report_open()
             // An open menu takes the keys: Esc closes it, not the tool.
             || egui::Popup::is_any_open(ctx)
-        {
+    }
+
+    fn keys(&mut self, ctx: &Context) {
+        // A note being written takes the keys, but for a field's that has them; another tool finishes it.
+        if self.note_edit.is_some() {
+            if !matches!(self.tool, Tool::Text | Tool::Modify) {
+                self.finish_note();
+            } else if !ctx.egui_wants_keyboard_input() && self.text_type_dialog.is_none() {
+                self.note_keys(ctx);
+                return;
+            }
+        }
+        // A dialog takes the keys while it's open, and a family document's tab has its own (`family_keys`).
+        if self.keys_taken(ctx) || self.active_family().is_some() {
             return;
         }
         let pressed = |m: Modifiers, k: Key| ctx.input_mut(|i| i.consume_key(m, k));
@@ -2101,6 +2123,13 @@ impl BimApp {
         }
         if pressed(Modifiers::NONE, Key::Delete) {
             self.delete();
+        }
+        // consume_key also matches Alt/Shift and key repeats. Only an unmodified downstroke
+        // changes a door, so holding Space cannot fill the Undo history.
+        let plain_space =
+            |e: &Event| matches!(e, Event::Key { key: Key::Space, pressed: true, repeat: false, modifiers: Modifiers::NONE, .. });
+        if matches!(self.tool, Tool::Door | Tool::Modify) && ctx.input(|i| i.events.iter().any(plain_space)) && self.door_space() {
+            pressed(Modifiers::NONE, Key::Space);
         }
         if self.tool == Tool::Modify && pressed(Modifiers::NONE, Key::Space) {
             self.flip();
@@ -2188,6 +2217,10 @@ impl BimApp {
             }
             "NP" => {
                 self.toggle_browser();
+                return true;
+            }
+            "AI" => {
+                self.toggle_assistant();
                 return true;
             }
             "SA" => {
@@ -2379,6 +2412,14 @@ impl BimApp {
                 }
                 Some("delete") => {
                     self.delete();
+                    return true;
+                }
+                Some("pin") => {
+                    self.set_pinned(true);
+                    return true;
+                }
+                Some("unpin") => {
+                    self.set_pinned(false);
                     return true;
                 }
                 Some("fillet") => {
@@ -2665,6 +2706,7 @@ impl BimApp {
             self.measured = None;
         }
         self.snap_once = None;
+        self.door_flip_hand = false;
         self.tool = tool;
         // Floor sketches its outline at once, as Revit's does (Walls' Outline puts the walls' in the sketch).
         if self.tool == Tool::Floor
@@ -2767,6 +2809,32 @@ impl BimApp {
             &[id] if matches!(self.session.model.elements.get(id), Some(Element::Floor(_))) => Some(id),
             _ => None,
         }
+    }
+
+    /// While placing a swinging door Space changes only its pending hand. With one selected,
+    /// step through the four Opens tiles in order with the same instance edit as a tile click.
+    fn door_space(&mut self) -> bool {
+        let m = &self.session.model;
+        match self.tool {
+            Tool::Door if self.plan_level().is_some() => {
+                let (family, ty) = self.opening_pick("door");
+                if !ty.as_deref().is_some_and(|t| m.single_swing_door(family.as_deref(), t)) {
+                    return false;
+                }
+                self.door_flip_hand = !self.door_flip_hand;
+            }
+            Tool::Modify if self.sketch.is_none() => {
+                let &[id] = self.selection.as_slice() else { return false };
+                let Some(Element::Door(o)) = m.elements.get(id) else { return false };
+                if !m.single_swing_door(o.family.as_deref(), &o.type_name) {
+                    return false;
+                }
+                // Hand alternates every step; facing changes when hand wraps back to as placed.
+                self.run("modify", json!({"id": id, "flip_hand": !o.flip_hand, "flip_facing": o.flip_facing ^ o.flip_hand}));
+            }
+            _ => return false,
+        }
+        true
     }
 
     /// The selected walls turned round about their location lines: Revit's flip arrows, or Space.
@@ -3089,7 +3157,8 @@ impl BimApp {
             (None, _) => (json!(name), tf("Schedule: {}", &[t(name)]), *name),
         });
         let made = self.schedules().into_iter().map(|(id, name)| (json!(id), tf("Schedule: {}", &[name]), name));
-        let others = std::iter::once((json!("{3D}"), t("3D View: {3D}").to_string(), "{3D}")).chain(builtin).chain(made);
+        let boards = self.panel_schedules().into_iter().map(|(id, name)| (json!(id), tf("Panel Schedule: {}", &[name]), name));
+        let others = std::iter::once((json!("{3D}"), t("3D View: {3D}").to_string(), "{3D}")).chain(builtin).chain(made).chain(boards);
         plans.chain(cuts).chain(others).filter(|(_, _, name)| !placed.contains(name)).map(|(v, label, _)| (v, label)).collect()
     }
 
@@ -3275,6 +3344,9 @@ impl BimApp {
         (fresh.settings_path, fresh.settings_kept) = (self.settings_path.take(), self.settings_kept.take());
         fresh.window = std::mem::take(&mut self.window);
         (fresh.updates, fresh.revit) = (self.updates.take(), self.revit.take());
+        // The assistant's network and the user's choices are the window's, not the project's: its conversation ends with the project.
+        fresh.assistant = std::mem::take(&mut self.assistant);
+        fresh.assistant.project_replaced();
         // The 3D mouse's reader runs for the window, not the project: without it the cap would move nothing once a project is open.
         fresh.space_mouse = self.space_mouse.take();
         fresh.control = self.control.take();
@@ -3380,8 +3452,13 @@ impl BimApp {
                 if icon_button(ui, Icon::Open, "Open").clicked() {
                     self.guard(Pending::Open, &ctx);
                 }
+                // On a family tab, the family document's Save, as Revit saves the active document: never the project.
                 if icon_button(ui, Icon::Save, "Save").clicked() {
-                    self.save(&ctx, None);
+                    if self.active_family().is_some() {
+                        self.family_save(false);
+                    } else {
+                        self.save(&ctx, None);
+                    }
                 }
                 ui.separator();
                 ui.spacing_mut().item_spacing.x = 0.0;
@@ -3743,11 +3820,22 @@ impl BimApp {
             }
         });
         self.recent_menu(ui, ctx);
-        if item(ui, "Save", cmd(Key::S)) {
-            self.save(ctx, None);
-        }
-        if item(ui, msg!("Save As…"), Some(KeyboardShortcut::new(Modifiers::COMMAND | Modifiers::SHIFT, Key::S))) {
-            self.save_as(ctx, None);
+        // On a family tab, Save and Save As are the family document's, and say so: the project is never saved from there.
+        let save_as = Some(KeyboardShortcut::new(Modifiers::COMMAND | Modifiers::SHIFT, Key::S));
+        if self.active_family().is_some() {
+            if item(ui, msg!("Save Family"), cmd(Key::S)) {
+                self.family_save(false);
+            }
+            if item(ui, msg!("Save Family As…"), save_as) {
+                self.family_save(true);
+            }
+        } else {
+            if item(ui, "Save", cmd(Key::S)) {
+                self.save(ctx, None);
+            }
+            if item(ui, msg!("Save As…"), save_as) {
+                self.save_as(ctx, None);
+            }
         }
         if !self.autosave.candidates.is_empty() && item(ui, msg!("Recover Autosave…"), None) {
             self.autosave.show_recovery = true;
@@ -4188,7 +4276,7 @@ impl BimApp {
             if big_button(ui, Icon::Section, "Section", matches!(self.tool, Tool::Section(_)), tip).clicked() {
                 self.set_tool(Tool::Section(None));
             }
-            let tip = msg!("Elevation: click beside the building, on the side to look at");
+            let tip = msg!("Elevation: click a wall, a line or a slab's edge to look at, the project's or a link's");
             if big_button(ui, Icon::Elevation, "Elevation", self.tool == Tool::Elevation, tip).clicked() {
                 self.set_tool(Tool::Elevation);
             }
@@ -4207,7 +4295,8 @@ impl BimApp {
                         self.open_sheet(Sheet::Schedule(cat));
                     }
                 }
-                let made: Vec<(Id, String)> = self.schedules().into_iter().map(|(id, n)| (id, n.to_string())).collect();
+                let made: Vec<(Id, String)> =
+                    self.schedules().into_iter().chain(self.panel_schedules()).map(|(id, n)| (id, n.to_string())).collect();
                 for (id, name) in made {
                     if ui.button(name).clicked() {
                         self.open_sheet(Sheet::Table(id));
@@ -5265,7 +5354,7 @@ impl BimApp {
             Tool::SpotSlope => msg!("Click a floor or a roof: the spot slope reads how steeply its top falls there, and which way."),
             Tool::Section(None) => msg!("Click the section's start: it looks to the left of the line you draw."),
             Tool::Section(Some(_)) => msg!("Click the section's end."),
-            Tool::Elevation => msg!("Click beside the building: the elevation looks at the side you click by."),
+            Tool::Elevation => msg!("Click a straight wall, a line or a slab's edge for the elevation to look at."),
             Tool::Camera(None) => msg!("Click where the camera's eye stands: it looks at the point you click next."),
             Tool::Camera(Some(_)) => msg!("Click what the camera looks at; its eye and target heights are the Options Bar's."),
             Tool::Column => msg!("Click to place a column, as high as the Options Bar says."),
@@ -5493,6 +5582,9 @@ impl BimApp {
 
     /// The schedule on screen as a table: its headings, its rows, its totals under a rule.
     fn schedule(&mut self, ui: &mut Ui) {
+        if let Some(id) = self.showing_panel_schedule() {
+            return self.panel_schedule_view(ui, id);
+        }
         let Some((_, sc)) = self.shown_schedule() else { return };
         // The right-click menu, on the schedule and on each of its cells.
         let groups = self.context_items();

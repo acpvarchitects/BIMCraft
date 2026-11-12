@@ -469,6 +469,10 @@ impl Session {
                 if !self.model.unsettled_work_planes().is_empty() {
                     self.model_mut().settle_work_planes();
                 }
+                // An elevation that looks at a reference looks at it from wherever the command left its mark.
+                if cmd.undoable {
+                    crate::elevation::keep(self, &before, verified);
+                }
                 // Locked and equal dimensions moved what they measure to as the command moved it.
                 if cmd.undoable {
                     crate::constraints::keep(self, &before)?;
@@ -688,6 +692,19 @@ impl Session {
                 Ok(v)
             }
         }
+    }
+
+    /// The undo steps on top of the stack that are named exactly `from`, merged into one named `to`, which goes back to the
+    /// model the first of them did. A front end that works in several transactions and wants one step for the whole (an
+    /// assistant's turn) names each `from`, then renames at the end; a run of none or of one is only renamed.
+    pub fn merge_steps(&mut self, from: &str, to: &str) {
+        let run = self.undo.iter().rev().take_while(|(step, _)| step.label == from).count();
+        let at = self.undo.len() - run;
+        let mut steps = self.undo.drain(at..);
+        let Some((first, before)) = steps.next() else { return };
+        drop(steps);
+        let step = Step { checked: first.checked, ..Step::new(to, &before, &self.model) };
+        self.undo.push((step, before));
     }
 
     /// What elements from id `first` on, which a command just made, are made in: the session's phase
