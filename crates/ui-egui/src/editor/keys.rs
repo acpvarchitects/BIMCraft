@@ -13,7 +13,8 @@ use bimcraft_core::family::DimKind;
 /// Revit's default keys for the family editor's commands, each to the name of its action in `shortcuts::ACTIONS`. A key the
 /// project has too means the same command here (`the_family_table_gives_no_project_key_another_meaning`); the others (DD, AN,
 /// WP, WW, FA, AA, PL, FG, CG, ZX, FE-3's ZR, ZZ, ZO, ZV, ZP, ZC, FE-8's RE, and FE-20's FF, PR, ID, SV, BF) are the family's
-/// alone. Trim/Extend Single and Multiple Elements have no key, as in Revit: Keyboard Shortcuts gives them one.
+/// alone. Trim/Extend Single and Multiple Elements have no key, as in Revit: Keyboard Shortcuts gives them one; nor has
+/// Drag Elements on Selection ([`FAMILY_KEYLESS`]).
 pub(crate) const FAMILY_SHORTCUTS: &[(&str, &str)] = &[
     ("MD", "Modify"),
     ("PP", "Properties"),
@@ -69,8 +70,8 @@ pub(crate) const FAMILY_SHORTCUTS: &[(&str, &str)] = &[
 ];
 
 /// The family document's commands Revit gives no key: Keyboard Shortcuts lists them, and a key made there works on a family
-/// tab. FE-8's Trim/Extend Single and Multiple Elements, and FE-14's clipboard (Ctrl+C, Ctrl+X and Ctrl+V are fixed; Paste
-/// Aligned's choices have no key).
+/// tab. FE-8's Trim/Extend Single and Multiple Elements, FE-14's clipboard (Ctrl+C, Ctrl+X and Ctrl+V are fixed; Paste
+/// Aligned's choices have no key), and the status bar's Drag Elements on Selection.
 pub(crate) const FAMILY_KEYLESS: &[&str] = &[
     "Trim/Extend Single Element",
     "Trim/Extend Multiple Elements",
@@ -82,6 +83,7 @@ pub(crate) const FAMILY_KEYLESS: &[&str] = &[
     "Aligned to Selected Views",
     "Aligned to Selected Levels",
     "Aligned to Picked Level",
+    "Drag Elements on Selection",
 ];
 
 /// Whether `action` is a command the family document has: one its table gives a key, or one it has with none.
@@ -145,6 +147,13 @@ impl BimApp {
             "Select Elements by Face" => {
                 if self.active_family().is_some_and(FamilyEditor::picks_by_face) {
                     self.select_by_face = !self.select_by_face;
+                }
+                return true;
+            }
+            // Its neighbour, Drag Elements on Selection: the same, and with no key of its own unless one is made for it.
+            "Drag Elements on Selection" => {
+                if self.active_family().is_some_and(FamilyEditor::picks_by_face) {
+                    self.drag_on_selection = !self.drag_on_selection;
                 }
                 return true;
             }

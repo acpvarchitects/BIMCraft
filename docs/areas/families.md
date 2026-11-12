@@ -768,7 +768,8 @@ with Ctrl or Shift adds or takes away that one, and a click on nothing with eith
 pans, and a drag with a tool in hand is the tool's. A drag from an element's edge (one a form or a nested instance is drawn with, a
 plane's trace, a reference line, a connector) is the element's and draws no box; the face of a form or a nested instance that
 isn't selected is the box's to begin in, as Revit's, so a box can be drawn inside one (changed with FE-20: until then a drag from
-a face drew none). What a face does is Select Elements by Face's to say (below): on, a click on it selects and a crossing box
+a face drew none), unless Drag Elements on Selection is on (below), when a face that selects is its element's as an edge is.
+What a face does is Select Elements by Face's to say (below): on, a click on it selects and a crossing box
 drawn inside it takes what it is of; off, a crossing box wholly inside a face, meeting none of its edges, doesn't take the
 form, as Revit's doesn't, and a click selects by an edge alone: a form is boxed and clicked by the edges the view draws it with.
 A drag from an element moves the selection (FE-7, below), and with Ctrl copies it (FE-4); so does a drag from the face of one
@@ -833,13 +834,21 @@ of the document's history, and nothing reaches the project.
   and by a box. Either way a box may begin inside the face of what isn't selected, and a drag from the face of what is
   moves the selection, or with Ctrl copies it (FE-7, FE-4). It is of the plans and elevations: greyed, and BF nothing, in
   {3D}, which takes a form by its face either way as the project's 3D view does, and while a form is sketched.
+- **Drag Elements on Selection** (the toggle between Select Elements by Face and the funnel, drawn as that one is; the
+  window's setting, `drag_on_selection` in `settings.json`, off to begin with, as Revit begins with it; no key, as Revit
+  gives it none, but Keyboard Shortcuts can give it one): off, the face of a form or a nested instance that isn't selected is
+  the box's to begin in, as above; on, a drag from it selects that one (Ctrl adds it) and moves it, or with Ctrl copies it,
+  as a drag from its edge does (`Scene::under`). Only where a face selects: with Select Elements by Face off a face picks
+  nothing, so a drag from one is still a box and this changes nothing. A form the view leaves out (`Scene::hidden`) is taken
+  by neither. It is greyed where BF is ({3D}, where a drag turns the view, and while a form is sketched), and a tool in hand
+  takes the drag either way.
 
 Revit's Select Pinned Elements (PE) waits for Pin (FE-17). Tests: `tests/family_selection.rs`; the core's in `family/select.rs`,
 `family/views.rs` and `geom.rs`.
 
 FE-7 (`editor/drag_move.rs`, `family/constraints/moving.rs`): in a plan or an elevation, with no tool in hand, a press on an element
 (what a click there would select and the box doesn't begin on, `Scene::under`, so the face of one not selected is the box's since
-FE-20; a dimension's line; a selected symbol's strokes) and a
+FE-20, unless Drag Elements on Selection is on and a face selects; a dimension's line; a selected symbol's strokes) and a
 drag past the few points a click allows move the whole selection by the drag, in the view's plane, live, as one step of the
 history, as Revit's. One not selected is selected first, alone, or added with Ctrl. A lone plane of the family's own keeps its drag
 above, square to itself through its constraints (a label it measures to takes the new length). Planes, reference lines and forms
@@ -1556,11 +1565,12 @@ Lines, Finish and Cancel Edit Mode (TR outside a sketch says it works on a sketc
 Clipboard panel's Copy, Cut and Paste (FE-14; Paste Aligned's choices have no key, and Keyboard Shortcuts can give each one, as it
 can Trim/Extend Single and Multiple Elements: `FAMILY_KEYLESS`), KS Keyboard Shortcuts, 3D the family's own {3D}, ZE, ZF, ZX and ZA the view control bar's Zoom to Fit, and HH, HC, HI, IC
 and HR Temporary Hide/Isolate; FF Filter, PR Select Previous, ID Select by ID, SA and SV Select All Instances (Visible in
-View and In Entire Family) and BF Select Elements by Face (FE-20, above). A key made in Keyboard Shortcuts is tried first
+View and In Entire Family) and BF Select Elements by Face (FE-20, above); Drag Elements on Selection has none, as in Revit
+(`keys::FAMILY_KEYLESS`). A key made in Keyboard Shortcuts is tried first
 when it names a command the family has. The
 commands only a family has (Work Plane, Load Family, Angular Dimension, Pick Lines, Finish and Cancel Edit Mode, FE-3's zoom
 commands, Scale, FE-20's Filter Selection, Select Previous, Select by ID, Select All Instances: In Entire Family and Select
-Elements by Face, and FE-14's clipboard commands) are in
+Elements by Face and Drag Elements on Selection, and FE-14's clipboard commands) are in
 `shortcuts::ACTIONS`, so the dialog and a file can give them keys, and in `shortcuts::FAMILY_ONLY`: on a project's tab their keys
 do nothing, and Find leaves them out. Tests: `tests/family_keys.rs`.
 
@@ -1621,4 +1631,4 @@ In `crates/ui-egui`, the Family Editor:
   panel's tools, in a plan, an elevation and a sketch (FE-8). `editor/clipboard.rs`: the Clipboard panel, Ctrl+C, Ctrl+X and
   Ctrl+V, Paste Aligned (FE-14).
 - `editor/selection.rs`: the selection's commands (FE-20): Filter, Select Previous, Select by ID, IDs of Selection, Select All
-  Instances and Select Elements by Face.
+  Instances, Select Elements by Face and Drag Elements on Selection.

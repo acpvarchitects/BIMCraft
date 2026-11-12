@@ -661,3 +661,35 @@ fn with_select_elements_by_face_off_a_drag_from_a_selected_forms_face_moves_it()
     assert_eq!(points(&h, 1), b0, "B stays");
     assert_eq!(editor(&h).steps(), 1);
 }
+
+/// Drag Elements on Selection on: a drag from the face of a form not selected selects it and moves it, as one from its edge
+/// does; Ctrl adds it and both move; Shift neither moves it nor draws a box. Off, that face is the box's (above).
+#[test]
+fn with_drag_elements_on_selection_a_drag_from_a_face_not_selected_selects_and_moves_it() {
+    let mut h = plan();
+    h.state_mut().drag_on_selection = true;
+    h.run();
+    let (a0, b0) = (points(&h, 0), points(&h, 1));
+    drag(&mut h, [-800.0, 300.0, 0.0], [0.0, 300.0, 0.0], Modifiers::NONE);
+    assert_eq!(editor(&h).selection.items(), &[Picked::Form(1)], "B, by its face");
+    let d = shift(&b0, &points(&h, 1));
+    assert!(near(d[1], 300.0) && near(d[0], 0.0), "{d:?} {}", status(&h));
+    assert_eq!(points(&h, 0), a0);
+    assert_eq!(editor(&h).steps(), 1);
+    // Ctrl on A's face: added, and both move.
+    let b1 = points(&h, 1);
+    drag(&mut h, [300.0, 300.0, 0.0], [100.0, 0.0, 0.0], Modifiers::CTRL);
+    let mut sel = editor(&h).selection.items().to_vec();
+    sel.sort();
+    assert_eq!(sel, [Picked::Form(0), Picked::Form(1)]);
+    let (da, db) = (shift(&a0, &points(&h, 0)), shift(&b1, &points(&h, 1)));
+    assert!(near(da[0], 100.0) && da == db, "{da:?} {db:?} {}", status(&h));
+    // Shift on A's face, B alone selected: nothing moves and no box is drawn.
+    pick(&mut h, &[Picked::Form(1)]);
+    let (a, b) = (points(&h, 0), points(&h, 1));
+    let at = press_and_move(&mut h, [300.0, 300.0, 0.0], [300.0, 0.0, 0.0], Modifiers::SHIFT);
+    assert!(!editor(&h).boxing(), "no box");
+    release(&mut h, at);
+    assert_eq!((points(&h, 0), points(&h, 1)), (a, b));
+    assert_eq!(editor(&h).selection.items(), &[Picked::Form(1)]);
+}

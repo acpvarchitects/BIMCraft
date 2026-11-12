@@ -1304,7 +1304,7 @@ impl BimApp {
     pub(crate) fn family_central(&mut self, ui: &mut Ui) {
         let Some(mut ed) = self.take_family() else { return };
         ed.snaps = self.snaps_now();
-        ed.selecting.by_face = self.select_by_face;
+        (ed.selecting.by_face, ed.selecting.drag_faces) = (self.select_by_face, self.drag_on_selection);
         let pane = ui.available_rect_before_wrap();
         self.view_rect = pane;
         self.pane = pane;
@@ -1569,6 +1569,13 @@ impl BimApp {
             ),
             (Some(_), false) if ed.views.over_selected => msg!(
                 "Drag to move what is selected (what a lock, a label or a formula holds stays, and the move is refused); click to select, Ctrl to add, Shift to take away."
+            ),
+            // Drag Elements on Selection on, where a face selects: a face is its element's to drag, said first so it shows.
+            (Some(_), false) if ed.selecting.drag_faces && ed.selecting.by_face && ed.selected_form().is_some() => msg!(
+                "Drag a face to move what it is of, a selected form's arrows to move its sides and ends, from nothing to box; click to select, Ctrl to add, Shift to take away."
+            ),
+            (Some(_), false) if ed.selecting.drag_faces && ed.selecting.by_face => msg!(
+                "Drag a face to move what it is of, from nothing to box; click a form, a nested instance, a reference plane, a reference line or a dimension to select it, Ctrl to add, Shift to take away."
             ),
             (Some(_), false) if ed.selected_form().is_some() => msg!(
                 "Drag a selected form's arrows to move its sides and ends; click a form, a nested instance, a reference plane, a reference line or a dimension to select it, Ctrl to add, Shift to take away; drag from nothing to box."

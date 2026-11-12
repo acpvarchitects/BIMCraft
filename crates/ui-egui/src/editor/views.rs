@@ -918,6 +918,7 @@ impl FamilyEditor {
             detail: self.views.detail,
             hidden: &hidden,
             by_face: self.selecting.by_face,
+            drag_faces: self.selecting.drag_faces,
         });
         if editable && let Some(scene) = scene.as_ref() {
             scene.paint_selected(&painter, self.selection.items());
@@ -1052,6 +1053,7 @@ impl FamilyEditor {
                     detail: self.views.detail,
                     hidden: &hidden,
                     by_face: false,
+                    drag_faces: false,
                 };
                 ghost = items.iter().flat_map(|p| s.pieces(*p)).collect();
                 // Held by the middle of what has a size of its own: a plane's trace runs across the view.
@@ -1347,7 +1349,8 @@ impl FamilyEditor {
             }
         }
         // What a press at `p` is on that a drag moves (FE-7): a dimension's line, else what a click there selects (and the box
-        // doesn't begin on, `Scene::under`: the face of a form or a nested instance that isn't selected is the box's, FE-20),
+        // doesn't begin on, `Scene::under`: the face of a form or a nested instance that isn't selected is the box's, FE-20,
+        // unless Drag Elements on Selection is on),
         // or a selected symbol's strokes; never a handle, a grip or a padlock.
         let chosen: Vec<Picked> = self.selection.items().to_vec();
         let tools_free = editable
