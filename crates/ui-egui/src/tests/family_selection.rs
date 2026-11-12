@@ -573,8 +573,11 @@ fn drag_elements_on_selection_lets_a_drag_from_a_face_not_selected_select_and_mo
     assert!(selected(&h).is_empty(), "off, a box from a face not selected");
     assert_eq!(forms(&h), unmoved, "nothing moved");
     // The status bar's toggle turns it on: the same drag selects B and moves it, one step that Undo takes back.
+    assert!(h.state().prompt().contains("drag from nothing to box"), "{}", h.state().prompt());
+    assert!(!h.state().prompt().contains("Drag a face"), "{}", h.state().prompt());
     press(&mut h, "Drag Elements on Selection");
     assert!(h.state().drag_on_selection, "the status bar's toggle");
+    assert!(h.state().prompt().starts_with("Drag a face to move what it is of"), "{}", h.state().prompt());
     boxed(&mut h, [650.0, 350.0, 0.0], [750.0, 450.0, 0.0], Modifiers::NONE);
     assert_eq!(selected(&h), vec![Picked::Form(1)], "on, B selected by its face");
     assert!(!editor(&h).boxing());
@@ -600,6 +603,7 @@ fn drag_elements_on_selection_lets_a_drag_from_a_face_not_selected_select_and_mo
     // BF off: a face picks nothing, so a drag from it is a box again; an edge still selects its form and moves it.
     shortcut(&mut h, "BF");
     assert!(!h.state().select_by_face && h.state().drag_on_selection);
+    assert!(!h.state().prompt().contains("Drag a face"), "BF off, the prompt says nothing of faces: {}", h.state().prompt());
     key(&mut h, Key::Escape);
     boxed(&mut h, [-750.0, 350.0, 0.0], [-650.0, 450.0, 0.0], Modifiers::NONE);
     assert!(selected(&h).is_empty(), "BF off, a box from A's face");
