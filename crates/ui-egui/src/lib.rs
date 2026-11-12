@@ -528,6 +528,10 @@ pub struct BimApp {
     /// Revit's Select Elements by Face (BF), in a family document's plans and elevations (`editor/selection.rs`): on, a
     /// face selects what it is of; off, only an edge does. The user's, kept in the settings file.
     pub(crate) select_by_face: bool,
+    /// Revit's Drag Elements on Selection, beside it: on, a drag from the face of a form or a nested instance that isn't
+    /// selected selects it and moves it, where a face selects; off (at first), that face is a selection box's to begin in.
+    /// The user's, kept in the settings file.
+    pub(crate) drag_on_selection: bool,
     /// The origin marker on a plan, and the view's name in its corner (File > Settings): working aids, drawn on the screen and
     /// never in a drawing that is printed or exported.
     show_origin: bool,
@@ -1320,6 +1324,7 @@ impl BimApp {
             background_grid_dialog: None,
             grid_snapping: false,
             select_by_face: true,
+            drag_on_selection: false,
             show_origin: true,
             show_view_name: true,
             ribbon_bottom: Pos2::ZERO,
@@ -3338,7 +3343,7 @@ impl BimApp {
         fresh.font_finder = self.font_finder;
         fresh.scan_contrast = self.scan_contrast;
         fresh.grid_snapping = self.grid_snapping;
-        fresh.select_by_face = self.select_by_face;
+        (fresh.select_by_face, fresh.drag_on_selection) = (self.select_by_face, self.drag_on_selection);
         (fresh.show_origin, fresh.show_view_name) = (self.show_origin, self.show_view_name);
         fresh.custom_shortcuts = std::mem::take(&mut self.custom_shortcuts);
         (fresh.light_canvas, fresh.scheme, fresh.accent) = (self.light_canvas, self.scheme, self.accent);
@@ -5435,9 +5440,13 @@ impl BimApp {
                         None => self.open_filter(),
                     }
                 }
-                // Select Elements by Face (BF), left of it as Revit's status bar has it: a family document's that isn't
-                // adaptive, greyed where it changes nothing ({3D}, a sketch).
+                // Drag Elements on Selection and Select Elements by Face (BF), left of it as Revit's status bar has them: a
+                // family document's that isn't adaptive, greyed where they change nothing ({3D}, a sketch).
                 if let Some(usable) = self.active_family().filter(|ed| ed.adaptive.is_none()).map(|ed| ed.picks_by_face()) {
+                    let on = self.drag_on_selection;
+                    if ui.add_enabled_ui(usable, |ui| editor::selection::drag_toggle(ui, on)).inner.clicked() {
+                        self.drag_on_selection = !on;
+                    }
                     let on = self.select_by_face;
                     if ui.add_enabled_ui(usable, |ui| editor::selection::face_toggle(ui, on)).inner.clicked() {
                         self.select_by_face = !on;

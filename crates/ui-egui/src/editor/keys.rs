@@ -13,7 +13,8 @@ use bimcraft_core::family::DimKind;
 /// Revit's default keys for the family editor's commands, each to the name of its action in `shortcuts::ACTIONS`. A key the
 /// project has too means the same command here (`the_family_table_gives_no_project_key_another_meaning`); the others (DD, AN,
 /// WP, WW, FA, AA, PL, FG, CG, ZX, FE-3's ZR, ZZ, ZO, ZV, ZP, ZC, FE-8's RE, and FE-20's FF, PR, ID, SV, BF) are the family's
-/// alone. Trim/Extend Single and Multiple Elements have no key, as in Revit: Keyboard Shortcuts gives them one.
+/// alone. Trim/Extend Single and Multiple Elements have no key, as in Revit: Keyboard Shortcuts gives them one; nor has
+/// Drag Elements on Selection ([`FAMILY_UNKEYED`]).
 pub(crate) const FAMILY_SHORTCUTS: &[(&str, &str)] = &[
     ("MD", "Modify"),
     ("PP", "Properties"),
@@ -68,9 +69,13 @@ pub(crate) const FAMILY_SHORTCUTS: &[(&str, &str)] = &[
     ("BF", "Select Elements by Face"),
 ];
 
-/// Whether `action` is a command the family document has: one its table gives a key.
+/// The family document's commands Revit gives no key, which Keyboard Shortcuts can: the status bar's Drag Elements on
+/// Selection.
+pub(crate) const FAMILY_UNKEYED: &[&str] = &["Drag Elements on Selection"];
+
+/// Whether `action` is a command the family document has: one its table gives a key, or one of [`FAMILY_UNKEYED`].
 pub(crate) fn in_family(action: &str) -> bool {
-    FAMILY_SHORTCUTS.iter().any(|(_, a)| *a == action)
+    FAMILY_SHORTCUTS.iter().any(|(_, a)| *a == action) || FAMILY_UNKEYED.contains(&action)
 }
 
 impl BimApp {
@@ -129,6 +134,13 @@ impl BimApp {
             "Select Elements by Face" => {
                 if self.active_family().is_some_and(FamilyEditor::picks_by_face) {
                     self.select_by_face = !self.select_by_face;
+                }
+                return true;
+            }
+            // Its neighbour, Drag Elements on Selection: the same, and with no key of its own unless one is made for it.
+            "Drag Elements on Selection" => {
+                if self.active_family().is_some_and(FamilyEditor::picks_by_face) {
+                    self.drag_on_selection = !self.drag_on_selection;
                 }
                 return true;
             }

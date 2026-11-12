@@ -556,6 +556,142 @@ fn select_elements_by_face_is_greyed_where_it_changes_nothing_and_is_kept_with_t
     assert!(h.state().select_by_face);
 }
 
+/// Drag Elements on Selection, beside BF: off (at first), a drag from the face of a form not selected draws a box, as since
+/// FE-20; on, it selects the form and moves it, as a drag from its edge does, and a nested instance's face the same. With BF
+/// off a face picks nothing, so it changes nothing: a box from a face, an edge still the element's. A form the view leaves out
+/// is taken by neither.
+#[test]
+fn drag_elements_on_selection_lets_a_drag_from_a_face_not_selected_select_and_move_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = plan();
+    let before = project(&h);
+    let forms = |h: &Harness<BimApp>| editor(h).draft_family().unwrap().forms;
+    assert!(!h.state().drag_on_selection, "off to begin with");
+    let unmoved = forms(&h);
+    // Off: a window from inside B's face, B not selected, holds none of it and moves nothing.
+    boxed(&mut h, [650.0, 350.0, 0.0], [750.0, 450.0, 0.0], Modifiers::NONE);
+    assert!(selected(&h).is_empty(), "off, a box from a face not selected");
+    assert_eq!(forms(&h), unmoved, "nothing moved");
+    // The status bar's toggle turns it on: the same drag selects B and moves it, one step that Undo takes back.
+    press(&mut h, "Drag Elements on Selection");
+    assert!(h.state().drag_on_selection, "the status bar's toggle");
+    boxed(&mut h, [650.0, 350.0, 0.0], [750.0, 450.0, 0.0], Modifiers::NONE);
+    assert_eq!(selected(&h), vec![Picked::Form(1)], "on, B selected by its face");
+    assert!(!editor(&h).boxing());
+    let moved = forms(&h);
+    assert_eq!(moved[0], unmoved[0], "A stays");
+    assert_ne!(moved[1], unmoved[1], "B moves");
+    assert_eq!(editor(&h).steps(), 1);
+    h.state_mut().family_undo();
+    h.run();
+    assert_eq!(forms(&h), unmoved);
+    // A press from the face of another, nothing held: that one is the selection, and it alone moves.
+    boxed(&mut h, [-700.0, 400.0, 0.0], [-700.0, 100.0, 0.0], Modifiers::NONE);
+    assert_eq!(selected(&h), vec![Picked::Form(0)], "A in B's place");
+    assert_eq!(forms(&h)[1], unmoved[1], "B stays");
+    assert_ne!(forms(&h)[0], unmoved[0], "A moves");
+    h.state_mut().family_undo();
+    h.run();
+    // From nothing a box still begins.
+    key(&mut h, Key::Escape);
+    boxed(&mut h, [400.0, 700.0, 0.0], [1000.0, 100.0, 0.0], Modifiers::NONE);
+    assert_eq!(selected(&h), vec![Picked::Form(1)], "a window from nothing round B");
+    assert_eq!(forms(&h), unmoved);
+    // BF off: a face picks nothing, so a drag from it is a box again; an edge still selects its form and moves it.
+    shortcut(&mut h, "BF");
+    assert!(!h.state().select_by_face && h.state().drag_on_selection);
+    key(&mut h, Key::Escape);
+    boxed(&mut h, [-750.0, 350.0, 0.0], [-650.0, 450.0, 0.0], Modifiers::NONE);
+    assert!(selected(&h).is_empty(), "BF off, a box from A's face");
+    assert_eq!(forms(&h), unmoved, "BF off, nothing moved");
+    boxed(&mut h, [-500.0, 400.0, 0.0], [-500.0, 100.0, 0.0], Modifiers::NONE);
+    assert_eq!(selected(&h), vec![Picked::Form(0)], "BF off, A by its edge");
+    assert_ne!(forms(&h)[0], unmoved[0], "and moved");
+    h.state_mut().family_undo();
+    h.run();
+    shortcut(&mut h, "BF");
+    assert!(h.state().select_by_face);
+    // A form hidden for now (HH) is taken by neither its face nor a drag from it: a box, which moves nothing.
+    click_family(&mut h, [-700.0, 400.0, 0.0]);
+    shortcut(&mut h, "HH");
+    assert!(editor(&h).temporary().hides() && selected(&h).is_empty(), "HH");
+    boxed(&mut h, [-750.0, 350.0, 0.0], [-650.0, 450.0, 0.0], Modifiers::NONE);
+    assert!(selected(&h).is_empty() && !editor(&h).boxing(), "a box from where A's face is drawn no more");
+    assert_eq!(forms(&h), unmoved, "A hidden stays");
+    shortcut(&mut h, "HR");
+    // A nested instance by its face, on: selected and moved; off, its face is the box's.
+    let doc = h.state().active_doc().expect("a family document");
+    h.state_mut().nest_family_file(doc, &small_file(dir.path()));
+    h.run();
+    place(&mut h, "Short", [0.0, -400.0, 0.0]);
+    key(&mut h, Key::Escape);
+    key(&mut h, Key::Escape);
+    let placed = editor(&h).nested_instances[0].at.clone();
+    h.state_mut().drag_on_selection = false;
+    h.run();
+    boxed(&mut h, [50.0, -350.0, 0.0], [400.0, -500.0, 0.0], Modifiers::NONE);
+    assert!(selected(&h).is_empty(), "off, a box from its face");
+    assert_eq!(editor(&h).nested_instances[0].at, placed);
+    h.state_mut().drag_on_selection = true;
+    h.run();
+    boxed(&mut h, [50.0, -350.0, 0.0], [50.0, -650.0, 0.0], Modifiers::NONE);
+    assert_eq!(selected(&h), vec![Picked::Nested(0)], "on, the instance by its face");
+    assert_ne!(editor(&h).nested_instances[0].at, placed, "and moved");
+    assert_eq!(project(&h), before, "nothing of it reaches the project");
+}
+
+/// Drag Elements on Selection is the window's, as BF is: kept in the settings file, carried to a new project's family tabs,
+/// greyed in {3D} and while a form is sketched, absent from an adaptive family and a project's tab. Revit gives it no key;
+/// Keyboard Shortcuts can.
+#[test]
+fn drag_elements_on_selection_is_kept_with_the_settings_has_no_key_and_is_greyed_as_bf_is() {
+    let dir = tempfile::tempdir().unwrap();
+    let settings = dir.path().join("settings.json");
+    std::fs::write(&settings, "{}").unwrap();
+    let mut h = plan();
+    h.state_mut().use_settings(settings.clone());
+    h.run();
+    assert!(!h.state().drag_on_selection, "off, in a settings file that says nothing of it");
+    assert!(crate::editor::keys::FAMILY_SHORTCUTS.iter().all(|(_, a)| *a != "Drag Elements on Selection"), "no key of Revit's");
+    assert!(crate::shortcuts::ACTIONS.contains(&"Drag Elements on Selection"), "Keyboard Shortcuts offers it");
+    // A key made for it toggles it, on a family's tab.
+    h.state_mut().custom_shortcuts.insert("QD".into(), "Drag Elements on Selection".into());
+    shortcut(&mut h, "QD");
+    assert!(h.state().drag_on_selection, "QD, made in Keyboard Shortcuts");
+    let kept: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&settings).unwrap()).unwrap();
+    assert_eq!(kept["drag_on_selection"], true, "{kept}");
+    let mut again = app("");
+    again.state_mut().use_settings(settings);
+    assert!(again.state().drag_on_selection, "the next session begins as this one ended");
+    // {3D}: greyed, and its key does nothing.
+    view(&mut h, None);
+    h.get_by_label("Drag Elements on Selection").click();
+    h.run();
+    shortcut(&mut h, "QD");
+    assert!(h.state().drag_on_selection, "greyed in {{3D}}");
+    // While a form is sketched: the same.
+    view(&mut h, Some(Which::Plan));
+    h.get_by_role_and_label(Role::Button, "Extrusion").click();
+    h.run();
+    assert!(editor(&h).sketching());
+    h.get_by_label("Drag Elements on Selection").click();
+    h.run();
+    shortcut(&mut h, "QD");
+    assert!(h.state().drag_on_selection, "greyed while sketching");
+    // A new project (File > New) keeps it, and so does the next family opened.
+    h.state_mut().reopened();
+    h.run();
+    assert!(h.state().drag_on_selection, "kept by a new project");
+    h.state_mut().new_family(bimcraft_core::family::Category::Generic);
+    h.run();
+    assert!(editor(&h).selecting.drag_faces, "a fresh family editor has it");
+    // An adaptive family selects its own way: no toggle. Nor has a project's tab.
+    let (h, ..) = super::family_temporary_hide::adaptive();
+    assert_eq!(h.query_all_by_label("Drag Elements on Selection").count(), 0, "no toggle in an adaptive family");
+    let h = app(BOX);
+    assert_eq!(h.query_all_by_label("Drag Elements on Selection").count(), 0, "no toggle on a project's tab");
+}
+
 /// Looking at the result: with `BIMCRAFT_FAMILY_SELECTION_DUMP` naming a folder, the family's plan with several selected
 /// (the Select panel's Filter, the status bar's count, funnel and Select Elements by Face), Filter, Select by ID and IDs of
 /// Selection, each in the three looks.
@@ -588,6 +724,46 @@ fn the_selections_dialogs_and_status_bar_in_the_three_looks() {
         manage(&mut h);
         press(&mut h, "IDs of Selection");
         shot(&mut h, "ids");
+    }
+}
+
+/// Looking at the status bar: with `BIMCRAFT_FAMILY_SELECTION_DUMP` naming a folder, Drag Elements on Selection and Select
+/// Elements by Face in each of their four states, greyed in {3D}, and the new toggle's tooltip, light and dark.
+#[test]
+fn the_status_bars_two_toggles_in_each_state() {
+    let Ok(folder) = std::env::var("BIMCRAFT_FAMILY_SELECTION_DUMP") else { return };
+    std::fs::create_dir_all(&folder).unwrap();
+    for (name, dark) in [("light", false), ("dark", true)] {
+        let mut h = app(BOXES);
+        h.ctx.set_theme(if dark { egui::ThemePreference::Dark } else { egui::ThemePreference::Light });
+        h.set_size(vec2(1600., 1000.));
+        h.state_mut().edit_family("Boxes");
+        h.run();
+        view(&mut h, Some(Which::Plan));
+        let shot = |h: &mut Harness<BimApp>, what: &str| {
+            h.run();
+            h.run();
+            let full = h.render().unwrap();
+            full.save(std::path::Path::new(&folder).join(format!("toggles-{what}-{name}.png"))).unwrap();
+            // The status bar's right end, four times as large, to look at the toggles closely.
+            let (w, ht) = full.dimensions();
+            let bar = image::imageops::crop_imm(&full, w - 480, ht - 52, 480, 52).to_image();
+            let big = image::imageops::resize(&bar, 480 * 4, 52 * 4, image::imageops::FilterType::Nearest);
+            big.save(std::path::Path::new(&folder).join(format!("bar-{what}-{name}.png"))).unwrap();
+        };
+        for (by_face, drag) in [(true, false), (true, true), (false, true), (false, false)] {
+            (h.state_mut().select_by_face, h.state_mut().drag_on_selection) = (by_face, drag);
+            shot(&mut h, &format!("bf-{}-drag-{}", if by_face { "on" } else { "off" }, if drag { "on" } else { "off" }));
+        }
+        let at = h.get_by_label("Drag Elements on Selection").rect().center();
+        h.hover_at(at);
+        for _ in 0..30 {
+            h.step();
+        }
+        shot(&mut h, "tooltip");
+        h.hover_at(egui::pos2(800.0, 500.0));
+        view(&mut h, None);
+        shot(&mut h, "greyed-3d");
     }
 }
 

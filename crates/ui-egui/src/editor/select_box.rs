@@ -31,7 +31,8 @@
 //! face selects it and a crossing box takes one by its faces too, so one drawn wholly inside a face takes what the face
 //! is of; off, a crossing box wholly inside a face, meeting none of its edges, doesn't take it, as Revit's doesn't, and a
 //! click selects by an edge alone. The box may begin inside the face of a form or a nested instance that isn't selected
-//! (`Scene::under`); a drag from an element's edge, a plane, a line or a connector, or from the face of one selected (with
+//! (`Scene::under`), unless Drag Elements on Selection is on and a face selects: then that face is its element's as an edge
+//! is (`selection.rs`); a drag from an element's edge, a plane, a line or a connector, or from the face of one selected (with
 //! Select Elements by Face on or off), is the element's and draws none: it moves the selection (FE-7, `drag_move.rs`), the
 //! element selected first if it isn't. {3D} has no box: a drag there turns the view.
 use super::*;
@@ -362,6 +363,9 @@ pub(super) struct Scene<'a> {
     pub(super) hidden: &'a [bool],
     /// Select Elements by Face (FE-20): a face selects what it is of, by a click and by a crossing box.
     pub(super) by_face: bool,
+    /// Drag Elements on Selection: a drag from the face of a form or a nested instance not selected is the element's, as
+    /// one from its edge is, where a face selects (`by_face`); else that face is the box's to begin in.
+    pub(super) drag_faces: bool,
 }
 
 impl Scene<'_> {
@@ -560,7 +564,8 @@ impl Scene<'_> {
     /// Whether a drag from `p` is an element's and so draws no box: a connector, a reference line, a plane, or a form or a
     /// nested instance by an edge the view draws it with. The face of a form or a nested instance is the box's to begin in, as
     /// Revit's (FE-20), but for one of `selected`, with Select Elements by Face on or off: dragging what is selected is its
-    /// own.
+    /// own. With Drag Elements on Selection on, a face that selects (`by_face`) is its form's or its nested instance's
+    /// selected or not, so a drag from it selects that and moves it; off, or with faces selecting nothing, it is as above.
     pub(super) fn under(&self, p: Pos2, selected: &[Picked]) -> bool {
         let q = self.view.mm((p.x - self.min.x, p.y - self.min.y));
         let reach = self.reach();
@@ -571,6 +576,7 @@ impl Scene<'_> {
             || self.drawing.pick_all((p.x - self.min.x, p.y - self.min.y), 6.0).into_iter().any(|id| self.staged.plane_of(id).is_some())
             || self.form_edge(q, reach).is_some()
             || self.held_face(q, selected).is_some()
+            || (self.drag_faces && self.by_face && (self.nested_face(q).is_some() || self.form_face(q).is_some()))
     }
 
     /// What a press at `p` is on, as a click there would select it (FE-7, in FE-20's order): a connector, a nested instance

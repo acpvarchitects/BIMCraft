@@ -1294,7 +1294,7 @@ impl BimApp {
     pub(crate) fn family_central(&mut self, ui: &mut Ui) {
         let Some(mut ed) = self.take_family() else { return };
         ed.snaps = self.snaps_now();
-        ed.selecting.by_face = self.select_by_face;
+        (ed.selecting.by_face, ed.selecting.drag_faces) = (self.select_by_face, self.drag_on_selection);
         let pane = ui.available_rect_before_wrap();
         self.view_rect = pane;
         self.pane = pane;

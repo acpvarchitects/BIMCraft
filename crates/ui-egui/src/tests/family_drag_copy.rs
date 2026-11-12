@@ -484,3 +484,24 @@ fn with_select_elements_by_face_off_ctrl_and_a_drag_from_a_selected_forms_face_c
     assert_eq!(editor(&h).selection.items(), &[Picked::Form(1)], "the copy is selected");
     assert_eq!(editor(&h).steps(), 1);
 }
+
+/// Ctrl and a drag from the face of a form not selected: off (at first), a box that adds what it takes and copies nothing;
+/// with Drag Elements on Selection on, the form selected and copied, as from its edge.
+#[test]
+fn with_drag_elements_on_selection_ctrl_and_a_drag_from_a_face_not_selected_copy_it() {
+    let mut h = plan();
+    let a0 = points(&h, 0);
+    copy_drag(&mut h, [300.0, 300.0, 0.0], [0.0, -700.0, 0.0]);
+    assert_eq!(family(&h).forms.len(), 2, "off, nothing copied");
+    assert!(untouched(&h));
+    key(&mut h, Key::Escape);
+    h.state_mut().drag_on_selection = true;
+    h.run();
+    copy_drag(&mut h, [300.0, 300.0, 0.0], [0.0, -700.0, 0.0]);
+    assert_eq!(family(&h).forms.len(), 3, "{}", status(&h));
+    assert_eq!(points(&h, 0), a0, "the original stays");
+    let d = shift(&a0, &points(&h, 1));
+    assert!(near(d[0], 0.0) && near(d[1], -700.0), "{d:?}");
+    assert_eq!(editor(&h).selection.items(), &[Picked::Form(1)], "the copy is selected");
+    assert_eq!(editor(&h).steps(), 1);
+}

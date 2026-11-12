@@ -19,9 +19,13 @@
 //! - **Select Elements by Face** (BF; the status bar's toggle on a family's tab, a setting the window keeps): on, a click
 //!   on a form's or a nested instance's face selects it and a crossing box drawn inside one takes it; off, each is taken
 //!   by an edge the view draws it with alone, an L's inner corner and never its hull's chord (`views.rs`,
-//!   `select_box::Scene`). Either way a box may begin inside the face of what isn't selected, and a drag from the face of
-//!   what is moves the selection. It is of the plans and elevations: greyed in {3D}, which takes a form by its face either
-//!   way as the project's 3D view does, and while a form is sketched.
+//!   `select_box::Scene`). Either way a box may begin inside the face of what isn't selected (but see Drag Elements on
+//!   Selection, below), and a drag from the face of what is moves the selection. It is of the plans and elevations: greyed
+//!   in {3D}, which takes a form by its face either way as the project's 3D view does, and while a form is sketched.
+//! - **Drag Elements on Selection** (the status bar's toggle between BF and the funnel, a setting the window keeps, off at
+//!   first; no key, as Revit gives it none): on, a drag from the face of a form or a nested instance that isn't selected
+//!   selects it and moves it (Ctrl copies it), as one from its edge does, where a face selects; with BF off a face picks
+//!   nothing, so it changes nothing. Greyed where BF is.
 //!
 //! None of it is a step of the document's history or reaches the project: the selection is the session's.
 use super::select_box::{How, Picked};
@@ -40,6 +44,8 @@ pub(crate) struct Selecting {
     pub(crate) ids: Option<Ids>,
     /// Select Elements by Face, as the window has it (`BimApp::select_by_face`), given each frame.
     pub(crate) by_face: bool,
+    /// Drag Elements on Selection, as the window has it (`BimApp::drag_on_selection`), given each frame.
+    pub(crate) drag_faces: bool,
     /// What IDs of Selection copied last: the clipboard's, for a test to read.
     pub(crate) copied: Option<String>,
 }
@@ -417,7 +423,27 @@ pub(super) fn inquiry_panel(ui: &mut Ui, ed: &mut FamilyEditor) {
 /// The status bar's Select Elements by Face (BF), as Revit's status bar has it left of the funnel: lit while it is `on`,
 /// crossed out while it is off.
 pub(crate) fn face_toggle(ui: &mut Ui, on: bool) -> egui::Response {
-    let label = t("Select Elements by Face");
+    let tip = msg!(
+        "Select Elements by Face (BF): on, a click on a face selects what it is of and a crossing box inside one takes it; off, only its edges do"
+    );
+    status_toggle(ui, on, Icon::PickFaces, "Select Elements by Face", tip)
+        .on_disabled_hover_text(t(msg!("Select Elements by Face is of a family's plans and elevations.")))
+}
+
+/// The status bar's Drag Elements on Selection, between Select Elements by Face and the funnel as Revit's status bar has
+/// it, drawn as that one is.
+pub(crate) fn drag_toggle(ui: &mut Ui, on: bool) -> egui::Response {
+    let tip = msg!(
+        "Drag Elements on Selection: on, a drag from the face of a form or a nested instance that isn't selected selects it and moves it (Ctrl copies it); off, a selection box begins there. With Select Elements by Face off a face picks nothing, so it changes nothing"
+    );
+    status_toggle(ui, on, Icon::DragOnSelection, "Drag Elements on Selection", tip)
+        .on_disabled_hover_text(t(msg!("Drag Elements on Selection is of a family's plans and elevations.")))
+}
+
+/// A toggle of the status bar's, 16 px square: `icon` lit while it is `on`, crossed out while it is off, greyed while the
+/// `ui` is disabled; `label` and `tip` translated here.
+fn status_toggle(ui: &mut Ui, on: bool, icon: Icon, label: &str, tip: &str) -> egui::Response {
+    let label = t(label);
     let (rect, r) = ui.allocate_exact_size(vec2(16.0, 16.0), Sense::click());
     let enabled = ui.is_enabled();
     r.widget_info(|| WidgetInfo::selected(WidgetType::Button, enabled, on, label));
@@ -429,12 +455,9 @@ pub(crate) fn face_toggle(ui: &mut Ui, on: bool) -> egui::Response {
     if on && enabled {
         ui.painter().rect(rect.expand(2.0), 3.0, pal().select_fill, Stroke::new(1.0, pal().accent), StrokeKind::Inside);
     }
-    crate::icons::paint(ui.painter(), Icon::PickFaces, rect, ink);
+    crate::icons::paint(ui.painter(), icon, rect, ink);
     if !on {
         ui.painter().line_segment([rect.left_bottom(), rect.right_top()], Stroke::new(1.5, ink));
     }
-    let tip = t(msg!(
-        "Select Elements by Face (BF): on, a click on a face selects what it is of and a crossing box inside one takes it; off, only its edges do"
-    ));
-    r.on_hover_text(tip).on_disabled_hover_text(t(msg!("Select Elements by Face is of a family's plans and elevations.")))
+    r.on_hover_text(t(tip))
 }

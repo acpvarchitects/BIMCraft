@@ -147,6 +147,7 @@ pub const ACTIONS: &[&str] = &[
     msg!("Select by ID"),
     msg!("Select All Instances: In Entire Family"),
     msg!("Select Elements by Face"),
+    msg!("Drag Elements on Selection"),
 ];
 
 /// The actions of `ACTIONS` only a family document does (`editor::keys`): a key for one does nothing on a project's tab, and
@@ -167,6 +168,7 @@ pub(crate) const FAMILY_ONLY: &[&str] = &[
     "Select by ID",
     "Select All Instances: In Entire Family",
     "Select Elements by Face",
+    "Drag Elements on Selection",
 ];
 
 /// Whether `action` is a family document's alone.
@@ -856,7 +858,7 @@ mod tests {
             }
         }
         for action in FAMILY_ONLY {
-            assert!(ACTIONS.contains(action) && FAMILY_SHORTCUTS.iter().any(|(_, a)| a == action), "{action}");
+            assert!(ACTIONS.contains(action) && crate::editor::keys::in_family(action), "{action}");
         }
     }
 }
