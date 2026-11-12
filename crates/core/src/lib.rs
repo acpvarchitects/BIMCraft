@@ -11,11 +11,14 @@ pub mod autosave;
 #[cfg(test)]
 mod autosave_tests;
 pub mod background_grid;
+pub mod bath;
 pub mod bounds;
 pub mod bridge;
 pub mod cad;
 #[cfg(test)]
 mod cad_tests;
+#[cfg(test)]
+mod circuit_tests;
 pub mod cloud;
 #[cfg(test)]
 mod cloud_tests;
@@ -30,6 +33,7 @@ pub mod demand;
 pub mod derived;
 pub mod dims;
 pub mod dims3d;
+mod doors;
 pub mod dps;
 pub mod dr;
 pub mod drainage;
@@ -42,6 +46,7 @@ mod eberick_tests;
 pub mod electrical;
 #[cfg(test)]
 mod electrical_tests;
+pub mod elevation;
 pub mod engine;
 #[cfg(test)]
 mod face_host_tests;
@@ -71,6 +76,8 @@ mod family_section_tests;
 mod family_sketch_lock_tests;
 #[cfg(test)]
 mod family_sketch_tests;
+#[cfg(test)]
+mod family_transform_tests;
 #[cfg(test)]
 mod family_visibility_tests;
 pub mod favorites;
@@ -122,11 +129,14 @@ mod openings_past_top_tests;
 #[cfg(test)]
 mod oracle_tests;
 pub mod paint;
+pub mod panel_schedule;
 pub mod pat;
 pub mod pdf;
 pub mod pen;
 pub mod phasing;
 pub mod plumbing;
+#[cfg(test)]
+mod raised_wall_room_tests;
 #[cfg(test)]
 mod read_only_tests;
 pub mod rebar;
@@ -165,6 +175,7 @@ pub mod shared;
 mod shared_parameter_tests;
 pub mod shared_parameters;
 pub mod sheet;
+pub mod site;
 pub mod skeleton;
 pub mod sketch;
 pub mod snap;
@@ -214,6 +225,10 @@ mod mep_tests;
 #[cfg(test)]
 mod network_tests;
 #[cfg(test)]
+mod panel_schedule_tests;
+#[cfg(test)]
+mod panel_tests;
+#[cfg(test)]
 mod plan_view_tests;
 #[cfg(test)]
 mod purge_tests;
@@ -223,3 +238,7 @@ mod structure_tests;
 mod tests;
 #[cfg(test)]
 mod text_tests;
+
+#[cfg(test)]
+mod profile_tests;
+pub mod profiles;

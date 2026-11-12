@@ -134,15 +134,15 @@ and says so.
 | **Plumbing** / Hidrossanitário / Fontanería | Pipe PI, Plumbing Fixture PX, Pipe Fitting PF, Pipe Accessory PA (built) | tubulação, peça sanitária, ramal, prumada, água fria (NBR 5626), esgoto (NBR 8160) |
 | **Electrical** / Elétrico / Eléctrico | Conduit CN, Cable Tray CT, Wire EW, Electrical Equipment EE, Lighting Fixture LF, Device DV (built) | eletroduto, eletrocalha, quadro de distribuição, luminária, tomada, circuito (NBR 5410) |
 | **Lightning Protection (SPDA)** / SPDA / SPDA | Air Terminal AT, Down Conductor DC, Earthing Electrode EG, Inspection Box IB, Earthing Conductor GC (built) | captor, condutor de descida, haste de aterramento, caixa de inspeção, malha (NBR 5419) |
-| **Data** / Lógica, Dados e Voz / Datos y Voz | Data Outlet DT, Voice Outlet VO, Rack RK, Patch Panel PN, Cable Tray CT, Cabling CB (built) | ponto de dados, ponto de voz, rack, patch panel, cabeamento estruturado (NBR 14565) |
+| **Data** / Lógica, Dados e Voz / Datos y Voz | Data Outlet DT, Voice Outlet VO, Rack RK, Patch Panel PB, Cable Tray CT, Cabling CB (built) | ponto de dados, ponto de voz, rack, patch panel, cabeamento estruturado (NBR 14565) |
 
 The English stays Revit's words; the Portuguese uses the terms the standards use. Revit has no SPDA, so its tools have
 no Autodesk shortcut, and take free letters.
 
 ## Not in this design, on purpose
 
-The network connectors join, auto-routing, sizing, flow and load calculations, circuits and panel schedules (a family's electrical
-connectors and the plumbing fixtures' pipe connectors are in, and give a device its load, and so are the settings: voltages, distribution systems and wire types), analytical
+The network connectors join, auto-routing, sizing, flow and load calculations, panel schedules (a family's electrical
+connectors and the plumbing fixtures' pipe connectors are in, and give a device its load, and so are the settings, a board's data and circuits), analytical
 models, rebar, beam systems and trusses. Each is large, none changes the model above, and they come after the five
 tabs can draw and schedule their systems (ROADMAP 2.x).
 

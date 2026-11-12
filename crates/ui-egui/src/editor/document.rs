@@ -161,6 +161,7 @@ impl FamilyEditor {
         self.views.dimensioning = None;
         self.views.aligning = None;
         self.views.pivoting = None;
+        self.views.modify = None;
         self.let_everything_go();
     }
 
@@ -213,6 +214,7 @@ impl FamilyEditor {
         // Undo and Redo give up a handle being dragged, the form put back as it was before it (FE-5).
         if ask.undo || ask.redo {
             self.cancel_drags();
+            self.modify_fresh();
         }
         // What the frame took away from the draft goes from the selection too (FE-1).
         self.prune_selection();
@@ -379,7 +381,8 @@ fn context(ed: &FamilyEditor) -> Option<&'static str> {
         if ed.selected_connector().is_some() {
             return Some(msg!("Modify | Connectors"));
         }
-        return ed.selected_form().map(|i| form_context(ed, i));
+        // A Modify tool in hand with nothing selected (Offset, FE-8): its Options Bar still shows.
+        return ed.selected_form().map(|i| form_context(ed, i)).or_else(|| ed.views.modify.as_ref().map(|_| msg!("Modify | Offset")));
     }
     let d = ed.adaptive.as_ref()?;
     let r = d.evaluate(&ed.values(), &d.preview);
@@ -683,6 +686,7 @@ impl BimApp {
                 ribbon::panel(ui, msg!("Clipboard"), |ui| {
                     later(ui, Icon::Copy, msg!("Paste"));
                 });
+                let mut modify: Option<super::modify::Tool> = None;
                 ribbon::panel(ui, msg!("Modify"), |ui| {
                     let some = !ed.modeller.selection.is_empty();
                     // Align, in a plan or an elevation of a family that isn't adaptive (F7): what is picked second onto what is
@@ -695,46 +699,68 @@ impl BimApp {
                     } else {
                         later_small(ui, Icon::Align, "Align");
                     }
-                    for (icon, label) in [(Icon::Offset, "Offset"), (Icon::MirrorPick, msg!("Mirror - Pick Axis"))] {
-                        later_small(ui, icon, label);
+                    if !adaptive {
+                        // FE-8: Modify's tools on what is selected in a plan or an elevation; the sketch's own greyed, saying why.
+                        let tools = super::modify::VIEW_TOOLS;
+                        if let Some(tool) = super::modify::tool_buttons(ui, ed, &tools[..3]) {
+                            modify = Some(tool);
+                        }
+                        if let Some(tool) = super::modify::tool_buttons(ui, ed, &tools[3..6]) {
+                            modify = Some(tool);
+                        }
+                        let why = t("Trim/Extend to Corner works on a sketch's lines: edit a form's sketch (double-click the form) first.");
+                        let tip = msg!("Trim/Extend to Corner (TR): pick two lines, on the parts to keep");
+                        ui.add_enabled_ui(false, |ui| crate::small_button(ui, Icon::Trim, "Trim/Extend to Corner", false, tip))
+                            .inner
+                            .on_disabled_hover_text(why);
+                        if let Some(tool) = super::modify::tool_buttons(ui, ed, &super::modify::SKETCH_TOOLS) {
+                            modify = Some(tool);
+                        }
+                        if let Some(tool) = super::modify::tool_buttons(ui, ed, &tools[6..]) {
+                            modify = Some(tool);
+                        }
+                    } else {
+                        for (icon, label) in [(Icon::Offset, "Offset"), (Icon::MirrorPick, msg!("Mirror - Pick Axis"))] {
+                            later_small(ui, icon, label);
+                        }
+                        later_small(ui, Icon::MirrorDraw, msg!("Mirror - Draw Axis"));
+                        // Move, Copy and Rotate, as Revit's: two clicks in the view.
+                        let tool = ed.modeller.tool.clone();
+                        let tip = msg!("Move (MV): what is selected, from a point clicked to another");
+                        if ui
+                            .add_enabled_ui(some, |ui| {
+                                crate::small_button(ui, Icon::Move, "Move", matches!(tool, Draw::Move { copy: false, .. }), tip)
+                            })
+                            .inner
+                            .clicked()
+                        {
+                            ed.modeller.tool = Draw::Move { from: None, copy: false };
+                        }
+                        let tip = msg!("Copy (CO): copies of what is selected, from a point clicked to another");
+                        if ui
+                            .add_enabled_ui(some, |ui| {
+                                crate::small_button(ui, Icon::Copy, "Copy", matches!(tool, Draw::Move { copy: true, .. }), tip)
+                            })
+                            .inner
+                            .clicked()
+                        {
+                            ed.modeller.tool = Draw::Move { from: None, copy: true };
+                        }
+                        let tip = msg!("Rotate (RO): what is selected, about its centre, by the angle between two clicks");
+                        if ui
+                            .add_enabled_ui(some, |ui| {
+                                crate::small_button(ui, Icon::Rotate, "Rotate", matches!(tool, Draw::Rotate { .. }), tip)
+                            })
+                            .inner
+                            .clicked()
+                            && let Some(d) = ed.adaptive.as_ref()
+                            && let Some(centre) = adaptive_view::selection_centre(d, &ed.modeller, &values)
+                        {
+                            ed.modeller.tool = Draw::Rotate { centre, start: None };
+                        }
+                        later_small(ui, Icon::Trim, msg!("Trim/Extend"));
+                        later_small(ui, Icon::Split, msg!("Split Element"));
                     }
-                    later_small(ui, Icon::MirrorDraw, msg!("Mirror - Draw Axis"));
-                    // Move, Copy and Rotate, as Revit's: two clicks in the view.
-                    let tool = ed.modeller.tool.clone();
-                    let tip = msg!("Move (MV): what is selected, from a point clicked to another");
-                    if ui
-                        .add_enabled_ui(some, |ui| {
-                            crate::small_button(ui, Icon::Move, "Move", matches!(tool, Draw::Move { copy: false, .. }), tip)
-                        })
-                        .inner
-                        .clicked()
-                    {
-                        ed.modeller.tool = Draw::Move { from: None, copy: false };
-                    }
-                    let tip = msg!("Copy (CO): copies of what is selected, from a point clicked to another");
-                    if ui
-                        .add_enabled_ui(some, |ui| {
-                            crate::small_button(ui, Icon::Copy, "Copy", matches!(tool, Draw::Move { copy: true, .. }), tip)
-                        })
-                        .inner
-                        .clicked()
-                    {
-                        ed.modeller.tool = Draw::Move { from: None, copy: true };
-                    }
-                    let tip = msg!("Rotate (RO): what is selected, about its centre, by the angle between two clicks");
-                    if ui
-                        .add_enabled_ui(some, |ui| {
-                            crate::small_button(ui, Icon::Rotate, "Rotate", matches!(tool, Draw::Rotate { .. }), tip)
-                        })
-                        .inner
-                        .clicked()
-                        && let Some(d) = ed.adaptive.as_ref()
-                        && let Some(centre) = adaptive_view::selection_centre(d, &ed.modeller, &values)
-                    {
-                        ed.modeller.tool = Draw::Rotate { centre, start: None };
-                    }
-                    later_small(ui, Icon::Trim, msg!("Trim/Extend"));
-                    later_small(ui, Icon::Split, msg!("Split Element"));
                     let tip = msg!("Delete (DE): what is selected, with what depends on it");
                     if ui.add_enabled_ui(some || ed.deletable(), |ui| big_button(ui, Icon::Delete, "Delete", false, tip)).inner.clicked()
                         && let Err(e) = ed.delete_selected()
@@ -742,6 +768,12 @@ impl BimApp {
                         self.status = Status { text: e, error: true };
                     }
                 });
+                if let Some(tool) = modify {
+                    match ed.modify_tool_on(tool) {
+                        Ok(()) => self.status = Status::default(),
+                        Err(e) => self.status = Status { text: e, error: true },
+                    }
+                }
                 ribbon::panel(ui, msg!("Measure"), |ui| {
                     later(ui, Icon::Measure, msg!("Measure"));
                 });
@@ -1387,6 +1419,15 @@ impl BimApp {
         ui.horizontal(|ui| {
             ui.set_min_height(24.0);
             ui.label(t(name));
+            // A Modify tool's options (FE-8).
+            let views = &mut ed.views;
+            if let Some(m) = views.modify.as_mut() {
+                ui.separator();
+                if let Some(a) = super::modify::options_bar(ui, &mut views.modify_options, &mut m.tool, units) {
+                    m.typed = Some(a);
+                }
+                return;
+            }
             if drawing {
                 ui.separator();
                 let l = ui.label(t("Placement Plane"));
@@ -1465,7 +1506,11 @@ impl BimApp {
                     "Click a padlock to lock or unlock its length, EQ to make a string's lengths equal; the Options Bar gives its Label and Value; Delete takes it away."
                 ));
             }
-            return Some(super::sketch::prompt(s));
+            return Some(super::sketch::prompt(s, &ed.views.modify_options));
+        }
+        // A Modify tool in hand (FE-8): what to click next.
+        if let (Some(_), None, Some(m)) = (ed.views.shown, ed.adaptive.as_ref(), ed.views.modify.as_ref()) {
+            return Some(super::modify::prompt(&m.tool, &ed.views.modify_options, false));
         }
         Some(match (ed.views.shown, ed.adaptive.is_some()) {
             (Some(_), true) => msg!("An adaptive family's plans and elevations show its test placement; model it in {3D}."),
@@ -1525,11 +1570,107 @@ impl BimApp {
         }
     }
 
-    /// The family document's keys: Ctrl+Z undoes a step of its own, Ctrl+Y and Ctrl+Shift+Z redo one, and the two letters of
-    /// Temporary Hide/Isolate (`temp_hide.rs`), unless a field being typed in (whose own they are) or a dialog has them.
+    /// What Find lists on a family tab, by name in `shortcuts::ACTIONS`: what the family document does itself (Delete, Align and
+    /// Aligned Dimension in a plan or an elevation, Temporary Hide/Isolate, Zoom to Fit in {3D}, its {3D} view) and what is the
+    /// window's (Properties, Project Browser, Keyboard Shortcuts). The project's tools are left out: from a family tab they
+    /// would change the project out of sight.
+    pub(crate) fn family_find_actions(&self) -> Vec<&'static str> {
+        let Some(ed) = self.active_family() else { return Vec::new() };
+        let mut out = vec!["Delete"];
+        if ed.editing_2d() && ed.sketch.is_none() {
+            out.extend(["Aligned Dimension", "Align"]);
+        }
+        out.extend([
+            "Temporary Hide Element",
+            "Temporary Hide Category",
+            "Temporary Isolate Element",
+            "Temporary Isolate Category",
+            "Reset Temporary Hide/Isolate",
+            "3D View",
+        ]);
+        if matches!(self.sheet, crate::Sheet::Family(_, None)) {
+            out.push("Zoom to Fit");
+        }
+        out.extend(["Properties", "Project Browser", "Keyboard Shortcuts"]);
+        out
+    }
+
+    /// One of `family_find_actions` done on the active family document, as its own keys and ribbon do it; whether it was one.
+    pub(crate) fn family_find_action(&mut self, action: &str) -> bool {
+        if !self.family_find_actions().contains(&action) {
+            return false;
+        }
+        let temp = |category| super::temp_hide::Asked::Hide { category };
+        let isolate = |category| super::temp_hide::Asked::Isolate { category };
+        match action {
+            "Delete" => {
+                let Some(ed) = self.active_family_mut() else { return false };
+                // A sketch's lines picked, else what is selected, as the Delete key does.
+                if let Some(s) = ed.sketch.as_mut() {
+                    s.delete_picked();
+                } else if ed.deletable()
+                    && let Err(text) = ed.delete_selected()
+                {
+                    self.status = Status { text, error: true };
+                }
+            }
+            "Aligned Dimension" | "Align" => {
+                let Some(ed) = self.active_family_mut() else { return false };
+                if action == "Align" {
+                    ed.align_tool();
+                } else {
+                    ed.dimension_tool();
+                }
+            }
+            "Temporary Hide Element" => self.family_temp(temp(false)),
+            "Temporary Hide Category" => self.family_temp(temp(true)),
+            "Temporary Isolate Element" => self.family_temp(isolate(false)),
+            "Temporary Isolate Category" => self.family_temp(isolate(true)),
+            "Reset Temporary Hide/Isolate" => self.family_temp(super::temp_hide::Asked::Reset),
+            "3D View" => {
+                if let Some(ed) = self.active_family_mut() {
+                    ed.views.show(None);
+                }
+            }
+            // The family's {3D}, the window's palettes and dialogs: as anywhere.
+            _ => return self.execute_shortcut_action(action),
+        }
+        true
+    }
+
+    /// Save and Save As on a family tab (the Quick Access Toolbar's Save, File > Save Family and Save Family As…, Ctrl+S and
+    /// Ctrl+Shift+S): the active family document to its file, as Revit saves the active document; the project never.
+    pub(crate) fn family_save(&mut self, ask: bool) {
+        if let Some(ed) = self.active_family_mut() {
+            if ask {
+                ed.ask.save = true;
+            } else {
+                ed.ask.save_in_place = true;
+            }
+        }
+    }
+
+    /// The family document's keys: Ctrl+S saves it (Ctrl+Shift+S asks where), Ctrl+K opens Find, Ctrl+Z undoes a step of its
+    /// own, Ctrl+Y and Ctrl+Shift+Z redo one, and the two letters of Temporary Hide/Isolate (`temp_hide.rs`), unless a field
+    /// being typed in (whose own they are) or a dialog has them; Ctrl+S and Ctrl+K work while a field has the keyboard, as on
+    /// a project's tab.
     pub(crate) fn family_keys(&mut self, ctx: &Context) {
         let Some(ed) = self.active_family() else { return };
-        if ed.modal() || ctx.text_edit_focused() {
+        if ed.modal() {
+            return;
+        }
+        if !self.keys_taken(ctx) {
+            let pressed = |m: egui::Modifiers, k: egui::Key| ctx.input_mut(|i| i.consume_key(m, k));
+            if pressed(egui::Modifiers::COMMAND | egui::Modifiers::SHIFT, egui::Key::S) {
+                self.family_save(true);
+            } else if pressed(egui::Modifiers::COMMAND, egui::Key::S) {
+                self.family_save(false);
+            }
+            if pressed(egui::Modifiers::COMMAND, egui::Key::K) {
+                self.find = Some(String::new());
+            }
+        }
+        if ctx.text_edit_focused() {
             return;
         }
         // Letters typed, but not while a menu has the keys.
@@ -1582,7 +1723,7 @@ impl BimApp {
         if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
             // The plane being drawn first, then the tool, then the selection.
             // A handle being dragged first: the form put back as it was.
-            if ed.cancel_drags() || ed.stop_picking() || ed.views.pivoting.take().is_some() {
+            if ed.cancel_drags() || ed.stop_picking() || ed.views.pivoting.take().is_some() || ed.modify_escape() {
             } else if let Some(refs) = ed.views.dimensioning.as_mut() {
                 if refs.is_empty() {
                     ed.views.dimensioning = None;
@@ -1759,7 +1900,8 @@ fn category_body(ed: &mut FamilyEditor, ui: &mut Ui, units: Units) {
                 if ui.selectable_label(ed.operation.is_none(), t("(none)")).clicked() {
                     ed.operation = None;
                 }
-                for op in Operation::ALL {
+                // A window offers no gate's operation, which the family would refuse.
+                for op in Operation::ALL.into_iter().filter(|op| ed.category != Category::Window || !op.industrial()) {
                     if ui.selectable_label(ed.operation == Some(op), t(op.label())).clicked() {
                         ed.operation = Some(op);
                     }

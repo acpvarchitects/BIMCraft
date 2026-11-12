@@ -49,6 +49,8 @@ pub(crate) enum Retry {
     Align(DimRef, DimRef),
     /// Family Types' Apply (or OK, which closes it).
     Types { ok: bool },
+    /// A rotation, a mirror or a scale (FE-8).
+    Modify(super::modify::Again),
 }
 
 /// Create Parameter…, for the selected dimension's label: the Parameter Properties a label needs.
@@ -170,8 +172,9 @@ pub(crate) fn crosses(a: Pos2, b: Pos2, r: Rect) -> bool {
 
 /// Where an Align padlock goes on screen: beside the aligned line through `base` (running along `dir`), a few pixels off it
 /// to its outer side (away from what `inside` says is a form's inside, where one is), slid along the line as little as
-/// takes it clear of every line of `lines` and of the padlocks `taken`; on the other side only where the outer one has no
-/// room. So a padlock never covers a line, the one it locks among them, or another padlock.
+/// takes it clear of every line of `lines`, of the padlocks `taken` and of the inside; on the other side only where the
+/// outer one has no room. So a padlock never covers a line, the one it locks among them, or another padlock, and a plane's
+/// through a form is slid out past the form's outline, where it can be clicked.
 pub(super) fn padlock_spot(base: Pos2, dir: Vec2, inside: &dyn Fn(Pos2) -> bool, lines: &[[Pos2; 2]], taken: &[Pos2]) -> Pos2 {
     let dir = if dir.is_finite() && dir.length_sq() > 0.0 { dir.normalized() } else { vec2(1.0, 0.0) };
     let n = vec2(-dir.y, dir.x);
@@ -180,20 +183,24 @@ pub(super) fn padlock_spot(base: Pos2, dir: Vec2, inside: &dyn Fn(Pos2) -> bool,
         let r = lock_rect(c);
         !lines.iter().any(|[a, b]| crosses(*a, *b, r)) && taken.iter().all(|t| !lock_rect(*t).intersects(r))
     };
-    let mut first = None;
-    for side in [out, -out] {
+    let spot = |side: Vec2, k: usize| {
         // Off the line by half the padlock's width along `side` and a gap, whatever way the line runs.
         let off = 4.0 + 7.0 * side.x.abs() + 12.0 * side.y.abs();
-        for k in 0..13 {
-            let slide = if k % 2 == 0 { (k / 2) as f32 } else { -((k / 2 + 1) as f32) } * 14.0;
-            let c = base + side * off + dir * slide;
-            first.get_or_insert(c);
-            if free(c) {
-                return c;
+        let slide = if k.is_multiple_of(2) { (k / 2) as f32 } else { -((k / 2 + 1) as f32) } * 14.0;
+        base + side * off + dir * slide
+    };
+    // Outside every form first, near, then slid further (a plane through a box: past its outline); then anywhere clear.
+    for (reach, outside) in [(13, true), (61, true), (13, false)] {
+        for side in [out, -out] {
+            for k in 0..reach {
+                let c = spot(side, k);
+                if free(c) && (!outside || !inside(c)) {
+                    return c;
+                }
             }
         }
     }
-    first.unwrap_or(base)
+    spot(out, 0)
 }
 
 /// Whether `p` is inside the closed ring `ring` (even-odd).
@@ -650,6 +657,7 @@ impl FamilyEditor {
                 s.points.clear();
                 s.align_from = None;
                 s.trim = None;
+                s.edit = None;
                 s.selected_dim = None;
                 self.views.dimensioning = None;
                 self.views.aligning = Some(None);
@@ -669,6 +677,7 @@ impl FamilyEditor {
         self.views.aligning = None;
         self.views.align_lock = None;
         self.views.pivoting = None;
+        self.views.modify = None;
         self.let_everything_go();
     }
 
@@ -807,6 +816,12 @@ impl FamilyEditor {
                 }
                 Edit::Turn(i, k, t) => self.turn_sketch_arc(i, k, t),
                 Edit::PivotAngle(..) => super::pivot::apply_angle(&mut self.lines, &mut self.planes, &e),
+                Edit::PlaneTurn(g, [start, end, up]) => {
+                    if let Some(p) = self.planes.iter_mut().find(|p| p.guid == g) {
+                        (p.start, p.end, p.up) = (start, end, up);
+                    }
+                }
+                Edit::FormShift(i, by) => self.shift_sketch(i, by),
                 Edit::Parameter(name, v) => {
                     let Some(at) = self.param_at(&name) else { continue };
                     let text = number_text(v);
@@ -818,6 +833,35 @@ impl FamilyEditor {
                 }
             }
         }
+    }
+
+    /// Form `i`'s sketch (and a blend's top) slid `by` along its plane's axes, each coordinate keeping its formula.
+    fn shift_sketch(&mut self, i: usize, by: [f64; 2]) {
+        use bimcraft_core::family::sketch::FormCurve;
+        let Some(ft) = self.forms.get(i) else { return };
+        let Ok(mut f) = ft.form() else { return };
+        let plus = |e: &mut Expr, d: f64| {
+            *e = match &*e {
+                Expr::Number(v) => Expr::Number(v + d),
+                Expr::Formula(s) if d < 0.0 => Expr::Formula(format!("({s}) - {}", number_text(-d))),
+                Expr::Formula(s) => Expr::Formula(format!("({s}) + {}", number_text(d))),
+            }
+        };
+        let at = |p: &mut [Expr; 2]| {
+            plus(&mut p[0], by[0]);
+            plus(&mut p[1], by[1]);
+        };
+        for l in f.sketch.iter_mut().chain(f.top.iter_mut()) {
+            match &mut l.curve {
+                FormCurve::Line { start, end, .. } => {
+                    at(start);
+                    at(end);
+                }
+                FormCurve::Circle { centre, .. } => at(centre),
+            }
+        }
+        let tag = ft.tag;
+        self.forms[i] = FormText::again(&f, tag);
     }
 
     /// Line `k` of form `i`'s sketch, an arc, turning `t` degrees, a number.
@@ -865,8 +909,27 @@ impl FamilyEditor {
         let Ok(f) = self.family() else { return };
         match constraints::align(&f, &self.values(), &reference, &target) {
             Ok(edits) => {
+                // What it turned or moved must still build: a draft sound before stays sound, else it is as it was.
+                let sound = |f: &Family| f.check(&|_| true).is_ok();
+                let was = sound(&f)
+                    .then(|| (self.forms.clone(), self.planes.clone(), self.lines.clone(), self.params.clone(), self.types.clone()));
                 self.apply_edits(edits);
-                self.views.align_lock = Some((reference, target, at, which));
+                if let Some(was) = was
+                    && let Err(e) = self.family().and_then(|f| f.check(&|_| true))
+                {
+                    (self.forms, self.planes, self.lines, self.params, self.types) = was;
+                    self.views.status = Some(tf("Align can't put it there: {}", &[&e]));
+                    return;
+                }
+                // A pivoted plane or line turned onto it is held there by its swing, which a lock can't add to (FE-10).
+                let pivoted = match target {
+                    DimRef::Plane(g) => f.planes.iter().any(|p| p.guid == g && p.pivot.is_some()),
+                    DimRef::Line(g, _) => f.lines.iter().any(|l| l.guid == g && l.pivot.is_some()),
+                    _ => false,
+                };
+                if !pivoted {
+                    self.views.align_lock = Some((reference, target, at, which));
+                }
             }
             Err(e) if e.dims.is_empty() && !e.message.starts_with(NOT_SATISFIED) => {
                 self.views.status = Some(e.message);
@@ -894,8 +957,13 @@ impl FamilyEditor {
             alignment: true,
             kind: DimKind::Aligned,
         };
+        let before = self.dimensions.clone();
         if let Err(e) = self.try_dimensions(|dims| dims.push(lock)) {
             self.views.status = Some(said(e));
+        } else if let Err(e) = self.family().and_then(|f| f.check(&|_| true)) {
+            // A lock the family can't keep (references that aren't parallel as drawn) isn't left behind.
+            self.dimensions = before;
+            self.views.status = Some(e);
         }
     }
 
@@ -946,12 +1014,19 @@ impl FamilyEditor {
         });
         if remove {
             self.views.unsatisfied = None;
+            // What it was before the constraints come off: a retry refused puts it back, leaving neither (FE-8).
+            let before = self.draft();
             self.remove_constraints(&u.dims);
             match u.retry {
                 Retry::Drag(g, to) => self.drag_through(g, to),
                 Retry::Align(a, b) => {
                     if let Some((_, _, at, which)) = self.views.align_pending.take() {
                         self.align_through(a, b, at, which);
+                    }
+                }
+                Retry::Modify(a) => {
+                    if !self.modify_again(a) {
+                        self.put_back(before);
                     }
                 }
                 Retry::Types { ok } => {

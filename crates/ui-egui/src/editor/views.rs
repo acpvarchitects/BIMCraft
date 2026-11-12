@@ -55,6 +55,10 @@ pub(crate) struct Views {
     pub(super) edge_drag: Option<super::shape_handles::EdgeDrag>,
     /// The selection being dragged to move it (FE-7, `drag_move.rs`).
     pub(super) moving: Option<super::drag_move::MoveDrag>,
+    /// A Modify tool in hand (FE-8, `modify.rs`): Move, Copy, Rotate, Mirror, Scale or Offset, with what has been clicked.
+    pub(crate) modify: Option<super::modify::Modifying>,
+    /// The Modify tools' Options Bar, kept for the session.
+    pub(crate) modify_options: super::modify::Options,
     /// Whether the pointer was last over something selected that a drag would move, with no tool in hand: what the status
     /// bar says (FE-7).
     pub(crate) over_selected: bool,
@@ -312,6 +316,7 @@ impl FamilyEditor {
         if self.editing_2d() {
             self.views.drawing = Some(None);
             self.views.picking = None;
+            self.views.modify = None;
             self.let_everything_go();
         }
     }
@@ -479,6 +484,19 @@ impl FamilyEditor {
         }
         if let Some(d) = self.views.moving.as_mut() {
             d.seen = pass;
+        }
+        // A Modify tool's points are the view's they were clicked in: in another, it starts again (FE-8).
+        self.views.modify_options.units = base.units;
+        if let Some(m) = self.views.modify.as_mut()
+            && m.which != Some(which)
+        {
+            (m.which, m.tool) = (Some(which), m.tool.fresh());
+        }
+        // Nor do they hold once the selection changed otherwise (a click, Delete): the tool starts again on what is selected.
+        if let Some(m) = self.views.modify.as_mut()
+            && m.selection.as_slice() != self.selection.items()
+        {
+            (m.selection, m.tool) = (self.selection.items().to_vec(), m.tool.fresh());
         }
         self.refresh_view(ui.ctx(), base, which, size);
         let response = ui.interact(pane, UiId::new("family-view-2d"), Sense::click_and_drag());
@@ -773,17 +791,20 @@ impl FamilyEditor {
             let (Some(base), Some(f)) = (m.points.first(), family.as_ref()) else { continue };
             let base_at = on_screen(*base);
             let dir = on_screen(*base + m.across) - base_at;
-            // A form one of its references belongs to: its outline is the inside the padlock keeps out of.
-            let ring: Vec<egui::Pos2> = refs
-                .iter()
-                .find_map(|r| match r {
-                    DimRef::Form(g, _) | DimRef::Sketch(g, _) | DimRef::Point(g, ..) => f.forms.iter().position(|x| x.guid == *g),
-                    _ => None,
-                })
-                .map(|i| fv::outline(f, &values, &c.staged, which, i).into_iter().map(&on_screen).collect())
-                .unwrap_or_default();
+            // A form one of its references belongs to: its outline is the inside the padlock keeps out of. Planes and lines
+            // alone: every solid form's, so a plane's padlock isn't left inside a form it runs through.
+            let ring = |i: usize| -> Vec<egui::Pos2> { fv::outline(f, &values, &c.staged, which, i).into_iter().map(&on_screen).collect() };
+            let own = refs.iter().find_map(|r| match r {
+                DimRef::Form(g, _) | DimRef::Sketch(g, _) | DimRef::Point(g, ..) => f.forms.iter().position(|x| x.guid == *g),
+                _ => None,
+            });
+            let rings: Vec<Vec<egui::Pos2>> = match own {
+                Some(i) => vec![ring(i)],
+                None => (0..f.forms.len()).filter(|i| !f.forms[*i].void).map(ring).collect(),
+            };
             let taken: Vec<egui::Pos2> = locks.iter().map(|(_, p)| *p).collect();
-            let at = dims::padlock_spot(base_at, dir, &|p| ring.len() > 2 && dims::within(&ring, p), &lines, &taken);
+            let inside = |p: egui::Pos2| rings.iter().any(|r| r.len() > 2 && dims::within(r, p));
+            let at = dims::padlock_spot(base_at, dir, &inside, &lines, &taken);
             locks.push((m.index, at));
         }
         let offered = offer.as_ref().and_then(|o| locks.iter().find(|(i, _)| *i == o.index).map(|(_, p)| *p));
@@ -893,6 +914,114 @@ impl FamilyEditor {
         });
         if editable && let Some(scene) = scene.as_ref() {
             scene.paint_selected(&painter, self.selection.items());
+        }
+        // A Modify tool (FE-8): what of the selection the view shows and takes, the view's way into the family, the axis Mirror
+        // - Pick Axis would take under the pointer, and what Offset takes where a click is.
+        let space = super::modify::Space::of(&c.staged, which);
+        let shown_selection: Vec<Picked> = match scene.as_ref() {
+            Some(s) if self.views.modify.is_some() => self
+                .selection
+                .items()
+                .iter()
+                .copied()
+                .filter(|p| !matches!(p, Picked::Form(i) if hidden.get(*i).copied().unwrap_or(false)) && !s.pieces(*p).is_empty())
+                .collect(),
+            _ => Vec::new(),
+        };
+        let reach = 6.0 / view.scale.max(1e-9);
+        let axis_at = |p: egui::Pos2| -> Option<(P2, P2)> {
+            let f = family.as_ref()?;
+            if let Some(g) = pick_plane(p) {
+                let plane = f
+                    .planes
+                    .iter()
+                    .find(|q| q.guid == g)
+                    .cloned()
+                    .or_else(|| bimcraft_core::family::datums().into_iter().find(|d| d.guid == g))?;
+                return plane_trace(&c.staged, which, &plane.frame());
+            }
+            let q = at_view(p);
+            if let Some(i) = c.staged.line_at(which, q, reach)
+                && let Some(l) = f.lines.get(i)
+            {
+                let (a, b) = (c.staged.to_view(which, l.start), c.staged.to_view(which, l.end));
+                return (a.dist(b) > 1e-6).then_some((a, b));
+            }
+            let mut best: Option<(f64, (P2, P2))> = None;
+            for i in 0..f.forms.len() {
+                let ring = fv::outline(f, &values, &c.staged, which, i);
+                for k in 0..ring.len() {
+                    let (a, b) = (ring[k], ring[(k + 1) % ring.len()]);
+                    let d = bimcraft_core::geom::dist_to_segment(q, a, b);
+                    if d <= reach && a.dist(b) > 1e-6 && best.is_none_or(|(e, _)| d < e) {
+                        best = Some((d, (a, b)));
+                    }
+                }
+            }
+            best.map(|(_, s)| s)
+        };
+        let offset_at = |p: egui::Pos2| -> super::modify::OffsetHit {
+            let f = family.as_ref()?;
+            let q = at_view(p);
+            if let Some(i) = c.staged.line_at(which, q, reach)
+                && let Some(l) = f.lines.get(i)
+            {
+                return Some(Ok((Picked::Line(l.guid), (c.staged.to_view(which, l.start), c.staged.to_view(which, l.end)))));
+            }
+            if let Some(g) = pick_plane(p) {
+                let Some(plane) = f.planes.iter().find(|q| q.guid == g && !q.datum()) else {
+                    return Some(Err(t("A datum stays where it is: offset a reference plane of the family's own.").to_string()));
+                };
+                return plane_trace(&c.staged, which, &plane.frame()).map(|t| Ok((Picked::Plane(g), t)));
+            }
+            fv::form_at(f, &values, &c.staged, which, q)
+                .map(|_| Err(t("Offset takes reference planes and reference lines: edit a form's sketch to offset its lines.").to_string()))
+        };
+        // The planes' and lines' traces a Modify tool's points snap to (FE-8).
+        let traces: Vec<(P2, P2)> = match family.as_ref() {
+            Some(f) if self.views.modify.is_some() => {
+                let planes = f
+                    .planes
+                    .iter()
+                    .cloned()
+                    .chain(bimcraft_core::family::datums().into_iter().filter(|d| !f.planes.iter().any(|p| p.guid == d.guid)));
+                planes
+                    .filter_map(|p| plane_trace(&c.staged, which, &p.frame()))
+                    .chain(f.lines.iter().map(|l| (c.staged.to_view(which, l.start), c.staged.to_view(which, l.end))))
+                    .collect()
+            }
+            _ => Vec::new(),
+        };
+        let snapped = |p: egui::Pos2| super::modify::snap_to(at_view(p), &traces, reach);
+        if self.views.modify.is_some() {
+            let pieces: Vec<[egui::Pos2; 2]> =
+                scene.as_ref().map(|s| shown_selection.iter().flat_map(|p| s.pieces(*p)).collect()).unwrap_or_default();
+            let centred: Vec<[egui::Pos2; 2]> = scene
+                .as_ref()
+                .map(|s| shown_selection.iter().filter(|p| !matches!(p, Picked::Dimension(_))).flat_map(|p| s.pieces(*p)).collect())
+                .unwrap_or_default();
+            let hover = response.hover_pos();
+            let axis = hover.and_then(axis_at);
+            let shift = ui.input(|i| i.modifiers.shift);
+            super::modify::paint_modify(
+                (&mut self.views.modify, &self.views.modify_options),
+                &self.snaps,
+                &painter,
+                hover.map(snapped),
+                (&pieces, &centred),
+                &screen,
+                &at_view,
+                axis,
+                shift,
+            );
+            // Offset: where the plane or the line under the pointer would go.
+            if let (Some(h), Some(super::modify::Tool::Offset)) = (hover, self.views.modify.as_ref().map(|m| m.tool))
+                && let Some(Ok((_, line))) = offset_at(h)
+                && let Some((a, b)) = super::modify::offset_line(line, at_view(h), &self.views.modify_options)
+            {
+                let stroke = Stroke::new(1.5, crate::style::canvas_pal().accent);
+                painter.extend(egui::Shape::dashed_line(&[screen(a), screen(b)], stroke, 8.0, 4.0));
+            }
         }
         let chosen = self.selected_line().or_else(|| self.selected_plane());
         let turning = match self.views.grip {
@@ -1040,12 +1169,17 @@ impl FamilyEditor {
         let mut new_dim = None;
         let mut align = None;
         let mut on_dims: Option<(Clicked, Vec<f64>)> = None;
+        let mut modify_at: Option<super::modify::Click> = None;
         let mut clicked_any = false;
         // A double click on a form sketches it again, as Edit Extrusion or Edit Revolve does (F5).
-        let edit = (editable && response.double_clicked() && self.views.drawing.is_none() && self.views.picking.is_none())
-            .then(|| response.interact_pointer_pos())
-            .flatten()
-            .and_then(|p| scene.as_ref().and_then(|s| s.form_hit(at_view(p))));
+        let edit = (editable
+            && response.double_clicked()
+            && self.views.drawing.is_none()
+            && self.views.picking.is_none()
+            && self.views.modify.is_none())
+        .then(|| response.interact_pointer_pos())
+        .flatten()
+        .and_then(|p| scene.as_ref().and_then(|s| s.form_hit(at_view(p))));
         // A box let go where it began (a slow or a shaky click, which egui calls a drag) is the click there (FE-20).
         let box_click = self.selection.box_click(ui, &response);
         // An adaptive family's views only show it: its tools are in {3D}.
@@ -1066,6 +1200,11 @@ impl FamilyEditor {
                     .as_ref()
                     .and_then(|f| super::pivot::picked(f, &values, &c.staged, which, g, q, &on_screen, view.scale))
                     .map(|x| (g, x));
+            } else if self.views.modify.is_some() {
+                // A Modify tool (FE-8): the point, the axis or the line clicked, done once the view is drawn.
+                // Offset reads the side clicked, so its point isn't snapped onto what it offsets.
+                let offsetting = self.views.modify.as_ref().is_some_and(|m| m.tool == super::modify::Tool::Offset);
+                modify_at = Some((if offsetting { q } else { snapped(p) }, axis_at(p), offset_at(p)));
             } else if let Some(first) = self.views.drawing {
                 match first {
                     None => self.views.drawing = Some(Some(q)),
@@ -1102,7 +1241,21 @@ impl FamilyEditor {
                         align = Some((a, r, q));
                         self.views.aligning = Some(None);
                     }
-                    _ => problem = Some(t("Pick a reference plane, an extrusion's end or a line of a form.").to_string()),
+                    (Some(_), Some(_)) => {
+                        problem = Some(t("That is the reference: pick what moves onto it.").to_string());
+                    }
+                    (None, _) => {
+                        // Over a form but on none of its faces: say what of a form Align takes.
+                        let form = family.as_ref().and_then(|f| fv::form_at(f, &values, &c.staged, which, q).and_then(|i| f.forms.get(i)));
+                        problem = Some(match form {
+                            Some(f) if !f.mesh.is_empty() => {
+                                t("A form made of a mesh has no faces Align can take: pick a reference plane, an extrusion's end or a line of a form.")
+                            }
+                            Some(_) => t("Align takes a form's straight edge, a side the view sees edge on, or its end: click on its outline."),
+                            None => t("Pick a reference plane, an extrusion's end or a line of a form."),
+                        }
+                        .to_string());
+                    }
                 }
             } else if on_handle(p) {
                 // A click on a handle, with no drag: the selection stays.
@@ -1152,7 +1305,8 @@ impl FamilyEditor {
             && self.views.end_drag.is_none()
             && self.views.edge_drag.is_none()
             && self.views.grip.is_none()
-            && self.views.moving.is_none();
+            && self.views.moving.is_none()
+            && self.views.modify.is_none();
         let press_hit = |p: egui::Pos2| -> Option<Picked> {
             if !tools_free || on_handle(p) || grips.iter().any(|(_, at)| at.distance(p) <= super::pivot::REACH) {
                 return None;
@@ -1199,7 +1353,8 @@ impl FamilyEditor {
             && self.views.end_drag.is_none()
             && self.views.edge_drag.is_none()
             && self.views.grip.is_none()
-            && self.views.moving.is_none();
+            && self.views.moving.is_none()
+            && self.views.modify.is_none();
         let start =
             response.drag_started_by(PointerButton::Primary).then(|| ui.input(|i| i.pointer.press_origin())).flatten().filter(|p| {
                 free && scene.as_ref().is_some_and(|s| !s.under(*p, &chosen))
@@ -1363,6 +1518,23 @@ impl FamilyEditor {
         }
         if let Some(hit) = select {
             self.click_select(hit, crate::canvas::click_modifiers(ui));
+        }
+        // A Modify tool's click (FE-8), and Rotate's Angle typed.
+        if let Some((q, axis, offset)) = modify_at
+            && let Some(e) =
+                self.modify_click(q, (which, view, pass), space, &shown_selection, axis, offset, ui.input(|i| i.modifiers.shift))
+        {
+            problem = Some(e);
+        }
+        if self.views.modify.as_ref().is_some_and(|m| m.typed.is_some())
+            && let Some(e) = self.modify_typed(space, &shown_selection)
+        {
+            problem = Some(e);
+        }
+        // What the tool selected itself (the copies) is what it goes on with.
+        let now: Vec<Picked> = self.selection.items().to_vec();
+        if let Some(m) = self.views.modify.as_mut() {
+            m.selection = now;
         }
         // A plane its dimensions hold is dragged through them: a label it changes takes the new length, what is locked to it
         // follows, and what can't hold says so.

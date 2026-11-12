@@ -51,7 +51,7 @@ edge the cut's line runs along already is left to it (`render::below_cut`). So a
 between its cut jambs, and a sill board outside the wall its edge; nothing above the cut is drawn. A family's plan is the
 project's drawing of its scratch model, so it shows the same. Past `MAX_BELOW` triangles, each form's outline stands for it.
 
-F10d, part of FORMAT 19: a void's `cuts` (`family::Cuts`): `both` (left out of the file) cuts the solid forms listed before it that it
+F10d, part of FORMAT 18: a void's `cuts` (`family::Cuts`): `both` (left out of the file) cuts the solid forms listed before it that it
 reaches and, in a door's or a window's family, the wall wherever it reaches into it, whatever its place in the list; `host`
 the wall alone, never the family's forms (the opening's void round its frame, which it would otherwise cut away: Revit's
 Uncut Geometry, as one setting); `forms` the forms alone, leaving the wall to the rest (a sash's light, as the Casement
@@ -61,25 +61,34 @@ nothing" warning reads it (a void of `host` in a generic family cuts nothing); a
 the same rule as a door's wall: a `both` or a `host` void whatever it overlaps and wherever it is listed, never a `forms`
 one (`Family::face_voids`). In the family document, a void's Properties
 (Identity Data) has Cuts (Forms and Host, Host, Forms) in a door's or a window's family.
-`Model::migrate` takes a file of 17 or 18 to 19 (`Family::pin_cuts`; upstream's 18 changed only connectors, and its step
-needs nothing): each void of a door's or a window's family that the old rule didn't cut the wall with, though it reaches into
+`Model::migrate` takes a file of 17 to 18 (`Family::pin_cuts`): each void of a door's or a window's family that the old rule didn't cut the wall with, though it reaches into
 it (it overlapped a solid listed before it in any of the family's types), says `forms`, so it cuts what it did; one that cut
 the wall cut none of the forms, and reads as it did. The old rule was only ever in unreleased builds of the Family Editor:
-upstream's 17 and 18 never cut a wall with a family's void, only with the opening's rectangle. Its limit: one `cuts` is a
+17 never cut a wall with a family's void, only with the opening's rectangle. Its limit: one `cuts` is a
 void's for every type, and the old rule decided type by type. Where the types differ (a Window whose `Shift` puts its void
 over its sill in one type and clear of it in another), or an instance parameter moves the void onto a solid or off it, the
 union wins: overlapping in any type, as the type's values and the instance parameters' defaults have it, the void says
 `forms` for all of them, so a type whose void was clear and cut the wall cuts it no more and keeps the opening's rectangle,
-as upstream's 17 drew it (`host_void_tests`' Shift window). Pick `both` or `host` on that void to cut the wall again. A build
-that reads up to 18 would leave `cuts` out and cut the wall with a `host` void listed after its frame no more. A family file
-carries no FORMAT, so it is read as 19 reads it.
+as 17 drew it (`host_void_tests`' Shift window). Pick `both` or `host` on that void to cut the wall again. A build
+that reads up to 17 would leave `cuts` out and cut the wall with a `host` void listed after its frame no more. A family file
+carries no FORMAT, so it is read as 18 reads it.
 
 How a door or a window opens is its family's `operation` (`model::Operation`: swing, double-swing, sliding, double-sliding,
-folding, fixed), or for one of the project's own types the type's (`OpeningType::operation`); none, a door swings. IFC writes
+folding, fixed, sectional, roller), or for one of the project's own types the type's (`OpeningType::operation`); none, a door swings. IFC writes
 it as the door's `OperationType` (`Operation::ifc_door`, its side from `flip_hand`: `SLIDING_TO_RIGHT`) and a window's
 `PartitioningType` (two leaves, `DOUBLE_PANEL_VERTICAL`); the import reads a door's back, or its `IfcDoorType`'s (IFC4) or
 `IfcDoorStyle`'s (IFC2x3), onto the type it makes. Schedules have it as the `Operation` field, in the project's language. A
 window's panel operation (`IfcWindowPanelProperties`, a sliding sash) needs an `IfcWindowType`, which the export doesn't write yet.
+The Family Editor's Operation selector uses the same choices; changing the operation preserves authored forms and symbols.
+Sectional and roller are a door's: `Model::check` refuses them on a window type and `Family::check` on a window family, and the
+selector offers a window family neither.
+Project-owned sectional door types generate roughly 600 mm closed panels, jamb guides and overhead tracks; roller types generate
+a closed curtain, guides and a 450 mm coil box (`doors.rs`). These reuse `opening_local`'s pieces for 3D, sections and IFC; plans draw
+cut equipment solid and overhead equipment dashed, including it in Zoom to Fit. The equipment follows Facing Flip; Hand Flip keeps
+its mirrored faces outward. Quantities and the wall cut remain the clear opening size, excluding the equipment. IFC4 writes a sectional
+operation as `USERDEFINED` with `UserDefinedOperationType` `SECTIONAL` on both the door and its type; a roller is `ROLLINGUP`.
+The import reads both, including type fallback, and recovers the equipment's facing from its body. Native format 18 and old-file defaults
+are unchanged: unknown operation enum variants are refused by older readers, rather than being left out and interpreted as swing.
 What BIMCraft has no element for comes in from IFC as a component of a generic family that remembers the class it came in as
 (`Family::ifc`, an `IfcClass`: `{"class": "IFCPLATE", "predefined": "CURTAIN_PANEL"}`): a covering that is no ceiling, a curtain
 wall's panels and mullions, members that don't frame as a beam ([IFC import](ifc-import.md)), plates, duct fittings, terrain (`IfcGeographicElement`), a lift, anything the file builds
@@ -130,7 +139,13 @@ Load into Project and Close goes back to the tab it was opened from. Edit Family
 a file that is, brings that document forward: a family is never open twice. A new blank family is "Family1", "Family2" and so
 on. A nested family's document (Edit Family in a family) reads Load into Family; it loads into the document it came from. A
 family opened from the start page with no project behind it shows no project tabs until something is loaded into the blank
-project. Family tabs neither float nor tile. Properties show what is selected, as Revit's do: nothing
+project. Family tabs neither float nor tile. On a family tab, Save (the Quick Access Toolbar's, File > Save Family, Ctrl+S) and
+Save As (File > Save Family As…, Ctrl+Shift+S) are the document's, as Revit saves the active document: the project is never
+saved from a family tab. Save writes to the document's file once it has one (opened from it, or saved to it once,
+`FamilyDoc::path`) and asks otherwise; Save As always asks. Either leaves the document clean. Find (Ctrl+K) on a family tab lists the document's own commands
+(Delete, Align and Aligned Dimension in a plan or an elevation, Temporary Hide/Isolate, Zoom to Fit in {3D}), the window's
+(Properties, Project Browser, Keyboard Shortcuts) and the document's views, and runs them on the document
+(`family_find_actions`); the project's tools are left out, so nothing changes the project out of sight. Properties show what is selected, as Revit's do: nothing
 selected, the family's own (Identity Data, then Family Category and Parameters' Other group); a form, a symbol, a reference
 plane or line, a dimension or a nested instance, its own. The forms and the plan symbols of a family that isn't adaptive are
 listed in the Project Browser (Forms and Symbols, `family_browser`): a click selects one, and its right-click menu has Select,
@@ -281,7 +296,7 @@ values following. `instance` switched moves values, not loses them (`patch_param
 component takes its type's value (a type with nothing placed loses it, as Revit's does); to type, each type takes the value its
 components agree on, refused naming the components where they don't. `delete_parameter` takes parameters away with their
 values; whatever still names one is `Family::problems`'s to refuse. A file of 17 reads unchanged (every parameter the family's,
-grouped by its kind); FORMAT 19 says an older build can't read the new kinds and fields.
+grouped by its kind); FORMAT 18 says an older build can't read the new kinds and fields.
 
 ### Formulas
 
@@ -345,7 +360,7 @@ family closes. While it hides anything the view wears the project's cyan frame (
 
 ### Visibility Settings (F8)
 
-F8, part of FORMAT 19 (`family/visibility.rs`). Revit's Family Element Visibility Settings: a form's, a void's and a nested instance's
+F8, part of FORMAT 18 (`family/visibility.rs`). Revit's Family Element Visibility Settings: a form's, a void's and a nested instance's
 `visibility` is `{plan, front_back, left_right, coarse, medium, fine, only_when_cut}`, each true by default but `only_when_cut`,
 and a file or a command writes only what differs (`{"plan": false}`); a symbol's takes only `coarse`, `medium` and `fine`
 (`Visibility::check_symbol`, refused in `Family::check` naming the symbol), as Revit's symbolic lines do. They are drawing
@@ -396,8 +411,7 @@ A shared parameters file (`shared_parameters.rs`, the `shared_parameters` comman
 file of the user's own, outside any project or family, as Revit keeps one: groups, and in them parameters, each a GUID, a name,
 a data type, a description, whether it is visible and whether the user may change it. The command takes the file's `path` on
 every call (Revit keeps it per user, never in the project; an agent says which file it means, and a front end remembers its
-own), and only `load` changes the project. The layout is Revit's tab-separated one, from what Autodesk documents publicly
-in the Revit API guide's [Definition File](https://help.autodesk.com/cloudhelp/2015/ENU/Revit-API/files/GUID-9C7F6E02-05C2-4F72-8108-60F2175FB9E3.htm) page and what such files commonly hold: `#` comments, a `*META`/`*GROUP`/`*PARAM` header naming the columns of the `META`/`GROUP`/`PARAM` lines after
+own), and only `load` changes the project. The layout is the tab-separated one such files commonly hold: `#` comments, a `*META`/`*GROUP`/`*PARAM` header naming the columns of the `META`/`GROUP`/`PARAM` lines after
 it, read by column name so version 1 (no `DESCRIPTION`, `USERMODIFIABLE`) and version 2 (with them and `HIDEWHENNOVALUE`) both
 read, and a column this version doesn't know passed over; a reader must be at least `MINVERSION`, so a file asking for more
 than 2 is refused. It is written as version 2, UTF-8 with a byte order mark and Windows line ends, groups and their
@@ -459,7 +473,7 @@ drawn in the host's axes and `from` and `to` run along its normal (Revit's Extru
 shorthand from before (`family::Plane`), read as it always was by the command and by a file of 17 (`FormIn`): `xy` and `yz`
 are Ref. Level and Center (Left/Right) as they were; `xz` swept along +y and Center (Front/Back)'s normal is -y, so its
 `from` and `to` are negated and swap places (a formula wrapped as `-(…)`), a revolve's angles kept. The starter families
-still say `plane`, and build the same triangles (`family_plane_tests`); FORMAT 19 holds this change. The `family` command
+still say `plane`, and build the same triangles (`family_plane_tests`); FORMAT 18 holds this change. The `family` command
 replaces the lists with `ref_planes` and `ref_lines` (datums given back as they are are kept), patches one with `ref_plane`
 and `ref_line` and deletes with `delete_ref_plane` and `delete_ref_line` by id or GUID, as forms; deleting one a form or a
 line is drawn on is refused, naming them. A new plane or line may carry a GUID of its own, so forms are drawn on it in the
@@ -504,7 +518,7 @@ Remove Constraints. `constraints::align` is Align. Deleting a plane or a form ta
 it (`forget_reference`; one left with a single reference goes). The `family` command takes `dimensions`, `dimension` (added,
 or patched by id or GUID) and `delete_dimension`, and reads a type's solve with `solve`. A dimension measuring to what the
 family hasn't is refused, unless `invalid_dimensions: "delete"` (T14's Delete Dimension(s)); a file opened leaves it out and
-lists it in `left_out` (`Model::read`). Part of FORMAT 19.
+lists it in `left_out` (`Model::read`). Part of FORMAT 18.
 
 In the family document (`editor/dimensions.rs`), Create > Dimension > Aligned Dimension (DI) picks reference planes (by the
 view's drawing) and extrusion ends seen edge on (`constraints::end_faces`), parallel to the first, and a click on nothing
@@ -522,7 +536,7 @@ Properties and the Options Bar's Depth. A reload whose family has dimensions mea
 Dimensions first: Delete Dimension(s) or Cancel, and nothing passes it over. Angular dimensions and reference lines that turn
 are F7c's (below).
 
-F7b, part of FORMAT 19: sketch lines locked. A dimension may also measure to a straight line of a form's sketch, `{"form": guid,
+F7b, part of FORMAT 18: sketch lines locked. A dimension may also measure to a straight line of a form's sketch, `{"form": guid,
 "line": guid}` (the plane through it square to the form's plane: Revit's sketch line seen edge on), to a line's end or a
 circle's centre, `{"form", "line", "point": "start" | "end" | "centre"}` (measured along the dimension's other references, so
 one of them must face a way), and to a reference line's face, `{"line": guid, "face": …}` (fixed but for moving with the plane
@@ -551,7 +565,22 @@ Cancel. An Align padlock, on a finished form and while sketching, sits beside th
 form's inside, slid along it as little as keeps it off every line drawn and every other padlock (`dimensions::padlock_spot`);
 Align's offered padlock too. Edit Extrusion opens the sketch as the type previewed flexes it, and a line that comes back there keeps its formulas
 (`sketch::kept` against the lines shown). Every line gets a GUID of its own as it is drawn (and any still without one at
-Finish), a new form its GUID at once, so a lock or a dimension can name them before the family is loaded.
+Finish), a new form its GUID at once, so a lock or a dimension can name them before the family is loaded; a form the document takes in without them (a blank family's starter box,
+a profile typed as numbers) is given them as it comes in (`FormText::of`), since `sketch_faces` and `end_faces` leave out a form
+or a line without one, and Align, Aligned Dimension and Pick Lines' Lock would find nothing on its outline.
+
+Align onto a reference that isn't parallel (`constraints/turn.rs`) turns what can turn, where Revit's help says nothing either
+way: a reference plane of the family's own or a reference line turns about where it crosses the reference, or, where it doesn't
+reach that far, about its end nearer the crossing and is slid square onto it (`align::Placement::onto`, which sketch mode's Align
+of a line uses too), and Align's padlock is offered as for a parallel one. A form drawn on a turned plane keeps its place on it
+(`Edit::PlaneTurn`, its sketch slid by `Edit::FormShift`, formulas kept); a form's line Align-locked to it is carried, the lines
+joined to it following; what a dimension measures otherwise, a reference line, a nested instance or an adaptive point drawn on
+it, and a datum are refused, naming them ("Align can't turn `Held`: dimension 1, labelled `Depth` measures to it …"). A line
+turns only about its host's normal. A pivoted plane or line turns about its pivot instead, when the reference runs through the
+pivot point: its parameter (in the type previewed) or its own angle is set, within its limits, and no padlock is offered (the
+swing holds it). A form's face doesn't turn: "Align turns a plane or a line onto the reference; a form's face must be parallel
+to it". A click on a form that hits none of its faces says what Align takes of a form. What a turn leaves must still build, or
+the draft stays as it was; a padlock whose lock the family can't keep is refused.
 
 FE-12 (`editor/sketch_dims.rs`): while a form is sketched, the contextual tab's Dimension panel (Aligned Dimension, DI and DD,
 Angular, AN, Radial and Diameter) works in a plan or an elevation that sees the sketch's plane flat, as outside sketch mode:
@@ -581,7 +610,7 @@ Finish. The status bar asks what the dimension tool asks outside sketch mode, an
 to it. The view leaves out the form being sketched again (`staged`), its sketch standing for it, as Revit's does. A dimension's text is set on the paper, so a
 plane's trace through it doesn't cross it out. Out of scope: a drag of a line's end is checked at Finish, not driven.
 
-F7c, part of FORMAT 19: angles, turning reference lines and arcs. `kind: "angular"` measures the angles
+F7c, part of FORMAT 18: angles, turning reference lines and arcs. `kind: "angular"` measures the angles
 between 2 to `MAX_DIM_REFS` lines seen as lines in its view: reference planes seen edge on (their traces), reference lines
 (`{"line": guid, "face": …}`, any face: the line's way counts) and straight sketch lines on a plane seen flat. Segment *i* is the
 angle from reference *i* to *i + 1*, in degrees; the sector is the one `at` lies in as drawn (each line's half on `at`'s side of
@@ -619,7 +648,7 @@ of what it measures. Radial and Diameter also pick an arc by its edge within its
 centre is picked as a circle's. Turning a reference line with the mouse is F7d's pivot and its rotate grip (below), with
 T18's line grips.
 
-F7d, part of FORMAT 19: pivots (`family/constraints/pivot.rs`). A reference line or a reference plane
+F7d, part of FORMAT 18: pivots (`family/constraints/pivot.rs`). A reference line or a reference plane
 may carry a `pivot` (`Pivot`), one each: it keeps a point of its element (`at`: `start`, `end` or `{"along": mm}`; a plane's
 along the line it is drawn as) on a point (`to`, `PivotPoint`: where two planes holding the pivot's axis cross, a reference
 line's end, a point of a sketch, or a fixed point), and turns about it; the axis is the normal of what a line is drawn on
@@ -649,7 +678,7 @@ names takes the pivot off (`forget_pivots`); a file's pivot naming what the fami
 45° snapped to it, stopped at the limits) as `Edit::Parameter`, or as `Edit::PivotAngle` with no parameter; a formula's
 parameter refuses. A pivoted plane can't be dragged square to itself. `drag_line_end` is T18's end grip. `pivot_marks` and
 `pivot_targets` are what a view draws and snaps to. The `family` command patches `pivot` through `ref_line` and `ref_plane`
-(`null` takes it off) and `solve` lists each plane's ends. FORMAT 19: a build that reads up to 18 would leave `pivot` out of the file.
+(`null` takes it off) and `solve` lists each plane's ends. FORMAT 18: a build that reads up to 17 would leave `pivot` out of the file.
 
 In the family document (`editor/pivot.rs`), a click on a reference line selects it ("Modify | Reference Lines", Delete,
 over a plane's trace beneath it). Rotation > Pivot, on a selected line or plane of the family's own, waits for a click: the
@@ -868,6 +897,59 @@ view shows is copied. Over something selected with Ctrl held, the status bar say
 letting Ctrl go first moves instead. The drag goes through `drag_move::delta` too, so Shift (Ortho) keeps a copy square as it keeps a move. Tests:
 `tests/family_drag_copy.rs`, `family_constraint_tests.rs`.
 
+FE-8 (`editor/modify.rs`, `family/constraints/transform.rs`): the Modify panel's tools in a family that isn't adaptive, as Revit's
+family editor has them. Outside sketch mode, in a plan or an elevation, on what is selected and the view shows (a form Temporary
+Hide hides stays): Move (MV) and Copy (CO) by two clicks, a start and an end, with Constrain (or Shift) keeping it square and Copy's
+Multiple making a copy at each click after (each from the last, which is the original copied a step further); Rotate (RO) about
+the middle of what it takes (found where the view draws it) or a centre Place Centre puts, by the angle between two rays clicked
+(snapped as the project's Rotate) or one typed on the Options Bar's Angle and Enter, with Copy; Mirror - Pick Axis (MM) across a
+reference plane's trace, a reference line or a form's edge clicked, and Mirror - Draw Axis (DM) across a line drawn by two clicks,
+Copy on as Revit's; Scale (RE) of reference planes and reference lines about an origin, in the view's plane alone (the depth it
+looks along held, a plane's up kept a way), Graphical (the origin, a point, where that point goes) or Numerical (the origin, by
+the Options Bar's factor); Offset (OF) of a reference plane or a reference line clicked,
+moved or copied (Copy) the Options Bar's distance square to its trace toward the side clicked, a dashed preview where it goes.
+Move, Copy and Offset are FE-7's and FE-4's move and copy (`drag_move_to`, `copy_picked`), so their rules and refusals are those;
+Rotate, Mirror and Scale go through `Family::transformed` (`Transform`, `Transforming`): the planes, reference lines and forms taken
+are drawn again where the transform puts them, a plane's ends and up (mirrored, its ends swapped, so its normal is the mirror image
+of its own and what is drawn on it keeps its side), a line's ends, a form's sketch and top in its host's axes, and what is drawn on
+what is taken goes with it (a form or a line on a plane rotated). A form whose host stays and that the transform would take off
+it is refused ("would leave the plane it is drawn on"; drawn on a datum, which can't be taken, the message says so): a form on
+Ref. Level turns in a plan, and in an elevation only by a half turn about a point on the level line. Where the transform turns the
+host's normal over (that half turn, a mirror across the level, a form on a reference line's face mirrored with the line), an
+extrusion's Start and End go to the other side (−End to −Start) and a Blend's base and top each to the other side, a sweep
+refusing. The points a tool clicks in the views snap to the planes' and lines' traces within reach, and to where two cross
+(`modify::snap_to`), so a centre clicked on the level line is on it; Offset's isn't, as it reads the side clicked. Only the
+numbers that change are written; one that is a formula refuses it. A mirrored arc turns the other way and a mirrored revolve
+turns from −End to −Start (a turn keeps a revolve's angles); a sweep isn't mirrored (its profile would face the wrong way), and Scale leaves forms (a form is sized
+by its dimensions and parameters, as Revit's Scale leaves it), its button greyed for a selection with one, saying so. A dimension
+whose references are all taken goes with them; one holding a constraint between what is taken and what isn't (a label, a lock,
+EQ, an Align lock), or a label or a lock whose length Scale changes, refuses it as F4's "Constraints are not satisfied: dimension
+2 ties what is rotated to what isn't", the dimensions lit, whose Remove Constraints takes theirs off and does it again
+(`Retry::Modify`), both one step; refused again, the constraints are put back and nothing is left of either. A plain dimension between what is taken and what isn't whose references no longer face one way is deleted,
+as Revit deletes one that no longer measures. A datum, a plane that defines the origin, what a pivot turns and a form of a file's
+triangles stay, as on a move; symbols, connectors and nested instances are moved and copied but not rotated, mirrored or scaled
+(the tool says to take them out of the selection, or move them), and with only dimensions selected, or what is shown of the
+selection only dimensions, they say what they take rather than do nothing. After each, every type must still solve and build and the
+family pass its checks if it did; refused, everything is as it was and the status bar says why. Each is one step of the
+history. While a tool is in hand the view shows its marks (the start, the centre, the axis, the rubber band) and the selection
+where the click would put it, the status bar says what to click next, and the Options Bar has its options (kept for the
+session); Escape lets go of the points clicked, then the tool; another view, Undo, Redo, and another selection (a click, Delete)
+start it again, Rotate's centre found again (`modify_fresh`), and in a sketch so do Ctrl+Z, Delete and another pick (a boundary
+or a start that moved or went is never used, `FormSketch::edit_seen`); a press doesn't drag or box. Rotate's Angle typed with
+nothing of the selection shown says so. In
+sketch mode the same tools act on the lines picked (`FormSketch::edit`), in the plane's own axes: Move, Copy (Multiple), Rotate
+(about the middle of the lines picked), Mirror (a line of the sketch, a reference or a form's edge, or one drawn), Scale and
+Offset (a line clicked, toward the side clicked, Copy), Scale taking a circle's radius and an ellipse's radii with it (`modify::scaled`), with Trim/Extend Single Element and Trim/Extend Multiple Elements (the
+boundary, then each line on the part to keep, the project's `draw::meet` and `trim_to`) and Split Element (SL, the line clicked
+cut there) beside TR's Trim/Extend to Corner; a copy is a new line with a GUID of its own, never the Axis Line. A line a sketch
+tool moves keeps its GUID, and its formulas go as a moved line's do (FE-12's `driven`); a lock or an Align lock from it to what
+didn't move with it, added while sketching or the form's, is released, the status bar saying how many. Outside a sketch
+Trim/Extend and Split Element are greyed, saying they work on a sketch's lines (TR and SL say it too); in {3D} the tools say they
+work in a plan or an elevation; with nothing selected, what to select. Revit has no keys for Trim/Extend Single and Multiple
+Elements; Keyboard Shortcuts can give them one. Known: Rotate, Mirror and Scale don't take symbols, connectors or nested
+instances yet, and a sketch tool doesn't refuse what a label holds while sketching (Finish solves it as before). Tests:
+`tests/family_modify.rs`, `family_transform_tests.rs`.
+
 The Work Plane dialog (T12, `editor/work_plane.rs`), as Revit's: Current Work Plane names the plane as `Planes::listed` does, with Show
 (the ribbon's toggle) and Dissociate, greyed (a family's work plane is always one of its planes or lines, which forms are drawn on).
 Specify a new Work Plane: Name, the family's planes as `Planes::listed` lists them; Pick a plane, a reference plane's or a datum's
@@ -888,7 +970,7 @@ plans and elevations show its test placement and nothing more (no selection, no 
 
 ## Sketches of forms
 
-F5, part of FORMAT 19. A form's profile is its `sketch` (`family/sketch.rs`): lines (`start`, `end`), arcs (`turn` degrees
+F5, part of FORMAT 18. A form's profile is its `sketch` (`family/sketch.rs`): lines (`start`, `end`), arcs (`turn` degrees
 counter-clockwise from start to end) and whole circles (`centre`, `radius`) in its host plane's own axes, each number a number or a
 formula, each line a part of the family (an id and a GUID, `parts_now`'s "sketch line", kept by place when a form is given again,
 `Form::keep_lines`) so F7 can dimension and lock it. A revolve's axis is a line of its sketch with `axis: true`, one at most. The
@@ -969,7 +1051,7 @@ change them.
 
 ## Blends, sweeps and swept blends
 
-F6, part of FORMAT 19 (`family/forms.rs`). A form's `sketch` is always drawn in its host plane's axes: an extrusion's or a revolve's
+F6, part of FORMAT 18 (`family/forms.rs`). A form's `sketch` is always drawn in its host plane's axes: an extrusion's or a revolve's
 profile, a Blend's base, a Sweep's or a Swept Blend's path. What a form is follows from what it holds (`Form::kind`,
 `FormKind`): a `top` (lines in the host's axes) makes it a Blend, its base at `from` (First End) and its top at `to` (Second
 End) along the normal; a `sweep` (`{profile, end?}`) a Sweep, or with `end` a Swept Blend. A profile is drawn in the profile
@@ -980,8 +1062,8 @@ Twist) moves the top's, or the second profile's, first vertex on. `Family::check
 a `sweep`, either with an axis or a mesh, a twist on anything but a blend or a swept blend or past `MAX_TWIST`, and a swept
 blend's path of more than one line. Every line of `top`, `sweep.profile` and `sweep.end` is a part ("sketch line"), kept by
 place within its group (`Form::keep_lines`); `rename_parameter`, `every_formula` and the formula checks reach them
-(`Form::all_lines`). A build that reads up to 18 would drop the three fields and build a Blend as an extrusion of its base, so it
-must refuse 19 as newer; a file of 17 or 18 holds none, and the step to 19 has nothing to do for them.
+(`Form::all_lines`). A build that reads up to 17 would drop the three fields and build a Blend as an extrusion of its base, so it
+must refuse 18 as newer; a file of 17 holds none, and the step to 18 has nothing to do for them.
 
 Built (`forms::build`, from `Family::solid`): a Blend's ends and a Swept Blend's profiles are one loop each (several, or a
 hole, refused, as Revit's); a Sweep's profile may have several loops and holes. `forms::mapped` pairs two rings: each starts
@@ -1010,7 +1092,7 @@ nothing else does). Labels, locks and EQ on them flex the profile in its own axe
 naming a profile line as it names any other. Older builds: a project file's such dimension is left out and listed in
 `left_out`, as one measuring to nothing; a family file holding one isn't filtered there (`read_family_file`), and Load into
 Project refuses it (their sweep-profile check, which no `invalid_dimensions` passes), so such a family can't be loaded from
-an older build until the shared FORMAT 19 to 20 step marks it. `edit_work_plane`'s `keep` maps a Blend's top too (and
+an older build until the step after FORMAT 18 (0.12's) marks it. `edit_work_plane`'s `keep` maps a Blend's top too (and
 swaps base and top on a plane facing the other way) and refuses a sweep on a plane facing the other way or mirrored.
 
 In the family document (`editor/sketch.rs`), Create > Blend, Sweep and Swept Blend, and Void Forms' Void Blend, Void Sweep
@@ -1132,8 +1214,8 @@ their points"), so `component` and `edit_work_plane` can't put one on a plane. `
 (its host's offset, or its height over its level), which `modify` also takes; component schedules have Elevation from
 Level, Work Plane and Offset from Host besides Level, its Schedule Level. IFC keeps it in its Schedule Level's storey, its
 `IfcAxis2Placement3D` taking the tilt as its Axis and RefDirection; the project's reference planes aren't exported. FORMAT
-19 holds this change: a build that reads up to 18 would stand a tilted component upright and lose its plane; a file of 17
-or 18 holds neither.
+18 holds this change: a build that reads up to 17 would stand a tilted component upright and lose its plane; a file of 17
+holds neither.
 
 The desktop's Component tool, placing a work plane-based family, shows Place on Work Plane and a Placement Plane (the plan's
 level, or a reference plane of the project) on its Options Bar, and for any family Rotate after placement, which selects what
@@ -1178,8 +1260,8 @@ goes up it. `component {…, host: {face: {element, face}}}` takes `at` [x, y] o
 and [x, y, z] onto a wall's side (its nearest point; [x, y] alone is refused there), `offset` along the face's normal;
 `edit_work_plane {ids, host: {face: …}}` puts components on one. Work Plane reads `Floor : Generic - 200mm : Top`, `elements`
 gives `host_element` and component schedules a Host field. IFC keeps the placement and writes no host relation (IFC4 has
-none for an element that fills nothing). FORMAT 19 holds this change: a build that reads up to 18 knows no `host`, and a file
-of 17 or 18 holds none.
+none for an element that fills nothing). FORMAT 18 holds this change: a build that reads up to 17 knows no `host`, and a file
+of 17 holds none.
 The desktop's Component tool offers Place on Face beside Place on Work Plane: in plan it places on the top of the highest
 floor or roof of the level under the click, in a ceiling plan on the underside of the lowest ceiling (`Model::face_in_plan`),
 in the 3D view on the face clicked (`Model::face_role`). A wall's top and ends, the faces of other elements and of linked
@@ -1189,7 +1271,7 @@ A face-hosted component's voids cut its host (T16b), as a Revit face-based famil
 the host (`cuts` `both`, the default, or `host`), whatever its place in the family's list and whatever it overlaps (F10d's
 rule, as a door's in its wall; `Family::face_voids`), and reaches into its host makes an opening, a recess or a penetration
 there; a `forms` void cuts the family's own forms alone. Before, a `both` void listed after a solid it overlapped cut the
-face no more (T22's order rule, which F10d dropped for walls only); Place on Face came with 19, so no file needs a step.
+face no more (T22's order rule, which F10d dropped for walls only); Place on Face came with 18, so no file needs a step.
 There is no option: any face-hosted component's such voids cut, whatever
 `cut_with_voids_when_loaded` says, which is about the project's voids cutting a component; and a work plane-based family's
 void that cuts none of its forms is not warned of as cutting nothing. `Model::face_voids` gives a component's voids placed
@@ -1316,7 +1398,7 @@ their groups, each with Revit's "=" (`Field::Nested`, `NestedRows`). The Project
 and their types, with Edit Family and Delete on the right-click. Edit Family (also on the instance's contextual tab) opens the
 nested family's own document over the host's (`BimApp::family_hosts`): its Load into Project and Load into Project and Close load
 it back into the host, asking Family Already Exists in the family's words; Close Family goes back without loading. The project is
-untouched until the host is loaded. A nested instance is moved by its Properties; dragging it in a view is T6b's. FORMAT 19
+untouched until the host is loaded. A nested instance is moved by its Properties; dragging it in a view is T6b's. FORMAT 18
 says an older build would leave both fields out of a file.
 
 ## Reloading a family
@@ -1424,13 +1506,14 @@ is enabled, and nothing where it is greyed or not on the ribbon: MD Modify (whil
 Properties (and Ctrl+1), CM Component (once a family is loaded), RP Reference Plane, WP and WW Work Plane's Set (the Work Plane
 dialog; the sketch's while sketching), FA Load Family, DI and DD Aligned Dimension and AN Angular (in a plan or an elevation, not
 sketching), TX Annotate's Text, AL and AA Align, MV, CO and RO Move, Copy and Rotate (an adaptive family's, with something
-selected), DE Delete (as the Delete key), TR, PL, FG and CG the sketch's Trim/Extend to Corner, Pick Lines, Finish and Cancel Edit
-Mode, KS Keyboard Shortcuts, 3D the family's own {3D}, ZE, ZF, ZX and ZA the view control bar's Zoom to Fit, and HH, HC, HI, IC
+selected; in another, FE-8's), MM and DM Mirror - Pick Axis and Draw Axis, OF Offset, RE Scale and SL Split Element (FE-8; the
+greyed one's reason in the status bar), DE Delete (as the Delete key), TR, PL, FG and CG the sketch's Trim/Extend to Corner, Pick
+Lines, Finish and Cancel Edit Mode (TR outside a sketch says it works on a sketch's lines), KS Keyboard Shortcuts, 3D the family's own {3D}, ZE, ZF, ZX and ZA the view control bar's Zoom to Fit, and HH, HC, HI, IC
 and HR Temporary Hide/Isolate; FF Filter, PR Select Previous, ID Select by ID, SA and SV Select All Instances (Visible in
 View and In Entire Family) and BF Select Elements by Face (FE-20, above). A key made in Keyboard Shortcuts is tried first
 when it names a command the family has. The
 commands only a family has (Work Plane, Load Family, Angular Dimension, Pick Lines, Finish and Cancel Edit Mode, FE-3's zoom
-commands, and FE-20's Filter Selection, Select Previous, Select by ID, Select All Instances: In Entire Family and Select
+commands, Scale, and FE-20's Filter Selection, Select Previous, Select by ID, Select All Instances: In Entire Family and Select
 Elements by Face) are in
 `shortcuts::ACTIONS`, so the dialog and a file can give them keys, and in `shortcuts::FAMILY_ONLY`: on a project's tab their keys
 do nothing, and Find leaves them out. Tests: `tests/family_keys.rs`.
@@ -1462,8 +1545,9 @@ planes, components hosted on them or on faces (Place on Face), and where a compo
 - `family/sketch.rs`: forms' sketches. `family/handles.rs`: shape handles on a profile's edges (FE-5).
 - `family/forms.rs`: Blend, Sweep and Swept Blend: their kinds, paths, vertex mapping and triangles.
 - `family/constraints.rs`: its dimensions, labels, locks and EQ, solved as a type flexes; `family/constraints/pivot.rs`,
-  lines and planes that turn about a pivot; `family/constraints/moving.rs`, what a drag moves together through them (FE-7); `family/constraints/copying.rs`, the copies a
-  Ctrl+drag makes (FE-4).
+  lines and planes that turn about a pivot; `family/constraints/turn.rs`, Align turning a plane or a line onto a reference that
+  isn't parallel; `family/constraints/moving.rs`, what a drag moves together through them (FE-7); `family/constraints/copying.rs`,
+  the copies a Ctrl+drag makes (FE-4); `family/constraints/transform.rs`, what Rotate, Mirror and Scale do (FE-8).
 - `family/nested.rs`: nested families and their instances, built into the host.
 - `family/visibility.rs`: Visibility Settings: which views and detail levels draw a form, a symbol or a nested instance.
 - `family/select.rs`: what a family document selects (`Picked`), and what its selection's commands find: Filter's kinds,
@@ -1486,6 +1570,7 @@ In `crates/ui-egui`, the Family Editor:
   overlay drawn through a view's projection alone).
 - `editor/lit3d.rs`: {3D} staged for the project's 3D view (`FamilyScene`), its selection and hover highlight. `editor/visibility.rs`: Family Element Visibility Settings.
 - `editor/select_box.rs`: the selection, one set (FE-1), and the box a plan or an elevation selects with, window or crossing.
-  `editor/drag_move.rs`: the selection moved by a drag (FE-7), or copied with Ctrl (FE-4).
+  `editor/drag_move.rs`: the selection moved by a drag (FE-7), or copied with Ctrl (FE-4). `editor/modify.rs`: the Modify
+  panel's tools, in a plan, an elevation and a sketch (FE-8).
 - `editor/selection.rs`: the selection's commands (FE-20): Filter, Select Previous, Select by ID, IDs of Selection, Select All
   Instances and Select Elements by Face.
