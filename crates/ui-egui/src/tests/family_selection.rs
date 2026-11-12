@@ -654,6 +654,7 @@ fn drag_elements_on_selection_is_kept_with_the_settings_has_no_key_and_is_greyed
     assert!(!h.state().drag_on_selection, "off, in a settings file that says nothing of it");
     assert!(crate::editor::keys::FAMILY_SHORTCUTS.iter().all(|(_, a)| *a != "Drag Elements on Selection"), "no key of Revit's");
     assert!(crate::shortcuts::ACTIONS.contains(&"Drag Elements on Selection"), "Keyboard Shortcuts offers it");
+    assert!(crate::editor::keys::FAMILY_KEYLESS.contains(&"Drag Elements on Selection"), "a family command with no key");
     // A key made for it toggles it, on a family's tab.
     h.state_mut().custom_shortcuts.insert("QD".into(), "Drag Elements on Selection".into());
     shortcut(&mut h, "QD");
