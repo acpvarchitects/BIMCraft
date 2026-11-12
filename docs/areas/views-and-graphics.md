@@ -12,10 +12,21 @@ the bar and Properties show it greyed out, the template named on hover (`control
 laid out one pixel to the pixel and grown about its anchor), and 1 on a sheet (`draw_at`, `section_at`), where the viewport's scale already
 sets paper size. Every plan, section and elevation has a scale: one with none of its own is at its project units' default,
 1 : 100 or 1/8" = 1'-0" (`Units::default_scale`, `Graphics::scale_n`, `graphics::scale_of`), and `scale` refuses null. A viewport
-placed with no scale takes the view's. The units name the scales and list the ones offered (`Units::scale`, `scales`,
+placed with no scale takes the view's, and follows it when the view's scale changes (`sheet::follow_scale`); one placed
+at a scale of its own (`place` with `scale`, or `modify`) keeps that one (`Viewport::follow_scale`, written only when off,
+FORMAT 18, and Properties' Follow View Scale switches it); `follow_scale: true` gives it its view's scale at once, whatever
+`scale` the same `modify` gives. An unscaled 3D view instead takes the finest offered project scale from the
+default up at which `sheet::spot` finds it and its title a place in the sheet's room, clear of the views there and the title
+block, or in the title block's drawing area (`sheet::default_scale`); if none fits, it takes the coarsest offered scale and may
+still extend off the sheet, which `place`'s `warning` says. Explicit viewport scales, assigned view/template scales and explicit
+positions are preserved. `place` returns the chosen `scale` with its id and position. The units name the scales and list the ones offered (`Units::scale`, `scales`,
 `parse_scale`): metric 1 : n; in inches or feet the architect's (12" = 1'-0" to 1/32" = 1'-0") and the engineer's (1" = 10'-0" to
 1" = 200'-0"), and 1 : n for any other. The Scale menu, Properties, templates and sheets' titles name them so, and a scale is typed
 as n, 1 : n, or two lengths (`1/4" = 1'-0"`).
+
+The built-in sheet title block fits each complete project name, sheet name, scale and sheet number within its own cell,
+with 4 mm clear at either side. Long values shrink uniformly; short values keep their usual lettering size and alignment.
+The full values remain in the project file. The desktop, rendered sheet images and PDF share this lettering.
 
 Background grids are view-owned graphics (`Graphics::background_grid`), controlled by a view template through the
 `background_grid` group. `graphics` and `template` accept a grid patch (spacing in millimetres, divisions, rotation, two
@@ -64,7 +75,7 @@ object style, and `Look::dress` the view's row for it (`Look::sub_paint`: the ro
 the element's own override). Object Styles has a row for each (`styles::model_sub`, `model_subs`; the desktop's dialog lists it as
 Doors > Opening), drawing in its category's pens until given its own (`styles::inherited`). Rooms' subcategories have no Object
 Styles row. Revit's Plan Swing and Elevation Swing aren't rows: BIMCraft has no elevation symbols, and the swing is Opening. A view,
-template or Object Styles naming either key is part of what FORMAT 19 says an older build would refuse.
+template or Object Styles naming either key is part of what FORMAT 18 says an older build would refuse.
 The `sheet` command takes a named `size` (A3 by default), landscape: ISO A0–A4 and B1–B4, ARCH A–E and E1–E3, ANSI A–E and Super B
 (13 × 19 in). ISO, ARCH and ANSI accept a space or none (`ISO A4`, `ISOA4`, `ARCH E2`, `ARCHE2`); ISO also accepts the bare name
 (`A4`, `B1`). ANSI A also accepts `LETTER`, ANSI B `TABLOID` or `LEDGER`. Super B accepts `SUPER B`, `SUPERB` or `SUPER-B`. Names
@@ -198,6 +209,11 @@ at most `MAX_LINEWORK` (2,000) edges, ends within `MAX_COORD`, and a line style 
 lines along all its edges in one pass (`render::linework`: the cost is the prims plus the edges, not a pass over every prim for
 each edge). A line style a view's linework uses can't be deleted, and an element's entries go with it.
 
+Drawing labels (for example grid heads) use `font.rs`'s single-stroke capitals, including leaning prime and double-prime
+marks and the ellipsis. Unsupported characters retain the question-mark fallback; `Drawing::notes` and the `render`
+reply's `notes` name their Unicode code points once per drawing, up to the drawing's 32 diagnostic entries. Text notes
+use the separate font fallback below, so a character outside the drawing lettering does not by itself warn for a note.
+
 Text notes and text types (`text.rs`). A `Note` is drawn in one view, as a detail line is, and is of a text type
 (`Model::text_types`, library entries of `Kind::TextType`, so a file names a note's type by GUID and `rename_entry` follows a
 rename): Revit's font, size (its capitals' height on paper, mm), bold, italic, underline, width factor, colour, and a border
@@ -253,7 +269,8 @@ rasterize, 8 ms on a busy machine), so a view at the cap of them can take a minu
 `Model::read` leaves out of them what this build doesn't know, as it does for any element
 (`/detail_groups/<name>/members/<i>/element/...`). Deleting a line style that a filled region or a group's member is drawn in
 is refused with the region's or the group's name. On the desktop, Annotate > Detail has Detail Group, Repeating Detail and
-Create Group, and the right-click menu has Create Group and Ungroup.
+Create Group, and the right-click menu has Create Group, Ungroup, Pin and Unpin: a pinned element stays where it is, and
+`move`, `rotate`, `mirror`, `align`, `delete` and the drawing tools refuse it until it is unpinned (`pin`, `unpin`).
 
 A project with any of this (line styles and patterns, fill patterns, region types, detail lines, regions, groups, repeating
 details, sketches) needs file format 6, and every file is saved as 6 now, with or without any of it: a build that reads up to 5
@@ -775,12 +792,28 @@ definition, and a value given to one (DATE, to issue on) is said instead. A key 
 shows on the sheet. `titleblock::values` works them out, `sheet::title_values` with the sheet's scale, and `elements` gives a sheet's
 as `title_values`, with the keys that are its own to give as `sheet_fields`.
 
+A definition may set `drawing_area: [[left,bottom],[right,top]]` in millimetres from the paper's bottom left. Each sheet using it
+must contain the rectangle, and views placed by default go inside it, the first in its middle. A view whose frame and title are
+larger than the area is refused, saying both sizes. Explicit centers and existing viewports keep their
+positions. Set `template_border: true` for a frame drawn by the template's own lines; standard fold marks still print.
+Both options are under Size in the title-block editor, and FORMAT 18 holds them; a definition without them keeps the standard
+border and placement.
+
+`place` without `at` (`sheet::spot`) keeps the complete view and its title, rule and scale (`footprint`) clear of other viewports
+and inside the sheet's room (`Room`): the title block's drawing area when it gives one, else the border 5 mm in, of the active
+technical standard's margins, clear of the title block the sheet names (the project's, the built-in one, or nothing for a sheet
+with none). It keeps the room's middle for the first view when it fits, then tries beside or below existing views and the room's
+corners. Long titles reserve their actual lettering width; schedules keep their title inside their table. When no candidate fits,
+placement continues right of the other views, off the paper without stacking them. Give `at` to choose a position yourself;
+existing viewports are not rearranged. Whenever a view or its title reaches past the paper, by hand or for want of room,
+`place` still places it and says so in its reply's `warning` (`sheet::off_paper`).
+
 A sheet may also have no title block at all: `sheet {"title_block": "none"}` (`titleblock::NONE`, in any case, or `false`; `true` or
 `""` is the built-in one), for one drawn on the sheet itself. It leaves out the border, the title box and its lettering and the folding
 marks, not viewports, their titles, schedules, text notes or detail lines. Properties > Title Block offers None beside Built-in and
 the project's own (`modify` with `title_block`); `elements` always reports it, `""` for the built-in one, which the file leaves out.
-The desktop and exports share `sheet::draw`. Paper size and automatic viewport placement stay the same, including the room above
-the built-in title box. A frame not drawn can't be picked; viewport and annotation picking are unchanged, and Properties shows the
+The desktop and exports share `sheet::draw`. Paper size stays the same, and automatic viewport placement keeps no room for a
+title box: the first view goes in the middle of the border. A frame not drawn can't be picked; viewport and annotation picking are unchanged, and Properties shows the
 sheet when nothing is selected. No title block of the project's may be called `none` (`TitleBlock::check`), and none is no library
 entry, so renaming and Purge Unused pass it by. A file of 17 holds no `none`, so its sheets keep the built-in title box; FORMAT 18,
 shared with the title blocks, keeps a build that reads up to 17 from printing the frame again on a sheet with none.
@@ -812,3 +845,50 @@ key beside it, with Make Text (`TitleBlock::make_text`: back to plain text, the 
 text has Make Field, keyed by what it says (`TitleBlock::free_key`, numbered past the keys there are) as each sheet's. An
 MTEXT's colour is the one its formatting sets before its first word (`\C`, `\c`), over the entity's. The stroke lettering has the
 ordinals º and ª.
+
+## Elevations that look at a reference
+
+The Elevation tool asks for something to look at (`elevation.rs`): a straight wall, a line (a detail line, a grid, a line of a
+CAD drawing) or the edge of a floor, a roof, a ceiling or anything else with a straight edge, the project's or a link's. The
+canvas hovers what `elevation::reference` answers for, in the model the views draw (`link::seen`), and a click runs
+`elevation {on, at}`: `on` the element's id (a link's element by the id that model gives it, which the command looks up in
+`link::seen` again) and `at` the point clicked. `reference` gives the line outright instead, for a script or an agent.
+
+The edge is taken once and kept in the elevation as a line (`Section::reference`, two points): a wall's centre line as far as its
+outline reaches, else the element's straight edge nearest `at` (`align::nearest`). It is not a tie: the wall may move or be
+deleted and the elevation stays as it is, and a link's element needs no id that survives a reload. `elevation::place` puts the
+mark at `at`, or `OUT` (1.5 m) from the line on `at`'s side when `at` is on the line (within a metre, as a click on a wall is),
+and `new_line` runs the view's line through the mark, long enough to see the whole edge and a metre past each end.
+
+An elevation with a reference always looks square at its line from the side its mark (`elevation::mark`: the middle of its
+line, or where the mark was put apart from it) is on:
+`elevation::settle` turns its line about the line's own middle, keeping its length, and the engine settles every elevation a command made or
+changed (`elevation::keep`, after the command and before the checks), so a move, a turn, a mirror or a `modify` of its ends
+all leave it facing its line, and one taken to the line's other side turns round. Past the line's ends it looks at the line
+carried on; on the line itself it stays as it was. Moved alone (or with other marks) its reference stays where it is; moved,
+turned, mirrored or copied together with anything else, the reference goes through the same motion (`transformed`), so a
+building moved with its elevations keeps them as they were. The desktop draws a mark dragged alone as it will stand, turned
+round past its line. `modify` with `reference` null lets the line go, and the elevation is then an ordinary one;
+the building elevations of `facing` and those of `start` and `end` never have one. `reference` is one of FORMAT 18's: a build
+that reads up to 17 refuses the file, saying it is from a newer BIMCraft, rather than drop the line the elevation looks at.
+
+## A section's and an elevation's extent in plan
+
+Selected alone with Modify, a section or an elevation shows its extent on the plan as Revit does (`canvas.rs`'s
+`view_extent_overlay`, from `elevation.rs`): the line the view starts at, long dashes and dots in the accent colour, and, when
+its far clip is on (`depth`, Properties' Far Clip Offset), the line it sees as far as (`elevation::far`) with the two sides
+between them, dashed. `elevation::grips` says what can be held: a round grip at each end of the line only while the view is
+cropped (uncropped the line moves and doesn't stretch, since the view then shows everything along it), and a pair of arrows in
+the middle of the far clip line.
+
+Each part moves through `move` with the part as its `end` (`elevation::Part`, worked out by `elevation::dragged`, which the
+desktop also draws its preview from): `start` and `end` go along the line and no shorter than `SHORTEST` (what is noted in
+the view keeps its spot over the model, as after `crop`); `far` goes to and from the line and sets `depth`; `line` moves the
+line the way it looks, which is how a drag from an elevation's line off its mark goes. A section dragged by its line moves whole.
+
+An elevation's mark is apart from its line (`Section::mark`; none while it has never been moved apart, and the mark is then at
+the line's middle). A drag of an elevation's mark runs `move` with `end: mark`: the mark alone goes anywhere. When it crosses
+the line the elevation looks at, the elevation turns round and its line comes over to the mark's side, as far from the
+reference as it was; moved whole across (the Move tool, or with other things), the line turns round where it stands. Changing
+the line (its grips, `crop`) pins the mark where it stood. `mark` is FORMAT 18's too, so a build that reads up to 17 never draws
+the mark back at the middle.

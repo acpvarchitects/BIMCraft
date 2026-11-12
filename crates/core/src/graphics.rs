@@ -27,7 +27,7 @@ mod fill_tests;
 /// The categories a plan, a section or a 3D view draws, and so may hide and override: those of the
 /// model, then those of the annotation. A family component is of its family's category (see [`COMPONENTS`]); `component`, which
 /// names them all, is no row of its own (see [`COMPONENT`]).
-pub const MODEL: [&str; 45] = [
+pub const MODEL: [&str; 46] = [
     "wall",
     "floor",
     "ceiling",
@@ -37,6 +37,7 @@ pub const MODEL: [&str; 45] = [
     "window",
     "room",
     "roomseparator",
+    "propertyline",
     "column",
     "structuralcolumn",
     "footing",
@@ -100,7 +101,8 @@ pub const COMPONENTS: [&str; 18] = [
     "patchpanel",
     "rack",
 ];
-pub const ANNOTATION: [&str; 10] = ["dimension", "tag", "text", "line", "region", "spot", "grid", "level", "section", "elevation"];
+pub const ANNOTATION: [&str; 11] =
+    ["dimension", "tag", "text", "line", "region", "spot", "grid", "level", "section", "elevation", "circuit"];
 /// The point clouds, which views hide and override as Revit's Visibility/Graphics does on a tab of their own: not a model
 /// category, so Object Styles has no row for them.
 pub const SCANS: [&str; 1] = ["pointcloud"];

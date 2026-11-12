@@ -2076,6 +2076,12 @@ impl Family {
         self.check_planes()?;
         self.check_dimensions()?;
         self.check_pivots()?;
+        // A sectional or roller door is a gate's: no window opens that way.
+        if self.category == Category::Window
+            && let Some(op) = self.operation.filter(|op| op.industrial())
+        {
+            return Err(format!("`operation` `{}` is a door's, a gate's; a window family takes another", op.name()));
+        }
         if self.category.hosted() {
             for name in [WIDTH, HEIGHT] {
                 if !self.parameters.iter().any(|p| p.name == name && p.kind == Kind::Length && !p.reporting) {
@@ -2757,12 +2763,12 @@ impl Family {
         Ok(out)
     }
 
-    /// FORMAT 18 to 19 (F10d), a door's or a window's family: each void that the old rule didn't cut the wall with, though
+    /// FORMAT 17 to 18 (F10d), a door's or a window's family: each void that the old rule didn't cut the wall with, though
     /// it reaches into it (it cut a solid form listed before it, by their boxes, in any of the family's types), now says
     /// `forms`, so it cuts what it did and nothing more; one that did cut the wall cut none of the forms, and reads as it did.
     /// The union over the types is a limit: the old rule decided type by type, and one `cuts` is the void's for all of them,
     /// so a type whose void was clear of the solids (another type's, or another default of an instance parameter, overlapping)
-    /// no longer cuts the wall. It keeps the opening's rectangle there, as upstream's 17 and 18, which had no such rule, drew it.
+    /// no longer cuts the wall. It keeps the opening's rectangle there, as 17, which had no such rule, drew it.
     pub(crate) fn pin_cuts(&mut self) {
         for n in &mut self.nested {
             n.family.pin_cuts();
@@ -2979,7 +2985,7 @@ fn rings(regions: &[crate::geom::Region]) -> impl Iterator<Item = &Vec<P2>> {
 
 /// `regions`, each outline counter-clockwise and its holes clockwise in `frame`'s plane, swept along its normal from `from`
 /// to `to`: their caps, then their sides, every triangle turned out; and how many the caps take.
-fn sweep(regions: &[crate::geom::Region], from: f64, to: f64, frame: &Frame) -> Result<(Vec<[P3; 3]>, usize), String> {
+pub(crate) fn sweep(regions: &[crate::geom::Region], from: f64, to: f64, frame: &Frame) -> Result<(Vec<[P3; 3]>, usize), String> {
     // A normal that points down the family's axis it lies most along (Center (Front/Back)'s, -y) is swept the axis' own way,
     // in the frame mirrored: the same solid, its triangles as they were when such a form named `xz`.
     let k = (1..3).fold(0, |k, i| if frame.z[i].abs() > frame.z[k].abs() { i } else { k });
