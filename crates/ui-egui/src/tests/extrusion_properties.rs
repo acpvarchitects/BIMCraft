@@ -8,8 +8,7 @@ use egui_kittest::kittest::NodeT;
 /// parameter, opened as a document with the extrusion selected from the Project Browser's Forms list.
 fn selected() -> Harness<'static, BimApp> {
     let mut h = app("");
-    // Wide enough for the contextual tab's panels unfolded (FE-17's Pin joined the Modify panel).
-    h.set_size(vec2(1800., 1000.));
+    h.set_size(vec2(1600., 1000.));
     let material = h.state().session.model.materials.keys().next().unwrap().clone();
     let made = h.state_mut().run(
         "family",

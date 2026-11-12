@@ -797,7 +797,11 @@ impl BimApp {
                         ed.pin_selected(on);
                     }
                     let tip = msg!("Delete (DE): what is selected, with what depends on it");
-                    if ui.add_enabled_ui(some || ed.deletable(), |ui| big_button(ui, Icon::Delete, "Delete", false, tip)).inner.clicked()
+                    // Small, as Revit's Modify panel has it, in one column with Pin: the panel fits a 1600 px window whole.
+                    if ui
+                        .add_enabled_ui(some || ed.deletable(), |ui| crate::small_button(ui, Icon::Delete, "Delete", false, tip))
+                        .inner
+                        .clicked()
                         && let Err(e) = ed.delete_selected()
                     {
                         self.status = Status { text: e, error: true };
@@ -816,8 +820,14 @@ impl BimApp {
                         if big_button(ui, Icon::Measure, msg!("Measure"), ed.measuring(), tip).clicked() {
                             ed.measure_tool();
                         }
-                    } else {
+                    } else if adaptive {
                         later(ui, Icon::Measure, msg!("Measure"));
+                    } else {
+                        // Greyed in {3D} and while a form is sketched, saying where it works, as FE-8's tools do.
+                        let tip = msg!("Measure (ME): click two points; the ruler reads its length, its angle and its parts");
+                        ui.add_enabled_ui(false, |ui| big_button(ui, Icon::Measure, msg!("Measure"), false, tip))
+                            .inner
+                            .on_disabled_hover_text(t("Measure works in a plan or an elevation, not while a form is sketched."));
                     }
                 });
                 if tab == DocTab::Context {

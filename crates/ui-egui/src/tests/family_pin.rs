@@ -171,3 +171,32 @@ fn cut_refuses_what_is_pinned_as_delete_does() {
     assert_eq!(family(&h).symbols.len(), 1, "the symbol stays");
     assert!(status(&h).contains("pinned"), "{}", status(&h));
 }
+
+/// The Modify panel's Pin and Unpin, the status bar's Select Pinned Elements beside Select Elements by Face and Drag Elements
+/// on Selection, and a Measure ruler in plan, saved where `BIMCRAFT_FE17_DUMP` says (only then).
+#[test]
+fn family_pin_screenshots() {
+    let Ok(folder) = std::env::var("BIMCRAFT_FE17_DUMP") else { return };
+    std::fs::create_dir_all(&folder).unwrap();
+    let mut h = app(&super::family_drag_move::family_with(""));
+    h.set_size(egui::vec2(1600.0, 1000.0));
+    h.state_mut().edit_family("Movers");
+    h.run();
+    super::family_views::view(&mut h, Some(bimcraft_core::family::views::Which::Plan));
+    let save = |h: &mut Harness<BimApp>, name: &str| {
+        h.run();
+        h.run();
+        h.render().unwrap().save(std::path::Path::new(&folder).join(format!("fe17-{name}.png"))).unwrap();
+    };
+    pick(&mut h, &[Picked::Form(0)]);
+    save(&mut h, "pin");
+    shortcut(&mut h, "PN");
+    save(&mut h, "unpin");
+    shortcut(&mut h, "PE");
+    save(&mut h, "pe-off");
+    shortcut(&mut h, "PE");
+    shortcut(&mut h, "ME");
+    click_family(&mut h, [-1000.0, -300.0, 0.0]);
+    click_family(&mut h, [500.0, 500.0, 0.0]);
+    save(&mut h, "measure");
+}

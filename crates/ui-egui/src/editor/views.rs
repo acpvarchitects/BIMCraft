@@ -1132,7 +1132,11 @@ impl FamilyEditor {
                 }
                 let n = (pb - pa).normalized().rot90();
                 let text = super::measure::read(&bimcraft_core::snap::ruler(a, b), base.units);
-                painter.text(pa + (pb - pa) / 2.0 + n * 16.0, egui::Align2::CENTER_CENTER, text, egui::FontId::proportional(12.0), PICKED);
+                // On a backing of the canvas's colour, so it reads over what the view draws.
+                let galley = painter.layout_no_wrap(text, egui::FontId::proportional(12.0), PICKED);
+                let at = egui::Rect::from_center_size(pa + (pb - pa) / 2.0 + n * 16.0, galley.size());
+                painter.rect_filled(at.expand(3.0), 3.0, crate::style::pal().surface);
+                painter.galley(at.min, galley, PICKED);
             }
         }
         // A selected extrusion's Start and End, where the view sees its plane edge-on: shape handles to drag (F5); one tied to
