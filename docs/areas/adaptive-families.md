@@ -187,7 +187,7 @@ follows.
 
 ## Status and next steps
 
-Done: the definition and its evaluator (frames, hosts, curves, forms, diagnostics), persistence (file format 19, the Family Editor's), the commands
+Done: the definition and its evaluator (frames, hosts, curves, forms, diagnostics), persistence (file format 18, with the Family Editor's), the commands
 (`adaptive_capture`, `adaptive_place`, `adaptive_move`, `adaptive_evaluate`), the modelling view with Point, Line, Make Adaptive,
 Create Form, the gizmo, Delete and Undo, Properties, and placing and reshaping instances in a plan. Of the parity study's step 1:
 point types with shape handles, Revit's numbering, Orients to as measured in Revit, the six measurement types, and the show

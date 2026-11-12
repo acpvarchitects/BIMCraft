@@ -638,6 +638,33 @@ fn a_tool_acts_on_what_lay_under_the_press_not_under_where_the_hand_let_go() {
 }
 
 #[test]
+fn upper_plan_opening_preview_and_placement_use_the_upper_level() {
+    let mut h = app(r#"level {"name":"Upper","elevation":3400}
+wall {"points":[[0,0],[8000,0],[8000,6000],[0,6000]],"closed":true,"height":7200}"#);
+    // The first browser entry is the floor plan; use its accessible action even below the palette's fold.
+    h.get_all_by_label("Upper").min_by(|a, b| a.rect().top().total_cmp(&b.rect().top())).unwrap().click_accesskit();
+    h.run();
+    let upper = find(&h, |e| matches!(e, Element::Level(l) if l.name == "Upper"));
+    assert_eq!(h.state().sheet, Sheet::Plan(upper));
+    for (name, point, expected) in [("Window", P2(4000.0, 0.0), 4300.0), ("Door", P2(8000.0, 3000.0), 3400.0)] {
+        tool(&mut h, name);
+        assert_eq!(h.state().sheet, Sheet::Plan(upper));
+        let s = &h.state().session;
+        let preview = bimcraft_core::opening_of(&s.model, &json!({"at":[point.0,point.1],"level":"Upper"}), name == "Door").unwrap();
+        let (Element::Door(o) | Element::Window(o)) = preview else { panic!("not an opening") };
+        assert_eq!(s.model.opening_frame(&o).unwrap().2, expected, "preview {name}");
+        click(&mut h, point);
+        assert!(!h.state().status.error, "{}", h.state().status.text);
+        let id = ids(&h, &name.to_lowercase())[0];
+        let (Element::Door(o) | Element::Window(o)) = h.state().session.model.elements.get(id).unwrap() else { panic!("not an opening") };
+        assert_eq!(h.state().session.model.opening_frame(o).unwrap().2, expected, "placed {name}");
+        key(&mut h, Key::Escape);
+        click(&mut h, point);
+        assert!(h.state().selection.contains(&id), "placed opening can be picked on Upper");
+    }
+}
+
+#[test]
 fn doors_and_windows_go_into_the_wall_clicked() {
     let mut h = app(BOX);
     let bottom = ids(&h, "wall")[0];
@@ -669,6 +696,30 @@ fn rooms_go_where_clicked_and_their_area_follows_the_walls() {
     key(&mut h, Key::Enter);
     assert_eq!(walls(&h).last(), Some(&(P2(2040.0, 0.0), P2(2040.0, 6000.0))));
     assert_eq!(field(&h, room, "area_m2"), json!(12.24));
+}
+
+#[test]
+fn property_boundary_can_be_selected_edited_in_properties_and_undone() {
+    let mut h = app(r#"property_line {"name":"Synthetic Plot","points":[[0,0],[6000,0],[6000,4000],[0,4000]]}"#);
+    let plot = ids(&h, "propertyline")[0];
+    click(&mut h, P2(0.0, 2000.0));
+    assert_eq!(h.state().selection, [plot]);
+    type_into(&mut h, "Name", "Renamed Plot");
+    key(&mut h, Key::Enter);
+    assert_eq!(field(&h, plot, "name"), json!("Renamed Plot"));
+    assert_eq!(field(&h, plot, "area_m2"), json!(24.0));
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Z);
+    h.run();
+    assert_eq!(field(&h, plot, "name"), json!("Synthetic Plot"));
+    press(&mut h, "Redo");
+    assert_eq!(field(&h, plot, "name"), json!("Renamed Plot"));
+    type_into(&mut h, "Boundary", "0, 0; 6000, 0; 0, 4000");
+    key(&mut h, Key::Enter);
+    assert_eq!(field(&h, plot, "area_m2"), json!(12.0));
+    type_into(&mut h, "Boundary", "0, 0; 1, 1");
+    key(&mut h, Key::Enter);
+    assert!(h.state().status.error);
+    assert_eq!(field(&h, plot, "area_m2"), json!(12.0), "invalid boundary edits must leave the plot unchanged");
 }
 
 #[test]
@@ -952,7 +1003,7 @@ fn ks_lists_every_shortcut_and_every_one_it_lists_works() {
     }
     use crate::lang::Lang;
     // Names the catalogs don't have yet: KS shows them in English until a translator gives them, as any missing translation.
-    let awaiting = ["Graphic Display Options"];
+    let awaiting = ["Graphic Display Options", "Pin", "Unpin"];
     for (_, name) in crate::shortcuts().into_iter().filter(|(_, name)| !awaiting.contains(name)) {
         for l in [Lang::Portuguese, Lang::Spanish] {
             assert!(crate::lang::translated_in(l, name).is_some(), "{name} in {l:?}");
@@ -1989,14 +2040,63 @@ fn the_section_tool_draws_a_section_whose_view_opens_from_the_browser_or_a_doubl
 }
 
 #[test]
-fn the_elevation_tool_looks_at_the_building_from_where_it_is_clicked() {
+fn the_elevation_tool_looks_at_the_wall_clicked_and_turns_round_when_dragged_past_it() {
     let mut h = app(BOX);
     press(&mut h, "View");
     press(&mut h, "Elevation");
-    click(&mut h, P2(4000.0, 7000.0));
+    // Beside the building there is nothing to look at: no elevation.
+    click(&mut h, P2(4000.0, 9000.0));
+    assert!(ids(&h, "elevation").is_empty());
+    // The north wall, clicked on its outer half: the mark stands 1.5 m outside its centre line, looking south at it.
+    click(&mut h, P2(4000.0, 6050.0));
     let made = ids(&h, "elevation");
-    assert_eq!((field(&h, made[0], "name"), field(&h, made[0], "looking")), (json!("North"), json!([0.0, -1.0])));
+    assert_eq!(made.len(), 1);
+    assert_eq!((field(&h, made[0], "name"), field(&h, made[0], "looking")), (json!("Elevation 1"), json!([0.0, -1.0])));
+    // The wall's centre line, as far as its mitred corners reach.
+    assert_eq!(field(&h, made[0], "reference"), json!([[8100.0, 6000.0], [-100.0, 6000.0]]));
+    let mid = |h: &Harness<'static, BimApp>| {
+        let v = h.state().session.model.section(made[0]).unwrap().clone();
+        (v.start + v.end) * 0.5
+    };
+    assert_eq!(mid(&h), P2(4000.0, 7500.0));
     assert!(h.query_by_label("Elevations (Building Elevation)").is_some());
+    // Its mark dragged inside the building, to the wall's other side: it looks north at the same wall, and its line comes
+    // over with it, as far from the wall as it was.
+    key(&mut h, Key::Escape);
+    drag(&mut h, P2(4000.0, 7500.0), P2(4000.0, 4000.0));
+    assert_eq!(field(&h, made[0], "mark"), json!([4000.0, 4000.0]));
+    assert_eq!(mid(&h), P2(4000.0, 4500.0));
+    assert_eq!(field(&h, made[0], "looking"), json!([0.0, 1.0]));
+    // Selected, its line shows; dragged off the mark, the line alone moves, the way it looks.
+    drag(&mut h, P2(1000.0, 4500.0), P2(1300.0, 2500.0));
+    assert_eq!(mid(&h), P2(4000.0, 2500.0));
+    assert_eq!(field(&h, made[0], "mark"), json!([4000.0, 4000.0]));
+}
+
+#[test]
+fn a_selected_sections_far_clip_and_cropped_ends_are_grips_in_plan() {
+    let mut h = app(&format!(
+        "{BOX}\nsection {{\"start\": [-1000, 3000], \"end\": [9000, 3000], \"depth\": 2000}}\ncrop {{\"view\": \"Section 1\"}}"
+    ));
+    let section = ids(&h, "section")[0];
+    let line = |h: &Harness<'static, BimApp>| {
+        let v = h.state().session.model.section(section).unwrap().clone();
+        (v.start, v.end, v.depth)
+    };
+    assert_eq!(line(&h), (P2(-1000.0, 3000.0), P2(9000.0, 3000.0), Some(2000.0)));
+    h.state_mut().selection = vec![section];
+    h.run();
+    // The arrows in the middle of the far clip line, 2 m the way it looks (north): dragged, the view sees that much further.
+    drag(&mut h, P2(4000.0, 5000.0), P2(4000.0, 5500.0));
+    assert_eq!(line(&h), (P2(-1000.0, 3000.0), P2(9000.0, 3000.0), Some(2500.0)));
+    // The grip at its end, along the line only.
+    drag(&mut h, P2(9000.0, 3000.0), P2(8500.0, 3400.0));
+    assert_eq!(line(&h), (P2(-1000.0, 3000.0), P2(8500.0, 3000.0), Some(2500.0)));
+    // Uncropped it has no grips at its ends: a drag there moves it whole.
+    h.state_mut().run("crop", json!({"view": section, "region": null}));
+    h.run();
+    drag(&mut h, P2(8500.0, 3000.0), P2(8500.0, 3500.0));
+    assert_eq!(line(&h), (P2(-1000.0, 3500.0), P2(8500.0, 3500.0), Some(2500.0)));
 }
 
 #[test]
@@ -2217,6 +2317,50 @@ fn sheets_take_views_from_the_view_tab_and_viewports_move_and_open() {
     // A double click on it opens its view.
     double_click(&mut h, P2(x + 40.0, y));
     assert_eq!(h.state().sheet, Sheet::Plan(100000));
+}
+
+#[test]
+fn a_viewport_follows_its_views_scale_until_it_is_given_one() {
+    use egui_kittest::kittest::NodeT;
+    let mut h = app(BOX);
+    press(&mut h, "View");
+    press(&mut h, "Sheet");
+    let sheet = ids(&h, "sheet")[0];
+    press(&mut h, "View");
+    press(&mut h, "Place View");
+    press(&mut h, "Floor Plan: Level 1");
+    let vp = ids(&h, "viewport")[0];
+    let size = |h: &Harness<BimApp>| field(h, vp, "size");
+    let at = field(&h, vp, "at");
+    let (x, y) = (at[0].as_f64().unwrap(), at[1].as_f64().unwrap());
+    let at_a_hundred = size(&h);
+    // The view's own scale, from its control bar: the viewport on the sheet takes it.
+    h.state_mut().open_sheet(Sheet::Plan(100000));
+    h.run();
+    press(&mut h, "Scale");
+    press(&mut h, "1 : 50");
+    h.state_mut().open_sheet(Sheet::Paper(sheet));
+    h.run();
+    assert_ne!(size(&h), at_a_hundred, "the viewport takes the view's new scale");
+    // Its Properties say so: placed at the view's scale, it follows it.
+    click(&mut h, P2(x, y));
+    assert_eq!(
+        h.get_by_role_and_label(Role::CheckBox, "Follow View Scale").accesskit_node().toggled(),
+        Some(egui::accesskit::Toggled::True),
+        "placed at the view's scale, it follows it"
+    );
+    // Given a scale of its own (Follow View Scale unticked): it keeps it, whatever the view's scale.
+    pick(&mut h, Role::CheckBox, "Follow View Scale");
+    assert_eq!(field(&h, vp, "follow_scale"), json!(false));
+    let pinned = size(&h);
+    h.state_mut().run("scale", json!({"view": 100000, "scale": 20}));
+    h.run();
+    assert_eq!(size(&h), pinned, "given a scale of its own, it keeps it");
+    // Told to follow again, it takes the view's scale now.
+    pick(&mut h, Role::CheckBox, "Follow View Scale");
+    assert_eq!(field(&h, vp, "follow_scale"), json!(true));
+    assert_eq!(field(&h, vp, "scale"), json!(20.0));
+    assert_ne!(size(&h), pinned);
 }
 
 #[test]
@@ -2708,6 +2852,48 @@ fn a_plans_view_range_is_in_its_properties() {
 }
 
 #[test]
+fn place_view_menu_keeps_long_view_titles_separate_on_the_sheet() {
+    let names = ["A".repeat(80), "B".repeat(80)];
+    let script = format!(
+        r#"wall {{"points":[[0,0],[1000,0],[1000,1000],[0,1000]],"closed":true}}
+        crop {{"view":"Level 1","region":[[0,0],[1000,1000]]}}
+        duplicate_view {{"view":"Level 1","name":"{}"}}
+        duplicate_view {{"view":"Level 1","name":"{}"}}"#,
+        names[0], names[1]
+    );
+    let mut h = app(&script);
+    press(&mut h, "View");
+    press(&mut h, "Sheet");
+    for name in &names {
+        press(&mut h, "View");
+        press(&mut h, "Place View");
+        press(&mut h, &format!("Floor Plan: {name}"));
+    }
+    let viewports = ids(&h, "viewport");
+    assert_eq!(viewports.len(), 2);
+    let Sheet::Paper(id) = h.state().sheet else { panic!("placing a view must keep the sheet open") };
+    let d = bimcraft_core::sheet::draw(&h.state().session.model, id).unwrap();
+    let bounds: Vec<_> = viewports
+        .iter()
+        .map(|id| {
+            d.prims
+                .iter()
+                .zip(&d.owners)
+                .filter(|(_, owner)| **owner == Some(*id))
+                .flat_map(|(prim, _)| prim.points())
+                .fold([f32::INFINITY, f32::INFINITY, f32::NEG_INFINITY, f32::NEG_INFINITY], |b, (x, y)| {
+                    [b[0].min(x), b[1].min(y), b[2].max(x), b[3].max(y)]
+                })
+        })
+        .collect();
+    let (a, b) = (bounds[0], bounds[1]);
+    assert!(
+        a[2] < b[0] || b[2] < a[0] || a[3] < b[1] || b[3] < a[1],
+        "the sheet opened through Place View must show separate titles: {a:?}, {b:?}"
+    );
+}
+
+#[test]
 fn place_view_puts_schedules_and_the_3d_view_on_sheets() {
     let mut h = app_at(&format!("{BOX}\nroom {{\"point\": [4000, 3000], \"name\": \"Hall\"}}"), 0.05);
     press(&mut h, "View");
@@ -2860,9 +3046,12 @@ fn nothing_a_translated_interface_shows_is_left_in_english() {
     use egui_kittest::kittest::{By, NodeT};
     // A label in English that the table translates is a string the window forgot to translate: a
     // widget's name, or a plain label's text, which egui gives screen readers as its value.
+    // A shortcut key (PR, UP) is not English prose: the Keyboard Shortcuts window shows it as it is in every language.
+    let keys: Vec<&str> = crate::shortcuts().into_iter().map(|(k, _)| k).collect();
     let english = |h: &Harness<BimApp>, l: Lang| -> Vec<String> {
         h.query_all(By::new())
             .filter_map(|n| n.accesskit_node().label().or_else(|| n.accesskit_node().value()))
+            .filter(|s| !keys.contains(&s.as_str()))
             .filter(|s| crate::lang::translated_in(l, s).is_some_and(|x| x != s))
             .collect()
     };
@@ -5947,6 +6136,7 @@ fn the_massing_tab_makes_floors_walls_a_floor_and_a_roof_from_the_selected_mass(
 
 mod adaptive_modelling;
 mod align;
+mod assistant;
 mod autosave;
 mod browser;
 mod cad;
@@ -6537,7 +6727,8 @@ fn choose_item(h: &mut Harness<BimApp>, label: &str) {
     h.run();
 }
 
-const MENU: [&str; 8] = ["Cancel", "Zoom to Fit", "Zoom In", "Home View", "Edit Type", "Select All Instances", "Hide Element", "Delete"];
+const MENU: [&str; 10] =
+    ["Cancel", "Zoom to Fit", "Zoom In", "Home View", "Edit Type", "Select All Instances", "Hide Element", "Delete", "Pin", "Unpin"];
 
 #[test]
 fn a_right_click_in_a_plan_opens_a_menu_of_what_the_view_and_the_selection_can_do() {
@@ -6557,8 +6748,14 @@ fn a_right_click_in_a_plan_opens_a_menu_of_what_the_view_and_the_selection_can_d
     let at = h.state().screen(P2(4000.0, 3000.0));
     assert_eq!(
         offered(&mut h, at, &MENU),
-        ["Cancel", "Zoom to Fit", "Zoom In", "Edit Type", "Select All Instances", "Hide Element", "Delete"]
+        ["Cancel", "Zoom to Fit", "Zoom In", "Edit Type", "Select All Instances", "Hide Element", "Delete", "Pin", "Unpin"]
     );
+    // Pin keeps it where it is, and the menu offers to take the pin out again.
+    choose_item(&mut h, "Pin");
+    assert!(h.state().session.model.is_pinned(south));
+    offered(&mut h, at, &MENU);
+    choose_item(&mut h, "Unpin");
+    assert!(!h.state().session.model.is_pinned(south));
     choose_item(&mut h, "Edit Type");
     assert!(h.state().type_dialog.is_some(), "Type Properties is open");
     assert_eq!(h.state().selection, [south], "a right click leaves the selection as it was");
@@ -6645,7 +6842,7 @@ fn every_view_has_the_right_click_menu() {
     h.get_by_label("Hall").click();
     h.run();
     let at = h.get_by_label("Hall").rect().center();
-    assert_eq!(offered(&mut h, at, &MENU), ["Cancel", "Edit Type", "Select All Instances", "Delete"]);
+    assert_eq!(offered(&mut h, at, &MENU), ["Cancel", "Edit Type", "Select All Instances", "Delete", "Pin", "Unpin"]);
     choose_item(&mut h, "Delete");
     assert!(ids(&h, "room").is_empty());
 }
@@ -6967,6 +7164,8 @@ fn adaptive_editor_visual_preview_in_three_looks() {
 mod background_grid;
 
 mod extrusion_properties;
+mod family_align_forms;
+mod family_align_turn;
 mod family_already_exists;
 mod family_angles;
 mod family_blend;
@@ -6996,8 +7195,10 @@ mod family_visibility;
 mod family_work_plane;
 mod family_zoom;
 mod highlight3d;
+mod industrial_doors;
 mod nested_families;
 mod preview_visibility;
+mod sheet_fit;
 
 mod family_ortho;
 mod select_instances;

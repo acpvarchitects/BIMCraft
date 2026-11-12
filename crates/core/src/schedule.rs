@@ -207,6 +207,12 @@ const COUNT: Own = (msg!("Count"), Kind::Number, From::Count);
 const PHASE_CREATED: Own = ("Phase Created", Kind::Text, From::Param);
 const PHASE_DEMOLISHED: Own = ("Phase Demolished", Kind::Text, From::Param);
 const DESIGN_OPTION: Own = ("Design Option", Kind::Text, From::Param);
+// A steel member's take-off: its section's name, its area (cm²), its weight per metre (kg/m) and its weight (kg).
+const PROFILE: Own = (msg!("Profile"), Kind::Text, From::Key("profile"));
+const SECTION_AREA: Own = (msg!("Section Area"), Kind::Number, From::Key("section_area_cm2"));
+const WEIGHT_PER_METRE: Own = (msg!("Weight per Metre"), Kind::Number, From::Key("weight_kg_m"));
+const WEIGHT: Own = (msg!("Weight"), Kind::Number, From::Key("weight_kg"));
+
 /// The room a component stands in (`room_number`, `room_name` in its JSON), as Revit's Room: Number and Room: Name.
 const ROOM_NUMBER: Own = (msg!("Room Number"), Kind::Text, From::Key("room_number"));
 const ROOM_NAME: Own = (msg!("Room Name"), Kind::Text, From::Key("room_name"));
@@ -244,6 +250,7 @@ const SHARED: (&str, usize, &[Own]) = (
 /// Each category's own fields, and how many of them, from the first, its schedule shows unless it
 /// chooses.
 const OWN: &[(&str, usize, &[Own])] = &[
+    ("propertyline", 4, &[NAME, LEVEL, AREA, (msg!("Perimeter"), Kind::Length, From::Metres("perimeter_m")), COUNT]),
     (
         "room",
         5,
@@ -332,7 +339,26 @@ const OWN: &[(&str, usize, &[Own])] = &[
             DESIGN_OPTION,
         ],
     ),
-    ("structuralcolumn", 6, &[ID, TYPE, LEVEL, WIDTH, DEPTH, HEIGHT, COUNT, PHASE_CREATED, PHASE_DEMOLISHED, DESIGN_OPTION]),
+    (
+        "structuralcolumn",
+        6,
+        &[
+            ID,
+            TYPE,
+            LEVEL,
+            WIDTH,
+            DEPTH,
+            HEIGHT,
+            COUNT,
+            PHASE_CREATED,
+            PHASE_DEMOLISHED,
+            DESIGN_OPTION,
+            PROFILE,
+            SECTION_AREA,
+            WEIGHT_PER_METRE,
+            WEIGHT,
+        ],
+    ),
     (
         "footing",
         6,
@@ -349,7 +375,27 @@ const OWN: &[(&str, usize, &[Own])] = &[
             DESIGN_OPTION,
         ],
     ),
-    ("beam", 6, &[ID, TYPE, LEVEL, LENGTH, WIDTH, DEPTH, SYSTEM, COUNT, PHASE_CREATED, PHASE_DEMOLISHED, DESIGN_OPTION]),
+    (
+        "beam",
+        6,
+        &[
+            ID,
+            TYPE,
+            LEVEL,
+            LENGTH,
+            WIDTH,
+            DEPTH,
+            SYSTEM,
+            COUNT,
+            PHASE_CREATED,
+            PHASE_DEMOLISHED,
+            DESIGN_OPTION,
+            PROFILE,
+            SECTION_AREA,
+            WEIGHT_PER_METRE,
+            WEIGHT,
+        ],
+    ),
     (
         "rebar",
         7,
@@ -435,6 +481,23 @@ const OWN: &[(&str, usize, &[Own])] = &[
         ],
     ),
     (
+        "circuit",
+        6,
+        &[
+            ("Number", Kind::Number, From::Key("number")),
+            NAME,
+            ("Panel", Kind::Number, From::Ref("panel")),
+            ("Rating", Kind::Number, From::Key("rating_a")),
+            ("Poles", Kind::Number, From::Key("poles")),
+            ("Load", Kind::Number, From::Key("installed_va")),
+            ("Demand Load", Kind::Number, From::Key("demand_va")),
+            ("Current", Kind::Number, From::Key("current_a")),
+            ("Voltage", Kind::Number, From::Key("voltage_v")),
+            ("Classification", Kind::Text, From::Key("classification")),
+            COUNT,
+        ],
+    ),
+    (
         "component",
         4,
         &[
@@ -452,6 +515,11 @@ const OWN: &[(&str, usize, &[Own])] = &[
             ("Work Plane", Kind::Text, From::Key("work_plane")),
             ("Offset from Host", Kind::Length, From::Key("offset_from_host")),
             ("Host", Kind::Number, From::Ref("host_element")),
+            // A distribution board's, by the names of Revit's parameters.
+            ("Distribution System", Kind::Text, From::Key("distribution_system")),
+            ("Mains", Kind::Number, From::Key("mains")),
+            ("Max #1 Pole Breakers", Kind::Number, From::Key("slots")),
+            ("Supply From", Kind::Number, From::Ref("supply_from")),
         ],
     ),
     (
@@ -540,9 +608,14 @@ pub fn categories() -> Vec<&'static str> {
     OWN.iter().map(|(c, _, _)| *c).collect()
 }
 
+/// Every category with fields: schedules' own, then what schedules aren't of (`MORE`).
+pub fn all_categories() -> Vec<&'static str> {
+    categories().into_iter().chain(MORE.iter().map(|(c, _, _)| *c)).collect()
+}
+
 /// The categories a multi-category schedule lists where it names none: what's built, not rooms, levels and masses.
 pub fn built() -> Vec<&'static str> {
-    categories().into_iter().filter(|c| !matches!(*c, "room" | "level" | "mass" | "massfloor")).collect()
+    categories().into_iter().filter(|c| !matches!(*c, "room" | "level" | "mass" | "massfloor" | "propertyline")).collect()
 }
 
 /// The categories multi-category schedule `sc` lists, as elements name theirs.
@@ -607,8 +680,10 @@ pub fn field_text(m: &Model, id: impl crate::ids::Key, name: &str) -> Option<Str
     field_text_with(m, id, name, &Rooms::new(m))
 }
 
-/// [`field_text`], a room's boundary found among `rooms`.
-pub fn field_text_with(m: &Model, id: impl crate::ids::Key, name: &str, rooms: &Rooms) -> Option<String> {
+/// Field `name` of element `id`, and what it holds, as its category's schedule works it out: a
+/// length in mm, an area in m², a yes or no as a boolean. None where the element has no such
+/// field, or no value for it.
+pub(crate) fn field_value_with(m: &Model, id: impl crate::ids::Key, name: &str, rooms: &Rooms) -> Option<(Kind, Value)> {
     let id = m.elements.id(id)?;
     let e = m.elements.get(id)?;
     let cat = e.category();
@@ -617,8 +692,15 @@ pub fn field_text_with(m: &Model, id: impl crate::ids::Key, name: &str, rooms: &
     let mut row = Row { m, e, cat, json: element_json_with(m, id, rooms), formulas: &formulas, done: BTreeMap::new() };
     match row.get(name) {
         Value::Null => None,
-        v => Some(shown(m.units, kind, &v)),
+        v => Some((kind, v)),
     }
+}
+
+/// [`field_value_with`] as its category's schedule shows it (a length or an area in the project's
+/// units, a yes or no as `Yes` or `No`): what a tag shows.
+pub fn field_text_with(m: &Model, id: impl crate::ids::Key, name: &str, rooms: &Rooms) -> Option<String> {
+    let (kind, v) = field_value_with(m, id, name, rooms)?;
+    Some(shown(m.units, kind, &v))
 }
 
 /// The fields a schedule of category `cat` shows unless it chooses.
@@ -633,7 +715,7 @@ fn chosen(sc: &Schedule, cat: &str) -> Vec<Field> {
 }
 
 /// What `what` holds, said: `text`, `a number`…
-fn holding(k: Kind) -> &'static str {
+pub(crate) fn holding(k: Kind) -> &'static str {
     match k {
         Kind::Text => "text",
         Kind::Number => "a number",

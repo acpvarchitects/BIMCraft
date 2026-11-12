@@ -71,8 +71,31 @@ const TYPE_MATERIALS: u64 = 57;
 const USAGE_MATERIALS: u64 = 58;
 const CLASSIFIES: u64 = 59;
 const REFERENCED: u64 = 60;
-const FACE_OPENING: u64 = 61;
-const FACE_VOIDS: u64 = 62;
+const WALLED: u64 = 61;
+const WALLED_DEFINES: u64 = 62;
+const FACE_OPENING: u64 = 63;
+const FACE_VOIDS: u64 = 64;
+const CIRCUIT_PARTS: u64 = 65;
+const CIRCUIT_PROPERTIES: u64 = 66;
+const CIRCUIT_DEFINES: u64 = 67;
+const BREAKER: u64 = 68;
+const BREAKER_PROPERTIES: u64 = 69;
+const BREAKER_DEFINES: u64 = 70;
+const DISTRIBUTION: u64 = 71;
+const DISTRIBUTION_MEMBERS: u64 = 72;
+const GRID: u64 = 73;
+const GRID_CONTAINS: u64 = 74;
+const PLOT_PROPERTIES: u64 = 75;
+const PLOT_DEFINES: u64 = 76;
+const PLOT_NAMES: u64 = 77;
+const PLOT_NAMES_DEFINES: u64 = 78;
+const PANEL_PROPERTIES: u64 = 79;
+const PANEL_DEFINES: u64 = 80;
+const DISTRIBUTION_SERVES: u64 = 81;
+const CIRCUIT_MEMBERS: u64 = 82;
+
+/// Site footprint metadata in curve order: Names, Guids and Levels (native GUIDs).
+pub const PROPERTY_LINES: &str = "BIMCraft_PropertyLines";
 
 /// The property set an element's values of the project's parameters go in.
 pub const PARAMETERS: &str = "Project Parameters";
@@ -80,12 +103,30 @@ pub const PARAMETERS: &str = "Project Parameters";
 /// The property set a run's justification and category go in (its system is an IfcSystem it is assigned to).
 pub const RUN: &str = "BIMCraft_Run";
 
+/// The property set a distribution board's data goes in: `Mains` (amperes), `Slots`, `DistributionSystem` (its name) and `SupplyFrom`
+/// (the GlobalId of the board that supplies it). The system is also an IfcDistributionSystem the board is assigned to, which is
+/// what another tool reads it from.
+pub const PANEL: &str = "BIMCraft_Panel";
+
+/// The property set a circuit's own data goes in, on its `IfcDistributionCircuit`: `Number`, `Rating` (the breaker, amperes), `Poles`,
+/// `Voltage` (the name, when it names one), `Classification`, `DemandFactor`, `Panel` (the GlobalId of its board, which is the
+/// board's GUID) and `Wires` (JSON). Its devices are what is assigned to it, with its breaker, an `IfcProtectiveDevice`.
+pub const CIRCUIT_SET: &str = "BIMCraft_Circuit";
+
 /// The property set a lofted mass records how its footprint and its top outline pair up in, corner for corner (the body is
 /// a closed face set that doesn't say): `Loft`, JSON `{bottom, top}`.
 pub const LOFT: &str = "BIMCraft_Mass";
 
+/// A wall's authored location line (`Location`), and the GlobalIds of the roof or floor its top and base follow
+/// (`AttachTop`, `AttachBase`). Its Axis representation lies on that location line.
+pub const WALL: &str = "BIMCraft_Wall";
+
 /// The object type a room separation line's virtual element carries, which the import reads it back by.
 pub const SEPARATION: &str = "RoomSeparation";
+
+/// A lone grid axis cannot form an IfcGrid's two nonempty, disjoint axis sets. Its curve annotation carries this object
+/// type so import can restore it as a native grid rather than inventing another axis.
+pub const GRID_AXIS: &str = "BIMCraft_GridAxis";
 
 /// The property set what a placed device's connector says that IFC's `Pset_ElectricalDeviceCommon` has no property for goes
 /// in: its load in VA (in all, and `LoadVAPhase1`… for each phase), its system and its classification.
@@ -225,23 +266,40 @@ struct Step {
 
 /// A member's section as its type gives it: `width` and `depth` in mm (a round section is `width` across, so its depth is
 /// its width), kept as bits so a section can key a map.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
 struct Section {
     width: u64,
     depth: u64,
     round: bool,
+    profile: Option<(crate::profiles::GeometryKey, String)>,
+}
+
+impl std::fmt::Debug for Section {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut out = f.debug_struct("Section");
+        out.field("width", &self.width).field("depth", &self.depth).field("round", &self.round);
+        if let Some(profile) = &self.profile {
+            out.field("profile", profile);
+        }
+        out.finish()
+    }
 }
 
 impl Section {
     fn new(width: f64, depth: f64, round: bool) -> Section {
-        Section { width: width.to_bits(), depth: if round { width } else { depth }.to_bits(), round }
+        Section { width: width.to_bits(), depth: if round { width } else { depth }.to_bits(), round, profile: None }
     }
 
-    fn width(self) -> f64 {
+    fn with_profile(mut self, profile: Option<&crate::model::Profile>) -> Self {
+        self.profile = profile.map(|p| (p.geometry_key(), p.name.clone()));
+        self
+    }
+
+    fn width(&self) -> f64 {
         f64::from_bits(self.width)
     }
 
-    fn depth(self) -> f64 {
+    fn depth(&self) -> f64 {
         f64::from_bits(self.depth)
     }
 }
@@ -530,7 +588,9 @@ impl Step {
         if let Some(&written) = self.sections.get(&section) {
             return written;
         }
-        let profile = if section.round {
+        let profile = if let Some((key, name)) = &section.profile {
+            self.section(&key.profile(), name, (section.width(), section.depth()))
+        } else if section.round {
             let c = self.point(P2(0.0, 0.0));
             let centre = self.add(format!("IFCAXIS2PLACEMENT2D(#{c},$)"));
             self.add(format!("IFCCIRCLEPROFILEDEF(.AREA.,$,#{centre},{})", real(section.width() / 2.0)))
@@ -539,6 +599,28 @@ impl Step {
         };
         self.sections.insert(section, profile);
         profile
+    }
+
+    /// A steel section `width` by `depth` as IFC's parameterized profile of its shape, named `name`, centred on the box round
+    /// it, as BIMCraft's are.
+    fn section(&mut self, p: &crate::model::Profile, name: &str, (width, depth): (f64, f64)) -> u64 {
+        use crate::profiles::Shape;
+        let c = self.point(P2(0.0, 0.0));
+        let at = self.add(format!("IFCAXIS2PLACEMENT2D(#{c},$)"));
+        let name = if name.is_empty() { "$".to_string() } else { s(name) };
+        let radius = if p.radius > 0.0 { real(p.radius) } else { "$".into() };
+        let (w, d) = (real(width), real(depth));
+        self.add(match p.shape {
+            Shape::I => {
+                format!("IFCISHAPEPROFILEDEF(.AREA.,{name},#{at},{w},{d},{},{},{radius},$,$)", real(p.web), real(p.flange))
+            }
+            Shape::U => {
+                format!("IFCUSHAPEPROFILEDEF(.AREA.,{name},#{at},{d},{w},{},{},{radius},$,$)", real(p.web), real(p.flange))
+            }
+            Shape::L => format!("IFCLSHAPEPROFILEDEF(.AREA.,{name},#{at},{d},{w},{},{radius},$,$)", real(p.thickness)),
+            Shape::Rhs => format!("IFCRECTANGLEHOLLOWPROFILEDEF(.AREA.,{name},#{at},{w},{d},{},$,$)", real(p.thickness)),
+            Shape::Chs => format!("IFCCIRCLEHOLLOWPROFILEDEF(.AREA.,{name},#{at},{},{})", real(width / 2.0), real(p.thickness)),
+        })
     }
 
     /// A profile around `outer`, less `holes`.
@@ -748,8 +830,16 @@ fn perimeter(ring: &[P2]) -> f64 {
 /// perimeter by length, without the two ends, as IFC 4.3 defines it for these sets. IFC gives the gross surface (with the
 /// ends) only when the outer surface and the section can't be given apart, so it isn't written: a reader adds two sections.
 /// Nothing is subtracted from it, so it has no net values: nothing is taken off where a beam meets a column or a slab yet.
-fn member_quantities(width: f64, depth: f64, round: bool, length: f64) -> Vec<(&'static str, &'static str, f64)> {
-    let (area, perimeter) = if round {
+fn member_quantities(
+    width: f64,
+    depth: f64,
+    round: bool,
+    length: f64,
+    profile: Option<&crate::model::Profile>,
+) -> Vec<(&'static str, &'static str, f64)> {
+    let (area, perimeter) = if let Some(p) = profile {
+        (p.area(width, depth), p.perimeter(width, depth))
+    } else if round {
         (std::f64::consts::PI * width * width / 4.0, std::f64::consts::PI * width)
     } else {
         (width * depth, 2.0 * (width + depth))
@@ -764,9 +854,9 @@ fn member_quantities(width: f64, depth: f64, round: bool, length: f64) -> Vec<(&
 
 /// What a wall measures, for its `Qto_WallBaseQuantities`: its length along its axis, its thickness and height, its side
 /// (length by height, m²) and that less the doors and windows in it (`holes`, as (width, height, sill), each cut to the
-/// wall's height), and both through its thickness (m³), its joins aside. A wall attached to a roof or a floor has no single
-/// height, so only its length and thickness.
-fn wall_quantities(m: &Model, wl: &crate::model::Wall, holes: &[(f64, f64, f64)]) -> Vec<(&'static str, &'static str, f64)> {
+/// wall's height), and both through its thickness (m³), its joins aside. An attached wall has no single height; its
+/// volumes follow its clipped prisms, its side areas those volumes over its thickness.
+fn wall_quantities(m: &Model, id: Id, wl: &crate::model::Wall, holes: &[(f64, f64, f64)]) -> Vec<(&'static str, &'static str, f64)> {
     let (length, width) = (Axis::of(wl).length(), m.thickness(wl));
     let mut values = vec![("Length", "LENGTH", length), ("Width", "LENGTH", width)];
     if wl.attach_top.is_none() && wl.attach_base.is_none() {
@@ -781,8 +871,60 @@ fn wall_quantities(m: &Model, wl: &crate::model::Wall, holes: &[(f64, f64, f64)]
             ("GrossVolume", "VOLUME", gross * width / 1e9),
             ("NetVolume", "VOLUME", net * width / 1e9),
         ]);
+    } else {
+        let volume = |openings| walls::prisms(m, id, openings).iter().map(|p| prism_volume(&p.ring, &p.bottom, &p.top)).sum::<f64>();
+        let (gross, net) = (volume(false), volume(true));
+        // Of a type the project doesn't have, it is 0 thick: no side is known from its volume.
+        if width > 0.0 {
+            values.extend([("GrossSideArea", "AREA", gross / width / 1e6), ("NetSideArea", "AREA", net / width / 1e6)]);
+        }
+        values.extend([("GrossVolume", "VOLUME", gross / 1e9), ("NetVolume", "VOLUME", net / 1e9)]);
     }
     values
+}
+
+/// Grids span storeys, so their placement and containment belong to the building. Each real axis is written once.
+fn grids(w: &mut Step, m: &Model, building: u64, building_at: u64, context: u64) {
+    let grids: Vec<_> = m.elements.iter().filter_map(|(id, e)| if let Element::Grid(g) = e { Some((*id, g)) } else { None }).collect();
+    let Some((first_id, first)) = grids.first() else { return };
+    let along = (first.end - first.start).unit();
+    let (mut u, mut v, mut lines) = (Vec::new(), Vec::new(), Vec::new());
+    for (_, g) in &grids {
+        let (a, b) = (w.point(g.start), w.point(g.end));
+        let line = w.add(format!("IFCPOLYLINE((#{a},#{b}))"));
+        lines.push(line);
+        if grids.len() > 1 {
+            let axis = w.add(format!("IFCGRIDAXIS({},#{line},.T.)", s(&g.name)));
+            if along.cross((g.end - g.start).unit()).abs() < 1e-9 {
+                u.push(axis);
+            } else {
+                v.push(axis);
+            }
+        }
+    }
+    let at = w.place(Some(building_at), (0.0, 0.0, 0.0), None);
+    let rep = w.add(format!("IFCSHAPEREPRESENTATION(#{context},'Axis','Curve2D',({}))", refs(&lines)));
+    let shape = w.add(format!("IFCPRODUCTDEFINITIONSHAPE($,$,(#{rep}))"));
+    let ent = if grids.len() == 1 {
+        w.add(format!("IFCANNOTATION({},$,{},$,'{GRID_AXIS}',#{at},#{shape})", w.guid(ELEMENT, *first_id), s(&first.name)))
+    } else {
+        // IFC requires U and V to be nonempty. For parallel axes, put the last real axis in V; IRREGULAR promises no
+        // rectangular layout. A lone axis instead uses the annotation above: sharing it across U/V violates WR2.
+        if v.is_empty()
+            && let Some(last) = u.pop()
+        {
+            v.push(last);
+        }
+        w.add(format!("IFCGRID({},$,'Grid',$,$,#{at},#{shape},({}),({}),$,.IRREGULAR.)", w.guid(GRID, 0), refs(&u), refs(&v)))
+    };
+    w.add(format!("IFCRELCONTAINEDINSPATIALSTRUCTURE({},$,$,$,(#{ent}),#{building})", w.guid(GRID_CONTAINS, 0)));
+}
+
+/// A prism's volume, mm³: signed triangles of its plan ring times their mean height between the planes.
+fn prism_volume(ring: &[P2], bottom: &walls::Plane, top: &walls::Plane) -> f64 {
+    let Some(&o) = ring.first() else { return 0.0 };
+    let rise = |p| top.at(p) - bottom.at(p);
+    ring.windows(2).skip(1).map(|w| (w[0] - o).cross(w[1] - o) / 2.0 * (rise(o) + rise(w[0]) + rise(w[1])) / 3.0).sum::<f64>().abs()
 }
 
 pub fn export(m: &Model) -> String {
@@ -850,7 +992,52 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool) -> String {
     let units = w.add(format!("IFCUNITASSIGNMENT(({}))", refs(&units)));
     let project = w.add(format!("IFCPROJECT({},$,{},$,$,$,$,(#{ctx}),#{units})", w.guid(PROJECT, 0), s(&m.name)));
     let site_at = w.place(None, (0.0, 0.0, 0.0), None);
-    let site = w.add(format!("IFCSITE({},$,'Site',$,$,#{site_at},$,$,.ELEMENT.,$,$,$,$,$)", w.guid(SITE, 0)));
+    // Plot boundaries are curves, not solids. Their coordinates are site-local XY; their plan level is metadata.
+    let plots: Vec<(Id, &crate::model::PropertyLine)> = m
+        .elements
+        .iter()
+        .filter_map(|(id, e)| match e {
+            Element::PropertyLine(pl) => Some((*id, pl)),
+            _ => None,
+        })
+        .collect();
+    let footprint = if plots.is_empty() {
+        "$".to_string()
+    } else {
+        let plan = w.add(format!("IFCGEOMETRICREPRESENTATIONSUBCONTEXT('FootPrint','Model',*,*,*,*,#{ctx},$,.PLAN_VIEW.,$)"));
+        let curves: Vec<u64> = plots
+            .iter()
+            .map(|(_, pl)| {
+                let points: Vec<u64> = pl.points.iter().chain(pl.points.first()).map(|p| w.point(*p)).collect();
+                w.add(format!("IFCPOLYLINE(({}))", refs(&points)))
+            })
+            .collect();
+        let rep = w.add(format!("IFCSHAPEREPRESENTATION(#{plan},'FootPrint','Curve2D',({}))", refs(&curves)));
+        format!("#{}", w.add(format!("IFCPRODUCTDEFINITIONSHAPE($,$,(#{rep}))")))
+    };
+    let site = w.add(format!("IFCSITE({},$,'Site',$,$,#{site_at},{footprint},$,.ELEMENT.,$,$,$,$,$)", w.guid(SITE, 0)));
+    if !plots.is_empty() {
+        let total = plots.iter().map(|(_, pl)| geom::area(&pl.points).abs()).sum::<f64>() / 1e6;
+        let area = w.add(format!("IFCPROPERTYSINGLEVALUE('TotalArea',$,IFCAREAMEASURE({}),$)", real(total)));
+        w.define(site, "Pset_SiteCommon", &[area], (PLOT_PROPERTIES, PLOT_DEFINES), 0);
+        let mut metadata = Vec::new();
+        for key in ["Names", "Guids", "Levels"] {
+            let values: Vec<String> = plots
+                .iter()
+                .map(|(id, pl)| {
+                    let value = match key {
+                        "Names" => pl.name.clone(),
+                        "Guids" => m.guid(*id).to_string(),
+                        _ => pl.level.to_string(),
+                    };
+                    let kind = if key == "Names" { "IFCTEXT" } else { "IFCLABEL" };
+                    format!("{kind}({})", s(&value))
+                })
+                .collect();
+            metadata.push(w.add(format!("IFCPROPERTYLISTVALUE({},$,({}),$)", s(key), values.join(","))));
+        }
+        w.define(site, PROPERTY_LINES, &metadata, (PLOT_NAMES, PLOT_NAMES_DEFINES), 0);
+    }
     let building_at = w.place(Some(site_at), (0.0, 0.0, 0.0), None);
     let building = w.add(format!("IFCBUILDING({},$,{},$,$,#{building_at},$,$,.ELEMENT.,$,$,$)", w.guid(BUILDING, 0), s(&m.name)));
     w.add(format!("IFCRELAGGREGATES({},$,$,$,#{project},(#{site}))", w.guid(AGGREGATES, PROJECT)));
@@ -867,6 +1054,7 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool) -> String {
     if !all.is_empty() {
         w.add(format!("IFCRELAGGREGATES({},$,$,$,#{building},({}))", w.guid(AGGREGATES, BUILDING), refs(&all)));
     }
+    grids(&mut w, m, building, building_at, axis);
 
     let mut contained: BTreeMap<Guid, Vec<u64>> = BTreeMap::new();
     // The components in each room, by the room's id: contained in their storey, and referenced in its space too.
@@ -884,6 +1072,8 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool) -> String {
     let mut bars: Vec<(Guid, Option<Id>, u64)> = Vec::new();
     // The runs in each system, by its name, for the IfcSystem they are assigned to.
     let mut systems: BTreeMap<&str, Vec<u64>> = BTreeMap::new();
+    // The boards on each distribution system, by its name, for the IfcDistributionSystem they are assigned to.
+    let mut distribution: BTreeMap<&str, Vec<u64>> = BTreeMap::new();
     // The doors and windows in each wall as (width, height, sill), for what its sides measure less them.
     let mut holes: BTreeMap<Id, Vec<(f64, f64, f64)>> = BTreeMap::new();
     for e in m.elements.values() {
@@ -937,10 +1127,18 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool) -> String {
                     s(&wl.type_name)
                 ));
                 contained.entry(wl.level).or_default().push(ent);
+                let mut props = vec![w.text_property("Location", None, wl.location.name())];
+                for (name, to) in [("AttachTop", wl.attach_top), ("AttachBase", wl.attach_base)] {
+                    if let Some(to) = to.and_then(|g| m.elements.id(g)) {
+                        let global = w.guid(ELEMENT, to);
+                        props.push(w.add(format!("IFCPROPERTYSINGLEVALUE({},$,IFCIDENTIFIER({global}),$)", s(name))));
+                    }
+                }
+                w.define(ent, WALL, &props, (WALLED, WALLED_DEFINES), id);
                 products.insert(id, ent);
                 placed.insert(id, (ent, at));
                 w.typed("IFCWALLTYPE", ".STANDARD.", &wl.type_name, ent);
-                let values = wall_quantities(m, wl, holes.get(&id).map_or(&[][..], |h| h.as_slice()));
+                let values = wall_quantities(m, id, wl, holes.get(&id).map_or(&[][..], |h| h.as_slice()));
                 w.quantities(ent, "Qto_WallBaseQuantities", &values, id);
             }
             Element::Floor(f) => {
@@ -1016,6 +1214,14 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool) -> String {
                 products.insert(id, ent);
                 w.typed("IFCCOVERINGTYPE", ".CEILING.", &c.type_name, ent);
                 hosts.insert(id, (ent, at, m.elevation(c.level)));
+                let net: f64 =
+                    m.ceiling_slabs(c).iter().flat_map(|(face, rise)| m.less_shafts(face, *rise).0).map(|r| geom::area(&r).abs()).sum();
+                let values = [
+                    ("Width", "LENGTH", m.types.ceiling.get(&c.type_name).map_or(0.0, |t| t.thickness)),
+                    ("GrossArea", "AREA", geom::area(&c.boundary).abs() / 1e6),
+                    ("NetArea", "AREA", net / 1e6),
+                ];
+                w.quantities(ent, "Qto_CoveringBaseQuantities", &values, id);
             }
             Element::Room(r) => {
                 let Some(&(_, storey)) = storeys.get(&r.level) else { continue };
@@ -1087,8 +1293,8 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool) -> String {
                 let (bottom, top) = m.span(col.level, col.base_offset, col.top_level, col.height);
                 let at = w.place(Some(storey), (col.at.0, col.at.1, col.base_offset), Some(heading(col.angle)));
                 // Its section is its type's, which the type's material profile set holds too.
-                let section = Section::new(t.width, t.depth, t.round);
-                let profile = w.section_profile(section);
+                let section = Section::new(t.width, t.depth, t.round).with_profile(t.profile.as_ref());
+                let profile = w.section_profile(section.clone());
                 let shape = w.body(profile, 0.0, top - bottom, &[]);
                 let (class, kind) =
                     if matches!(e, Element::Footing(_)) { ("IFCFOOTING", ".PAD_FOOTING.") } else { ("IFCCOLUMN", ".COLUMN.") };
@@ -1108,9 +1314,19 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool) -> String {
                 // Placed by the middle of its section: the mid-depth centre, 5.
                 if matches!(e, Element::Footing(_)) {
                     w.typed_member("IFCFOOTINGTYPE", ".PAD_FOOTING.", &col.type_name, (section, String::new()), 5, ent);
+                    let area = if t.round { std::f64::consts::PI * t.width * t.width / 4.0 } else { t.width * t.depth };
+                    let volume = area * (top - bottom) / 1e9;
+                    let values = [
+                        ("Length", "LENGTH", t.width),
+                        ("Width", "LENGTH", if t.round { t.width } else { t.depth }),
+                        ("Height", "LENGTH", top - bottom),
+                        ("GrossVolume", "VOLUME", volume),
+                        ("NetVolume", "VOLUME", volume),
+                    ];
+                    w.quantities(ent, "Qto_FootingBaseQuantities", &values, id);
                 } else {
                     w.typed_member("IFCCOLUMNTYPE", ".COLUMN.", &col.type_name, (section, String::new()), 5, ent);
-                    let values = member_quantities(t.width, t.depth, t.round, top - bottom);
+                    let values = member_quantities(t.width, t.depth, t.round, top - bottom, t.profile.as_ref());
                     w.quantities(ent, "Qto_ColumnBaseQuantities", &values, id);
                 }
             }
@@ -1126,9 +1342,9 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool) -> String {
                 // Placed at the start of its centre line; its section's x across it, level, its y up.
                 let at = w.place(Some(storey), (g.a[0], g.a[1], g.a[2] - m.elevation(r.level)), None);
                 // A beam's section is its type's, which the type's material profile set holds too.
-                let section = Section::new(g.width, g.depth, g.round);
+                let section = Section::new(g.width, g.depth, g.round).with_profile(t.profile.as_ref());
                 let profile = if matches!(e, Element::Beam(_)) {
-                    w.section_profile(section)
+                    w.section_profile(section.clone())
                 } else if g.round {
                     let c = w.point(P2(0.0, 0.0));
                     let centre = w.add(format!("IFCAXIS2PLACEMENT2D(#{c},$)"));
@@ -1154,10 +1370,23 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool) -> String {
                         // Placed by the line its heights are on, the top, the middle or the bottom of its section.
                         let cardinal = cardinal_point(r.justify, g.vertical());
                         w.typed_member("IFCBEAMTYPE", ".BEAM.", &r.type_name, (section, t.material.clone()), cardinal, ent);
-                        let values = member_quantities(g.width, g.depth, g.round, g.length());
+                        let values = member_quantities(g.width, g.depth, g.round, g.length(), t.profile.as_ref());
                         w.quantities(ent, "Qto_BeamBaseQuantities", &values, id);
                     }
-                    Element::StripFooting(_) => w.load_bearing(ent, "Pset_FootingCommon", id),
+                    Element::StripFooting(_) => {
+                        w.load_bearing(ent, "Pset_FootingCommon", id);
+                        let area = if g.round { std::f64::consts::PI * g.width * g.width / 4.0 } else { g.width * g.depth };
+                        let volume = area * g.length() / 1e9;
+                        let values = [
+                            ("Length", "LENGTH", g.length()),
+                            ("Width", "LENGTH", g.width),
+                            ("Height", "LENGTH", g.depth),
+                            ("CrossSectionArea", "AREA", area / 1e6),
+                            ("GrossVolume", "VOLUME", volume),
+                            ("NetVolume", "VOLUME", volume),
+                        ];
+                        w.quantities(ent, "Qto_FootingBaseQuantities", &values, id);
+                    }
                     // A pipe, duct, conduit, tray, wire or cable: its type is of the segment class it is written as.
                     _ => w.typed(&format!("{class}TYPE"), kind, &r.type_name, ent),
                 }
@@ -1248,6 +1477,30 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool) -> String {
                 };
                 if let Some(r) = relating {
                     w.add(format!("IFCRELASSOCIATESMATERIAL({},$,$,$,(#{ent}),#{r})", w.guid(COMPONENT_MATERIALS, id)));
+                }
+                // A board's own data: in a property set of BIMCraft's, and its system an IfcDistributionSystem it is assigned to.
+                if let Some(panel) = &cp.panel {
+                    let mut props = Vec::new();
+                    if let Some(amps) = panel.mains {
+                        props.push(w.add(format!("IFCPROPERTYSINGLEVALUE('Mains',$,IFCELECTRICCURRENTMEASURE({}),$)", real(amps))));
+                    }
+                    if let Some(n) = panel.slots {
+                        props.push(w.add(format!("IFCPROPERTYSINGLEVALUE('Slots',$,IFCINTEGER({n}),$)")));
+                    }
+                    if let Some(name) = &panel.distribution {
+                        props.push(w.text_property("DistributionSystem", None, name));
+                        distribution.entry(name).or_default().push(ent);
+                    }
+                    if let Some(up) = panel.supply_from {
+                        props.push(w.text_property(
+                            "SupplyFrom",
+                            Some("The GlobalId of the board that supplies this one"),
+                            &compress(up.as_u128()),
+                        ));
+                    }
+                    if !props.is_empty() {
+                        w.define(ent, PANEL, &props, (PANEL_PROPERTIES, PANEL_DEFINES), id);
+                    }
                 }
             }
             Element::Stair(st) => {
@@ -1346,7 +1599,8 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool) -> String {
                     s(&format!("Bar {}", rb.diameter)),
                     s(&rb.grade),
                     real(rb.diameter),
-                    real(area),
+                    // In the file's square metres, to twelve places: a bar's section is a ten-thousandth of one.
+                    ratio(area / 1e6),
                     real(crate::rebar::length(&rb.path))
                 ));
                 bars.push((rb.level, rb.host.and_then(|h| m.elements.id(h)), ent));
@@ -1385,6 +1639,34 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool) -> String {
                 let flat = r.extrusion.is_none() && r.slope == 0.0;
                 w.typed("IFCROOFTYPE", if flat { ".FLAT_ROOF." } else { ".NOTDEFINED." }, &r.type_name, ent);
                 hosts.insert(id, (ent, at, m.elevation(r.level)));
+                // Gross follows the actual planes with authored openings filled; courtyards and joins remain.
+                // Net follows the same roof geometry used for export, less its openings and intersecting shafts.
+                // A roof whose faces can't be found (a gable edge its footprint doesn't have) has no area to say: none is written.
+                let mut gross_roof = r.clone();
+                gross_roof.openings.clear();
+                if let Ok(faces) = m.roof_faces(&gross_roof) {
+                    let mut gross = 0.0;
+                    let mut projected = 0.0;
+                    for (loops, plane) in faces {
+                        if let Some((outer, holes)) = loops.split_first() {
+                            let area = geom::area(outer).abs() - holes.iter().map(|h| geom::area(h).abs()).sum::<f64>();
+                            projected += area;
+                            gross += area * (1.0 + plane.g.dot(plane.g)).sqrt();
+                        }
+                    }
+                    let net: f64 = m
+                        .roof_prisms(r)
+                        .iter()
+                        .map(|(ring, bottom, top)| {
+                            let rise = ring.iter().map(|p| top.at(*p) - bottom.at(*p)).fold(0.0, f64::max);
+                            let area: f64 = m.less_shafts(&bottom.lift(ring), rise).0.iter().map(|p| geom::area(p).abs()).sum();
+                            area * (1.0 + top.g.dot(top.g)).sqrt()
+                        })
+                        .sum();
+                    let values =
+                        [("GrossArea", "AREA", gross / 1e6), ("NetArea", "AREA", net / 1e6), ("ProjectedArea", "AREA", projected / 1e6)];
+                    w.quantities(ent, "Qto_RoofBaseQuantities", &values, id);
+                }
             }
             _ => {}
         }
@@ -1502,7 +1784,7 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool) -> String {
         // The door or window itself: a 50 mm panel centred in the wall; of a family, its forms as a component's are,
         // closed face sets in their materials' colours, standing at the middle of the opening.
         let mut made_of: Vec<u64> = Vec::new();
-        let (fill_at, shape) = match m.opening_local(e).filter(|_| o.family.is_some()) {
+        let (fill_at, shape) = match m.opening_local(e) {
             Some((pieces, _)) => {
                 let mut items = Vec::new();
                 for piece in &pieces {
@@ -1530,11 +1812,12 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool) -> String {
         // Named `Family:Type` as Revit names them; a project's own type, by its name.
         let label = o.family.as_ref().map_or_else(|| o.type_name.clone(), |f| format!("{f}:{}", o.type_name));
         let name = s(&label);
+        let user_operation = t.operation.and_then(Operation::ifc_door_user).map_or_else(|| "$".into(), s);
         // How it opens, as its family or its type says; a door that says nothing swings.
         let ent = if matches!(e, Element::Door(_)) {
             let operation = Operation::ifc_door(t.operation, o.flip_hand);
             w.add(format!(
-                "IFCDOOR({},$,{name},$,{name},#{fill_at},#{shape},{},{h},{wd},.DOOR.,{operation},$)",
+                "IFCDOOR({},$,{name},$,{name},#{fill_at},#{shape},{},{h},{wd},.DOOR.,{operation},{user_operation})",
                 w.guid(ELEMENT, id),
                 s(&o.mark)
             ))
@@ -1547,13 +1830,14 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool) -> String {
             ))
         };
         // Its type object: after its PredefinedType, the operation (a door's) or partitioning (a window's) its type has, that
-        // the occurrence's own sizes take precedence over the type's, and no user-defined operation.
+        // the occurrence's own sizes take precedence over the type's, and the custom operation where IFC has no enum.
         let (class, predefined, how) = if matches!(e, Element::Door(_)) {
             ("IFCDOORTYPE", ".DOOR.", Operation::ifc_door(t.operation, false))
         } else {
             ("IFCWINDOWTYPE", ".WINDOW.", Operation::ifc_window_partitioning(t.operation))
         };
-        w.typed_with(class, "", predefined, &format!(",{how},.T.,$"), &label, ent);
+        let user_operation = if matches!(e, Element::Door(_)) { user_operation } else { "$".into() };
+        w.typed_with(class, "", predefined, &format!(",{how},.T.,{user_operation}"), &label, ent);
         w.add(format!("IFCRELFILLSELEMENT({},$,$,$,#{opening},#{ent})", w.guid(FILLS, id)));
         let qto = if matches!(e, Element::Door(_)) { "Qto_DoorBaseQuantities" } else { "Qto_WindowBaseQuantities" };
         let values = [
@@ -1653,6 +1937,62 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool) -> String {
         let key = name.bytes().fold(0xcbf2_9ce4_8422_2325_u64, |h, b| (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01b3));
         let system = w.add(format!("IFCSYSTEM({},$,{},$,$)", w.guid(SYSTEMS, key), s(name)));
         w.add(format!("IFCRELASSIGNSTOGROUP({},$,$,$,({}),$,#{system})", w.guid(SYSTEM_MEMBERS, key), refs(members)));
+    }
+    // A distribution system is an IfcDistributionSystem, electrical, its boards assigned to it and the building it serves.
+    let mut distribution_entity: BTreeMap<&str, u64> = BTreeMap::new();
+    for (name, members) in &distribution {
+        let key = name.bytes().fold(0xcbf2_9ce4_8422_2325_u64, |h, b| (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01b3));
+        let system = w.add(format!("IFCDISTRIBUTIONSYSTEM({},$,{},$,$,$,.ELECTRICAL.)", w.guid(DISTRIBUTION, key), s(name)));
+        distribution_entity.insert(name, system);
+        w.add(format!("IFCRELASSIGNSTOGROUP({},$,$,$,({}),$,#{system})", w.guid(DISTRIBUTION_MEMBERS, key), refs(members)));
+        w.add(format!("IFCRELSERVICESBUILDINGS({},$,$,$,#{system},(#{building}))", w.guid(DISTRIBUTION_SERVES, key)));
+    }
+    // A circuit is an IfcDistributionCircuit in the system of its board: its devices assigned to it with its breaker (an
+    // IfcProtectiveDevice, which has no place of its own), and the rest of what it holds in a property set of BIMCraft's.
+    for (&id, e) in m.elements.iter() {
+        let Element::Circuit(c) = e else { continue };
+        let Some(board) = m.elements.id(c.panel) else { continue };
+        let name = if c.name.trim().is_empty() { format!("Circuit {}", c.number) } else { c.name.clone() };
+        let circuit = w.add(format!("IFCDISTRIBUTIONCIRCUIT({},$,{},$,$,$,.ELECTRICAL.)", w.guid(ELEMENT, id), s(&name)));
+        let breaker = w.add(format!(
+            "IFCPROTECTIVEDEVICE({},$,{},$,$,$,$,$,.CIRCUITBREAKER.)",
+            w.guid(BREAKER, id),
+            s(&format!("Breaker {}", c.number))
+        ));
+        let device = [
+            w.add(format!("IFCPROPERTYSINGLEVALUE('NumberOfPoles',$,IFCINTEGER({}),$)", c.poles)),
+            w.add(format!("IFCPROPERTYSINGLEVALUE('RatedCurrent',$,IFCELECTRICCURRENTMEASURE({}),$)", real(c.rating_a))),
+        ];
+        w.define(breaker, "Pset_ElectricalDeviceCommon", &device, (BREAKER_PROPERTIES, BREAKER_DEFINES), id);
+        let mut members: Vec<u64> = c.devices.iter().filter_map(|g| products.get(&m.elements.id(*g)?).copied()).collect();
+        members.push(breaker);
+        w.add(format!("IFCRELASSIGNSTOGROUP({},$,$,$,({}),$,#{circuit})", w.guid(CIRCUIT_MEMBERS, id), refs(&members)));
+        let system = match m.elements.get(board) {
+            Some(Element::Component(b)) => {
+                b.panel.as_ref().and_then(|p| p.distribution.as_deref()).and_then(|d| distribution_entity.get(d))
+            }
+            _ => None,
+        };
+        if let Some(system) = system {
+            w.add(format!("IFCRELAGGREGATES({},$,$,$,#{system},(#{circuit}))", w.guid(CIRCUIT_PARTS, id)));
+        }
+        let mut props = vec![
+            w.add(format!("IFCPROPERTYSINGLEVALUE('Number',$,IFCINTEGER({}),$)", c.number)),
+            w.add(format!("IFCPROPERTYSINGLEVALUE('Rating',$,IFCELECTRICCURRENTMEASURE({}),$)", real(c.rating_a))),
+            w.add(format!("IFCPROPERTYSINGLEVALUE('Poles',$,IFCINTEGER({}),$)", c.poles)),
+            w.add(format!("IFCPROPERTYSINGLEVALUE('DemandFactor',$,IFCREAL({}),$)", real(c.demand_factor))),
+            w.text_property("Panel", Some("The GlobalId of the board it is on"), &compress(c.panel.as_u128())),
+        ];
+        if let Some(v) = &c.voltage {
+            props.push(w.text_property("Voltage", None, v));
+        }
+        if !c.classification.is_empty() {
+            props.push(w.text_property("Classification", None, &c.classification));
+        }
+        if let Some(wires) = c.wires.as_ref().and_then(|x| serde_json::to_string(x).ok()) {
+            props.push(w.text_property("Wires", Some("JSON: the section of each conductor, mm², in a wire type of the project"), &wires));
+        }
+        w.define(circuit, CIRCUIT_SET, &props, (CIRCUIT_PROPERTIES, CIRCUIT_DEFINES), id);
     }
     for (level, (storey, _)) in &storeys {
         if let Some(items) = contained.get(level) {
@@ -1842,6 +2182,21 @@ mod tests {
         assert_eq!(a, guid(7, 5, 12));
         let all: BTreeSet<String> = (0..2000).flat_map(|id| [guid(7, 5, id), guid(7, 6, id), guid(8, 5, id)]).collect();
         assert_eq!(all.len(), 6000);
+    }
+
+    #[test]
+    fn every_role_a_global_id_plays_has_a_number_of_its_own() {
+        // Two roles of one number give two things written for one element (a wall's property set and a distribution
+        // system keyed to the same number) one GlobalId, which a reader takes for one object.
+        let mut seen: BTreeMap<u64, &str> = BTreeMap::new();
+        for line in include_str!("ifc.rs").lines() {
+            let Some((name, value)) = line.strip_prefix("const ").and_then(|rest| rest.split_once(": u64 = ")) else { continue };
+            let n: u64 = value.trim_end_matches(';').parse().unwrap_or_else(|_| panic!("{line}"));
+            if let Some(other) = seen.insert(n, name) {
+                panic!("{other} and {name} are both role {n}: give the newer one a number no role has");
+            }
+        }
+        assert!(seen.len() > 40, "the roles are read from the source: {seen:?}");
     }
 
     #[test]
@@ -2807,11 +3162,48 @@ mod tests {
         assert!(near(q["GrossArea"], 48.0) && near(q["NetArea"], 47.0) && near(q["Perimeter"], 28000.0), "{q:?}");
         assert!(near(q["NetVolume"], 47.0 * q["Width"] / 1e3), "{q:?}");
         dangling(&f);
-        // Attached to a roof or a floor, a wall has no single height: only its length and thickness.
-        let mut attached = wl.clone();
-        attached.attach_top = Some(m.guid(walls[1]));
-        let names: Vec<&str> = wall_quantities(m, &attached, &[]).iter().map(|(n, _, _)| *n).collect();
-        assert_eq!(names, ["Length", "Width"]);
+    }
+
+    #[test]
+    fn an_attached_wall_of_no_known_thickness_has_no_side_areas() {
+        use crate::graphics::testing::{house, run};
+        let mut s = Session::new();
+        let walls = house(&mut s);
+        let roof = run(&mut s, "roof", json!({"boundary": [[0, 0], [8000, 0], [8000, 6000], [0, 6000]], "slope": 30, "overhang": 0}));
+        run(&mut s, "modify", json!({"id": walls[0], "attach_top": roof["id"]}));
+        // A wall whose type the project doesn't have, as a file can hold: its thickness is 0, and its side is no volume over it.
+        let mut m = (*s.model).clone();
+        let Some(Element::Wall(wl)) = m.elements.get_mut(walls[0]) else { panic!("no wall") };
+        wl.type_name = "No Such Type".into();
+        let wl = wl.clone();
+        assert_eq!(m.thickness(&wl), 0.0);
+        let q = wall_quantities(&m, walls[0], &wl, &[]);
+        assert!(q.iter().all(|(_, _, v)| v.is_finite()), "{q:?}");
+        let names: Vec<&str> = q.iter().map(|(n, _, _)| *n).collect();
+        assert!(!names.contains(&"GrossSideArea") && !names.contains(&"NetSideArea"), "{names:?}");
+        assert!(names.contains(&"GrossVolume") && names.contains(&"NetVolume"), "{names:?}");
+    }
+
+    #[test]
+    fn a_roof_whose_faces_fail_has_no_area_quantities() {
+        use crate::graphics::testing::{house, run};
+        let mut s = Session::new();
+        house(&mut s);
+        let roof = run(&mut s, "roof", json!({"boundary": [[0, 0], [8000, 0], [8000, 6000], [0, 6000]], "slope": 30, "overhang": 0}));
+        let id = roof["id"].as_u64().unwrap();
+        // A gable edge the footprint doesn't have, as a file can hold: its faces can't be found, so no area is known.
+        let mut m = (*s.model).clone();
+        let Some(Element::Roof(r)) = m.elements.get_mut(id) else { panic!("no roof") };
+        r.gables = vec![99];
+        let r = r.clone();
+        assert!(m.roof_faces(&r).is_err());
+        let f = export(&m);
+        let ent = of_kind(&f, "IFCROOF")[0];
+        assert_eq!(quantities_of(&f, ent, "Qto_RoofBaseQuantities"), BTreeMap::new(), "no zeros written as if measured");
+        // The same roof as drawn has them.
+        let f = export(&s.model);
+        let q = quantities_of(&f, of_kind(&f, "IFCROOF")[0], "Qto_RoofBaseQuantities");
+        assert!(q["GrossArea"] > q["ProjectedArea"] && q["ProjectedArea"] > 0.0, "{q:?}");
     }
 
     /// Every closed shell in `f` is closed: each edge of its faces, from one point to the next round a bound, is run once

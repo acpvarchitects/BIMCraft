@@ -26,6 +26,7 @@ use crate::language::Language;
 pub use crate::lines::DetailLine;
 use crate::lines::{self, LinePattern, LineStyle};
 use crate::phasing::{self, OptionSet, PhaseFilter, Status};
+pub use crate::profiles::Profile;
 use crate::shared::Shared;
 use crate::texture::{Kind, MAX_IMAGES, Picture, Texture};
 use crate::units::Units;
@@ -71,12 +72,34 @@ pub const CEILING_CUT: f64 = 2300.0;
 pub const CEILING_HEIGHT: f64 = 2600.0;
 /// The steepest slope a floor or a roof may have, degrees.
 pub const MAX_SLOPE: f64 = 75.0;
-/// The version of the project file this build writes, and the newest it reads. 19: the Family Editor, and what places its
-/// families in a project. A build that reads up to 18 would leave most of it out as fields it doesn't know (a family's planes,
-/// sketches, dimensions, nested families, pivots and settings, a component's host), drawing a family without them or failing
-/// to build it, and losing them on saving, and refuse the rest on opening ("unknown variant", "isn't a category views draw"),
-/// not say "saved by a newer BIMCraft". A file of 18 or older is brought up to 19 by one step of [`Model::migrate`], after
-/// 18's, which needs none. What 19 adds:
+/// The version of the project file this build writes, and the newest it reads. 18: a beam's or a structural column's type may
+/// have a steel section (`profile`), which a build that reads up to 17 would leave out as a field it doesn't know, drawing and
+/// scheduling the member as the solid rectangle or circle round its section; a family's connector may be a `pipe`,
+/// `data` or `earthing` one, with no `system` (a pipe's `domain`, `flow`, `size`), and any may have a place (`at`, `direction`);
+/// the starter fixtures and fittings have them; a project may hold title blocks of its own (`title_blocks`, library entries of
+/// kind `title-block`; one may give the paper rectangle views are placed in by default, `drawing_area`, and draw the
+/// sheet's border itself, `template_border`) and its values of their fields (`title_values`), and a sheet may name one
+/// (`title_block`) and hold its values of its fields (`fields`), or name `none` to have no title block at all (no border,
+/// title box or folding marks); a viewport may keep a scale of its own as its view's changes (`follow_scale: false`,
+/// written only then); a wall or a run may refuse to join its neighbours (`join: false`, written only then); a dimension
+/// may measure to the line across a column, square to its angle (`across`); a door's type or family may open as a gate
+/// (`operation`: `sectional` or `roller`); a project may hold property lines (the `propertyline` category, a row of
+/// `graphics::MODEL` that views' graphics and Object Styles may name); it may pin elements where they are (`pinned`, their
+/// GUIDs); an elevation may keep the line it looks at (`reference`) and stand its mark apart from its line (`mark`); a
+/// project's language may be Polish (`pl`); a distribution board may hold its electrical data (a component's `panel`: its
+/// distribution system, mains, slots and the board that supplies it); and a project may hold circuits (the `circuit`
+/// category, each on its board's slots from its `number`), panel schedules (`panelschedule`) and demand factors by
+/// classification (`demand_factors`). Nothing in a file of 17 changes, but a build that reads up to 17 would answer such a
+/// connector, dimension, operation, property line, circuit or panel schedule, or Polish, with a serde error ("unknown
+/// variant", "missing field `system`") and graphics or a style of `propertyline` as a category it doesn't have, would leave
+/// the title blocks and a viewport's `follow_scale` out as fields it doesn't know, drawing every sheet with the built-in
+/// title box, and would silently drop `join: false` and join the element again, and the pins, letting what was pinned move,
+/// and would drop an elevation's reference and mark, drawing the mark back on its line, and would leave a board's `panel`
+/// and the `demand_factors` out as fields it doesn't know, a board's supply tree with them, not say "saved by a newer
+/// BIMCraft". 18 also holds the Family Editor's families and what places them in a project, which a build that reads up to
+/// 17 would leave out as fields it doesn't know, drawing a family without them or failing to build it and losing them on
+/// saving, or refuse on opening ("unknown variant", "isn't a category views draw"), not say "saved by a newer BIMCraft"; a
+/// file of 17 is brought up to 18 by [`Model::migrate`]:
 ///
 /// - Family parameters: text, whole numbers, areas, volumes, URLs and family types, grouped (`group`), shared (`shared`, a
 ///   GUID) or reporting (`reporting`); a family type parameter names its category (`of`).
@@ -108,16 +131,7 @@ pub const MAX_SLOPE: f64 = 75.0;
 ///   hosted on one (`host`), its `at` and `offset` following the plane and its family's axes tilted with it, or on a face of a
 ///   wall, a floor, a ceiling or a roof (`host` `{"face": {"element", "face"}}`, Place on Face), its `uv` that face's own.
 ///
-/// 18: a family's connector may be a `pipe`,
-/// `data` or `earthing` one, with no `system` (a pipe's `domain`, `flow`, `size`), and any may have a place (`at`, `direction`);
-/// the starter fixtures and fittings have them; a project may hold title blocks of its own (`title_blocks`, library entries of
-/// kind `title-block`) and its values of their fields (`title_values`), and a sheet may name one (`title_block`) and hold its
-/// values of its fields (`fields`), or name `none` to have no title block at all (no border, title box or folding marks); a
-/// wall or a run may refuse to join its neighbours (`join: false`, written only then); and a dimension may measure to the line
-/// across a column, square to its angle (`across`). Nothing in a file of 17 changes, but a build that reads up to 17 would
-/// answer such a connector or dimension with a serde error ("unknown variant", "missing field `system`"), would leave the
-/// title blocks out as fields it doesn't know, drawing every sheet with the built-in title box, and would silently drop
-/// `join: false` and join the element again, not say "saved by a newer BIMCraft". 17: a schedule may list several categories
+/// 17: a schedule may list several categories
 /// (`multicategory`, with `categories`) and a project's language may be Italian (`it`); nothing in a file of 16 changes, but a
 /// build that reads up to 16 would refuse either on opening (no schedule of that category, an unknown variant), not say
 /// "saved by a newer BIMCraft". 16: a 3D view may hold dimensions (the
@@ -155,7 +169,7 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// 2: the library has ids and GUIDs too
 /// (`library`), and what names a library entry holds its GUID. 1: elements have GUIDs, ids six digits, and what points at
 /// an element holds its GUID. None (0): a file from before.
-pub const FORMAT: u32 = 19;
+pub const FORMAT: u32 = 18;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -255,6 +269,16 @@ pub struct RoomSeparator {
     pub level: Guid,
     pub start: P2,
     pub end: P2,
+}
+
+/// A named, simple closed property boundary in a level's plan. Points exclude the repeated closing corner.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PropertyLine {
+    #[serde(default)]
+    pub name: String,
+    pub level: Guid,
+    pub points: Vec<P2>,
 }
 
 /// A reinforcing bar: a round bar of `diameter` mm bent along `path` (mm: x east, y north, z over `level`), of steel `grade`. It
@@ -1675,6 +1699,9 @@ pub struct Component {
     /// `at` and `offset` are worked out from (`crate::hosting`). None, it is on `level`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub host: Option<Hosted>,
+    /// A distribution board's electrical data: its distribution system, its mains and slots and the board that supplies it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub panel: Option<crate::electrical::Panel>,
 }
 
 /// A stair from `level` up to `top_level` (or `height` mm), climbing from the middle of its first
@@ -1925,6 +1952,13 @@ pub struct Section {
     pub depth: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub crop: Option<[f64; 2]>,
+    /// The line an elevation looks at, square to it from whichever side its mark stands on (`elevation.rs`): the edge it
+    /// was placed on, kept as a line of its own, not a tie to what had the edge. One of FORMAT 18's, as `mark` is.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reference: Option<[P2; 2]>,
+    /// Where an elevation's mark stands in plan, apart from its line; none: at the line's middle.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mark: Option<P2>,
     /// What it hides and how it draws the rest.
     #[serde(default, skip_serializing_if = "Graphics::is_default")]
     pub graphics: Graphics,
@@ -2056,6 +2090,11 @@ pub struct Viewport {
     pub view: Guid,
     pub at: P2,
     pub scale: f64,
+    /// Whether it takes its view's scale as that changes, as a viewport placed without one does; one placed at a
+    /// scale of its own (`place` with `scale`) keeps it, and `scale` leaves it where it is. Written only when off, one of
+    /// FORMAT 18's.
+    #[serde(default = "yes", skip_serializing_if = "is_yes")]
+    pub follow_scale: bool,
 }
 
 /// A pattern for the element of any run category, its run bound as `$r`: a tab adds its categories here, and every place
@@ -2093,6 +2132,7 @@ macro_rules! visit_refs {
                     }
                 }
             }
+            Element::PanelSchedule(ps) => f(& $($m)? ps.panel),
             Element::Grid(_) | Element::RefPlane(_) | Element::Sheet(_) | Element::Schedule(_) | Element::Link(_) => {}
             Element::PlanView(v) => {
                 f(& $($m)? v.level);
@@ -2140,6 +2180,11 @@ macro_rules! visit_refs {
             Element::Component(c) => {
                 f(& $($m)? c.level);
                 if let Some(Hosted { host: HostRef::Plane(g) | HostRef::Face { element: g, .. }, .. }) = & $($m)? c.host { f(g) }
+                if let Some(p) = & $($m)? c.panel
+                    && let Some(g) = & $($m)? p.supply_from
+                {
+                    f(g)
+                }
             }
             Element::Railing(r) => {
                 f(& $($m)? r.level);
@@ -2164,6 +2209,13 @@ macro_rules! visit_refs {
                 if let Some(g) = & $($m)? ci.view { f(g) }
             }
             Element::RoomSeparator(rs) => f(& $($m)? rs.level),
+            Element::PropertyLine(pl) => f(& $($m)? pl.level),
+            Element::Circuit(c) => {
+                f(& $($m)? c.panel);
+                for g in & $($m)? c.devices {
+                    f(g)
+                }
+            }
             Element::Rebar(rb) => {
                 f(& $($m)? rb.level);
                 if let Some(g) = & $($m)? rb.host { f(g) }
@@ -2191,6 +2243,7 @@ pub enum Element {
     /// A room separation line: it bounds rooms and builds nothing.
     #[serde(rename = "roomseparator")]
     RoomSeparator(RoomSeparator),
+    PropertyLine(PropertyLine),
     Dimension(Dimension),
     /// A dimension in a 3D view, between points or edges of the model.
     Dimension3D(Dimension3D),
@@ -2243,6 +2296,10 @@ pub enum Element {
     PointCloud(PointCloud),
     /// A CAD drawing placed in the model.
     CadImport(CadImport),
+    /// An electrical circuit: devices on a distribution board, behind one breaker.
+    Circuit(crate::electrical::Circuit),
+    /// A distribution board's load schedule, a view of its own.
+    PanelSchedule(crate::panel_schedule::PanelSchedule),
 }
 
 impl Element {
@@ -2437,10 +2494,13 @@ impl Element {
             Element::Window(_) => "window",
             Element::Room(_) => "room",
             Element::RoomSeparator(_) => "roomseparator",
+            Element::PropertyLine(_) => "propertyline",
             Element::Rebar(_) => "rebar",
             Element::Dimension(_) => "dimension",
             Element::Dimension3D(_) => "dimension3d",
             Element::Tag(_) => "tag",
+            Element::Circuit(_) => "circuit",
+            Element::PanelSchedule(_) => "panelschedule",
             Element::Section(_) => "section",
             Element::Elevation(_) => "elevation",
             Element::Sheet(_) => "sheet",
@@ -2508,18 +2568,21 @@ pub struct CeilingType {
     pub layers: Vec<Layer>,
 }
 
-/// A column type: `width` by `depth`, or round, `width` across.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+/// A column type: `width` by `depth`, or round, `width` across. A structural column's may have a steel section in that
+/// box (`profiles.rs`), its width along the column's angle.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ColumnType {
     pub width: f64,
     pub depth: f64,
     #[serde(default)]
     pub round: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profile: Option<Profile>,
 }
 
 /// A run's type: a section `width` across by `depth` deep, or round, `width` across; made of `material` (one of the
-/// library's, or none).
+/// library's, or none). A beam's may have a steel section in that box (`profiles.rs`), its x across and its y up.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RunType {
@@ -2529,6 +2592,8 @@ pub struct RunType {
     pub round: bool,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub material: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profile: Option<Profile>,
 }
 
 /// The categories whose elements are runs, as `Element::run` returns them.
@@ -2574,11 +2639,23 @@ pub enum Operation {
     Folding,
     /// Nothing opens.
     Fixed,
+    /// Hinged horizontal panels run up and overhead on tracks.
+    Sectional,
+    /// A curtain winds onto a coil above the opening.
+    Roller,
 }
 
 impl Operation {
-    pub const ALL: [Operation; 6] =
-        [Operation::Swing, Operation::DoubleSwing, Operation::Sliding, Operation::DoubleSliding, Operation::Folding, Operation::Fixed];
+    pub const ALL: [Operation; 8] = [
+        Operation::Swing,
+        Operation::DoubleSwing,
+        Operation::Sliding,
+        Operation::DoubleSliding,
+        Operation::Folding,
+        Operation::Fixed,
+        Operation::Sectional,
+        Operation::Roller,
+    ];
 
     /// Its name, as files and commands spell it.
     pub fn name(self) -> &'static str {
@@ -2589,6 +2666,8 @@ impl Operation {
             Operation::DoubleSliding => "double-sliding",
             Operation::Folding => "folding",
             Operation::Fixed => "fixed",
+            Operation::Sectional => "sectional",
+            Operation::Roller => "roller",
         }
     }
 
@@ -2601,11 +2680,23 @@ impl Operation {
             Operation::DoubleSliding => msg!("Double Sliding"),
             Operation::Folding => msg!("Folding"),
             Operation::Fixed => msg!("Fixed"),
+            Operation::Sectional => msg!("Sectional"),
+            Operation::Roller => msg!("Roller"),
         }
     }
 
     pub fn parse(name: &str) -> Option<Operation> {
         Operation::ALL.into_iter().find(|o| o.name().eq_ignore_ascii_case(name.trim()))
+    }
+
+    /// Project-owned industrial door types have generated panels and equipment.
+    pub fn industrial(self) -> bool {
+        matches!(self, Operation::Sectional | Operation::Roller)
+    }
+
+    /// IFC4 has no sectional-door enumeration, so the user-defined operation carries its meaning.
+    pub fn ifc_door_user(self) -> Option<&'static str> {
+        (self == Operation::Sectional).then_some("SECTIONAL")
     }
 
     /// A door's `IfcDoorTypeOperationEnum`, its leaf to the right with `right`; a door that says
@@ -2619,6 +2710,8 @@ impl Operation {
             Operation::DoubleSliding => ".DOUBLE_DOOR_SLIDING.",
             Operation::Folding => side(".FOLDING_TO_LEFT.", ".FOLDING_TO_RIGHT."),
             Operation::Fixed => ".NOTDEFINED.",
+            Operation::Sectional => ".USERDEFINED.",
+            Operation::Roller => ".ROLLINGUP.",
         }
     }
 
@@ -2637,9 +2730,19 @@ impl Operation {
             "SLIDING_TO_LEFT" | "SLIDING_TO_RIGHT" => Operation::Sliding,
             "DOUBLE_DOOR_SLIDING" => Operation::DoubleSliding,
             "FOLDING_TO_LEFT" | "FOLDING_TO_RIGHT" | "DOUBLE_DOOR_FOLDING" => Operation::Folding,
+            "ROLLINGUP" => Operation::Roller,
             _ => return None,
         };
         Some((op, right))
+    }
+
+    /// Read an IFC4 custom operation as well as the standard operation enumeration.
+    pub fn from_ifc_door_with_user(e: &str, user: Option<&str>) -> Option<(Operation, bool)> {
+        if e.trim_matches('.') == "USERDEFINED" && user.is_some_and(|u| u.trim().eq_ignore_ascii_case("SECTIONAL")) {
+            Some((Operation::Sectional, false))
+        } else {
+            Self::from_ifc_door(e)
+        }
     }
 
     /// A window's `IfcWindowTypePartitioningEnum`: two panels side by side where two leaves meet, else one.
@@ -2968,6 +3071,14 @@ pub struct Model {
     /// opens the rest, so it took no `FORMAT` step.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub georeference: Option<Georeference>,
+    /// The elements pinned where they are, by GUID: commands that place, draw or delete them refuse them until `unpin`. One of
+    /// FORMAT 18's: a build that reads up to 17 would leave it out of a file and let them move.
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub pinned: BTreeSet<Guid>,
+    /// The factor that counts of the load of the circuits of a classification (above 0 up to 1), applied in a board's totals and
+    /// its panel schedule on top of each circuit's own; a classification with none counts whole.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub demand_factors: BTreeMap<String, f64>,
     pub elements: Elements,
     /// The ids and GUIDs of the library: its types, materials, pictures, families, parameters, view filters and
     /// templates, phases, phase filters and design options.
@@ -3062,11 +3173,13 @@ impl Model {
             detail_groups: BTreeMap::new(),
             title_blocks: BTreeMap::new(),
             title_values: BTreeMap::new(),
+            pinned: BTreeSet::new(),
             reinforcement: BTreeMap::new(),
             voltages: crate::electrical::voltages(),
             distribution_systems: crate::electrical::distribution_systems(),
             wire_types: crate::electrical::wire_types(),
             georeference: None,
+            demand_factors: BTreeMap::new(),
             elements: Elements::new(),
             library: crate::library::Library::default(),
             loaded: BTreeMap::new(),
@@ -3122,20 +3235,21 @@ impl Model {
         for (n, w, h, s) in [("Fixed 1200 x 1500", 1200.0, 1500.0, 900.0), ("Fixed 600 x 900", 600.0, 900.0, 1100.0)] {
             m.types.window.insert(n.into(), OpeningType { width: w, height: h, sill: s, operation: None });
         }
-        m.types.column.insert("Rectangular 400 x 400".into(), ColumnType { width: 400.0, depth: 400.0, round: false });
-        m.types.column.insert("Round 300".into(), ColumnType { width: 300.0, depth: 300.0, round: true });
+        m.types.column.insert("Rectangular 400 x 400".into(), ColumnType { width: 400.0, depth: 400.0, round: false, profile: None });
+        m.types.column.insert("Round 300".into(), ColumnType { width: 300.0, depth: 300.0, round: true, profile: None });
         // The structure's: concrete columns, footings, beams and strip footings.
         for (n, w, d, round) in [
             ("Concrete 300 x 300", 300.0, 300.0, false),
             ("Concrete 200 x 500", 200.0, 500.0, false),
             ("Concrete Round 400", 400.0, 400.0, true),
         ] {
-            m.types.structural_column.insert(n.into(), ColumnType { width: w, depth: d, round });
+            m.types.structural_column.insert(n.into(), ColumnType { width: w, depth: d, round, profile: None });
         }
         for (n, w) in [("Footing 1200 x 1200", 1200.0), ("Footing 1500 x 1500", 1500.0)] {
-            m.types.footing.insert(n.into(), ColumnType { width: w, depth: w, round: false });
+            m.types.footing.insert(n.into(), ColumnType { width: w, depth: w, round: false, profile: None });
         }
-        let run = |width, depth, round, material: &str| RunType { width, depth, round, material: language.word(material).into() };
+        let run =
+            |width, depth, round, material: &str| RunType { width, depth, round, material: language.word(material).into(), profile: None };
         let beams = [
             ("Beam 200 x 500", run(200.0, 500.0, false, "Concrete")),
             ("Beam 150 x 400", run(150.0, 400.0, false, "Concrete")),
@@ -3625,6 +3739,8 @@ impl Model {
                 }
             }
         }
+        // A pin of an element this build left out (a newer one's kind) is dropped, and the rest of the file opens.
+        m.pinned.retain(|g| m.elements.id(*g).is_some());
         Ok((m, left_out))
     }
 
@@ -3687,14 +3803,24 @@ impl Model {
         // 15 to 16 (dimensions in 3D views, a category 15 doesn't know and would refuse; the locks Align leaves, which 15 would
         // read as dimensions of nothing) has no step: a file of 15 holds none.
         // 16 to 17 (multi-category schedules, Italian as a project's language) has none either: a file of 16 holds neither.
-        // 17 to 18 (pipe, data and earthing connectors, a connector's place; title blocks of the project's own, their fields'
-        // values, and sheets with none; walls and runs that refuse to join; a dimension to the line across a column) has none
-        // either: a file of 17's connectors are a power or a switch one, each with its system, which 18 reads as they were; a
-        // file of 17 holds no title blocks, its sheets keeping the built-in one, no `join`, which reads as joining, as it always
-        // did, and none of its dimensions measures `across`.
-        // 18 to 19 (the Family Editor, and what places its families): one step, in this order, for a file of 17 or 18 alike
-        // (this step leaves 18's changes alone: title blocks, `join` and `across` aren't a family's, and a connector's `at` is in
-        // the family's axes, which the datums are whatever plane `defines_origin`, and it has no `host` that 1 below would move).
+        // 17 to 18, for a type's steel section (`profile`), has none either: a file of 17 holds none, its types keeping the
+        // plain rectangle or circle they had.
+        // 17 to 18 (pipe, data and earthing connectors, a connector's place; title blocks of the project's own, with a
+        // drawing area and a border of their own, their fields' values, and sheets with none; viewports that keep a scale
+        // of their own; walls and runs that refuse to join; a dimension to the line across a column; sectional and roller
+        // doors; property lines; pinned elements; an elevation's reference and mark; Polish as a project's language; a
+        // distribution board's `panel`; circuits, panel schedules and `demand_factors`) has none either: a file of 17's
+        // connectors are a power or a switch one, each with its system, which 18 reads as they were; a file of 17 holds no
+        // title blocks, its sheets keeping the built-in one, no `follow_scale`, so its viewports follow their views' scales
+        // from then on, as one placed without a scale does, no `join`, which reads as joining, as it always did, none of
+        // its dimensions measures `across`, none of its operations is a gate's, it holds no property line and names no
+        // `propertyline` in its graphics or styles, nothing in it is pinned, its elevations have no reference and their
+        // marks on their lines, its language isn't Polish, none of its components has a `panel`, and it has no circuits,
+        // panel schedules or `demand_factors`.
+        // The Family Editor's part of 18, and what places its families, takes
+        // one step, in this order (it leaves the rest of 18 alone: title blocks, `join` and `across` aren't a family's, and a
+        // connector's `at` is in the family's axes, which the datums are whatever plane `defines_origin`, and it has no `host`
+        // that 1 below would move).
         // 1. A form's `plane` becomes its `host`, a datum: `xy` Ref. Level and `yz` Center (Left/Right) as they were; `xz`
         //    Center (Front/Back), its `from` and `to` negated and swapped (a formula wrapped as `-(…)`), since it swept along
         //    +y and the datum's normal is -y, a revolve's angles as they were. Its `profile`, `circle` and `axis` become lines
@@ -3703,16 +3829,17 @@ impl Model {
         //    and a family read without its datums is given them (`Family::planes`).
         // 2. Every family's datums are put first and its origin settled, whatever the file held (`Family::settle_planes`).
         // 3. A door's or a window's void cuts its wall wherever it reaches into it, whatever its place in the family's list,
-        //    unless its `cuts` says `forms`. Before 19, only one that cut none of the solid forms listed before it cut the
+        //    unless its `cuts` says `forms`. Before, only one that cut none of the solid forms listed before it cut the
         //    wall, in its own shape in place of the opening's rectangle (a rule only unreleased builds of the Family Editor
-        //    had: upstream's 17 and 18 cut the wall with the opening's rectangle alone, and a file of either reads by it). Each void that rule didn't cut the wall with, though it reaches into it, says `forms`
+        //    had: 17 cut the wall with the opening's rectangle alone, and a file of 17 reads by it). Each void that rule didn't
+        //    cut the wall with, though it reaches into it, says `forms`
         //    (`Family::pin_cuts`), so it cuts what it did. It runs after 2, as it did, the family flexed on its settled planes.
         //    A limit: one `cuts` is a void's for every type, and the old rule decided type by type. A void that overlapped a
         //    solid in any type, or by the default of an instance parameter that moves it, says `forms` for all of them, so a
         //    type whose void was clear of the solids and cut the wall with the old rule cuts it no more. That is the
-        //    conservative side: the wall keeps the opening's rectangle, as upstream's 17 and 18 drew it, and one value per
+        //    conservative side: the wall keeps the opening's rectangle, as 17 drew it, and one value per
         //    void can't hold both outcomes.
-        // The rest of 19 needs nothing of a file of 17 or 18, which holds none of it: an adaptive family and a component's
+        // The rest needs nothing of a file of 17, which holds none of it: an adaptive family and a component's
         // adaptive frames, a family parameter's group, shared GUID and reporting (each defaults to what a file of 17 means:
         // grouped by its kind, the family's own, set), Doors > Opening and Windows > Opening, the project's reference planes
         // and components hosted on them or on faces (a hosted component's `at` and `offset` are worked out from its host
@@ -3720,8 +3847,8 @@ impl Model {
         // or 18 is an extrusion or a revolve, built as it was), pivots, and Visibility Settings (a part without them draws as it
         // did, `family::visibility`). An adaptive point's `"datum": "level" | "front_back" | "left_right"`, the name the
         // Family Editor's first adaptive points gave their work plane, is still read as the datum plane of the same frame
-        // (`Host::World`'s `plane_or_datum`); a file of 17 or 18 holds no adaptive family, so it takes no part in this step.
-        if self.format < 19 {
+        // (`Host::World`'s `plane_or_datum`); a file of 17 holds no adaptive family, so it takes no part in this step.
+        if self.format < 18 {
             self.families.values_mut().for_each(crate::family::Family::settle_planes);
             self.families.values_mut().for_each(crate::family::Family::pin_cuts);
         }
@@ -3872,6 +3999,11 @@ impl Model {
         self.elements.guid(k).unwrap_or_default()
     }
 
+    /// Whether element `k` is pinned where it is (`pin`), so a command that places, draws or deletes it refuses it.
+    pub fn is_pinned(&self, k: impl Key) -> bool {
+        self.pinned.contains(&self.guid(k))
+    }
+
     pub fn level(&self, id: impl Key) -> Option<&Level> {
         match self.elements.get(id) {
             Some(Element::Level(l)) => Some(l),
@@ -3908,8 +4040,8 @@ impl Model {
         )
     }
 
-    /// What a level stretches over without an extent of its own: every solid and grid in plan,
-    /// [`LEVEL_PAST`] past them (10 m each way of the origin in an empty project).
+    /// What a level stretches over without an extent of its own: every solid, grid and CAD drawing in plan,
+    /// [`LEVEL_PAST`] past them. Scans count only when those are absent (10 m each way of the origin in an empty project).
     pub fn model_extent(&self) -> [P2; 2] {
         self.model_extent_of(crate::view3d::solids(self).iter().flat_map(|s| s.corners()).map(|p| P2(p[0], p[1])))
     }
@@ -3917,18 +4049,24 @@ impl Model {
     /// [`Model::model_extent`], of `corners`, in plan: those of [`crate::view3d::solids`] of this model, or the points
     /// that may be farthest among them.
     pub(crate) fn model_extent_of(&self, corners: impl Iterator<Item = P2>) -> [P2; 2] {
-        // The grids, scans and drawings, in the order of their ids, from the lookup.
+        // The grids and drawings, in the order of their ids, from the lookup.
         let lookup = self.lookup();
-        let others: BTreeSet<Id> = lookup.grids().chain(lookup.rare("pointcloud")).chain(lookup.rare("cadimport")).collect();
-        let pts = corners.chain(others.into_iter().flat_map(|id| match self.elements.get(id) {
+        let others: BTreeSet<Id> = lookup.grids().chain(lookup.rare("cadimport")).collect();
+        let mut pts = corners.chain(others.into_iter().flat_map(|id| match self.elements.get(id) {
             Some(Element::Grid(g)) => vec![g.start, g.end],
-            Some(Element::PointCloud(_)) => self.cloud_box(id).map_or(Vec::new(), |(lo, hi)| vec![P2(lo[0], lo[1]), P2(hi[0], hi[1])]),
             Some(Element::CadImport(_)) => self.cad_box(id).map_or(Vec::new(), |b| b.to_vec()),
             _ => Vec::new(),
         }));
+        // A site survey must not stretch a building's levels; a scan-only project still fits its scans.
+        let first = pts.next();
+        let scans = lookup
+            .rare("pointcloud")
+            .filter(|_| first.is_none())
+            .filter_map(|id| self.cloud_box(id))
+            .flat_map(|(lo, hi)| [P2(lo[0], lo[1]), P2(hi[0], hi[1])]);
         // Folded as they come, the first the start: no list of every corner of every mesh.
         let mut bounds: Option<(P2, P2)> = None;
-        for q in pts {
+        for q in first.into_iter().chain(pts).chain(scans) {
             bounds = Some(match bounds {
                 None => (q, q),
                 Some((lo, hi)) => (P2(lo.0.min(q.0), lo.1.min(q.1)), P2(hi.0.max(q.0), hi.1.max(q.1))),
@@ -4398,6 +4536,16 @@ impl Model {
         })
     }
 
+    /// Whether this door has one swinging leaf. A door without a declared operation swings by default,
+    /// as it does in IFC. Read the chosen family or project type without building its geometry.
+    pub fn single_swing_door(&self, family: Option<&str>, type_name: &str) -> bool {
+        let operation = match family {
+            Some(name) => self.families.get(name).filter(|f| f.category == crate::family::Category::Door).map(|f| f.operation),
+            None => self.types.door.get(type_name).map(|t| t.operation),
+        };
+        matches!(operation, Some(None | Some(Operation::Swing)))
+    }
+
     /// The type of a door or window.
     pub fn opening_type(&self, e: &Element) -> Option<OpeningType> {
         self.opening_dims(e).ok()
@@ -4413,7 +4561,8 @@ impl Model {
 
     /// A door's or window's family's solids and the lines its plan draws, in the family's own axes, turned out with
     /// the opening's flips as mirror images (its hinge on the other jamb, its swing to the wall's other side);
-    /// none for one that isn't of a family, or doesn't build.
+    /// Project-owned industrial doors use the same pieces for their generated equipment; none for an ordinary project type
+    /// or a family that doesn't build.
     pub fn opening_local(&self, e: &Element) -> Option<(Vec<Piece>, Vec<crate::family::Tagged>)> {
         self.opening_local_at(e, None)
     }
@@ -4421,13 +4570,20 @@ impl Model {
     /// [`Model::opening_local`], its marks those a plan at `detail` draws if it says.
     fn opening_local_at(&self, e: &Element, detail: Option<crate::graphics::Detail>) -> Option<(Vec<Piece>, Vec<crate::family::Tagged>)> {
         let (Element::Door(o) | Element::Window(o)) = e else { return None };
-        let f = self.families.get(o.family.as_ref()?)?;
-        let values = f.values_in(&o.type_name, &o.params, self.thickness(self.wall(o.host)?)).ok()?;
-        let marks = match detail {
-            Some(d) => f.marks_in(&values, d),
-            None => f.marks_tagged(&values),
+        let (pieces, marks) = if let Some(name) = &o.family {
+            let f = self.families.get(name)?;
+            let values = f.values_in(&o.type_name, &o.params, self.thickness(self.wall(o.host)?)).ok()?;
+            let marks = match detail {
+                Some(d) => f.marks_in(&values, d),
+                None => f.marks_tagged(&values),
+            };
+            (f.pieces(&values).ok()?, marks.ok()?)
+        } else {
+            let t = self.opening_type(e)?;
+            let operation = t.operation.filter(|op| matches!(e, Element::Door(_)) && op.industrial())?;
+            let face = self.thickness(self.wall(o.host)?) / 2.0;
+            (crate::doors::pieces(operation, t.width, t.height, face, self.language.word("Metal")).ok()?, Vec::new())
         };
-        let (pieces, marks) = (f.pieces(&values).ok()?, marks.ok()?);
         let (fx, fy) = (if o.flip_hand { -1.0 } else { 1.0 }, if o.flip_facing { -1.0 } else { 1.0 });
         let mirrored = fx * fy < 0.0;
         let flip = |p: [f64; 3]| [fx * p[0] + 0.0, fy * p[1] + 0.0, p[2]];
@@ -4540,6 +4696,7 @@ impl Model {
             Element::Mass(ms) => Some(ms.level),
             Element::Room(r) => Some(r.level),
             Element::RoomSeparator(rs) => Some(rs.level),
+            Element::PropertyLine(pl) => Some(pl.level),
             Element::Rebar(rb) => Some(rb.level),
             Element::Dimension(d) => Some(d.level),
             Element::Column(c) | Element::StructuralColumn(c) | Element::Footing(c) => Some(c.level),
@@ -4552,6 +4709,8 @@ impl Model {
             Element::Roof(r) => Some(r.level),
             Element::Door(o) | Element::Window(o) => wall_level(o),
             Element::Tag(t) => self.elements.get(t.host).filter(|h| !matches!(h, Element::Tag(_))).and_then(|h| self.level_of(h)),
+            // On the board's level: its plan is where it is drawn.
+            Element::Circuit(c) => self.elements.get(c.panel).filter(|h| matches!(h, Element::Component(_))).and_then(|h| self.level_of(h)),
             // Notes and spot elevations in a level's plan.
             Element::Text(Note { view, .. })
             | Element::Spot(Spot { view, .. })
@@ -4569,6 +4728,7 @@ impl Model {
             | Element::Sheet(_)
             | Element::Viewport(_)
             | Element::Schedule(_)
+            | Element::PanelSchedule(_)
             | Element::Link(_)
             | Element::Dimension3D(_)
             | Element::View3D(_) => None,
@@ -5258,14 +5418,40 @@ impl Model {
     }
 
     /// A column's outline in plan (a structural column's, a footing's): its rectangle turned to its angle, or a round one's
-    /// 24-sided polygon. Nothing for another element, or an unknown type.
+    /// 24-sided polygon, or a steel section's outer edge. Nothing for another element, or an unknown type.
     pub fn column_outline(&self, e: &Element) -> Vec<P2> {
         let (Some(col), Some(t)) = (e.column(), self.column_type(e)) else { return Vec::new() };
+        if let Some(p) = &t.profile {
+            return p.rings(t.width, t.depth).into_iter().next().map(|r| self.column_placed(col, &r)).unwrap_or_default();
+        }
         if t.round {
             return (0..24).map(|i| col.at + heading(f64::from(i) * 15.0) * (t.width / 2.0)).collect();
         }
         let (u, w, d) = (heading(col.angle), t.width / 2.0, t.depth / 2.0);
         [(-w, -d), (w, -d), (w, d), (-w, d)].into_iter().map(|(a, c)| col.at + u * a + u.perp() * c).collect()
+    }
+
+    /// A steel column's hole in plan (a tube's, a pipe's): none for another.
+    pub fn column_holes(&self, e: &Element) -> Vec<Vec<P2>> {
+        let (Some(col), Some(t)) = (e.column(), self.column_type(e)) else { return Vec::new() };
+        let Some(p) = &t.profile else { return Vec::new() };
+        p.rings(t.width, t.depth).iter().skip(1).map(|r| self.column_placed(col, r)).collect()
+    }
+
+    /// What a column's solid is made of in plan, each piece a prism up its height: its outline, or a hollow section's pieces
+    /// round its hole.
+    pub fn column_pieces(&self, e: &Element) -> Vec<Vec<P2>> {
+        let (Some(col), Some(t)) = (e.column(), self.column_type(e)) else { return Vec::new() };
+        match &t.profile {
+            Some(p) if p.hollow() => p.pieces(t.width, t.depth).iter().map(|q| self.column_placed(col, &q.ring())).collect(),
+            _ => vec![self.column_outline(e)],
+        }
+    }
+
+    /// A column's section's points, x along its angle and y square to it, placed round where it stands.
+    fn column_placed(&self, col: &Column, pts: &[P2]) -> Vec<P2> {
+        let u = heading(col.angle);
+        pts.iter().map(|q| col.at + u * q.0 + u.perp() * q.1).collect()
     }
 
     /// Sheet `id`.
@@ -5315,6 +5501,7 @@ impl Model {
             Some(Element::Level(l)) => Some(&l.name),
             Some(Element::Section(v) | Element::Elevation(v)) => Some(&v.name),
             Some(Element::Schedule(sc)) => Some(&sc.name),
+            Some(Element::PanelSchedule(ps)) => Some(&ps.name),
             Some(Element::View3D(v)) => Some(&v.name),
             Some(Element::PlanView(v)) => Some(&v.name),
             _ => None,
@@ -5325,7 +5512,7 @@ impl Model {
     pub fn views(&self) -> BTreeSet<Id> {
         let lookup = self.lookup();
         let mut ids: BTreeSet<Id> = lookup.levels().collect();
-        for cat in ["planview", "section", "elevation", "schedule", "view3d"] {
+        for cat in ["planview", "section", "elevation", "schedule", "panelschedule", "view3d"] {
             ids.extend(lookup.rare(cat));
         }
         ids
@@ -5425,6 +5612,7 @@ impl Model {
             Element::Column(c) | Element::StructuralColumn(c) | Element::Footing(c) => Some(c.at),
             Element::Component(c) => Some(c.at),
             Element::Room(r) => Some(r.point),
+            Element::PropertyLine(pl) => Some(geom::centroid(&pl.points)),
             run_arm!(r) => middle(r.start, r.end),
             Element::Stair(s) => Some(s.start),
             Element::Ramp(r) => Some(r.start),
@@ -6036,7 +6224,7 @@ impl Model {
 
     /// What bounds the rooms of `level`: the centre lines of its walls, arcs as chords, and its room separation lines. A
     /// separation line drawn to a wall's face, as one drawn on a plan usually is, runs on to the wall's centre line, so it
-    /// splits rooms measured there too.
+    /// splits rooms measured there too. A parallel continuation at a straight wall's end joins across its cap instead.
     pub fn bounding_lines(&self, level: impl Key) -> Vec<(P2, P2)> {
         self.bounding_lines_in(level, Some(&walls::Index::new(self)))
     }
@@ -6044,14 +6232,26 @@ impl Model {
     /// [`Model::bounding_lines`], the walls' joins found through `index`, or among every wall without one.
     pub(crate) fn bounding_lines_in(&self, level: impl Key, index: Option<&walls::Index>) -> Vec<(P2, P2)> {
         let walls = self.wall_segments(&level, index, true);
-        let mut lines: Vec<(P2, P2)> = walls.iter().map(|&(a, b, _)| (a, b)).collect();
-        lines.extend(self.separators(level).into_iter().map(|(a, b)| (to_centre(b, a, &walls), to_centre(a, b, &walls))));
+        let mut lines: Vec<(P2, P2)> = walls.iter().map(|s| (s.start, s.end)).collect();
+        for (a, b) in self.separators(level) {
+            let (start, end) = (to_centre(b, a, &walls), to_centre(a, b, &walls));
+            lines.push((start, end));
+            for (from, drawn, extended) in [(b, a, start), (a, b, end)] {
+                // Keep crossing extensions as before. A parallel end gets a short cap connection, so the separator
+                // stays on its drawn line instead of tilting the whole room boundary towards the wall's centre.
+                if drawn == extended
+                    && let Some(centre) = parallel_wall_end(from, drawn, &walls)
+                {
+                    lines.push((drawn, centre));
+                }
+            }
+        }
         lines
     }
 
     /// Centre lines of the walls that bound the rooms of `level`, arcs as chords.
     pub fn wall_lines(&self, level: impl Key) -> Vec<(P2, P2)> {
-        self.wall_segments(&level, Some(&walls::Index::new(self)), false).into_iter().map(|(a, b, _)| (a, b)).collect()
+        self.wall_segments(&level, Some(&walls::Index::new(self)), false).into_iter().map(|s| (s.start, s.end)).collect()
     }
 
     /// The walls that bound the rooms of `level` (with `rooms`, those whose Room Bounding is on), by id.
@@ -6065,14 +6265,29 @@ impl Model {
         candidates.filter(move |&id| self.wall(id).is_some_and(|w| self.bounding(w, level) && (!rooms || w.room_bounding)))
     }
 
-    /// The segments of [`Model::wall_lines`], each with half its wall's thickness.
+    /// The segments of [`Model::wall_lines`], each with half its wall's thickness and its eligible straight-wall end caps.
     /// With `rooms`, of the walls whose Room Bounding is on.
-    fn wall_segments(&self, level: &impl Key, index: Option<&walls::Index>, rooms: bool) -> Vec<(P2, P2, f64)> {
+    fn wall_segments(&self, level: &impl Key, index: Option<&walls::Index>, rooms: bool) -> Vec<WallSegment> {
+        let keep = |w: &Wall| self.bounding(w, level) && (!rooms || w.room_bounding);
         self.bounding_walls(level, rooms)
-            .filter_map(|id| Some((id, self.thickness(self.wall(id)?) / 2.0)))
-            .flat_map(|(id, half)| {
-                let line = walls::centre_line_in(self, id, index);
-                line.windows(2).filter_map(|s| s.first().zip(s.get(1)).map(|(a, b)| (*a, *b, half))).collect::<Vec<_>>()
+            .filter_map(|id| {
+                let wall = self.wall(id)?;
+                Some((id, self.thickness(wall) / 2.0, wall.arc == 0.0))
+            })
+            .flat_map(|(id, half, straight)| {
+                let line = walls::centre_line_filtered(self, id, index, &keep);
+                line.windows(2)
+                    .enumerate()
+                    .filter_map(|(i, s)| {
+                        s.first().zip(s.get(1)).map(|(a, b)| WallSegment {
+                            start: *a,
+                            end: *b,
+                            half,
+                            // A curved wall's chord direction is not its actual end-cap tangent.
+                            caps: [straight && i == 0, straight && i + 2 == line.len()],
+                        })
+                    })
+                    .collect::<Vec<_>>()
             })
             .collect()
     }
@@ -6085,8 +6300,9 @@ impl Model {
 
     /// [`Model::face_lines`] (with `rooms`, of the walls whose Room Bounding is on), the walls' joins found through `index`.
     pub(crate) fn face_lines_in(&self, level: impl Key, index: Option<&walls::Index>, rooms: bool) -> Vec<(P2, P2)> {
+        let keep = |w: &Wall| self.bounding(w, level) && (!rooms || w.room_bounding);
         self.bounding_walls(&level, rooms)
-            .flat_map(|id| geom::ring_edges(&walls::outline_in(self, id, index)).collect::<Vec<_>>())
+            .flat_map(|id| geom::ring_edges(&walls::outline_filtered(self, id, index, &keep)).collect::<Vec<_>>())
             .collect()
     }
 
@@ -6321,12 +6537,16 @@ impl Model {
                  face, or put it on another work plane with `edit_work_plane`"
             )
         }));
+        out.extend(crate::electrical::circuit_warnings(self));
         out
     }
 
     /// Everything that must hold between commands: references resolve, geometry is finite and
     /// not degenerate, doors and windows fit their walls and don't overlap.
     pub fn check(&self) -> Result<(), String> {
+        if let Some(g) = self.pinned.iter().find(|g| self.elements.id(**g).is_none()) {
+            return Err(format!("`pinned` names an element that is gone ({g})"));
+        }
         if let Some(lw) = &self.line_weights {
             lw.check()?;
         }
@@ -6405,6 +6625,14 @@ impl Model {
                 size(&format!("{cat} type `{n}` width"), t.width)?;
                 size(&format!("{cat} type `{n}` height"), t.height)?;
                 coord(&format!("{cat} type `{n}` sill"), t.sill)?;
+                if cat == "window"
+                    && let Some(op) = t.operation.filter(|op| op.industrial())
+                {
+                    return Err(format!(
+                        "window type `{n}`: `{}` is a door's operation, a gate's; give the window another, or make it a door type",
+                        op.name()
+                    ));
+                }
             }
         }
         if self.images.len() > MAX_IMAGES {
@@ -6519,6 +6747,12 @@ impl Model {
             for (n, t) in types {
                 size(&format!("{cat} type `{n}` width"), t.width)?;
                 size(&format!("{cat} type `{n}` depth"), t.depth)?;
+                if let Some(p) = &t.profile {
+                    if cat != "structural column" {
+                        return Err(format!("{cat} type `{n}`: a steel section is a structural column's or a beam's, not a {cat}'s"));
+                    }
+                    p.check(&format!("{cat} type `{n}`"), t.width, t.depth, t.round)?;
+                }
             }
         }
         for (cat, types) in &self.types.runs {
@@ -6531,6 +6765,12 @@ impl Model {
                 size(&format!("{who} depth"), t.depth)?;
                 if t.round && t.depth != t.width {
                     return Err(format!("{who}: a round section is as deep as it is wide ({} mm), not {} mm", t.width, t.depth));
+                }
+                if let Some(p) = &t.profile {
+                    if cat != "beam" {
+                        return Err(format!("{who}: a steel section is a structural column's or a beam's, not a {cat}'s"));
+                    }
+                    p.check(&who, t.width, t.depth, t.round)?;
                 }
                 text(&who, "material", &t.material)?;
                 if !t.material.is_empty() && !self.materials.contains_key(&t.material) {
@@ -6589,6 +6829,10 @@ impl Model {
     /// checked with the whole drawing set.
     pub fn check_changed(&self, before: &Model) -> Result<(), String> {
         let Changed::Ids(changed) = self.changed_since(before) else { return self.check_all() };
+        // Circuits are held to each other, their boards and their devices, so all of them are checked, as `check` does before
+        // the elements.
+        crate::electrical::check_circuits(self)?;
+        crate::electrical::check_demand_factors(self)?;
         let shared = |e: &Element| {
             matches!(
                 e,
@@ -6773,6 +7017,14 @@ impl Model {
                     }
                 }
             }
+            // Its rules are held between circuits, boards and devices, in one place: `electrical::check_circuits`.
+            Element::Circuit(_) => {}
+            Element::PanelSchedule(ps) => {
+                crate::panel_schedule::check(self, &who, ps)?;
+                if !view_names.insert(ps.name.as_str()) {
+                    return Err(format!("{who}: another view is already named `{}`", ps.name));
+                }
+            }
             Element::Level(l) => {
                 text(&who, "name", &l.name)?;
                 coord(&format!("{who} elevation"), l.elevation)?;
@@ -6799,6 +7051,15 @@ impl Model {
                 if !grid_names.insert(g.name.as_str()) {
                     return Err(format!("{who}: another grid is already named `{}`", g.name));
                 }
+            }
+            Element::PropertyLine(pl) => {
+                level_ok(pl.level)?;
+                boundary(&who, &pl.points)?;
+                text(&who, "name", &pl.name)?;
+                if pl.name.trim().is_empty() {
+                    return Err(format!("{who}: a property line needs a name"));
+                }
+                crate::site::check(&who, &pl.points)?;
             }
             Element::RoomSeparator(rs) => {
                 level_ok(rs.level)?;
@@ -7359,6 +7620,10 @@ impl Model {
                 if let Some(d) = v.depth {
                     size(&format!("{who} depth"), d)?;
                 }
+                for (what, q) in v.mark.iter().map(|q| ("mark", q)).chain(v.reference.iter().flatten().map(|q| ("reference", q))) {
+                    coord(&format!("{who} {what}"), q.0)?;
+                    coord(&format!("{who} {what}"), q.1)?;
+                }
                 if let Some([bottom, top]) = v.crop {
                     coord(&format!("{who} crop"), bottom)?;
                     coord(&format!("{who} crop"), top)?;
@@ -7376,6 +7641,7 @@ impl Model {
                     let names: Vec<&str> = self.families.keys().map(String::as_str).collect();
                     format!("{who}: family `{}` doesn't exist (there are: {})", c.family, names.join(", "))
                 })?;
+                crate::electrical::check_panel(self, id, c)?;
                 if f.category.hosted() {
                     return Err(format!(
                         "{who}: family `{}` is a door's or a window's: it stands in a wall, placed with `door` or `window`",
@@ -7647,6 +7913,14 @@ impl Model {
                         sh.size
                     ));
                 };
+                if let Some([_, hi]) = self.title_blocks.get(&sh.title_block).and_then(|tb| tb.drawing_area)
+                    && (hi.0 > width || hi.1 > height)
+                {
+                    return Err(format!(
+                        "{who}: title block `{}` drawing area extends outside {width} × {height} mm paper on sheet {}",
+                        sh.title_block, sh.number
+                    ));
+                }
                 // The title block is drawn its standard's size in the bottom right corner, inside the border: paper
                 // smaller than that would squeeze it until the sheet's name runs over its number. A sheet with none has
                 // nothing there to squeeze.
@@ -7799,6 +8073,8 @@ impl Model {
             distribution_systems,
             wire_types,
             georeference,
+            pinned,
+            demand_factors,
             elements: _,
             library,
             loaded,
@@ -7840,6 +8116,8 @@ impl Model {
             && *distribution_systems == o.distribution_systems
             && *wire_types == o.wire_types
             && *georeference == o.georeference
+            && *pinned == o.pinned
+            && *demand_factors == o.demand_factors
             && *library == o.library
             && loaded.len() == o.loaded.len()
             && loaded.iter().zip(&o.loaded).all(|((a, x), (b, y))| a == b && Arc::ptr_eq(x, y))
@@ -8236,28 +8514,70 @@ struct OpeningSpan {
     id: Id,
 }
 
+/// A room-bounding wall's centreline segment. Only straight walls have eligible parallel-connection caps.
+struct WallSegment {
+    start: P2,
+    end: P2,
+    half: f64,
+    caps: [bool; 2],
+}
+
 /// Where the line from `from` through `end` reaches the centre line of a wall that `end` lies inside (within half the wall's
 /// thickness of that line), carrying on the way it points; `end` itself when it lies in no wall or is on a centre line already.
-fn to_centre(from: P2, end: P2, walls: &[(P2, P2, f64)]) -> P2 {
+fn to_centre(from: P2, end: P2, walls: &[WallSegment]) -> P2 {
     let way = (end - from).unit();
     if !way.is_finite() {
         return end;
     }
     walls
         .iter()
-        .filter(|&&(a, b, half)| half > 0.0 && geom::dist_to_segment(end, a, b) <= half + TOL)
-        .filter_map(|&(a, b, half)| {
+        .filter(|s| s.half > 0.0 && geom::dist_to_segment(end, s.start, s.end) <= s.half + TOL)
+        .filter_map(|s| {
             // Far enough to cross a wall met at a slant, short of the wall beyond it.
-            let reach = 4.0 * half + TOL;
-            geom::crossing(end, end + way * reach, a, b).map(|t| t * reach)
+            let reach = 4.0 * s.half + TOL;
+            geom::crossing(end, end + way * reach, s.start, s.end).map(|t| t * reach)
         })
         .min_by(f64::total_cmp)
         .map_or(end, |d| end + way * d)
 }
 
+/// A parallel separator continuing a straight wall's end can meet its cap without ever crossing its centre line.
+/// Join only there, within the wall's thickness: never along its side, across a gap, or pointing back over the wall.
+fn parallel_wall_end(from: P2, end: P2, walls: &[WallSegment]) -> Option<P2> {
+    let way = (end - from).unit();
+    walls
+        .iter()
+        .filter(|s| s.half > 0.0 && (s.end - s.start).unit().cross(way).abs() <= 1e-9)
+        .flat_map(|s| [(s.start, s.end, s.half, s.caps[0]), (s.end, s.start, s.half, s.caps[1])])
+        .filter(|&(cap, other, half, actual_cap)| {
+            let inward = (other - cap).unit();
+            actual_cap && inward.dot(way) > 0.0 && (end - cap).dot(inward).abs() <= TOL && end.dist(cap) <= half + TOL
+        })
+        .map(|(cap, _, _, _)| cap)
+        .filter(|cap| end.dist(*cap) > TOL)
+        .min_by(|a, b| end.dist(*a).total_cmp(&end.dist(*b)))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_parallel_separator_does_not_treat_internal_arc_chord_ends_as_wall_caps() {
+        let mut m = Model::new("Arc cap control");
+        let level = m.guid(100000);
+        let id = m.insert(wall(level, P2(0.0, 0.0), P2(8000.0, 0.0)));
+        if let Some(Element::Wall(w)) = m.elements.get_mut(id) {
+            w.arc = 90.0;
+        }
+        let segments = m.wall_segments(&level, None, true);
+        assert!(segments.len() > 3);
+        let s = &segments[1];
+        let (a, b, half) = (s.start, s.end, s.half);
+        let way = (b - a).unit();
+        let end = b + way.perp() * half;
+        assert_eq!(parallel_wall_end(end + way * 1000.0, end, &segments), None);
+    }
 
     fn wall(level: Guid, a: P2, b: P2) -> Element {
         Element::Wall(Wall {
