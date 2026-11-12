@@ -806,6 +806,8 @@ impl BimApp {
                     {
                         self.status = Status { text: e, error: true };
                     }
+                    // Small buttons only, in one row: the panel keeps the ribbon's height, its name on the others' baseline.
+                    ribbon::full_height(ui);
                 });
                 if let Some(tool) = modify {
                     match ed.modify_tool_on(tool) {

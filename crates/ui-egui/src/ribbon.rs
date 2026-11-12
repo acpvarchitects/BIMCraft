@@ -256,6 +256,14 @@ pub(crate) fn yielding(ui: &mut Ui, title: &str, add: impl FnMut(&mut Ui)) {
     YIELD.with(|k| k.set(false));
 }
 
+/// The height of a big button: a panel of small buttons only, one row, reserves it so that its name sits on the ribbon's
+/// baseline with the others' (FE-17's Modify panel). In a panel's list it is nothing.
+pub(crate) fn full_height(ui: &mut Ui) {
+    if !listing() {
+        ui.allocate_exact_size(vec2(0.0, 60.0), Sense::hover());
+    }
+}
+
 /// A ribbon panel: its tools over its name, which lists them; or, folded, one button that does.
 pub(crate) fn panel(ui: &mut Ui, title: &str, mut add: impl FnMut(&mut Ui)) {
     let (kept, yields) = (KEEP.with(Cell::take), YIELD.with(Cell::take));

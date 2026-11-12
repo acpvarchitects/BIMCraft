@@ -57,6 +57,18 @@ fn the_modify_panels_pin_turns_to_unpin_with_what_is_selected_pinned() {
 }
 
 #[test]
+fn the_modify_panels_name_sits_on_the_ribbons_baseline_with_the_others() {
+    let mut h = plan();
+    h.set_size(egui::vec2(1600.0, 1000.0));
+    h.run();
+    pick(&mut h, &[Picked::Form(0)]);
+    // Its tools are all small, one row: the panel keeps the ribbon's height all the same, its name where the others' are.
+    let y = |h: &Harness<BimApp>, name: &str| h.get_by_label(&format!("{name} \u{25be}")).rect().center().y;
+    let (modify, clipboard, measure) = (y(&h, "Modify"), y(&h, "Clipboard"), y(&h, "Measure"));
+    assert!((modify - clipboard).abs() < 1.0 && (modify - measure).abs() < 1.0, "{modify} {clipboard} {measure}");
+}
+
+#[test]
 fn a_drag_of_a_pinned_form_moves_nothing_and_says_so_and_ctrl_copies_it_unpinned() {
     let mut h = plan();
     pick(&mut h, &[Picked::Form(0)]);
