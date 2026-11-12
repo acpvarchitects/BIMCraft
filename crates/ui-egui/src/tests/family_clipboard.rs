@@ -374,3 +374,48 @@ fn family_clipboard_screenshots() {
     hover3(&mut h, [-800.0, 1100.0, 0.0]);
     save(&mut h, "sketch-pasting");
 }
+
+#[test]
+fn select_previous_after_a_paste_takes_the_originals_and_after_cut_and_undo_what_was_cut() {
+    let mut h = plan();
+    pick(&mut h, &[Picked::Form(0)]);
+    ctrl(&mut h, Key::C);
+    ctrl(&mut h, Key::V);
+    click3(&mut h, [1300.0, 1100.0, 0.0]);
+    assert_eq!(editor(&h).selection.items(), &[Picked::Form(2)], "{}", status(&h));
+    // FE-20's Select Previous (PR): the box copied, and again the copy.
+    shortcut(&mut h, "PR");
+    assert_eq!(editor(&h).selection.items(), &[Picked::Form(0)]);
+    shortcut(&mut h, "PR");
+    assert_eq!(editor(&h).selection.items(), &[Picked::Form(2)]);
+    // Cut box B, as Delete takes it: undone, Select Previous takes what was selected before it (the copy, followed through
+    // the cut and the undo to its place, 3rd again), as after a Delete undone.
+    pick(&mut h, &[Picked::Form(1)]);
+    ctrl(&mut h, Key::X);
+    assert_eq!(family(&h).forms.len(), 2, "{}", status(&h));
+    h.state_mut().family_undo();
+    h.run();
+    assert_eq!(family(&h).forms.len(), 3);
+    shortcut(&mut h, "PR");
+    assert_eq!(editor(&h).selection.items(), &[Picked::Form(2)], "{}", status(&h));
+    assert_ne!(family(&h).forms[2].guid, g(A), "the copy, not box A");
+}
+
+#[test]
+fn a_box_leaves_a_hidden_form_out_and_so_does_the_copy() {
+    let mut h = plan();
+    // Box B hidden for now (HH); a window round both boxes takes A alone, and Ctrl+C copies A alone.
+    pick(&mut h, &[Picked::Form(1)]);
+    shortcut(&mut h, "HH");
+    super::family_box_select::boxed(&mut h, [-1100.0, -50.0, 0.0], [600.0, 700.0, 0.0], Modifiers::NONE);
+    assert_eq!(editor(&h).selection.items(), &[Picked::Form(0)], "{}", status(&h));
+    ctrl(&mut h, Key::C);
+    assert!(status(&h).contains("1 element"), "{}", status(&h));
+    paste(&mut h, Paste::SamePlace);
+    let f = family(&h);
+    assert_eq!(f.forms.len(), 3, "{}", status(&h));
+    assert_eq!(
+        f.forms[2].sketch.iter().map(|l| l.curve.clone()).collect::<Vec<_>>(),
+        f.forms[0].sketch.iter().map(|l| l.curve.clone()).collect::<Vec<_>>()
+    );
+}

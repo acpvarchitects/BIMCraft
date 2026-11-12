@@ -19,16 +19,21 @@
 //! gone from the draft otherwise (undone, redone, or changed while another tab was in front) is dropped from the set
 //! (`FamilyEditor::prune_selection`, after each undo and redo, on a tab coming to the front and at the end of every frame).
 //!
-//! In a plan or an elevation, a drag of the primary button that starts on nothing a click would select (nor a handle, a
-//! grip or a padlock), with no tool in hand, draws a box: left to right a window, solid, taking what lies wholly inside
+//! In a plan or an elevation, a drag of the primary button that starts on no element (nor a handle, a grip or a padlock),
+//! with no tool in hand, draws a box: left to right a window, solid, taking what lies wholly inside
 //! it; right to left a crossing, dashed, taking what it touches too, by the one rule the adaptive family's modelling view
 //! boxes by (`geom::SelectBox`), drawn as the project's plans draw theirs (`canvas::box_shapes`). Ctrl adds what it takes,
 //! Shift takes that away, else it is the selection; a click on an element with Ctrl or Shift does the same with it. Each
-//! element is boxed by what it is drawn with on screen: a form's or a nested instance's outline, a plane's trace, a
-//! reference line, a dimension's line, a symbol's strokes (in the plans, where symbols are drawn), a connector's place. So
-//! a crossing box wholly inside a form's face, meeting none of its edges, doesn't take it, as Revit's doesn't. A drag from
-//! an element moves the selection (FE-7, `drag_move.rs`), the element selected first if it isn't. {3D} has no box: a drag there
-//! turns the view.
+//! element is boxed by what it is drawn with on screen: a form's or a nested instance's edges as the view draws them (an L's
+//! inner corner, never the hull's chord across it, `views::outline_edges`), a plane's trace, a
+//! reference line, a dimension's line, a symbol's strokes (in the plans, where symbols are drawn), a connector's place.
+//! Select Elements by Face (FE-20, `selection.rs`) says what a face does: on, a click on a form's or a nested instance's
+//! face selects it and a crossing box takes one by its faces too, so one drawn wholly inside a face takes what the face
+//! is of; off, a crossing box wholly inside a face, meeting none of its edges, doesn't take it, as Revit's doesn't, and a
+//! click selects by an edge alone. The box may begin inside the face of a form or a nested instance that isn't selected
+//! (`Scene::under`); a drag from an element's edge, a plane, a line or a connector, or from the face of one selected (with
+//! Select Elements by Face on or off), is the element's and draws none: it moves the selection (FE-7, `drag_move.rs`), the
+//! element selected first if it isn't. {3D} has no box: a drag there turns the view.
 use super::*;
 use bimcraft_core::family::constraints::DimMark;
 use bimcraft_core::family::views::{self as fv, Staged, Which};
@@ -36,25 +41,11 @@ use bimcraft_core::family::{FamilyDimension, Val};
 use bimcraft_core::geom::{P2, SelectBox};
 use bimcraft_core::ids::Guid;
 use bimcraft_core::render::{Drawing, View};
-use egui::{Modifiers, Painter, Pos2, Response, Shape};
+use egui::{Modifiers, Painter, Pos2, Response};
 
-/// One thing selected in a family document that isn't adaptive.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub(crate) enum Picked {
-    /// A form, by its place in the family's forms.
-    Form(usize),
-    /// A reference plane, a datum or the family's own.
-    Plane(Guid),
-    /// A reference line.
-    Line(Guid),
-    Dimension(Guid),
-    /// A plan symbol, by its place in the family's symbols.
-    Symbol(usize),
-    /// A connector, by its place in the family's connectors.
-    Connector(usize),
-    /// A nested instance, by its place in the family's nested instances.
-    Nested(usize),
-}
+/// One thing selected in a family document that isn't adaptive: the core's, with what any front end needs of a selection
+/// (`family::select`: Filter's kinds, Select by ID, Select All Instances).
+pub(crate) use bimcraft_core::family::select::Picked;
 
 /// What a click or a box does with what it takes, by the keys held, as Revit's: Ctrl adds it, Shift takes it away, else it
 /// is the selection.
@@ -81,6 +72,9 @@ impl How {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct Selection {
     items: Vec<Picked>,
+    /// What was selected before the selection was last let go or replaced by another: what Select Previous brings back
+    /// (FE-20, `selection.rs`). Kept in step with the draft as the selection is.
+    previous: Vec<Picked>,
     /// A box being dragged in a plan or an elevation: where it began, on screen.
     boxing: Option<Pos2>,
 }
@@ -111,8 +105,37 @@ impl Selection {
         }
     }
 
+    /// Everything let go: what was selected is what Select Previous brings back.
     pub(crate) fn clear(&mut self) {
-        self.items.clear();
+        if !self.items.is_empty() {
+            self.previous = std::mem::take(&mut self.items);
+        }
+    }
+
+    /// What Select Previous would bring back: the selection as it was before it was last let go or replaced.
+    pub(crate) fn previous(&self) -> &[Picked] {
+        &self.previous
+    }
+
+    /// What Select Previous would bring back, each thing of it where `to` says it is now (none: let go): after an undo or
+    /// a redo, which may put another in a form's place.
+    pub(crate) fn follow_previous(&mut self, to: impl FnMut(Picked) -> Option<Picked>) {
+        let mut followed: Vec<Picked> = Vec::new();
+        for p in std::mem::take(&mut self.previous).into_iter().filter_map(to) {
+            if !followed.contains(&p) {
+                followed.push(p);
+            }
+        }
+        self.previous = followed;
+    }
+
+    /// Select Previous: the selection as it was before it was last let go or replaced, again; what it replaces is the
+    /// previous one from then on, so the two change places. Nothing with none before.
+    pub(crate) fn restore_previous(&mut self) {
+        if !self.previous.is_empty() {
+            let previous = std::mem::take(&mut self.previous);
+            self.apply(&previous, How::Replace);
+        }
     }
 
     /// `p` let go, if it was selected.
@@ -127,7 +150,11 @@ impl Selection {
     /// What a click or a box took, `taken`, made the selection, added to it or taken away from it, as `how` says.
     pub(crate) fn apply(&mut self, taken: &[Picked], how: How) {
         if how == How::Replace {
-            self.items.clear();
+            // Replaced by another selection, it is the previous one; taken again as it is, it stays the selection.
+            let was = std::mem::take(&mut self.items);
+            if !was.is_empty() && (was.len() != taken.len() || was.iter().any(|p| !taken.contains(p))) {
+                self.previous = was;
+            }
         }
         for p in taken {
             match how {
@@ -145,7 +172,8 @@ impl Selection {
     /// goes from the selection, and what is selected of the same list after it moves up one place.
     pub(crate) fn taken_out(&mut self, gone: Picked) {
         self.forget(gone);
-        for p in &mut self.items {
+        self.previous.retain(|q| *q != gone);
+        for p in self.items.iter_mut().chain(&mut self.previous) {
             *p = match (*p, gone) {
                 (Picked::Form(j), Picked::Form(i)) if j > i => Picked::Form(j - 1),
                 (Picked::Symbol(j), Picked::Symbol(i)) if j > i => Picked::Symbol(j - 1),
@@ -158,7 +186,7 @@ impl Selection {
 
     /// Forms `i` and `j` swapped in their list (Move Up, Move Down): each selected stays so where it went.
     pub(crate) fn forms_swapped(&mut self, i: usize, j: usize) {
-        for p in &mut self.items {
+        for p in self.items.iter_mut().chain(&mut self.previous) {
             *p = match *p {
                 Picked::Form(k) if k == i => Picked::Form(j),
                 Picked::Form(k) if k == j => Picked::Form(i),
@@ -221,6 +249,10 @@ impl FamilyEditor {
         let mut items = std::mem::take(&mut self.selection.items);
         items.retain(|p| self.holds(*p));
         self.selection.items = items;
+        // And from what Select Previous brings back.
+        let mut previous = std::mem::take(&mut self.selection.previous);
+        previous.retain(|p| self.holds(*p));
+        self.selection.previous = previous;
     }
 
     /// A click on `hit` in a plan or an elevation (none: on nothing), with the keys `mods` held: Ctrl adds it, Shift takes
@@ -325,8 +357,11 @@ pub(super) struct Scene<'a> {
     pub(super) connectors: &'a [super::connector_marks::Mark],
     /// The document's Detail Level, which says which symbols its plans draw.
     pub(super) detail: bimcraft_core::graphics::Detail,
-    /// The forms Temporary Hide/Isolate leaves out of the view, by place.
+    /// The forms the view leaves out, by place: Temporary Hide/Isolate's, and while Preview Visibility is on those their
+    /// Visibility Settings hide there (F8). No box takes them, and no click or drag picks them.
     pub(super) hidden: &'a [bool],
+    /// Select Elements by Face (FE-20): a face selects what it is of, by a click and by a crossing box.
+    pub(super) by_face: bool,
 }
 
 impl Scene<'_> {
@@ -340,24 +375,19 @@ impl Scene<'_> {
         self.screen(self.staged.to_view(self.which, p))
     }
 
-    /// The outline form or nested instance `p` is seen with, on screen; none for anything else.
-    pub(super) fn outline(&self, p: Picked) -> Vec<Pos2> {
-        let ring = match p {
-            Picked::Form(i) => fv::outline(self.family, self.values, self.staged, self.which, i),
-            Picked::Nested(i) => fv::nested_outline(self.family, self.values, self.staged, self.which, i),
+    /// The edges form or nested instance `p` is seen with, on screen, as the view draws them (`views::outline_edges`: an L's
+    /// inner corner, never the hull's chord across it); none for anything else.
+    fn edges(&self, p: Picked) -> Vec<[Pos2; 2]> {
+        let edges = match p {
+            Picked::Form(i) => fv::outline_edges(self.family, self.values, self.staged, self.which, i),
+            Picked::Nested(i) => fv::nested_outline_edges(self.family, self.values, self.staged, self.which, i),
             _ => Vec::new(),
         };
-        ring.into_iter().map(|q| self.screen(q)).collect()
+        edges.into_iter().map(|(a, b)| [self.screen(a), self.screen(b)]).collect()
     }
 
     /// What `p` is drawn with on screen, as segments (a point, one of no length): what a box takes it by, and what lights it.
     pub(super) fn pieces(&self, p: Picked) -> Vec<[Pos2; 2]> {
-        let closed = |ring: Vec<Pos2>| -> Vec<[Pos2; 2]> {
-            if ring.len() < 2 {
-                return ring.iter().map(|q| [*q, *q]).collect();
-            }
-            (0..ring.len()).map(|k| [ring[k], ring[(k + 1) % ring.len()]]).collect()
-        };
         let open = |pts: &[P2]| -> Vec<[Pos2; 2]> {
             let on: Vec<Pos2> = pts.iter().map(|q| self.at([q.0, q.1, 0.0])).collect();
             match on.as_slice() {
@@ -366,7 +396,7 @@ impl Scene<'_> {
             }
         };
         match p {
-            Picked::Form(_) | Picked::Nested(_) => closed(self.outline(p)),
+            Picked::Form(_) | Picked::Nested(_) => self.edges(p),
             Picked::Plane(g) => {
                 let strokes = super::views::plane_strokes(self.drawing, self.staged, g, self.min);
                 if !strokes.is_empty() {
@@ -450,46 +480,115 @@ impl Scene<'_> {
     }
 
     /// What a box from `from` to `to` on screen takes: left to right what lies wholly inside it, right to left what it
-    /// touches too.
+    /// touches too. With Select Elements by Face on, a crossing takes a form or a nested instance by its faces as by its
+    /// edges, so one drawn wholly inside a face takes what the face is of (`views::face_in_box`).
     pub(super) fn in_box(&self, from: Pos2, to: Pos2) -> Vec<Picked> {
         let mm = |p: Pos2| P2(f64::from(p.x), f64::from(p.y));
         let boxed = SelectBox::dragged(mm(from), mm(to));
+        // The same box in the view's millimetres, where its faces are.
+        let at = |p: Pos2| self.view.mm((p.x - self.min.x, p.y - self.min.y));
+        let across = SelectBox { crossing: boxed.crossing, ..SelectBox::dragged(at(from), at(to)) };
+        let by_face = |p: Picked| {
+            let part = match p {
+                Picked::Form(i) => fv::Part::Form(i),
+                Picked::Nested(i) => fv::Part::Nested(i),
+                _ => return false,
+            };
+            self.by_face && across.crossing && fv::face_in_box(self.family, self.values, self.staged, self.which, part, &across)
+        };
         self.candidates()
             .into_iter()
             .filter(|p| {
                 let pieces: Vec<(P2, P2)> = self.pieces(*p).into_iter().map(|[a, b]| (mm(a), mm(b))).collect();
-                boxed.takes(&pieces)
+                boxed.takes(&pieces) || by_face(*p)
             })
             .collect()
     }
 
-    /// Whether a click at `p` would select something: a connector, a nested instance, a reference line, a plane or a form.
-    pub(super) fn under(&self, p: Pos2) -> bool {
-        let q = self.view.mm((p.x - self.min.x, p.y - self.min.y));
-        let reach = 6.0 / self.view.scale.max(1e-9);
-        let project = |x: [f64; 3]| Some(self.at(x));
-        super::connector_marks::pick(self.connectors, &project, p).is_some()
-            || fv::nested_at(self.family, self.values, self.staged, self.which, q).is_some()
-            || self.staged.line_at(self.which, q, reach).is_some()
-            || self.drawing.pick_all((p.x - self.min.x, p.y - self.min.y), 6.0).into_iter().any(|id| self.staged.plane_of(id).is_some())
-            || fv::form_at(self.family, self.values, self.staged, self.which, q).is_some()
+    /// How far a click reaches, in the view's millimetres.
+    fn reach(&self) -> f64 {
+        6.0 / self.view.scale.max(1e-9)
     }
 
-    /// What a press at `p` is on, as a click there would select it (FE-7): a connector, a nested instance, a reference line,
-    /// a plane (`plane`, the one Tab has come to), a form; else a symbol of `selected` by its strokes, which a click doesn't
-    /// select in a view but a drag moves.
+    /// Whether the view draws form `i`: not one it leaves out (`hidden`), which nothing picks, as no box takes it.
+    fn shows(&self, i: usize) -> bool {
+        !self.hidden.get(i).copied().unwrap_or(false)
+    }
+
+    /// The form whose face the view draws at `q` (the view's millimetres), nearest the eye: past one it leaves out.
+    fn form_face(&self, q: P2) -> Option<usize> {
+        fv::form_at_among(self.family, self.values, self.staged, self.which, q, &|i| self.shows(i))
+    }
+
+    /// The form an edge of which, as the view draws it, passes within `reach` of `q`: none it leaves out.
+    fn form_edge(&self, q: P2, reach: f64) -> Option<usize> {
+        fv::form_edge_at_among(self.family, self.values, self.staged, self.which, q, reach, &|i| self.shows(i))
+    }
+
+    /// The form a click at `q` (the view's millimetres) takes: with Select Elements by Face on, the one whose face is
+    /// there; else, and off, the one an edge of which, as the view draws it, passes within the click's reach.
+    pub(super) fn form_hit(&self, q: P2) -> Option<usize> {
+        let face = if self.by_face { self.form_face(q) } else { None };
+        face.or_else(|| self.form_edge(q, self.reach()))
+    }
+
+    /// The nested instance whose face a click at `q` is on, while Select Elements by Face is on: what a click takes before
+    /// a reference line or a plane there, as it always did.
+    pub(super) fn nested_face(&self, q: P2) -> Option<usize> {
+        if self.by_face { fv::nested_at(self.family, self.values, self.staged, self.which, q) } else { None }
+    }
+
+    /// What a click at `q` takes where no reference line and no plane is: the form whose face is there (while a face
+    /// selects), else the nested instance, else the form, an edge of which, as the view draws it, passes within the click's reach. An
+    /// edge comes after a plane and a line, so one aligned to a plane leaves the plane beside it to be clicked.
+    pub(super) fn body_hit(&self, q: P2) -> Option<Picked> {
+        let reach = self.reach();
+        let face = if self.by_face { self.form_face(q) } else { None };
+        face.map(Picked::Form)
+            .or_else(|| fv::nested_edge_at(self.family, self.values, self.staged, self.which, q, reach).map(Picked::Nested))
+            .or_else(|| self.form_edge(q, reach).map(Picked::Form))
+    }
+
+    /// The nested instance or the form of `selected` whose face the view draws at `q`, nearest the eye, with Select
+    /// Elements by Face on or off: what is selected is held by its face, so a drag from there moves it (FE-7) and draws no
+    /// box. Whether a face selects is a click's question, never one about what is selected already.
+    fn held_face(&self, q: P2, selected: &[Picked]) -> Option<Picked> {
+        let nested = fv::nested_at(self.family, self.values, self.staged, self.which, q).map(Picked::Nested);
+        nested.filter(|p| selected.contains(p)).or_else(|| self.form_face(q).map(Picked::Form).filter(|p| selected.contains(p)))
+    }
+
+    /// Whether a drag from `p` is an element's and so draws no box: a connector, a reference line, a plane, or a form or a
+    /// nested instance by an edge the view draws it with. The face of a form or a nested instance is the box's to begin in, as
+    /// Revit's (FE-20), but for one of `selected`, with Select Elements by Face on or off: dragging what is selected is its
+    /// own.
+    pub(super) fn under(&self, p: Pos2, selected: &[Picked]) -> bool {
+        let q = self.view.mm((p.x - self.min.x, p.y - self.min.y));
+        let reach = self.reach();
+        let project = |x: [f64; 3]| Some(self.at(x));
+        super::connector_marks::pick(self.connectors, &project, p).is_some()
+            || fv::nested_edge_at(self.family, self.values, self.staged, self.which, q, reach).is_some()
+            || self.staged.line_at(self.which, q, reach).is_some()
+            || self.drawing.pick_all((p.x - self.min.x, p.y - self.min.y), 6.0).into_iter().any(|id| self.staged.plane_of(id).is_some())
+            || self.form_edge(q, reach).is_some()
+            || self.held_face(q, selected).is_some()
+    }
+
+    /// What a press at `p` is on, as a click there would select it (FE-7, in FE-20's order): a connector, a nested instance
+    /// by its face while a face selects, a reference line, a plane (`plane`, the one Tab has come to), then a form by its
+    /// face while a face selects, a nested instance or a form by an edge (`body_hit`); else, a face selecting or not, one of
+    /// `selected` by its face (`held_face`), or a symbol of `selected` by its strokes, which a click doesn't select in a view
+    /// but a drag moves. Whether a drag from there is the element's is [`under`](Self::under)'s to say.
     pub(super) fn hit(&self, p: Pos2, plane: Option<Guid>, selected: &[Picked]) -> Option<Picked> {
         let q = self.view.mm((p.x - self.min.x, p.y - self.min.y));
-        let reach = 6.0 / self.view.scale.max(1e-9);
         let project = |x: [f64; 3]| Some(self.at(x));
         if let Some(i) = super::connector_marks::pick(self.connectors, &project, p) {
             return Some(Picked::Connector(i));
         }
-        if let Some(i) = fv::nested_at(self.family, self.values, self.staged, self.which, q) {
+        if let Some(i) = self.nested_face(q) {
             return Some(Picked::Nested(i));
         }
-        let line = self.staged.line_at(self.which, q, reach).and_then(|i| self.family.lines.get(i)).map(|l| Picked::Line(l.guid));
-        let form = || fv::form_at(self.family, self.values, self.staged, self.which, q).map(Picked::Form);
+        let line = self.staged.line_at(self.which, q, self.reach()).and_then(|i| self.family.lines.get(i)).map(|l| Picked::Line(l.guid));
+        let body = || self.body_hit(q);
         let symbol = || {
             selected.iter().copied().filter(|s| matches!(s, Picked::Symbol(_))).find(|s| {
                 self.pieces(*s).iter().any(|[a, b]| {
@@ -498,26 +597,21 @@ impl Scene<'_> {
                 })
             })
         };
-        line.or(plane.map(Picked::Plane)).or_else(form).or_else(symbol)
+        line.or(plane.map(Picked::Plane)).or_else(body).or_else(|| self.held_face(q, selected)).or_else(symbol)
     }
 
-    /// What is selected, over the picture, as one selected alone is drawn: a form's edges as seen, a nested instance's outline,
-    /// a plane's trace, a reference line, a symbol's strokes, in the selection's colour. A dimension and a connector are lit by their own
-    /// painters.
+    /// What is selected, over the picture, as one selected alone is drawn: a form's and a nested instance's edges as seen, a
+    /// plane's trace, a reference line, a symbol's strokes, in the selection's colour. A dimension and a connector are lit by
+    /// their own painters.
     pub(super) fn paint_selected(&self, painter: &Painter, selected: &[Picked]) {
         let picked = super::views::PICKED;
         for p in selected {
             match p {
-                // A form by its own edges as the view sees it (its notches, its holes), not the outline it is picked by.
-                Picked::Form(i) => {
-                    for (a, b) in fv::outline_edges(self.family, self.values, self.staged, self.which, *i) {
-                        painter.line_segment([self.screen(a), self.screen(b)], Stroke::new(2.0, picked));
-                    }
-                }
-                Picked::Nested(_) => {
-                    let ring = self.outline(*p);
-                    if ring.len() > 2 {
-                        painter.add(Shape::closed_line(ring, Stroke::new(2.0, picked)));
+                // A form or a nested instance by its own edges as the view sees it (its notches, its holes): what it is
+                // picked and boxed by too.
+                Picked::Form(_) | Picked::Nested(_) => {
+                    for s in self.edges(*p) {
+                        painter.line_segment(s, Stroke::new(2.0, picked));
                     }
                 }
                 Picked::Plane(_) | Picked::Line(_) => {
@@ -536,9 +630,25 @@ impl Scene<'_> {
     }
 }
 
+/// Whether `at` is still where a box began at `from`: within the few pixels each way (`canvas::STILL`) the project's
+/// canvas lets a drag go and still be a click.
+fn still(from: Pos2, at: Pos2) -> bool {
+    (from.x - at.x).abs().max((from.y - at.y).abs()) < crate::canvas::STILL
+}
+
+impl Selection {
+    /// Where a box let go this frame began, when it was let go still there (`still`): a slow click or a shaky one, which
+    /// egui calls a drag, and which is the click where it began, not a box (FE-20).
+    pub(super) fn box_click(&self, ui: &Ui, response: &Response) -> Option<Pos2> {
+        let from = self.boxing.filter(|_| response.drag_stopped())?;
+        still(from, ui.input(|i| i.pointer.latest_pos()).unwrap_or(from)).then_some(from)
+    }
+}
+
 /// The selection box of a plan or an elevation: begun at `start` (a drag from nothing), drawn while the drag lasts over
 /// `pane`, solid left to right and dashed right to left as the project's plans draw theirs; where it began and where it was
-/// let go, once it is.
+/// let go, once it is. Within the few pixels a click may move (`still`) it is no box yet, and let go there none at all, but
+/// the click where it began (`Selection::box_click`).
 pub(super) fn track(
     sel: &mut Selection,
     ui: &Ui,
@@ -554,13 +664,15 @@ pub(super) fn track(
     let now = ui.input(|i| i.pointer.latest_pos()).unwrap_or(from);
     if response.drag_stopped() {
         sel.boxing = None;
-        return Some((from, now));
+        return (!still(from, now)).then_some((from, now));
     }
     if !response.dragged_by(PointerButton::Primary) {
         sel.boxing = None;
         return None;
     }
-    let local = |p: Pos2| (p.x - pane.min.x, p.y - pane.min.y);
-    painter.extend(crate::canvas::box_shapes(pane, local(from), local(now)));
+    if !still(from, now) {
+        let local = |p: Pos2| (p.x - pane.min.x, p.y - pane.min.y);
+        painter.extend(crate::canvas::box_shapes(pane, local(from), local(now)));
+    }
     None
 }

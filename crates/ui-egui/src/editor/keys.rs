@@ -12,8 +12,8 @@ use bimcraft_core::family::DimKind;
 
 /// Revit's default keys for the family editor's commands, each to the name of its action in `shortcuts::ACTIONS`. A key the
 /// project has too means the same command here (`the_family_table_gives_no_project_key_another_meaning`); the others (DD, AN,
-/// WP, WW, FA, AA, PL, FG, CG, ZX, FE-3's ZR, ZZ, ZO, ZV, ZP, ZC, and FE-8's RE) are the family's alone. Trim/Extend Single
-/// and Multiple Elements have no key, as in Revit: Keyboard Shortcuts gives them one.
+/// WP, WW, FA, AA, PL, FG, CG, ZX, FE-3's ZR, ZZ, ZO, ZV, ZP, ZC, FE-8's RE, and FE-20's FF, PR, ID, SV, BF) are the family's
+/// alone. Trim/Extend Single and Multiple Elements have no key, as in Revit: Keyboard Shortcuts gives them one.
 pub(crate) const FAMILY_SHORTCUTS: &[(&str, &str)] = &[
     ("MD", "Modify"),
     ("PP", "Properties"),
@@ -59,6 +59,13 @@ pub(crate) const FAMILY_SHORTCUTS: &[(&str, &str)] = &[
     ("HI", "Temporary Isolate Element"),
     ("IC", "Temporary Isolate Category"),
     ("HR", "Reset Temporary Hide/Isolate"),
+    // FE-20, the selection's commands (`selection.rs`): SA as the project's, Visible in View; the others the family's alone.
+    ("FF", "Filter Selection"),
+    ("PR", "Select Previous"),
+    ("ID", "Select by ID"),
+    ("SA", "Select All Instances"),
+    ("SV", "Select All Instances: In Entire Family"),
+    ("BF", "Select Elements by Face"),
 ];
 
 /// The family document's commands Revit gives no key: Keyboard Shortcuts lists them, and a key made there works on a family
@@ -132,6 +139,13 @@ impl BimApp {
             }
             "Keyboard Shortcuts" => {
                 self.show_shortcuts = true;
+                return true;
+            }
+            // The status bar's toggle (FE-20), the window's own setting: where it changes how the view picks.
+            "Select Elements by Face" => {
+                if self.active_family().is_some_and(FamilyEditor::picks_by_face) {
+                    self.select_by_face = !self.select_by_face;
+                }
                 return true;
             }
             "Temporary Hide Element" => Some(Asked::Hide { category: false }),
@@ -244,6 +258,13 @@ impl BimApp {
             "Zoom In Region" => ed.zoom_region_tool(),
             "Zoom Out (2x)" => ed.zoom_out(),
             "Previous Pan/Zoom" => ed.previous_zoom(),
+            // The selection's commands (FE-20), each where it has something to work on: Filter with something selected,
+            // Select Previous with a selection before this one, Select All Instances with a nested instance selected.
+            "Filter Selection" => ed.open_filter(),
+            "Select Previous" => ed.select_previous(),
+            "Select by ID" => ed.open_select_by_id(),
+            "Select All Instances" => ed.select_instances(true),
+            "Select All Instances: In Entire Family" => ed.select_instances(false),
             _ => return in_family(action),
         }
         match said {

@@ -382,11 +382,19 @@ impl BimApp {
         let listed: Vec<(String, Vec<String>)> =
             ed.nested.iter().map(|n| (n.name.clone(), n.family.types.keys().cloned().collect())).collect();
         let mut asked: Option<(String, bool)> = None;
+        // Select All Instances, asked of a type (FE-20): the nested family, its type, and whether those the views show alone.
+        let mut instances: Option<(String, String, bool)> = None;
         egui::CollapsingHeader::new(t("Families")).id_salt("family-nested").default_open(true).show(ui, |ui| {
             for (name, types) in &listed {
                 let r = egui::CollapsingHeader::new(name.as_str()).id_salt(("family-nested", name)).default_open(true).show(ui, |ui| {
                     for ty in types {
-                        ui.label(ty);
+                        // A type's menu, as the project's browser has it on a type: Select All Instances, the whole of
+                        // it here the family.
+                        ui.add(egui::Label::new(ty).sense(Sense::click())).context_menu(|ui| {
+                            if let Some(scope) = crate::context::instances_menu_in(ui, true, msg!("In Entire Family")) {
+                                instances = Some((name.clone(), ty.clone(), scope == crate::context::InstanceScope::View));
+                            }
+                        });
                     }
                 });
                 r.header_response.context_menu(|ui| {
@@ -402,6 +410,9 @@ impl BimApp {
             }
         });
         let Some(ed) = self.active_family_mut() else { return };
+        if let Some((name, type_name, shown)) = instances {
+            ed.select_instances_of(&name, &type_name, shown);
+        }
         match asked {
             Some((name, true)) => ed.open_nested = Some(name),
             Some((name, false)) => {

@@ -525,6 +525,9 @@ pub struct BimApp {
     background_grid_dialog: Option<background_grid::GridDialog>,
     /// Global grid snapping preference, independent of view graphics and templates.
     grid_snapping: bool,
+    /// Revit's Select Elements by Face (BF), in a family document's plans and elevations (`editor/selection.rs`): on, a
+    /// face selects what it is of; off, only an edge does. The user's, kept in the settings file.
+    pub(crate) select_by_face: bool,
     /// The origin marker on a plan, and the view's name in its corner (File > Settings): working aids, drawn on the screen and
     /// never in a drawing that is printed or exported.
     show_origin: bool,
@@ -1320,6 +1323,7 @@ impl BimApp {
             scan_contrast: footer::HIGH_CONTRAST,
             background_grid_dialog: None,
             grid_snapping: false,
+            select_by_face: true,
             show_origin: true,
             show_view_name: true,
             ribbon_bottom: Pos2::ZERO,
@@ -3340,6 +3344,7 @@ impl BimApp {
         fresh.font_finder = self.font_finder;
         fresh.scan_contrast = self.scan_contrast;
         fresh.grid_snapping = self.grid_snapping;
+        fresh.select_by_face = self.select_by_face;
         (fresh.show_origin, fresh.show_view_name) = (self.show_origin, self.show_view_name);
         fresh.custom_shortcuts = std::mem::take(&mut self.custom_shortcuts);
         (fresh.light_canvas, fresh.scheme, fresh.accent) = (self.light_canvas, self.scheme, self.accent);
@@ -5422,14 +5427,27 @@ impl BimApp {
             // The indicators at the right first, then the prompt in what is left, cut short with an ellipsis rather than
             // run under them.
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                // How many elements are selected, by the selection filter, as Revit shows it.
-                // A click on it filters the selection, as Revit's does.
-                ui.label(format!(":{}", self.selection.len()));
+                // How many elements are selected, by the selection filter, as Revit shows it: on a family's tab, of the
+                // family document's own selection. A click on it filters the selection, as Revit's does.
+                let selected = self.active_family().map_or(self.selection.len(), |ed| ed.selected_count());
+                ui.label(format!(":{selected}"));
                 let (r, funnel) = ui.allocate_exact_size(vec2(16.0, 16.0), Sense::click());
                 icons::paint(ui.painter(), Icon::Filter, r, pal().icon);
                 funnel.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, t("Filter Selection")));
                 if funnel.on_hover_text(t("Filter Selection")).clicked() {
-                    self.open_filter();
+                    // The family document's Filter on its tab (FE-20), never the project's from there.
+                    match self.active_family_mut() {
+                        Some(ed) => ed.open_filter(),
+                        None => self.open_filter(),
+                    }
+                }
+                // Select Elements by Face (BF), left of it as Revit's status bar has it: a family document's that isn't
+                // adaptive, greyed where it changes nothing ({3D}, a sketch).
+                if let Some(usable) = self.active_family().filter(|ed| ed.adaptive.is_none()).map(|ed| ed.picks_by_face()) {
+                    let on = self.select_by_face;
+                    if ui.add_enabled_ui(usable, |ui| editor::selection::face_toggle(ui, on)).inner.clicked() {
+                        self.select_by_face = !on;
+                    }
                 }
                 if let Some(p) = self.canvas.cursor {
                     let u = self.session.model.units;

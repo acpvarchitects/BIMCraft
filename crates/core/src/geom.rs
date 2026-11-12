@@ -597,6 +597,22 @@ impl SelectBox {
             pieces.iter().all(|(a, b)| self.holds(*a) && self.holds(*b))
         }
     }
+
+    /// Whether some of triangle `t` lies in it, its edges counting: a corner of the triangle in it, an edge of the triangle
+    /// across it, or the whole of it inside the triangle. What a crossing takes a face by, where a face selects what it is
+    /// of (Revit's Select Elements by Face). A triangle not finite is never touched.
+    pub fn touches(&self, t: &[P2; 3]) -> bool {
+        if t.iter().any(|p| !p.is_finite()) {
+            return false;
+        }
+        if t.iter().any(|p| self.holds(*p)) || (0..3).any(|k| self.meets(t[k], t[(k + 1) % 3])) {
+            return true;
+        }
+        // None of its edges reaches the box: the box is wholly inside it or wholly outside, as any one of its corners is.
+        let side = |a: P2, b: P2, p: P2| (b.0 - a.0) * (p.1 - a.1) - (b.1 - a.1) * (p.0 - a.0);
+        let s = [side(t[0], t[1], self.lo), side(t[1], t[2], self.lo), side(t[2], t[0], self.lo)];
+        side(t[0], t[1], t[2]).abs() > 1e-12 && (s.iter().all(|x| *x >= 0.0) || s.iter().all(|x| *x <= 0.0))
+    }
 }
 
 /// The region around `p`: the smallest loop of segments enclosing it, minus any separate pieces
@@ -851,6 +867,27 @@ mod tests {
         }
         let lost = [(P2(f64::NAN, 10.0), P2(20.0, 20.0))];
         assert!(!window.takes(&lost) && !crossing.takes(&lost), "what isn't finite is never taken");
+    }
+
+    /// A face is touched by a box that lies inside it, that it lies inside, or that crosses its edge: Select Elements by
+    /// Face's crossing box.
+    #[test]
+    fn a_box_touches_a_triangle_it_lies_in_holds_or_crosses_and_none_it_misses() {
+        let boxed = SelectBox::dragged(P2(100.0, 50.0), P2(0.0, 0.0));
+        for (what, t, touched) in [
+            ("round the box, none of its edges near", [P2(-500.0, -500.0), P2(900.0, -500.0), P2(-500.0, 900.0)], true),
+            ("the same, wound the other way", [P2(-500.0, -500.0), P2(-500.0, 900.0), P2(900.0, -500.0)], true),
+            ("inside the box", [P2(10.0, 10.0), P2(40.0, 10.0), P2(10.0, 40.0)], true),
+            ("a corner in the box", [P2(90.0, 40.0), P2(300.0, 40.0), P2(300.0, 200.0)], true),
+            ("an edge across it, no corner in it", [P2(-50.0, 25.0), P2(150.0, 25.0), P2(50.0, 400.0)], true),
+            ("meeting it at a corner", [P2(100.0, 50.0), P2(200.0, 50.0), P2(100.0, 150.0)], true),
+            ("beside it", [P2(101.0, 0.0), P2(200.0, 0.0), P2(101.0, 50.0)], false),
+            ("its sloping edge past the box's corner", [P2(110.0, 60.0), P2(200.0, 60.0), P2(200.0, -100.0)], false),
+            ("of no area, its line through the box's corner", [P2(-300.0, -150.0), P2(-200.0, -100.0), P2(-100.0, -50.0)], false),
+        ] {
+            assert_eq!(boxed.touches(&t), touched, "{what}");
+        }
+        assert!(!boxed.touches(&[P2(f64::NAN, 0.0), P2(10.0, 10.0), P2(20.0, 0.0)]), "what isn't finite is never touched");
     }
 
     #[test]

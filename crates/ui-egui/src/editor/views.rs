@@ -896,7 +896,14 @@ impl FamilyEditor {
         super::connector_marks::paint(&painter, &connector_marks, &project, &chosen_connectors, self.connector_hover, lit);
         // What is selected, over the picture: each of it as one selected alone is drawn (FE-1, `select_box.rs`); the
         // reference line selected, its pivots' marks and its grips (F7d).
-        let hidden: Vec<bool> = (0..self.forms.len()).map(|i| self.temp_hidden_form(i)).collect();
+        // The forms the view leaves out: Temporary Hide/Isolate's, and while Preview Visibility shows the family as placed,
+        // those its Visibility Settings hide here (F8), which it otherwise draws halftone (`staged`).
+        let by_view = match drawn.as_ref() {
+            Some(f) if self.document.preview_visibility => fv::hidden_in(f, &values, Some(which), self.views.detail, c.staged.cut()),
+            _ => Vec::new(),
+        };
+        let hidden: Vec<bool> =
+            (0..self.forms.len()).map(|i| self.temp_hidden_form(i) || by_view.get(i).copied().unwrap_or(false)).collect();
         let scene = family.as_ref().map(|f| super::select_box::Scene {
             family: f,
             values: &values,
@@ -910,6 +917,7 @@ impl FamilyEditor {
             connectors: &connector_marks,
             detail: self.views.detail,
             hidden: &hidden,
+            by_face: self.selecting.by_face,
         });
         if editable && let Some(scene) = scene.as_ref() {
             scene.paint_selected(&painter, self.selection.items());
@@ -1043,6 +1051,7 @@ impl FamilyEditor {
                     connectors: &connector_marks,
                     detail: self.views.detail,
                     hidden: &hidden,
+                    by_face: false,
                 };
                 ghost = items.iter().flat_map(|p| s.pieces(*p)).collect();
                 // Held by the middle of what has a size of its own: a plane's trace runs across the view.
@@ -1222,11 +1231,13 @@ impl FamilyEditor {
             && self.views.pasting.is_none())
         .then(|| response.interact_pointer_pos())
         .flatten()
-        .and_then(|p| family.as_ref().and_then(|f| fv::form_at(f, &values, &c.staged, which, at_view(p))));
+        .and_then(|p| scene.as_ref().and_then(|s| s.form_hit(at_view(p))));
+        // A box let go where it began (a slow or a shaky click, which egui calls a drag) is the click there (FE-20).
+        let box_click = self.selection.box_click(ui, &response);
         // An adaptive family's views only show it: its tools are in {3D}.
         if editable
-            && response.clicked()
-            && let Some(p) = response.interact_pointer_pos()
+            && (response.clicked() || box_click.is_some())
+            && let Some(p) = box_click.or_else(|| response.interact_pointer_pos())
         {
             let q = at_view(p);
             clicked_any = true;
@@ -1315,7 +1326,8 @@ impl FamilyEditor {
                 on_dims = Some((hit, lengths));
             } else if let Some(i) = super::connector_marks::pick(&connector_marks, &project, p) {
                 select = Some(Some(Picked::Connector(i)));
-            } else if let Some(i) = family.as_ref().and_then(|f| fv::nested_at(f, &values, &c.staged, which, q)) {
+            } else if let Some(i) = scene.as_ref().and_then(|s| s.nested_face(q)) {
+                // A nested instance by its face, while Select Elements by Face is on (FE-20).
                 select = Some(Some(Picked::Nested(i)));
             } else {
                 // A reference line where the view draws it (F7d): over the planes' traces and the forms, as it is drawn.
@@ -1324,17 +1336,20 @@ impl FamilyEditor {
                     .line_at(which, q, 6.0 / view.scale.max(1e-9))
                     .and_then(|i| family.as_ref().and_then(|f| f.lines.get(i)).map(|l| l.guid));
                 let plane = if line.is_some() { None } else { pick_plane(p) };
-                let form = family.as_ref().and_then(|f| fv::form_at(f, &values, &c.staged, which, q));
-                select = Some(match (plane, line, form) {
+                // Then a form by its face, or a nested instance or a form by an edge of its outline: after the plane and the
+                // line, so an edge lying on a plane leaves the plane to be clicked (FE-20).
+                let body = scene.as_ref().and_then(|s| s.body_hit(q));
+                select = Some(match (plane, line, body) {
                     (Some(g), _, _) => Some(Picked::Plane(g)),
                     (None, Some(g), _) => Some(Picked::Line(g)),
-                    (None, None, Some(i)) => Some(Picked::Form(i)),
-                    (None, None, None) => None,
+                    (None, None, body) => body,
                 });
             }
         }
         // What a press at `p` is on that a drag moves (FE-7): a dimension's line, else what a click there selects (and the box
-        // doesn't begin on, `Scene::under`), or a selected symbol's strokes; never a handle, a grip or a padlock.
+        // doesn't begin on, `Scene::under`: the face of a form or a nested instance that isn't selected is the box's, FE-20),
+        // or a selected symbol's strokes; never a handle, a grip or a padlock.
+        let chosen: Vec<Picked> = self.selection.items().to_vec();
         let tools_free = editable
             && self.views.drawing.is_none()
             && self.views.picking.is_none()
@@ -1358,8 +1373,8 @@ impl FamilyEditor {
                 None => {}
             }
             let s = scene.as_ref()?;
-            let hit = s.hit(p, pick_plane(p), self.selection.items())?;
-            (matches!(hit, Picked::Symbol(_)) || s.under(p)).then_some(hit)
+            let hit = s.hit(p, pick_plane(p), &chosen)?;
+            (matches!(hit, Picked::Symbol(_)) || s.under(p, &chosen)).then_some(hit)
         };
         self.views.over_selected =
             !self.selection.is_empty() && response.hover_pos().and_then(press_hit).is_some_and(|h| self.selection.contains(h));
@@ -1399,7 +1414,7 @@ impl FamilyEditor {
             && self.views.pasting.is_none();
         let start =
             response.drag_started_by(PointerButton::Primary).then(|| ui.input(|i| i.pointer.press_origin())).flatten().filter(|p| {
-                free && scene.as_ref().is_some_and(|s| !s.under(*p))
+                free && scene.as_ref().is_some_and(|s| !s.under(*p, &chosen))
                     && !on_handle(*p)
                     && grips.iter().all(|(_, at)| at.distance(*p) > super::pivot::REACH)
                     && dims::clicked(&marks, &self.dimensions, selected_dim, align_lock, &locks, *p, &on_screen).is_none()

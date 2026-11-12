@@ -35,6 +35,11 @@ pub(crate) const KINDS: [(ConnectorKind, &str, &str); 5] = [
 ];
 
 impl ConnectorText {
+    /// Its GUID, which it keeps wherever it goes in the list: nil for one made since the family was last loaded.
+    pub(super) fn guid(&self) -> bimcraft_core::ids::Guid {
+        self.base.guid
+    }
+
     pub(crate) fn of(c: &Connector) -> ConnectorText {
         let xyz = |p: &Option<[Expr; 3]>| p.as_ref().map(|p| p.each_ref().map(expr_text)).unwrap_or_default();
         let load = match &c.load_va {

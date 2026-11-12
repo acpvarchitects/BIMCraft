@@ -13,7 +13,7 @@ use bimcraft_core::ids::Guid;
 /// Two boxes on Ref. Level, west (A) and east (B) of the Center (Left/Right) plane, both behind Center (Front/Back); a plane of
 /// its own, Edge, further west; a reference line north of them; a symbolic line in front; and a dimension in plan from Edge to
 /// Center (Left/Right), in front of everything.
-const BOXES: &str = concat!(
+pub(super) const BOXES: &str = concat!(
     r#"family {"name": "Boxes", "category": "generic", "types": {"T": {}}, "#,
     r#""forms": [{"profile": [[-900, 200], [-500, 200], [-500, 600], [-900, 600]], "to": 600}, "#,
     r#"{"profile": [[500, 200], [900, 200], [900, 600], [500, 600]], "to": 600}], "#,
@@ -24,29 +24,29 @@ const BOXES: &str = concat!(
     r#"{"plane": "9e3c0a10-1f0b-4d8c-8a5e-0000000000a3"}], "view": "plan", "at": [-650, -1200, 0]}]}"#
 );
 
-const EDGE: &str = "fe100000-0000-4000-8000-000000000001";
-const LINE: &str = "fe100000-0000-4000-8000-000000000002";
-const DIM: &str = "fe100000-0000-4000-8000-000000000003";
+pub(super) const EDGE: &str = "fe100000-0000-4000-8000-000000000001";
+pub(super) const LINE: &str = "fe100000-0000-4000-8000-000000000002";
+pub(super) const DIM: &str = "fe100000-0000-4000-8000-000000000003";
 
-fn g(s: &str) -> Guid {
+pub(super) fn g(s: &str) -> Guid {
     Guid::parse(s).expect("a GUID")
 }
 
 /// The family's document open on its floor plan.
-fn plan() -> Harness<'static, BimApp> {
+pub(super) fn plan() -> Harness<'static, BimApp> {
     let (mut h, _) = open(BOXES, "Boxes");
     view(&mut h, Some(Which::Plan));
     h
 }
 
 /// What is selected, in order.
-fn selected(h: &Harness<BimApp>) -> Vec<Picked> {
+pub(super) fn selected(h: &Harness<BimApp>) -> Vec<Picked> {
     let mut v = editor(h).selection.items().to_vec();
     v.sort();
     v
 }
 
-fn set(mut v: Vec<Picked>) -> Vec<Picked> {
+pub(super) fn set(mut v: Vec<Picked>) -> Vec<Picked> {
     v.sort();
     v
 }
@@ -69,12 +69,12 @@ fn drag_family(h: &mut Harness<BimApp>, a: [f64; 3], b: [f64; 3], mods: Modifier
     h.run();
 }
 
-fn boxed(h: &mut Harness<BimApp>, a: [f64; 3], b: [f64; 3], mods: Modifiers) {
+pub(super) fn boxed(h: &mut Harness<BimApp>, a: [f64; 3], b: [f64; 3], mods: Modifiers) {
     drag_family(h, a, b, mods, PointerButton::Primary);
 }
 
 /// A click at family point `p` of the view shown, `mods` held.
-fn click_with_mods(h: &mut Harness<BimApp>, p: [f64; 3], mods: Modifiers) {
+pub(super) fn click_with_mods(h: &mut Harness<BimApp>, p: [f64; 3], mods: Modifiers) {
     let pos = editor(h).views.screen_of(p).expect("a view shown");
     h.hover_at(pos);
     h.run();
@@ -247,9 +247,11 @@ fn a_drag_from_an_element_with_a_tool_in_hand_or_by_the_middle_button_draws_no_b
     let mut h = plan();
     click_family(&mut h, [700.0, 400.0, 0.0]);
     assert_eq!(selected(&h), vec![Picked::Form(1)]);
-    // From inside A, leftwards over Edge: no box, while it is dragged or once it is let go; the drag is A's, which it selects
-    // and moves (FE-7).
-    let (a, b) = (editor(&h).views.screen_of([-700.0, 400.0, 0.0]).unwrap(), editor(&h).views.screen_of([-1400.0, 300.0, 0.0]).unwrap());
+    // From A's edge, leftwards over Edge: no box, while it is dragged or once it is let go; the drag is A's, which it selects
+    // and moves (FE-7). (Since FE-20 the face of a form that isn't selected is the box's to begin in, as Revit's, so that a
+    // crossing box can be drawn inside a face: Select Elements by Face, `family_selection`. A drag from an element's edge, or
+    // from one selected, is still the element's.)
+    let (a, b) = (editor(&h).views.screen_of([-500.0, 400.0, 0.0]).unwrap(), editor(&h).views.screen_of([-1400.0, 300.0, 0.0]).unwrap());
     h.hover_at(a);
     h.run();
     h.event(Event::PointerButton { pos: a, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::NONE });
@@ -257,11 +259,11 @@ fn a_drag_from_an_element_with_a_tool_in_hand_or_by_the_middle_button_draws_no_b
     for t in [0.25, 0.5, 0.75, 1.0] {
         h.hover_at(a + (b - a) * t);
         h.run();
-        assert!(!editor(&h).boxing(), "a drag from a form draws no box");
+        assert!(!editor(&h).boxing(), "a drag from a form's edge draws no box");
     }
     h.event(Event::PointerButton { pos: b, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE });
     h.run();
-    assert_eq!(selected(&h), vec![Picked::Form(0)], "a drag from a form boxes nothing");
+    assert_eq!(selected(&h), vec![Picked::Form(0)], "a drag from a form's edge boxes nothing");
     // The middle button pans: no box either.
     drag_family(&mut h, [400.0, 700.0, 0.0], [1000.0, 100.0, 0.0], Modifiers::NONE, PointerButton::Middle);
     assert_eq!(selected(&h), vec![Picked::Form(0)], "the middle button boxes nothing");
