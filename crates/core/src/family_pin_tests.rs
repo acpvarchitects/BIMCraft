@@ -130,3 +130,15 @@ fn a_move_that_would_drag_a_pinned_part_along_is_refused_naming_it() {
     select::pin(&mut f, &[Picked::Plane(g(LEFT))], true);
     assert!(f.move_by(&v, &right, [100.0, 0.0, 0.0]).is_ok());
 }
+
+#[test]
+fn a_pinned_dimension_held_loose_on_the_clipboard_pastes_unpinned() {
+    let s = pinned_box();
+    let f = family(&s);
+    let width = f.dimensions[0].guid;
+    assert!(select::pinned(f, Picked::Dimension(width)));
+    let clip = f.clip(&Copying { dimensions: vec![width], ..Copying::default() }).unwrap();
+    let pasted = f.paste_into_view(&clip, crate::family::DimView::Plan).unwrap();
+    assert_eq!(pasted.len(), 1);
+    assert!(!pasted[0].pinned, "the copy is unpinned");
+}
