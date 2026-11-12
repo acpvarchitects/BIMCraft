@@ -787,14 +787,14 @@ impl BimApp {
                         later_small(ui, Icon::Trim, msg!("Trim/Extend"));
                         later_small(ui, Icon::Split, msg!("Split Element"));
                     }
-                    // FE-17: Pin and Unpin, what is selected kept where it is or let go.
-                    for (on, icon, label, tip) in [
-                        (true, Icon::Pin, "Pin", msg!("Pin (PN): what is selected keeps its place; moving or deleting it is refused")),
-                        (false, Icon::Unpin, "Unpin", msg!("Unpin (UP): what is selected may be moved and deleted again")),
-                    ] {
-                        if ui.add_enabled_ui(ed.can_pin(on), |ui| crate::small_button(ui, icon, label, false, tip)).inner.clicked() {
-                            ed.pin_selected(on);
-                        }
+                    // FE-17: Pin, or Unpin where all that is selected is pinned already: one slot, so the panel keeps its width.
+                    let (on, icon, label, tip) = if ed.can_pin(true) || !ed.can_pin(false) {
+                        (true, Icon::Pin, "Pin", msg!("Pin (PN): what is selected keeps its place; moving or deleting it is refused"))
+                    } else {
+                        (false, Icon::Unpin, "Unpin", msg!("Unpin (UP): what is selected may be moved and deleted again"))
+                    };
+                    if ui.add_enabled_ui(ed.can_pin(on), |ui| crate::small_button(ui, icon, label, false, tip)).inner.clicked() {
+                        ed.pin_selected(on);
                     }
                     let tip = msg!("Delete (DE): what is selected, with what depends on it");
                     if ui.add_enabled_ui(some || ed.deletable(), |ui| big_button(ui, Icon::Delete, "Delete", false, tip)).inner.clicked()

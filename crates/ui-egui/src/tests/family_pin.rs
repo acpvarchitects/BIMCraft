@@ -38,22 +38,22 @@ fn pn_and_up_pin_and_unpin_what_is_selected_each_a_step_of_the_history() {
 }
 
 #[test]
-fn the_modify_panels_pin_and_unpin_are_enabled_by_what_is_selected() {
+fn the_modify_panels_pin_turns_to_unpin_with_what_is_selected_pinned() {
     let mut h = plan();
     // Wide enough for the whole Modify panel.
     h.set_size(egui::vec2(3200.0, 1000.0));
     h.run();
     pick(&mut h, &[Picked::Form(0)]);
     let enabled = |h: &Harness<BimApp>, label: &str| !egui_kittest::kittest::NodeT::accesskit_node(&h.get_by_label(label)).is_disabled();
-    assert!(enabled(&h, "Pin") && !enabled(&h, "Unpin"), "A not pinned");
+    assert!(enabled(&h, "Pin") && h.query_by_label("Unpin").is_none(), "A not pinned: Pin");
     press(&mut h, "Pin");
     assert!(pinned(&h, Picked::Form(0)));
-    assert!(!enabled(&h, "Pin") && enabled(&h, "Unpin"), "A pinned");
+    assert!(h.query_by_label("Pin").is_none() && enabled(&h, "Unpin"), "A pinned: Unpin in its place");
     press(&mut h, "Unpin");
     assert!(!pinned(&h, Picked::Form(0)));
     // A datum alone: pinned always, neither changes it.
     pick(&mut h, &[Picked::Plane(g(super::family_drag_move::CENTER_LR))]);
-    assert!(!enabled(&h, "Pin") && !enabled(&h, "Unpin"), "a datum");
+    assert!(!enabled(&h, "Pin"), "a datum: greyed");
 }
 
 #[test]
