@@ -100,6 +100,9 @@ impl Draft {
         // The forms as they stand before the step, each by the tag it keeps while the document is open: what Select Previous
         // would bring back follows its forms to where the step puts them (FE-20).
         let tags: Vec<u64> = ed.forms.iter().map(|f| f.tag).collect();
+        // And the symbols, connectors and nested instances, which it follows by their GUIDs or keeps where the step left
+        // them as they were.
+        let (symbols, connectors, nested) = (ed.symbols.clone(), ed.connectors.clone(), ed.nested_instances.clone());
         ed.name = self.name;
         ed.category = self.category;
         ed.operation = self.operation;
@@ -119,8 +122,9 @@ impl Draft {
         let nodes = ed.adaptive.as_ref().map(|d| d.nodes.iter().map(|n| n.id.clone()).collect::<Vec<_>>()).unwrap_or_default();
         ed.modeller.selection.retain(|id| nodes.contains(id));
         // What Select Previous would bring back names a form, a symbol, a connector and a nested instance by its place, which
-        // the step may have given to another: a form is followed by its tag, a plane, a line and a dimension are named by
-        // their GUIDs, and what has nothing to follow it by is let go rather than mistaken for another.
+        // the step may have given to another: a form is followed by its tag; a symbol, a connector and a nested instance by
+        // their GUIDs (`followed`); a plane, a line and a dimension are named by their GUIDs; and what has nothing to follow
+        // it by is let go rather than mistaken for another.
         use super::select_box::Picked;
         ed.selection.follow_previous(|p| match p {
             Picked::Form(i) => {
@@ -128,11 +132,22 @@ impl Draft {
                 ed.forms.iter().position(|f| f.tag == *tag).map(Picked::Form)
             }
             Picked::Plane(_) | Picked::Line(_) | Picked::Dimension(_) => Some(p),
-            Picked::Symbol(_) | Picked::Connector(_) | Picked::Nested(_) => None,
+            Picked::Symbol(i) => followed(&symbols, &ed.symbols, i, |s| s.ident.1).map(Picked::Symbol),
+            Picked::Connector(i) => followed(&connectors, &ed.connectors, i, |c| c.guid()).map(Picked::Connector),
+            Picked::Nested(i) => followed(&nested, &ed.nested_instances, i, |n| n.guid).map(Picked::Nested),
         });
         ed.prune_selection();
         ed.problem = None;
     }
+}
+
+/// Where what was at place `i` of `before` is in `after`, a step of the document's history between them: by its GUID, or,
+/// with none yet (made since the family was last loaded), at its place while the step left it there as it was. None where
+/// it is gone, or can't be told from another.
+fn followed<T: PartialEq>(before: &[T], after: &[T], i: usize, guid: impl Fn(&T) -> bimcraft_core::ids::Guid) -> Option<usize> {
+    let was = before.get(i)?;
+    let g = guid(was);
+    if g.is_nil() { (after.get(i) == Some(was)).then_some(i) } else { after.iter().position(|x| guid(x) == g) }
 }
 
 impl FamilyEditor {

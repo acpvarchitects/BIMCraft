@@ -626,7 +626,7 @@ fn a_click_on_a_plane_beside_a_nested_instance_aligned_to_it_selects_the_plane()
 }
 
 /// What Select Previous brings back names a form by its place, which an undo or a redo may give to another: it follows the
-/// form. What has nothing to follow it by (a symbol, a connector, a nested instance) is let go by an undo, never mistaken.
+/// form. A symbol, a connector and a nested instance are followed by their GUIDs (`pr_keeps_symbols_…`).
 #[test]
 fn pr_after_an_undo_brings_back_the_form_that_was_selected_not_the_one_now_in_its_place() {
     let mut h = plan();
@@ -662,14 +662,14 @@ fn pr_after_an_undo_brings_back_the_form_that_was_selected_not_the_one_now_in_it
     h.run();
     shortcut(&mut h, "PR");
     assert_eq!(selected(&h), vec![Picked::Form(0)], "B, moved up again by Redo");
-    // A plane is followed by its GUID as it always was; the symbol, held by its place alone, is let go by the undo.
+    // A plane is followed by its GUID as it always was, and the symbol by its own, through an undo that left it be.
     boxed(&mut h, [-200.0, -600.0, 0.0], [200.0, -800.0, 0.0], Modifiers::NONE);
     click_with_mods(&mut h, [-1300.0, -300.0, 0.0], Modifiers::COMMAND);
     assert_eq!(selected(&h), set(vec![Picked::Plane(g(EDGE)), Picked::Symbol(0)]));
     key(&mut h, Key::Escape);
     undo(&mut h);
     shortcut(&mut h, "PR");
-    assert_eq!(selected(&h), vec![Picked::Plane(g(EDGE))], "the plane, not the symbol's place");
+    assert_eq!(selected(&h), set(vec![Picked::Plane(g(EDGE)), Picked::Symbol(0)]), "the plane and the symbol");
 }
 
 /// SA's Visible in View is what the view in front shows: not an instance its Visibility Settings leave out of that view, and
@@ -921,4 +921,43 @@ fn a_form_the_view_leaves_out_is_picked_neither_by_its_face_nor_by_its_edge() {
     super::preview_visibility::toggle(&mut h);
     click_family(&mut h, [-500.0, 400.0, 0.0]);
     assert_eq!(selected(&h), vec![Picked::Form(0)], "A drawn halftone");
+}
+
+/// An undo or a redo that leaves the symbols and the nested instances as they were leaves them in what Select Previous
+/// brings back: they are followed by their GUIDs, or kept at their place where the step left that place as it was.
+#[test]
+fn pr_keeps_symbols_and_nested_instances_an_undo_didnt_touch() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = plan();
+    let doc = h.state().active_doc().expect("a family document");
+    h.state_mut().nest_family_file(doc, &small_file(dir.path()));
+    h.run();
+    place(&mut h, "Short", [200.0, -400.0, 0.0]);
+    key(&mut h, Key::Escape);
+    editor_mut(&mut h).selection.apply(&[Picked::Symbol(0), Picked::Nested(0)], crate::editor::select_box::How::Replace);
+    h.run();
+    key(&mut h, Key::Escape);
+    assert!(selected(&h).is_empty());
+    // B deleted, and the deletion undone: neither the symbol nor the instance was touched.
+    click_family(&mut h, [700.0, 400.0, 0.0]);
+    assert_eq!(selected(&h), vec![Picked::Form(1)]);
+    key(&mut h, Key::Delete);
+    assert_eq!(editor(&h).draft_family().unwrap().forms.len(), 1, "B deleted");
+    h.state_mut().family_undo();
+    h.run();
+    assert_eq!(editor(&h).draft_family().unwrap().forms.len(), 2, "B back");
+    shortcut(&mut h, "PR");
+    assert_eq!(selected(&h), vec![Picked::Symbol(0), Picked::Nested(0)], "the symbol and the instance, as they were");
+    // Undone again past the instance's placing: it is gone, and goes from what PR brings back; the symbol stays.
+    key(&mut h, Key::Escape);
+    for _ in 0..4 {
+        if editor(&h).draft_family().unwrap().nested_instances.is_empty() {
+            break;
+        }
+        h.state_mut().family_undo();
+        h.run();
+    }
+    assert!(editor(&h).draft_family().unwrap().nested_instances.is_empty(), "the placing undone");
+    shortcut(&mut h, "PR");
+    assert_eq!(selected(&h), vec![Picked::Symbol(0)], "the symbol alone");
 }

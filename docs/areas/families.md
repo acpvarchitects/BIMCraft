@@ -799,7 +799,10 @@ of the document's history, and nothing reaches the project.
   the project's Filter's own (`filter::checklist`).
 - **Select Previous** (PR) brings back the selection as it was before it was last let go (Escape, Modify, a click on nothing)
   or replaced by another (a click, a box, Filter, Select by ID, Select All Instances): one set (`Selection::previous`), kept in
-  step with the draft as the selection is, so what was deleted since is skipped. What it replaces becomes the previous one,
+  step with the draft as the selection is, so what was deleted since is skipped; an undo or a redo follows each thing of it
+  to where the step puts it (a form by the tag it keeps while the document is open; a symbol, a connector and a nested
+  instance by its GUID, or with none yet at its place while the step left it as it was: `document::followed`), and lets go
+  only what it can't follow. What it replaces becomes the previous one,
   so PR again changes them back; Ctrl and Shift, which add to a selection and take from it, make no previous one. Revit's
   Ctrl+Left Arrow is not bound: the project has no Select Previous and binds no key to one.
 - **Select by ID** (ID; Manage > Inquiry, as the project's) selects, or adds to the selection, the parts a list names
