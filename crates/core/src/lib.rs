@@ -77,6 +77,8 @@ mod family_sketch_lock_tests;
 #[cfg(test)]
 mod family_sketch_tests;
 #[cfg(test)]
+mod family_transform_tests;
+#[cfg(test)]
 mod family_visibility_tests;
 pub mod favorites;
 pub mod fills;

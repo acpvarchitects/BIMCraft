@@ -12,6 +12,7 @@ pub(crate) mod exists;
 mod extrusion;
 pub(crate) mod keys;
 pub(crate) mod lit3d;
+pub(crate) mod modify;
 mod nested;
 pub(crate) mod options;
 mod pivot;
