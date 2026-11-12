@@ -147,6 +147,14 @@ pub const ACTIONS: &[&str] = &[
     msg!("Select by ID"),
     msg!("Select All Instances: In Entire Family"),
     msg!("Select Elements by Face"),
+    msg!("Copy to Clipboard"),
+    msg!("Cut to Clipboard"),
+    msg!("Paste"),
+    msg!("Aligned to Same Place"),
+    msg!("Aligned to Current View"),
+    msg!("Aligned to Selected Views"),
+    msg!("Aligned to Selected Levels"),
+    msg!("Aligned to Picked Level"),
 ];
 
 /// The actions of `ACTIONS` only a family document does (`editor::keys`): a key for one does nothing on a project's tab, and
@@ -167,6 +175,14 @@ pub(crate) const FAMILY_ONLY: &[&str] = &[
     "Select by ID",
     "Select All Instances: In Entire Family",
     "Select Elements by Face",
+    "Copy to Clipboard",
+    "Cut to Clipboard",
+    "Paste",
+    "Aligned to Same Place",
+    "Aligned to Current View",
+    "Aligned to Selected Views",
+    "Aligned to Selected Levels",
+    "Aligned to Picked Level",
 ];
 
 /// Whether `action` is a family document's alone.
@@ -856,7 +872,9 @@ mod tests {
             }
         }
         for action in FAMILY_ONLY {
-            assert!(ACTIONS.contains(action) && FAMILY_SHORTCUTS.iter().any(|(_, a)| a == action), "{action}");
+            // A key of Revit's, or none (FE-14's clipboard: Keyboard Shortcuts gives one).
+            let keyed = FAMILY_SHORTCUTS.iter().any(|(_, a)| a == action) || crate::editor::keys::FAMILY_KEYLESS.contains(action);
+            assert!(ACTIONS.contains(action) && keyed, "{action}");
         }
     }
 }
