@@ -874,3 +874,46 @@ fn a_slow_or_shaky_click_is_a_click_and_not_a_tiny_box() {
     assert!(selected(&h).is_empty(), "a window inside B's face");
     assert_eq!(project(&h), before, "nothing of it reaches the project");
 }
+
+/// What the view leaves out is picked by nothing, as no box takes it: a form hidden for now (HH), neither by a click on its
+/// face with Select Elements by Face on nor by one on its edge with it off, and a drag from its edge draws a box, moving
+/// nothing; and while Preview Visibility shows the family as placed, a form its Visibility Settings leave out of the view.
+#[test]
+fn a_form_the_view_leaves_out_is_picked_neither_by_its_face_nor_by_its_edge() {
+    let mut h = plan();
+    let before = project(&h);
+    let forms = |h: &Harness<BimApp>| editor(h).draft_family().unwrap().forms;
+    let unmoved = forms(&h);
+    // A, hidden for now: the selection goes with it.
+    click_family(&mut h, [-700.0, 400.0, 0.0]);
+    assert_eq!(selected(&h), vec![Picked::Form(0)]);
+    shortcut(&mut h, "HH");
+    assert!(editor(&h).temporary().hides() && selected(&h).is_empty(), "HH");
+    click_family(&mut h, [-700.0, 400.0, 0.0]);
+    assert!(selected(&h).is_empty(), "a click on A's face, a face selecting");
+    h.state_mut().select_by_face = false;
+    h.run();
+    click_family(&mut h, [-500.0, 400.0, 0.0]);
+    assert!(selected(&h).is_empty(), "a click on A's edge, only edges selecting");
+    // From A's edge, leftwards over Edge: a crossing box, which takes Edge and not A; nothing moves.
+    boxed(&mut h, [-500.0, 400.0, 0.0], [-1400.0, 300.0, 0.0], Modifiers::NONE);
+    assert_eq!(selected(&h), vec![Picked::Plane(g(EDGE))], "a box from A's edge");
+    assert_eq!(forms(&h), unmoved, "nothing moved");
+    assert_eq!(project(&h), before, "nothing of it reaches the project");
+    // A left out of the plans by its Visibility Settings, Preview Visibility on: the same.
+    let script = BOXES.replacen(r#""to": 600}, "#, r#""to": 600, "visibility": {"plan": false}}, "#, 1);
+    let (mut h, _) = super::family_views::open(&script, "Boxes");
+    view(&mut h, Some(Which::Plan));
+    super::preview_visibility::toggle(&mut h);
+    assert!(editor(&h).preview_visibility(), "Preview Visibility on");
+    click_family(&mut h, [-700.0, 400.0, 0.0]);
+    assert!(selected(&h).is_empty(), "a click on where A's face would be");
+    h.state_mut().select_by_face = false;
+    h.run();
+    click_family(&mut h, [-500.0, 400.0, 0.0]);
+    assert!(selected(&h).is_empty(), "a click on where A's edge would be");
+    // Off, A is drawn halftone: picked as a click picks it.
+    super::preview_visibility::toggle(&mut h);
+    click_family(&mut h, [-500.0, 400.0, 0.0]);
+    assert_eq!(selected(&h), vec![Picked::Form(0)], "A drawn halftone");
+}

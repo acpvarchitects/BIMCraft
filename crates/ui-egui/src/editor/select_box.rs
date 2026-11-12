@@ -358,7 +358,7 @@ pub(super) struct Scene<'a> {
     /// The document's Detail Level, which says which symbols its plans draw.
     pub(super) detail: bimcraft_core::graphics::Detail,
     /// The forms the view leaves out, by place: Temporary Hide/Isolate's, and while Preview Visibility is on those their
-    /// Visibility Settings hide there (F8). A box takes none of them.
+    /// Visibility Settings hide there (F8). No box takes them, and no click or drag picks them.
     pub(super) hidden: &'a [bool],
     /// Select Elements by Face (FE-20): a face selects what it is of, by a click and by a crossing box.
     pub(super) by_face: bool,
@@ -510,11 +510,26 @@ impl Scene<'_> {
         6.0 / self.view.scale.max(1e-9)
     }
 
+    /// Whether the view draws form `i`: not one it leaves out (`hidden`), which nothing picks, as no box takes it.
+    fn shows(&self, i: usize) -> bool {
+        !self.hidden.get(i).copied().unwrap_or(false)
+    }
+
+    /// The form whose face the view draws at `q` (the view's millimetres), nearest the eye: past one it leaves out.
+    fn form_face(&self, q: P2) -> Option<usize> {
+        fv::form_at_among(self.family, self.values, self.staged, self.which, q, &|i| self.shows(i))
+    }
+
+    /// The form an edge of which, as the view draws it, passes within `reach` of `q`: none it leaves out.
+    fn form_edge(&self, q: P2, reach: f64) -> Option<usize> {
+        fv::form_edge_at_among(self.family, self.values, self.staged, self.which, q, reach, &|i| self.shows(i))
+    }
+
     /// The form a click at `q` (the view's millimetres) takes: with Select Elements by Face on, the one whose face is
     /// there; else, and off, the one an edge of which, as the view draws it, passes within the click's reach.
     pub(super) fn form_hit(&self, q: P2) -> Option<usize> {
-        let face = if self.by_face { fv::form_at(self.family, self.values, self.staged, self.which, q) } else { None };
-        face.or_else(|| fv::form_edge_at(self.family, self.values, self.staged, self.which, q, self.reach()))
+        let face = if self.by_face { self.form_face(q) } else { None };
+        face.or_else(|| self.form_edge(q, self.reach()))
     }
 
     /// The nested instance whose face a click at `q` is on, while Select Elements by Face is on: what a click takes before
@@ -528,10 +543,10 @@ impl Scene<'_> {
     /// edge comes after a plane and a line, so one aligned to a plane leaves the plane beside it to be clicked.
     pub(super) fn body_hit(&self, q: P2) -> Option<Picked> {
         let reach = self.reach();
-        let face = if self.by_face { fv::form_at(self.family, self.values, self.staged, self.which, q) } else { None };
+        let face = if self.by_face { self.form_face(q) } else { None };
         face.map(Picked::Form)
             .or_else(|| fv::nested_edge_at(self.family, self.values, self.staged, self.which, q, reach).map(Picked::Nested))
-            .or_else(|| fv::form_edge_at(self.family, self.values, self.staged, self.which, q, reach).map(Picked::Form))
+            .or_else(|| self.form_edge(q, reach).map(Picked::Form))
     }
 
     /// Whether a drag from `p` is an element's and so draws no box: a connector, a reference line, a plane, or a form or a
@@ -543,12 +558,12 @@ impl Scene<'_> {
         let project = |x: [f64; 3]| Some(self.at(x));
         let held = self.by_face
             && (fv::nested_at(self.family, self.values, self.staged, self.which, q).is_some_and(|i| selected.contains(&Picked::Nested(i)))
-                || fv::form_at(self.family, self.values, self.staged, self.which, q).is_some_and(|i| selected.contains(&Picked::Form(i))));
+                || self.form_face(q).is_some_and(|i| selected.contains(&Picked::Form(i))));
         super::connector_marks::pick(self.connectors, &project, p).is_some()
             || fv::nested_edge_at(self.family, self.values, self.staged, self.which, q, reach).is_some()
             || self.staged.line_at(self.which, q, reach).is_some()
             || self.drawing.pick_all((p.x - self.min.x, p.y - self.min.y), 6.0).into_iter().any(|id| self.staged.plane_of(id).is_some())
-            || fv::form_edge_at(self.family, self.values, self.staged, self.which, q, reach).is_some()
+            || self.form_edge(q, reach).is_some()
             || held
     }
 

@@ -473,10 +473,23 @@ pub fn plan_cut(tris: &[[P3; 3]], z: f64) -> Vec<Vec<P2>> {
 /// The solid form of `family` drawn at point `at` of view `which` (sized by `values`), its place in `forms`: the one nearest
 /// the eye there, in plan the highest. None where none is.
 pub fn form_at(family: &Family, values: &BTreeMap<String, Val>, st: &Staged, which: Which, at: P2) -> Option<usize> {
+    form_at_among(family, values, st, which, at, &|_| true)
+}
+
+/// [`form_at`] among the forms `shown` keeps, by place: those the view draws, so one it leaves out (hidden for now, or by
+/// its Visibility Settings while the family is previewed as placed) is never what a click there takes, and one under it is.
+pub fn form_at_among(
+    family: &Family,
+    values: &BTreeMap<String, Val>,
+    st: &Staged,
+    which: Which,
+    at: P2,
+    shown: &dyn Fn(usize) -> bool,
+) -> Option<usize> {
     let mut read = HashMap::new();
     let mut best: Option<(f64, usize)> = None;
     for i in 0..family.forms.len() {
-        if family.forms[i].void {
+        if family.forms[i].void || !shown(i) {
             continue;
         }
         let Some(piece) = family.solid(i, values, &mut read).ok().flatten() else { continue };
@@ -544,9 +557,22 @@ fn edge_near(tris: &[[P3; 3]], st: &Staged, which: Which, at: P2, reach: f64) ->
 /// is off: a form by an edge the view draws it with ([`outline_edges`]: an L's inner corner, never the hull's chord across
 /// it), never by its face, which [`form_at`] takes it by. A void, never seen, is not.
 pub fn form_edge_at(family: &Family, values: &BTreeMap<String, Val>, st: &Staged, which: Which, at: P2, reach: f64) -> Option<usize> {
+    form_edge_at_among(family, values, st, which, at, reach, &|_| true)
+}
+
+/// [`form_edge_at`] among the forms `shown` keeps, by place, as [`form_at_among`] finds a face.
+pub fn form_edge_at_among(
+    family: &Family,
+    values: &BTreeMap<String, Val>,
+    st: &Staged,
+    which: Which,
+    at: P2,
+    reach: f64,
+    shown: &dyn Fn(usize) -> bool,
+) -> Option<usize> {
     let mut read = HashMap::new();
     let mut best: Option<(f64, usize)> = None;
-    for i in (0..family.forms.len()).filter(|i| !family.forms[*i].void) {
+    for i in (0..family.forms.len()).filter(|i| !family.forms[*i].void && shown(*i)) {
         let Some(piece) = family.solid(i, values, &mut read).ok().flatten() else { continue };
         if let Some(d) = edge_near(&piece.tris, st, which, at, reach)
             && best.is_none_or(|(b, _)| d < b)

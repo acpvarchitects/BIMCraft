@@ -760,9 +760,10 @@ the adaptive modelling view boxes by, one for both
 drawn with on screen: a form's or a nested instance's edges as the view draws them (`views::outline_edges`, `nested_outline_edges`:
 an L's inner corner, never its hull's chord across the empty corner), a plane's trace, a reference line, a dimension's line, a symbol's
 strokes (in the plans, which draw symbols: `Family::symbol_mark`), a connector's place; a void, which a click doesn't pick in a view,
-a form hidden for now, and what the view's Visibility Settings leave out (F8) aren't: a nested instance's pieces they hide, which
-the view never draws (nor a click picks: `views::nested_drawn`), and while Preview Visibility is on a form they hide, which is
-drawn halftone, and taken as a click takes it, while it is off. Ctrl adds what the box takes, Shift takes it away, else it is the selection; a click on an element
+a form hidden for now, and what the view's Visibility Settings leave out (F8) aren't, nor does a click pick them, by a face or by
+an edge, nor a drag from one take hold of them, a box beginning there instead (`Scene::hidden`, `views::form_at_among` and
+`form_edge_at_among`): a nested instance's pieces they hide, which the view never draws (`views::nested_drawn`), and while
+Preview Visibility is on a form they hide, which is drawn halftone, and taken as a click takes it, while it is off. Ctrl adds what the box takes, Shift takes it away, else it is the selection; a click on an element
 with Ctrl or Shift adds or takes away that one, and a click on nothing with either keeps the selection. The middle button still
 pans, and a drag with a tool in hand is the tool's. A drag from an element's edge (one a form or a nested instance is drawn with, a
 plane's trace, a reference line, a connector) is the element's and draws no box; the face of a form or a nested instance that
