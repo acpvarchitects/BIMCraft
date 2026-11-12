@@ -843,7 +843,7 @@ of the document's history, and nothing reaches the project.
   by neither. It is greyed where BF is ({3D}, where a drag turns the view, and while a form is sketched), and a tool in hand
   takes the drag either way.
 
-Revit's Select Pinned Elements (PE) waits for Pin (FE-17). Tests: `tests/family_selection.rs`; the core's in `family/select.rs`,
+Select Pinned Elements (PE) is FE-17's, below. Tests: `tests/family_selection.rs`; the core's in `family/select.rs`,
 `family/views.rs` and `geom.rs`.
 
 FE-7 (`editor/drag_move.rs`, `family/constraints/moving.rs`): in a plan or an elevation, with no tool in hand, a press on an element
@@ -1566,13 +1566,44 @@ Clipboard panel's Copy, Cut and Paste (FE-14; Paste Aligned's choices have no ke
 can Trim/Extend Single and Multiple Elements: `FAMILY_KEYLESS`), KS Keyboard Shortcuts, 3D the family's own {3D}, ZE, ZF, ZX and ZA the view control bar's Zoom to Fit, and HH, HC, HI, IC
 and HR Temporary Hide/Isolate; FF Filter, PR Select Previous, ID Select by ID, SA and SV Select All Instances (Visible in
 View and In Entire Family) and BF Select Elements by Face (FE-20, above); Drag Elements on Selection has none, as in Revit
-(`keys::FAMILY_KEYLESS`). A key made in Keyboard Shortcuts is tried first
+(`keys::FAMILY_KEYLESS`); PN Pin, UP Unpin, PE Select Pinned Elements, ME Measure and CS Create Similar (FE-17, below; PN, UP,
+ME and CS as the project's, PE the family's alone). A key made in Keyboard Shortcuts is tried first
 when it names a command the family has. The
 commands only a family has (Work Plane, Load Family, Angular Dimension, Pick Lines, Finish and Cancel Edit Mode, FE-3's zoom
 commands, Scale, FE-20's Filter Selection, Select Previous, Select by ID, Select All Instances: In Entire Family and Select
-Elements by Face and Drag Elements on Selection, and FE-14's clipboard commands) are in
+Elements by Face and Drag Elements on Selection, FE-14's clipboard commands, and FE-17's Select Pinned Elements) are in
 `shortcuts::ACTIONS`, so the dialog and a file can give them keys, and in `shortcuts::FAMILY_ONLY`: on a project's tab their keys
 do nothing, and Find leaves them out. Tests: `tests/family_keys.rs`.
+
+## Pin, Measure and Create Similar (FE-17)
+
+**Pin** (PN; the Modify panel's Pin) keeps what is selected where it is, **Unpin** (UP) lets it go, in a family that isn't
+adaptive and while nothing is sketched: a form, a reference plane or line, a dimension, a symbol, a connector or a nested
+instance takes a `pinned` flag, which the family file keeps where it is true (left out where false, so FORMAT stays 18; a build
+that doesn't know it leaves it out). Each is one step of the document's history, the selection kept; a datum is pinned always,
+so neither changes it, and each is greyed with nothing to change. What is pinned keeps its place: a drag of the selection
+(FE-7), Move, Rotate, Mirror, Scale and Offset without Copy (FE-8), Align, a plane's own drag, and Delete (and so Cut, FE-14)
+refuse it, nothing done, the status bar saying `… is pinned: unpin it (UP) to change where it is.`; its shape and end handles
+are greyed with that reason. A move that its constraints would drag a pinned part along with is refused the same way, naming
+the part (`Stays::Pinned`, worked out in the core's `move_by` and `transformed`). Copies are made unpinned: Ctrl+drag (FE-4),
+Copy and Rotate or Mirror with Copy, Paste (FE-14) and a dimension pasted into a view. A datum keeps its own refusals ("is a
+datum"), and Delete leaves it where it is, as before. **Select Pinned Elements** (PE; the status bar's pushpin, left of Drag
+Elements on Selection, a setting of the window's kept as `select_pinned` in `settings.json`, on to begin with) off, a click, a
+box and a drag pass over what is pinned (a datum among them), as Revit's do: a click on it selects nothing, a box leaves it out,
+and a drag from it draws a box.
+
+**Measure** (ME, as the project's; the Measure panel's button, in a plan or an elevation, not sketching) lays a ruler by two
+clicks, snapped as the Modify tools' points are, Shift keeping it square, and reads it over the view and in the status bar: its
+length, its angle from the view's across, and its parts across and up, in the project's units (`snap::ruler`, as the project's
+Measure reads). It changes nothing; the ruler stays on show until the next first click, Escape (which lets a first click go,
+then the tool) or another tool.
+
+**Create Similar** (CS, as the project's) starts the tool that makes the one thing selected, as it is: Create's Extrusion,
+Blend, Revolve, Sweep or Swept Blend, solid or void as the form is; Reference Plane for a plane, a datum too; Aligned,
+Angular, Radial or Diameter Dimension as the dimension is; another symbol of the symbol's part; a connector of the connector's
+kind; Component with the nested instance's family and type. With nothing or several selected it does nothing; a reference line,
+which has no tool yet, and a form of a file's triangles say so. Tests: `tests/family_pin.rs`, `tests/family_measure.rs`; the
+core's in `family_pin_tests.rs`.
 
 ## Zooming the family's views (FE-3)
 
@@ -1608,7 +1639,7 @@ planes, components hosted on them or on faces (Place on Face), and where a compo
 - `family/nested.rs`: nested families and their instances, built into the host.
 - `family/visibility.rs`: Visibility Settings: which views and detail levels draw a form, a symbol or a nested instance.
 - `family/select.rs`: what a family document selects (`Picked`), and what its selection's commands find: Filter's kinds,
-  Select by ID's parts, the names of one, Select All Instances' nested instances.
+  Select by ID's parts, the names of one, Select All Instances' nested instances; and a part's pin (FE-17: `pinned`, `pin`).
 
 In `crates/ui-egui`, the Family Editor:
 
@@ -1632,3 +1663,4 @@ In `crates/ui-egui`, the Family Editor:
   Ctrl+V, Paste Aligned (FE-14).
 - `editor/selection.rs`: the selection's commands (FE-20): Filter, Select Previous, Select by ID, IDs of Selection, Select All
   Instances, Select Elements by Face and Drag Elements on Selection.
+- `editor/pin.rs`: Pin and Unpin, and what a pin refuses (FE-17). `editor/measure.rs`: Measure and Create Similar (FE-17).
