@@ -46,6 +46,9 @@ pub(crate) struct Selecting {
     pub(crate) by_face: bool,
     /// Drag Elements on Selection, as the window has it (`BimApp::drag_on_selection`), given each frame.
     pub(crate) drag_faces: bool,
+    /// Select Pinned Elements (FE-17), as the window has it (`BimApp::select_pinned`), given each frame: off, a click, a box
+    /// and a drag pass over what is pinned.
+    pub(crate) pins: bool,
     /// What IDs of Selection copied last: the clipboard's, for a test to read.
     pub(crate) copied: Option<String>,
 }
@@ -438,6 +441,12 @@ pub(crate) fn drag_toggle(ui: &mut Ui, on: bool) -> egui::Response {
     );
     status_toggle(ui, on, Icon::DragOnSelection, "Drag Elements on Selection", tip)
         .on_disabled_hover_text(t(msg!("Drag Elements on Selection is of a family's plans and elevations.")))
+}
+
+/// The status bar's Select Pinned Elements (PE, FE-17), left of Drag Elements on Selection, drawn as they are.
+pub(crate) fn pinned_toggle(ui: &mut Ui, on: bool) -> egui::Response {
+    let tip = msg!("Select Pinned Elements (PE): on, a click and a box take what is pinned; off, they pass over it");
+    status_toggle(ui, on, Icon::Pin, "Select Pinned Elements", tip)
 }
 
 /// A toggle of the status bar's, 16 px square: `icon` lit while it is `on`, crossed out while it is off, greyed while the

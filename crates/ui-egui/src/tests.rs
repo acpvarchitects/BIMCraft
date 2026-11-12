@@ -7181,6 +7181,7 @@ mod family_keys;
 mod family_modify;
 mod family_nav3d;
 mod family_open;
+mod family_pin;
 mod family_pivots;
 mod family_properties;
 mod family_selection;

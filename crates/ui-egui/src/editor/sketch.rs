@@ -1476,10 +1476,12 @@ impl FamilyEditor {
         let Some(first) = loops.first() else { return Vec::new() };
         let c = bimcraft_core::geom::centroid(&first.outer);
         let family = self.family().ok();
+        let pinned = self.pinned_refusal(&[super::select_box::Picked::Form(i)]);
         let mut out = Vec::new();
         for (text, end, extent) in [(&ft.from, false, Extent::Start), (&ft.to, true, Extent::End)] {
             if let Some(d) = crate::adaptive_editor::worth(&text_expr(text), &values) {
-                out.push((st.to_view(which, frame.point(c, d)), end, self.end_blocked(family.as_ref(), f.guid, text, extent), frame.z));
+                let blocked = pinned.clone().or_else(|| self.end_blocked(family.as_ref(), f.guid, text, extent));
+                out.push((st.to_view(which, frame.point(c, d)), end, blocked, frame.z));
             }
         }
         out

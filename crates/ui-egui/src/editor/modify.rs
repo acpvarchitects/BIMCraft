@@ -735,6 +735,10 @@ impl FamilyEditor {
         if items.is_empty() {
             return Some(crate::lang::t("Nothing selected is shown in this view.").to_string());
         }
+        // What is pinned keeps its place (FE-17); its copies are made unpinned.
+        if !copy && let Some(e) = self.pinned_refusal(&items) {
+            return Some(e);
+        }
         match self.transform_items(&items, t, copy) {
             Ok(()) => None,
             Err(Refused::Said(s)) => Some(s),

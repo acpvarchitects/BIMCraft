@@ -127,7 +127,7 @@ pub(super) fn press_and_move(h: &mut Harness<BimApp>, p: [f64; 3], by: [f64; 3],
     b
 }
 
-fn release(h: &mut Harness<BimApp>, at: egui::Pos2) {
+pub(super) fn release(h: &mut Harness<BimApp>, at: egui::Pos2) {
     h.event(Event::PointerButton { pos: at, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE });
     h.run();
     h.event(Event::ModifiersChanged(Modifiers::NONE));
@@ -135,7 +135,7 @@ fn release(h: &mut Harness<BimApp>, at: egui::Pos2) {
 }
 
 /// A drag from family point `p` by `by` (mm), `mods` held.
-fn drag(h: &mut Harness<BimApp>, p: [f64; 3], by: [f64; 3], mods: Modifiers) {
+pub(super) fn drag(h: &mut Harness<BimApp>, p: [f64; 3], by: [f64; 3], mods: Modifiers) {
     let at = press_and_move(h, p, by, mods);
     release(h, at);
 }

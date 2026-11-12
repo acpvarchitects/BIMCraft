@@ -7,6 +7,7 @@
 //! over-constrained. The marks are the core's (`constraints::marks`), painted over the view's picture. Angular Dimension
 //! (F7c) picks lines that cross (reference lines, plane traces, lines of forms) and a click on nothing places its arc; its
 //! label is an Angle parameter.
+use super::select_box::Picked;
 use super::views::{PICKED, Views};
 use super::*;
 pub(super) use bimcraft_core::family::constraints::DimMark;
@@ -908,6 +909,17 @@ impl FamilyEditor {
     /// Align: `target` moved onto `reference`, with its padlock left at `at` (the view's mm) in view `which`.
     pub(super) fn align_through(&mut self, reference: DimRef, target: DimRef, at: P2, which: Which) {
         let Ok(f) = self.family() else { return };
+        // What Align would move, pinned, keeps its place (FE-17).
+        let form = |g: Guid| f.forms.iter().position(|x| x.guid == g).map(Picked::Form);
+        let moved = match target {
+            DimRef::Plane(g) => Some(Picked::Plane(g)),
+            DimRef::Line(g, _) | DimRef::LinePoint(g, _) => Some(Picked::Line(g)),
+            DimRef::Form(g, _) | DimRef::Sketch(g, _) | DimRef::Point(g, _, _) => form(g),
+        };
+        if let Some(e) = moved.and_then(|p| self.pinned_refusal(&[p])) {
+            self.views.status = Some(e);
+            return;
+        }
         match constraints::align(&f, &self.values(), &reference, &target) {
             Ok(edits) => {
                 // What it turned or moved must still build: a draft sound before stays sound, else it is as it was.

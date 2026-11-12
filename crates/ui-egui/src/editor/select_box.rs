@@ -291,6 +291,10 @@ impl FamilyEditor {
             self.selection.clone(),
         );
         let items: Vec<Picked> = self.selection.items().iter().copied().filter(|p| self.holds(*p)).collect();
+        // What is pinned isn't taken away (FE-17), nor anything with it.
+        if let Some(e) = self.pinned_refusal(&items) {
+            return Err(e);
+        }
         let places = |of: fn(Picked) -> Option<usize>| {
             let mut v: Vec<usize> = items.iter().filter_map(|p| of(*p)).collect();
             v.sort_unstable_by(|a, b| b.cmp(a));

@@ -1354,6 +1354,8 @@ impl FamilyEditor {
         // unless Drag Elements on Selection is on),
         // or a selected symbol's strokes; never a handle, a grip or a padlock.
         let chosen: Vec<Picked> = self.selection.items().to_vec();
+        let pins = self.selecting.pins;
+        let is_pinned = |p: Picked| family.as_ref().is_some_and(|f| bimcraft_core::family::select::pinned(f, p));
         let tools_free = editable
             && self.views.drawing.is_none()
             && self.views.picking.is_none()
@@ -1378,8 +1380,13 @@ impl FamilyEditor {
             }
             let s = scene.as_ref()?;
             let hit = s.hit(p, pick_plane(p), &chosen)?;
+            // Select Pinned Elements off (FE-17): what is pinned is passed over, a box beginning on it instead.
+            if !pins && is_pinned(hit) {
+                return None;
+            }
             (matches!(hit, Picked::Symbol(_)) || s.under(p, &chosen)).then_some(hit)
         };
+        let on_pinned = |s: &super::select_box::Scene, p: egui::Pos2| !pins && s.hit(p, pick_plane(p), &chosen).is_some_and(is_pinned);
         self.views.over_selected =
             !self.selection.is_empty() && response.hover_pos().and_then(press_hit).is_some_and(|h| self.selection.contains(h));
         // Ctrl held: a drag of the selection copies it (FE-4), and the status bar says so.
@@ -1418,14 +1425,14 @@ impl FamilyEditor {
             && self.views.pasting.is_none();
         let start =
             response.drag_started_by(PointerButton::Primary).then(|| ui.input(|i| i.pointer.press_origin())).flatten().filter(|p| {
-                free && scene.as_ref().is_some_and(|s| !s.under(*p, &chosen))
+                free && scene.as_ref().is_some_and(|s| !s.under(*p, &chosen) || on_pinned(s, *p))
                     && !on_handle(*p)
                     && grips.iter().all(|(_, at)| at.distance(*p) > super::pivot::REACH)
                     && dims::clicked(&marks, &self.dimensions, selected_dim, align_lock, &locks, *p, &on_screen).is_none()
             });
         let boxed = super::select_box::track(&mut self.selection, ui, &response, &painter, pane, start);
         if let (Some((from, to)), Some(scene)) = (boxed, scene.as_ref()) {
-            let taken = scene.in_box(from, to);
+            let taken: Vec<Picked> = scene.in_box(from, to).into_iter().filter(|p| pins || !is_pinned(*p)).collect();
             self.selection.apply(&taken, super::select_box::How::of(crate::canvas::click_modifiers(ui)));
         }
         // The view's ways in the family's axes, for the move below (the view's drawing isn't read past here).
@@ -1577,6 +1584,8 @@ impl FamilyEditor {
         {
             problem = Some(e);
         }
+        // Select Pinned Elements off (FE-17): a click on what is pinned is one on nothing.
+        let select = select.map(|hit| hit.filter(|p| pins || !is_pinned(*p)));
         if let Some(hit) = select {
             self.click_select(hit, crate::canvas::click_modifiers(ui));
         }
@@ -1605,6 +1614,14 @@ impl FamilyEditor {
         if let Some(m) = self.views.modify.as_mut() {
             m.selection = now;
         }
+        // A plane pinned keeps its place (FE-17): the drag is refused, saying so.
+        let pinned_plane = moved.and_then(|(g, _)| self.pinned_refusal(&[Picked::Plane(g)]));
+        let moved = if pinned_plane.is_some() {
+            problem = pinned_plane;
+            None
+        } else {
+            moved
+        };
         // A plane its dimensions hold is dragged through them: a label it changes takes the new length, what is locked to it
         // follows, and what can't hold says so.
         // Refused where it leaves the family failing its checks it passed (FE-7 review): put back, saying why.

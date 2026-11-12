@@ -786,6 +786,15 @@ impl BimApp {
                         later_small(ui, Icon::Trim, msg!("Trim/Extend"));
                         later_small(ui, Icon::Split, msg!("Split Element"));
                     }
+                    // FE-17: Pin and Unpin, what is selected kept where it is or let go.
+                    for (on, icon, label, tip) in [
+                        (true, Icon::Pin, "Pin", msg!("Pin (PN): what is selected keeps its place; moving or deleting it is refused")),
+                        (false, Icon::Unpin, "Unpin", msg!("Unpin (UP): what is selected may be moved and deleted again")),
+                    ] {
+                        if ui.add_enabled_ui(ed.can_pin(on), |ui| crate::small_button(ui, icon, label, false, tip)).inner.clicked() {
+                            ed.pin_selected(on);
+                        }
+                    }
                     let tip = msg!("Delete (DE): what is selected, with what depends on it");
                     if ui.add_enabled_ui(some || ed.deletable(), |ui| big_button(ui, Icon::Delete, "Delete", false, tip)).inner.clicked()
                         && let Err(e) = ed.delete_selected()
@@ -1305,6 +1314,7 @@ impl BimApp {
         let Some(mut ed) = self.take_family() else { return };
         ed.snaps = self.snaps_now();
         (ed.selecting.by_face, ed.selecting.drag_faces) = (self.select_by_face, self.drag_on_selection);
+        ed.selecting.pins = self.select_pinned;
         let pane = ui.available_rect_before_wrap();
         self.view_rect = pane;
         self.pane = pane;
