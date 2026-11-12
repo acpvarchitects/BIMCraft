@@ -9,7 +9,7 @@ bottom, or floating windows), apart from its drawing, so tests and the settings 
 `Palette` and its body in `palette_body`. A view's tab floats it in a window (`BimApp::floating`; `views` are the tabs and
 `front` the one the views' area shows): the active view (`BimApp::sheet`) takes the tools, any other on screen draws through
 `view_pane` as it is, with the canvas `at_rest` and `passive` set so it takes no clicks, and a click makes it active. Widget
-ids inside a view are per view (`push_id`), so two views on screen never clash. The start page is `start.rs` (`BimApp::home`; the desktop's `main` shows it when given no file, the quick access bar's Home and Ctrl+D bring it back over a project and go back to it, `BimApp::toggle_home`, and `Home::over` says there is one behind it): its tiles' pictures are drawn on a thread (`start::picture`, a `.bimcraft` file's 3D view) and a test waits for them with `Home::settled`. Its Sample Project button (`Pending::Sample`, `BimApp::open_sample`) builds the sample house, `bimcraft_core::sample::SAMPLE`, as a project with no file, so Save asks where to put it; it goes through `guard` like New and Open, and the script's steps are not undo steps, as with `--sample`. Its Families group (New Family, its categories dropped down, and Open Family…) opens a family document over the page ([families](families.md)). File > Settings is `settings.rs`, the user's
+ids inside a view are per view (`push_id`), so two views on screen never clash. The start page is `start.rs` (`BimApp::home`; the desktop's `main` shows it when given no file, the quick access bar's Home and Ctrl+D bring it back over a project and go back to it, `BimApp::toggle_home`, and `Home::over` says there is one behind it): its tiles' pictures are drawn on a thread (`start::picture`, a project file's 3D view) and a test waits for them with `Home::settled`. Its Sample Project button (`Pending::Sample`, `BimApp::open_sample`) builds the sample house, `bimcraft_core::sample::SAMPLE`, as a project with no file, so Save asks where to put it; it goes through `guard` like New and Open, and the script's steps are not undo steps, as with `--sample`. Its Families group (New Family, its categories dropped down, and Open Family…) opens a family document over the page ([families](families.md)). File > Settings is `settings.rs`, the user's
 `settings.json` beside the favorites (`BimApp::use_settings`, which the desktop's `main` calls; tests never write it unless
 they hand it a file): what it keeps is `Settings`, written when it changes, between drags; a setting still to come goes on
 its page greyed out (`later`).
@@ -93,7 +93,7 @@ During replacement of the project between frames, context returns an error askin
 rather than resolving old selected IDs against the new model. New/Open through the window clear the old context. A snapshot is
 current when answered: agents should request it again after the user selects or navigates. It does not change selection, navigate,
 edit the model, add an undo step, or access files, and is available through both window and connection read-only settings.
-This is desktop state, not a model command or a field saved in `.bimcraft`: headless MCP returns an explicit error explaining
+This is desktop state, not a model command or a field saved in the project file: headless MCP returns an explicit error explaining
 `--connect`. Without a listening window the existing connection error applies; an older window without this bridge operation
 reports unknown op. The active view is within the connected window, independent of which operating-system window has focus.
 
@@ -113,6 +113,10 @@ back and replies with what it would make, change and remove and the warnings the
 undo history are as they were. It only reads, so it answers where agents may only read too, and a line that names a file or
 would save, undo, redo or replace the project is refused, as is a `favorite` other than `list`: saving or deleting one writes the
 user's favorites file, outside the project, even with no `path` given.
+Manage > Macros > Run Script (`script.rs`) is the same for the user: a script typed or pasted in a dialog, one command a line as
+the command line and agents write them. Try is that dry run, said in a line (`script::summary`) with the project untouched; Run takes
+the dry run first, so it refuses what it would refuse, and then runs the script as one undo step, `Script` (`Session::script_atomic`),
+all or nothing, and the status box says what it did.
 
 The interface's language is `lang::Lang`: a project's language, or Simplified Chinese (issue 38), which only the window speaks
 (a drawing's lettering, `font.rs`, is drawn in code and has no hanzi, so a project is never in Chinese and `Lang::project()` gives
@@ -136,6 +140,11 @@ door or window lands on it (`Model::centred`): the click sends that `offset`, th
 A selected column or component, and the Column and Component tools' sketches, show up to four: how far it stands from the nearest wall centre
 line or grid east, north, west and south (`Model::clearances`, which finds them in the core; `standing_dimensions` draws them); a typed one runs
 `move` by the difference along that way.
+A selected straight wall shows, besides its length, how far its centre line stands from the nearest parallel wall centre line or grid on
+each side, square to it from its middle (`Model::wall_clearances`; `wall_dimensions` draws them a little along it): a typed one moves the
+wall by the difference, the walls joined to it stretching (`move`).
+The Text tool's Leader (Options Bar) makes the first click the point the note's leader reaches and the next the note's top left corner,
+in a plan, a section or on a sheet (`write_note`); Esc between them forgets the first.
 
 Align (AL) highlights the exact edge or axis under the cursor before either pick, leaving the selected reference as an
 extended dashed line. It searches the candidates under the pointer for a usable line rather than letting annotation mask
@@ -455,7 +464,7 @@ Filter. While something is selected, every tab's Select panel has Filter, and th
 (`filter.rs`): Revit's Filter, the selection counted by category, each checked to keep or cleared to leave out, with Check All,
 Check None and the total kept; OK keeps what is checked selected. Its Filter by list goes further: any parameter every selected
 element has, which `selection::common` finds (the schedules' fields their categories share, Category first, Count left out; what
-schedules aren't of, lines, regions, text, tags, grids, views and sheets, has its fields in `schedule::MORE`: a line's Line Style), and
+schedules aren't of, lines, regions, text, tags, grids and views, has its fields in `schedule::MORE`: a line's Line Style), and
 the list becomes that parameter's values (`selection::groups`, as schedules show them, numbers by value, `(none)` last), to keep or
 leave out the same way. The `filter_selection` command gives agents the same: the groups, the shared fields, and with `keep`, the ids kept.
 
@@ -599,13 +608,30 @@ seven segment kinds, paper units, text fitting and centerline semantics.
 
 Annotate > Dimension has Aligned (DI) and Linear, and Angular, Radial, Diameter, Arc Length, Spot Elevation and Spot Slope small beside
 them (`BimApp::dimension_panel`); Spot Slope (`Tool::SpotSlope`) runs `spot_slope` where a floor or a roof is clicked in a plan. Aligned and Linear are one tool, `Tool::Dimension(mode, refs)`: a click near an endpoint picks it before the line
-it ends (`canvas::dimension_pick`), marked with a square; after two, a click away places the dimension the Options Bar's Place says (Auto,
+it ends (`canvas::dimension_pick`), marked with a square; a click on a reference already picked takes it out, Backspace the last, and Esc starts the chain over; after two, a click away places the dimension the Options Bar's Place says (Auto,
 Aligned, Horizontal, Vertical; Space steps them), drawn as it would be while the cursor moves. `Tool::Round(kind, picked)` is Radial, Diameter
 and Arc Length; after its arc, Arc Length takes two ends on it to measure between (`dims::arc_point`), or a click places the whole arc's. A new dimension takes the type the Type Selector names, else its kind's (`dimtypes::dimension_type_for`); Edit Type on one opens
 Dimension Type Properties (`dimtypes.rs`), and Properties edits its prefix, suffix, text above and below, Replace With Text and Equality Display.
-A double click on one of its numbers opens Dimension Text for that segment (`DimensionTextDialog`). Selected, an aligned or linear one shows
-a padlock under each segment and, over a string of two or more, EQ past its end (`dimension_constraints`): a click locks or unlocks, or makes
-it equal or not.
+With one element selected, the numbers of the dimensions that measure to it are drawn smaller in `accent_ink`; a click on one opens an empty
+field (`canvas::dimension_highlights`), and Enter moves the selected element, the opposite reference staying (an equal chain's far end stays). A double click on a number, or a click on the Aa button over a selected dimension's numbers, opens Dimension Text for that segment
+(`DimensionTextDialog`); a segment's Replace With Text beats its number, and an equal chain prints its type's Equality Text in every drawing while
+its EQ control appears over the middle of the chain. Selected, an aligned or linear one shows
+a padlock under each segment (open while the segment is free, shut while locked), which a click locks or unlocks, and the EQ over the chain, struck through until a click makes it
+equal or not — its ends staying, the inner references spreading evenly; a value typed into an equal chain makes every segment it. A
+placed dimension's references are changed from the right-click menu's Edit Dimension References or the Modify tab's button (`dimension
+{id, refs, at}`): a picked reference clicked is taken out, another face, axis or corner added, and Enter confirms. A selected wall's
+temporary length dimension (`temporary_dimension`) has a dimension-line button under its number that makes it a permanent dimension between
+the wall's ends or, where an end is joined to a perpendicular wall, between those walls' centre lines (`walls::joined_perpendicular`; a
+wall merely near it isn't a join), so changing it moves that whole wall; typing its number resizes the wall through `wall_length`: both free
+ends or both joined ends move evenly, one joined moves its free end alone. A dimension measured along one wall resizes it wherever its references stand — side
+faces, corner handles, end faces or a mix — the wall being nudged until the measured value is reached (`dimension_value`), so face
+corners at joined ends no longer leave it short. Tab over a dimension chain steps through its segments, a click picks one, and Delete takes only that segment out
+(`dimension_segment`): the chains either side stay on their own references, the left keeping the dimension and the right becoming a new one.
+A dimension selected also offers Edit Dimension References on the Modify tab, as its right-click menu does: a click on a picked reference
+takes it out, a click on another face, axis or corner of the same element adds it (faces are independent), a click in the open confirms
+and leaves the edit (Enter too), and Esc cancels. Tab over an element steps through its faces, axes and corners, highlighting the reference a click would
+bind, while creating a chain or editing one (`dimension_references`). Dragging a dimension moves it only square to its line (`dragged`
+projects onto the line's normal); it never slides along itself.
 
 ## Background grids
 
