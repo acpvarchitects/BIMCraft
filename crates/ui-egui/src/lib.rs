@@ -757,6 +757,10 @@ pub struct BimApp {
     /// The family documents open, each a tab or more beside the project's (`editor/tabs.rs`), and the next one's id.
     families: Vec<editor::tabs::FamilyDoc>,
     next_doc: u32,
+    /// The Family Editor's clipboard (FE-14, `editor/clipboard.rs`): the window's, so it outlives views and tabs.
+    clipboard: Option<editor::clipboard::Held>,
+    /// A line for the system's clipboard once something is copied, so Ctrl+V reaches the window.
+    clip_text: Option<String>,
     /// A family document being closed, asked about first while it has unsaved changes.
     doc_closing: Option<editor::tabs::Closing>,
     /// File > New, Open, Close or quitting, its family documents closed: the project's question next.
@@ -1446,6 +1450,8 @@ impl BimApp {
             favorites_dialog: None,
             families: Vec::new(),
             next_doc: 1,
+            clipboard: None,
+            clip_text: None,
             doc_closing: None,
             after_documents: None,
             new_family_dialog: None,

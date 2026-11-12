@@ -61,9 +61,25 @@ pub(crate) const FAMILY_SHORTCUTS: &[(&str, &str)] = &[
     ("HR", "Reset Temporary Hide/Isolate"),
 ];
 
-/// Whether `action` is a command the family document has: one its table gives a key.
+/// The family document's commands Revit gives no key: Keyboard Shortcuts lists them, and a key made there works on a family
+/// tab. FE-8's Trim/Extend Single and Multiple Elements, and FE-14's clipboard (Ctrl+C, Ctrl+X and Ctrl+V are fixed; Paste
+/// Aligned's choices have no key).
+pub(crate) const FAMILY_KEYLESS: &[&str] = &[
+    "Trim/Extend Single Element",
+    "Trim/Extend Multiple Elements",
+    "Copy to Clipboard",
+    "Cut to Clipboard",
+    "Paste",
+    "Aligned to Same Place",
+    "Aligned to Current View",
+    "Aligned to Selected Views",
+    "Aligned to Selected Levels",
+    "Aligned to Picked Level",
+];
+
+/// Whether `action` is a command the family document has: one its table gives a key, or one it has with none.
 pub(crate) fn in_family(action: &str) -> bool {
-    FAMILY_SHORTCUTS.iter().any(|(_, a)| *a == action)
+    FAMILY_SHORTCUTS.iter().any(|(_, a)| *a == action) || FAMILY_KEYLESS.contains(&action)
 }
 
 impl BimApp {
@@ -127,6 +143,13 @@ impl BimApp {
         };
         if let Some(asked) = asked {
             self.family_temp(asked);
+            return true;
+        }
+        // FE-14: the Clipboard panel's commands, by a key Keyboard Shortcuts gave them.
+        if let Some(c) = super::clipboard::Command::of(action) {
+            if self.active_family().is_some_and(|ed| ed.adaptive.is_none()) {
+                self.family_clipboard(c);
+            }
             return true;
         }
         let units = self.session.model.units;
