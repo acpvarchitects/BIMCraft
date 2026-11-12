@@ -28,9 +28,10 @@ impl FamilyEditor {
         }
     }
 
-    /// The first of `items` pinned, named as a refusal says it; none where none is.
+    /// The first of `items` pinned, named as a refusal says it; none where none is. A datum, pinned always, has refusals of
+    /// its own ("is a datum"), and Delete leaves it where it is: it isn't one.
     pub(super) fn pinned_refusal(&self, items: &[Picked]) -> Option<String> {
-        let p = items.iter().copied().find(|p| self.is_pinned(*p))?;
+        let p = items.iter().copied().find(|p| self.is_pinned(*p) && !self.is_datum(*p))?;
         let named = self.family().map(|f| select::said(&f, p)).unwrap_or_else(|_| t("an element").to_string());
         Some(pinned_said(&named))
     }

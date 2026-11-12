@@ -89,6 +89,7 @@ impl FamilyEditor {
             && self.adaptive.is_none()
             && self.placing.is_none()
             && self.views.drawing.is_none()
+            && self.views.measuring.is_none()
             && self.views.picking.is_none()
             && self.views.pivoting.is_none()
             && self.views.dimensioning.is_none()

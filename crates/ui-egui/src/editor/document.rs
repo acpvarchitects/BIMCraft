@@ -172,6 +172,7 @@ impl FamilyEditor {
         self.modeller.tool = Draw::Modify;
         self.modeller.picking_plane = false;
         self.views.drawing = None;
+        self.views.measuring = None;
         self.views.picking = None;
         self.views.dimensioning = None;
         self.views.aligning = None;
@@ -809,7 +810,15 @@ impl BimApp {
                     }
                 }
                 ribbon::panel(ui, msg!("Measure"), |ui| {
-                    later(ui, Icon::Measure, msg!("Measure"));
+                    // FE-17: Measure, in a plan or an elevation of a family that isn't adaptive.
+                    if ed.editing_2d() && ed.sketch.is_none() {
+                        let tip = msg!("Measure (ME): click two points; the ruler reads its length, its angle and its parts");
+                        if big_button(ui, Icon::Measure, msg!("Measure"), ed.measuring(), tip).clicked() {
+                            ed.measure_tool();
+                        }
+                    } else {
+                        later(ui, Icon::Measure, msg!("Measure"));
+                    }
                 });
                 if tab == DocTab::Context {
                     if let Some(i) = ed.selected_nested() {
@@ -1567,6 +1576,10 @@ impl BimApp {
             (Some(_), false) if ed.views.aligning.as_ref().is_some_and(Option::is_none) => msg!("Click the reference to align to."),
             (Some(_), false) if ed.views.aligning.is_some() => msg!("Click what moves onto it."),
             (Some(_), false) if ed.placing.is_some() => msg!("Click where the component goes, on the view's work plane."),
+            (Some(_), false) if ed.views.measuring.as_ref().is_some_and(|m| m.first.is_some()) => {
+                msg!("Measure: click the second point; Esc lets the first go.")
+            }
+            (Some(_), false) if ed.measuring() => msg!("Measure: click the first point (Shift keeps the second square)."),
             (Some(_), false) if ed.views.pivoting.is_some() => {
                 msg!("Click the point it turns about: where two planes cross, a line's end, a point of a sketch, or anywhere.")
             }
@@ -1786,6 +1799,7 @@ impl BimApp {
                 || ed.stop_picking()
                 || ed.views.pivoting.take().is_some()
                 || ed.modify_escape()
+                || ed.measure_escape()
             {
             } else if let Some(refs) = ed.views.dimensioning.as_mut() {
                 if refs.is_empty() {

@@ -71,6 +71,9 @@ pub(crate) const FAMILY_SHORTCUTS: &[(&str, &str)] = &[
     ("PN", "Pin"),
     ("UP", "Unpin"),
     ("PE", "Select Pinned Elements"),
+    // Measure and Create Similar, as the project's.
+    ("ME", "Measure"),
+    ("CS", "Create Similar"),
 ];
 
 /// The family document's commands Revit gives no key: Keyboard Shortcuts lists them, and a key made there works on a family
@@ -285,6 +288,8 @@ impl BimApp {
             "Select by ID" => ed.open_select_by_id(),
             "Select All Instances" => ed.select_instances(true),
             "Select All Instances: In Entire Family" => ed.select_instances(false),
+            "Measure" => ed.measure_tool(),
+            "Create Similar" => said = Some(ed.create_similar()),
             "Pin" => ed.pin_selected(true),
             "Unpin" => ed.pin_selected(false),
             _ => return in_family(action),

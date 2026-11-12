@@ -41,6 +41,8 @@ pub(crate) struct Views {
     pub(crate) detail: bimcraft_core::graphics::Detail,
     /// The Reference Plane tool, on, with its first click once made.
     pub(crate) drawing: Option<Option<P2>>,
+    /// The Measure tool, on (FE-17): its first click and the ruler last laid.
+    pub(crate) measuring: Option<super::measure::Measuring>,
     /// The plane being dragged: where the pointer was, in the view's millimetres, and the view as the drag began, which the
     /// pointer is read through while it goes on (the view refitting round the plane would otherwise change its scale under
     /// the hand).
@@ -1116,6 +1118,23 @@ impl FamilyEditor {
                 if ui.input(|i| i.modifiers.shift) { screen(bimcraft_core::snap::orthogonal_step(first, at_view(hover)).0) } else { hover };
             painter.line_segment([screen(first), hover], Stroke::new(1.5, PICKED));
         }
+        // Measure's ruler (FE-17): from its first click to the pointer, and the one laid in this view, read beside it.
+        if let Some(m) = self.views.measuring.as_ref() {
+            if let (Some(first), Some(hover)) = (m.first, response.hover_pos()) {
+                painter.line_segment([screen(first), hover], Stroke::new(1.5, PICKED));
+            }
+            if let Some((a, b, _)) = m.laid.filter(|l| l.2 == which) {
+                let (pa, pb) = (screen(a), screen(b));
+                painter.line_segment([pa, pb], Stroke::new(2.0, PICKED));
+                for q in [pa, pb] {
+                    let mark = egui::Rect::from_center_size(q, egui::vec2(8.0, 8.0));
+                    painter.rect_stroke(mark, 0.0, Stroke::new(2.0, PICKED), egui::StrokeKind::Middle);
+                }
+                let n = (pb - pa).normalized().rot90();
+                let text = super::measure::read(&bimcraft_core::snap::ruler(a, b), base.units);
+                painter.text(pa + (pb - pa) / 2.0 + n * 16.0, egui::Align2::CENTER_CENTER, text, egui::FontId::proportional(12.0), PICKED);
+            }
+        }
         // A selected extrusion's Start and End, where the view sees its plane edge-on: shape handles to drag (F5); one tied to
         // a parameter, a formula or a dimension, greyed. Its profile's edges' handles too (FE-5), drawn alike.
         let handles = if editable { self.end_handles(&c.staged, which) } else { Vec::new() };
@@ -1223,11 +1242,13 @@ impl FamilyEditor {
         let mut align = None;
         let mut on_dims: Option<(Clicked, Vec<f64>)> = None;
         let mut modify_at: Option<super::modify::Click> = None;
+        let mut measure_at: Option<P2> = None;
         let mut paste_at: Option<P2> = None;
         let mut clicked_any = false;
         // A double click on a form sketches it again, as Edit Extrusion or Edit Revolve does (F5).
         let edit = (editable
             && response.double_clicked()
+            && self.views.measuring.is_none()
             && self.views.drawing.is_none()
             && self.views.picking.is_none()
             && self.views.modify.is_none()
@@ -1263,6 +1284,14 @@ impl FamilyEditor {
                 // Offset reads the side clicked, so its point isn't snapped onto what it offsets.
                 let offsetting = self.views.modify.as_ref().is_some_and(|m| m.tool == super::modify::Tool::Offset);
                 modify_at = Some((if offsetting { q } else { snapped(p) }, axis_at(p), offset_at(p)));
+            } else if self.views.measuring.is_some() {
+                // Measure (FE-17): a ruler by two clicks, snapped as a Modify tool's points are; Shift keeps it square.
+                let first = self.views.measuring.as_ref().and_then(|m| m.first);
+                let at = match first {
+                    Some(a) if ui.input(|i| i.modifiers.shift) => bimcraft_core::snap::orthogonal_step(a, snapped(p)).0,
+                    _ => snapped(p),
+                };
+                measure_at = Some(at);
             } else if let Some(first) = self.views.drawing {
                 match first {
                     None => self.views.drawing = Some(Some(q)),
@@ -1357,6 +1386,7 @@ impl FamilyEditor {
         let pins = self.selecting.pins;
         let is_pinned = |p: Picked| family.as_ref().is_some_and(|f| bimcraft_core::family::select::pinned(f, p));
         let tools_free = editable
+            && self.views.measuring.is_none()
             && self.views.drawing.is_none()
             && self.views.picking.is_none()
             && self.views.pivoting.is_none()
@@ -1411,6 +1441,7 @@ impl FamilyEditor {
         // a window left to right, a crossing right to left; Ctrl adds what it takes, Shift takes it away (FE-1).
         let free = editable
             && pressed.is_none()
+            && self.views.measuring.is_none()
             && self.views.drawing.is_none()
             && self.views.picking.is_none()
             && self.views.pivoting.is_none()
@@ -1598,6 +1629,11 @@ impl FamilyEditor {
             }
         }
         // A Modify tool's click (FE-8), and Rotate's Angle typed.
+        if let Some(at) = measure_at
+            && let Some(text) = self.measure_click(at, which, base.units)
+        {
+            self.views.said = Some(text);
+        }
         if let Some((q, axis, offset)) = modify_at
             && let Some(e) =
                 self.modify_click(q, (which, view, pass), space, &shown_selection, axis, offset, ui.input(|i| i.modifiers.shift))
