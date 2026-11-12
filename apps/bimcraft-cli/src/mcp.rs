@@ -32,7 +32,7 @@ window); or send several at once with script, one `command {json}` per line. lis
 parameters, and the menu it sits in. Check your work with inspect_model and query_elements, look at it with render (a PNG of a level's plan, with \
 ceiling: true its reflected ceiling plan, of a section or elevation by name, or of the 3D view with view \"{3D}\"; or a family \
 alone with family, type and mode \"3d\", \"plan\" or \"elevation\" — which draws in no project of yours), and save \
-to .bimcraft or .ifc.";
+to .bimc or .ifc.";
 
 /// What a refusal of a read-only server says lets the agent edit.
 const READ_ONLY_HOW: &str = "this MCP server was started with --read-only: start it without to edit";
@@ -132,6 +132,10 @@ fn tools() -> Value {
             room {point: [x, y], name}, modify {id, …fields}, delete {ids}, undo. list_commands shows them all with their parameters.",
          "inputSchema": {"type": "object", "properties": {"command": {"type": "string"}, "params": {"type": "object"}}, "required": ["command"]}},
         {"name": "script", "description": "Run several commands, one per line: `wall {\"points\": [[0,0],[4000,0]]}`. Stops at the first failing line and names it; the lines before it stay done, each its own undo step. \
+            Name a line `@name = command {json}`; later whole-string values `@name`, `$last`, `$-2` stand for an earlier result's id; \
+            a field path such as `@walls.ids.0` reads that field or array item. Names are unique within one script; comments and blank lines do not count. \
+            Double a leading @ or $ for literal text (`@@home`, `$$last`); strings are not interpolated. \
+            Expanded params are limited per line to 16 MiB (128 bytes/value plus UTF-8 string/key bytes) and 128 levels deep, checked before copying references. \
             With `atomic`, all or nothing: a failing line takes back the lines before it, and a script that goes through is one undo step. \
             With `dry_run`, tried all or nothing and taken back: the reply lists what it would make, change and remove (`made`, `changed`, `removed`, by id and category), \
             whether it would change anything else (`other_changes`) and the model's `warnings` after it, and nothing of it stays. A dry run refuses a line that names a file or would save, undo, redo or replace the project, and a `favorite` other than `list`, which would use the user's favorites file.",
@@ -148,9 +152,9 @@ fn tools() -> Value {
          "inputSchema": {"type": "object", "properties": {"view": {"type": ["string", "integer"]}, "family": {"type": "string"}, "type": {"type": "string"}, "mode": {"type": "string", "enum": ["3d", "plan", "elevation"]}, "wall_thickness": {"type": "number"}, "ceiling": {"type": "boolean"}, "width": {"type": "integer"}, "height": {"type": "integer"}, "azimuth": {"type": "number"}, "elevation": {"type": "number"}, "path": {"type": "string"}}}},
         {"name": "new_model", "description": "Start an empty project with Level 1 and Level 2.",
          "inputSchema": {"type": "object", "properties": {"name": {"type": "string"}}}},
-        {"name": "open", "description": "Open a .bimcraft project, import a Revit .rvt file (read directly, no Revit needed: its levels, walls, floors, ceilings, doors and windows, columns, rooms and flat roofs come in, and the reply lists what was left out and why), or import an .ifc file (IFC2x3 or IFC4, from Revit or any BIM tool): its storeys, straight and curved walls with their doors and windows, floors (level or sloped) and ceilings, with their holes, rooms, columns, grids, stairs and ramps of straight runs with landings, railings, shafts and roofs (flat, sloping all round over any footprint with gable ends, courtyards and openings, or one profile swept across) come in measured from their geometry; the reply lists what was left out and why.",
+        {"name": "open", "description": "Open a .bimc project (or a .bimt or earlier .bimcraft one), import a Revit .rvt file (read directly, no Revit needed: its levels, walls, floors, ceilings, doors and windows, columns, rooms and flat roofs come in, and the reply lists what was left out and why), or import an .ifc file (IFC2x3 or IFC4, from Revit or any BIM tool): its storeys, straight and curved walls with their doors and windows, floors (level or sloped) and ceilings, with their holes, rooms, columns, grids, stairs and ramps of straight runs with landings, railings, shafts and roofs (flat, sloping all round over any footprint with gable ends, courtyards and openings, or one profile swept across) come in measured from their geometry; the reply lists what was left out and why.",
          "inputSchema": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}},
-        {"name": "save", "description": "Save to .bimcraft (the project), or export by extension: .ifc (IFC4 for other BIM tools), .glb (the default 3D view's scene as glTF 2.0, for Blender and viewers: metres, y up, a node for each element named by its id), .svg or .png (the lowest level's plan), .pdf (every sheet, a page each).",
+        {"name": "save", "description": "Save to .bimc (the project; .bimt the same), or export by extension: .ifc (IFC4 for other BIM tools), .glb (the default 3D view's scene as glTF 2.0, for Blender and viewers: metres, y up, a node for each element named by its id), .svg or .png (the lowest level's plan), .pdf (every sheet, a page each).",
          "inputSchema": {"type": "object", "properties": {"path": {"type": "string"}}}}
     ])
 }
@@ -568,6 +572,32 @@ mod tests {
         assert_eq!(call(&mut s, 4, "tools/call", json!({"name": "script", "arguments": "x"}))["error"]["code"], -32602);
         assert!(s.handle_line("{not json").unwrap().contains("-32700"));
         assert!(s.handle_line("[]").unwrap().contains("-32600"));
+    }
+
+    #[test]
+    fn script_result_references_through_mcp_roll_back_and_retry_atomically() {
+        let mut s = Server::new();
+        let failed = call(
+            &mut s,
+            1,
+            "tools/call",
+            json!({"name":"script", "arguments":{"atomic":true,"text":
+                "@walls = wall {\"points\":[[0,0],[8000,0]]}\ndoor {\"wall\":\"@walls.ids.9\",\"offset\":3000}"}}),
+        );
+        assert_eq!(failed["result"]["isError"], true);
+        assert!(failed["result"]["content"][0]["text"].as_str().unwrap().contains("line 2 (door)"));
+        assert!(tool(&mut s, "inspect_model", json!({}))["counts"].get("wall").is_none());
+        let results = tool(
+            &mut s,
+            "script",
+            json!({"atomic":true,"text":
+            "@walls = wall {\"points\":[[0,0],[8000,0]]}\ndoor {\"wall\":\"@walls.ids.0\",\"offset\":3000}\nmodify {\"id\":\"$last\",\"mark\":\"Entry\"}"}),
+        );
+        assert!(results["results"][1]["id"].is_number(), "{results}");
+        let doors = tool(&mut s, "query_elements", json!({"category":"doors"}));
+        assert_eq!(doors["elements"][0]["mark"], "Entry");
+        tool(&mut s, "execute", json!({"command":"undo"}));
+        assert!(tool(&mut s, "inspect_model", json!({}))["counts"].get("wall").is_none());
     }
 
     #[test]

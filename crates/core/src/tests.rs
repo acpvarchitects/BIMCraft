@@ -205,6 +205,29 @@ fn a_point_knows_how_far_it_stands_from_the_nearest_wall_centre_line_or_grid_eac
 }
 
 #[test]
+fn a_straight_wall_knows_how_far_the_nearest_parallel_wall_or_grid_stands_on_each_side() {
+    let mut s = Session::new();
+    // Walls 100002 (south, running east), 100003 (east), 100004 (north) and 100005 (west).
+    house(&mut s);
+    let reach = |s: &Session, id: u64| {
+        s.model.wall_clearances(id).map(|c| c.map(|c| (c.distance, s.model.elements.id(c.to.id).unwrap(), c.toward)))
+    };
+    // Its left, then its right: the north wall 6000 to the left of the south one, nothing to its right.
+    assert_eq!(reach(&s, 100002), [Some((6000.0, 100004, P2(0.0, 1.0))), None]);
+    // A wall between them is each one's nearest; the crossing east and west walls are no parallel ones.
+    let mid = run(&mut s, "wall", json!({"points": [[0, 2500], [8000, 2500]], "type": "Interior - 100mm"}))["ids"][0].as_u64().unwrap();
+    assert_eq!(reach(&s, 100002)[0], Some((2500.0, mid, P2(0.0, 1.0))));
+    assert_eq!(reach(&s, mid), [Some((3500.0, 100004, P2(0.0, 1.0))), Some((2500.0, 100002, P2(0.0, -1.0)))]);
+    // A grid nearer than the wall takes its place; one beside it, past its ends, is passed over.
+    let g = run(&mut s, "grid", json!({"start": [-500, 1000], "end": [8500, 1000]}))["id"].as_u64().unwrap();
+    run(&mut s, "grid", json!({"start": [9000, 2000], "end": [12000, 2000]}));
+    assert_eq!(reach(&s, mid)[1], Some((1500.0, g, P2(0.0, -1.0))));
+    // A curved wall has none.
+    let arc = run(&mut s, "wall", json!({"points": [[2000, 4000], [6000, 4000]], "arc": 90}))["ids"][0].as_u64().unwrap();
+    assert_eq!(reach(&s, arc), [None, None]);
+}
+
+#[test]
 fn a_door_stands_between_the_faces_of_the_walls_that_meet_its_wall() {
     use crate::model::Element;
     let mut s = Session::new();
@@ -3376,6 +3399,36 @@ fn schedules_come_back_as_rows_or_csv_files() {
     let _ = std::fs::remove_file(csv);
 }
 
+/// The sheet list every project has: its sheets in the order of their numbers, on a sheet too.
+#[test]
+fn a_sheet_list_is_the_projects_sheets_by_number() {
+    let mut s = Session::new();
+    run(&mut s, "sheet", json!({"number": "A-102", "name": "Sections"}));
+    run(&mut s, "sheet", json!({"number": "A-101", "name": "Plans"}));
+    let t = run(&mut s, "schedule", json!({"category": "sheet"}));
+    assert_eq!(t["name"], "Sheet List", "one of the views every project has");
+    assert_eq!(t["columns"], json!(["Number", "Name"]));
+    assert_eq!(t["rows"], json!([["A-101", "Plans"], ["A-102", "Sections"]]), "by their numbers, not the order they were made");
+    // On a sheet it is a schedule of the project's own, listed with the sheets it lists.
+    let vp = run(&mut s, "place", json!({"sheet": "A-101", "view": "Sheet List"}));
+    assert!(vp["id"].is_u64());
+    let t = run(&mut s, "schedule", json!({"category": "sheet"}));
+    assert_eq!(t["rows"], json!([["A-101", "Plans"], ["A-102", "Sections"]]));
+    // Sheets aren't built elements: a multi-category schedule can't list them.
+    assert!(
+        s.execute("schedule", &json!({"name": "Everything", "category": "multicategory", "categories": ["sheets"]})).is_err(),
+        "a multi-category schedule lists what's built"
+    );
+    // Saved and opened again it is there, still listing them.
+    let path = temp("sheet-list.bimcraft");
+    run(&mut s, "save", json!({"path": path}));
+    let mut back = Session::new();
+    run(&mut back, "open", json!({"path": path}));
+    let t = run(&mut back, "schedule", json!({"category": "sheet"}));
+    assert_eq!(t["rows"], json!([["A-101", "Plans"], ["A-102", "Sections"]]));
+    let _ = std::fs::remove_file(path);
+}
+
 #[test]
 fn projects_save_and_open_unchanged() {
     let mut s = Session::new();
@@ -6368,21 +6421,21 @@ fn a_file_from_before_guids_opens_with_guids_and_six_digit_ids() {
 }
 
 #[test]
-fn a_file_of_the_family_editors_unreleased_formats_19_to_32_is_refused_as_newer() {
+fn a_file_of_the_family_editors_unreleased_formats_20_to_32_is_refused_as_newer() {
     // The Family Editor took the format from 17 to 32 a step at a time before it was released, and then became part of 18,
-    // which every change since 0.11 shares. Nothing of 19 to 32 was released, so this build reads none of them: each is
-    // refused as any newer file is.
+    // which every change since 0.11 shares; 19 is the sheet list's (the Family Editor's 19 was never released either).
+    // Nothing of 20 to 32 was released, so this build reads none of them: each is refused as any newer file is.
     use crate::model::{FORMAT, Model};
-    assert_eq!(FORMAT, 18);
+    assert_eq!(FORMAT, 19);
     let mut s = Session::new();
     house(&mut s);
     let v = serde_json::to_value(&*s.model).unwrap();
-    for old in 19..=32 {
+    for old in 20..=32 {
         let mut was = v.clone();
         was["format"] = json!(old);
         let e = Model::read(&was.to_string()).unwrap_err();
         assert!(
-            e.contains("saved by a newer BIMCraft") && e.contains(&format!("file format {old}")) && e.contains("reads up to 18"),
+            e.contains("saved by a newer BIMCraft") && e.contains(&format!("file format {old}")) && e.contains("reads up to 19"),
             "{old}: {e}"
         );
     }
@@ -6395,7 +6448,7 @@ fn a_project_is_saved_in_the_current_format_and_one_of_format_4_up_opens_as_it_i
     // repeating details, line and fill styles); 7 its CAD drawings and the imports that place them; 8 text types; 9 graphic line patterns; 10 dimensions to points and linear ones; 11 and 12 the project languages Swedish, Czech and French, and Dutch;
     // 13 floors' and flat roofs' shapes; 14 the categories of family components, which the starter view templates name; 15 a roof's slope for each
     // edge and a wall's top offset; 16 dimensions in 3D views and the locks Align leaves; 17 multi-category schedules and Italian projects; 18 a wall or a run
-    // that refuses to join; 19 circuits; 20 panel schedules. Nothing in a file of 4
+    // that refuses to join, circuits and panel schedules; 19 a sheet list. Nothing in a file of 4
     // to 7 that holds no notes changes.
     let mut s = Session::new();
     let empty = serde_json::to_value(&*s.model).unwrap();

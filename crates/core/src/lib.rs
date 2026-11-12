@@ -83,6 +83,9 @@ mod family_transform_tests;
 #[cfg(test)]
 mod family_visibility_tests;
 pub mod favorites;
+#[cfg(test)]
+mod file_extension_tests;
+pub mod files;
 pub mod fills;
 mod fixtures;
 mod font;
@@ -121,6 +124,9 @@ pub mod lines;
 pub mod link;
 pub mod loads;
 pub mod massing;
+pub mod mesh_in;
+#[cfg(test)]
+mod mesh_in_tests;
 pub mod model;
 pub mod nbr5410;
 pub mod network;
@@ -137,6 +143,8 @@ pub mod pdf;
 pub mod pen;
 pub mod phasing;
 pub mod plumbing;
+#[cfg(test)]
+mod pset_tests;
 #[cfg(test)]
 mod raised_wall_room_tests;
 #[cfg(test)]
@@ -218,6 +226,8 @@ pub use commands::{
 mod connector_tests;
 #[cfg(test)]
 mod detail_tests;
+#[cfg(test)]
+mod dimension_edit_tests;
 #[cfg(test)]
 mod dimension_tests;
 #[cfg(test)]

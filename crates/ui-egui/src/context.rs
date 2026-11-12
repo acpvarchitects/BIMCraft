@@ -81,6 +81,8 @@ pub(crate) enum Action {
     /// The selected elements pinned where they are, or unpinned.
     Pin,
     Unpin,
+    /// Edit Dimension References: the selected dimension's references picked again.
+    EditDimensionReferences,
 }
 
 impl Action {
@@ -112,6 +114,7 @@ impl Action {
             Action::AllowJoin => msg!("Allow Join"),
             Action::Pin => msg!("Pin"),
             Action::Unpin => msg!("Unpin"),
+            Action::EditDimensionReferences => msg!("Edit Dimension References"),
         }
     }
 
@@ -251,6 +254,13 @@ impl BimApp {
                     Item::new(Action::AllowJoin, joins.iter().any(|j| !*j)),
                 ]);
             }
+            // A dimension selected alone may have its references edited.
+            if let [id] = self.selection.as_slice()
+                && let Some(bimcraft_core::model::Element::Dimension(d)) = m.elements.get(*id)
+                && !d.alignment
+            {
+                groups.push(vec![Item::new(Action::EditDimensionReferences, true)]);
+            }
         }
         let zoom = vec![Item::new(Action::ZoomToFit, true), Item::new(Action::ZoomIn, true), Item::new(Action::ZoomOut, true)];
         match self.sheet {
@@ -303,6 +313,7 @@ impl BimApp {
             Action::AllowJoin => self.set_joins(true),
             Action::Pin => self.set_pinned(true),
             Action::Unpin => self.set_pinned(false),
+            Action::EditDimensionReferences => self.start_dimension_refs_edit(),
         }
     }
 

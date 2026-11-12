@@ -23,9 +23,9 @@ use crate::family::{
 use crate::geom::{self, P2};
 use crate::library::Kind;
 use crate::model::{
-    Ceiling, CeilingType, Column, ColumnType, Component, Element, Extrusion, FIRST_ID, Floor, FloorType, Function, Grid, Guid, Id, Justify,
-    Landing, Layer, Level, Location, MAX_COORD, MAX_LAYERS, MAX_POINTS, MAX_PROJECT_PARAMETERS, MAX_TEXT, Mass, Model, Opening,
-    OpeningType, PARAMETER_CATEGORIES, ParameterKind, ProjectParameter, Railing, RailingType, Ramp, Rebar, Roof, RoofType, Room,
+    Ceiling, CeilingType, Classification, Column, ColumnType, Component, Element, Extrusion, FIRST_ID, Floor, FloorType, Function, Grid,
+    Guid, Id, Justify, Landing, Layer, Level, Location, MAX_COORD, MAX_LAYERS, MAX_POINTS, MAX_PROJECT_PARAMETERS, MAX_TEXT, Mass, Model,
+    Opening, OpeningType, PARAMETER_CATEGORIES, ParameterKind, ProjectParameter, Railing, RailingType, Ramp, Rebar, Roof, RoofType, Room,
     RoomSeparator, Run, RunType, Shaft, Side, Stair, TOL, Wall, WallType, culprit, heading,
 };
 use crate::phasing;
@@ -225,6 +225,15 @@ fn clip(text: &str) -> String {
 const MARKED: [&str; 6] = ["beam", "column", "structuralcolumn", "footing", "stripfooting", "floor"];
 
 /// A property's name as a project parameter's: what a formula can say, each character it can't made a space.
+/// How a value read from a file comes in as a project parameter's: the property set it came in (none: the project's own), the
+/// classification system it is a code of, and whether it is a type's, which its occurrences' own values of the name win over.
+#[derive(Clone, Copy, Default)]
+struct How<'a> {
+    set: Option<&'a str>,
+    classification: Option<&'a Classification>,
+    weak: bool,
+}
+
 fn parameter_name(raw: &str) -> Option<String> {
     let spaced: String = raw.chars().map(|c| if c.is_alphanumeric() || c == '_' { c } else { ' ' }).collect();
     Some(spaced.split_whitespace().collect::<Vec<_>>().join(" ")).filter(|n| crate::family::nameable(n))
@@ -284,6 +293,22 @@ fn normal(f: &[P3]) -> P3 {
 
 fn area3(f: &[P3]) -> f64 {
     dot(newell(f), newell(f)).sqrt() / 2.0
+}
+
+/// How thick a closed body is, plumb, on average over its outline in plan less its holes: what it holds over that area.
+/// Zero when it holds nothing or has no area.
+fn mean_depth(faces: &[Vec<P3>], outer: &[P2], holes: &[Vec<P2>]) -> f64 {
+    // The divergence theorem: each face fanned into triangles, each with the origin a tetrahedron, signed by how it turns.
+    let six: f64 = faces
+        .iter()
+        .filter_map(|f| {
+            let first = *f.first()?;
+            Some(f.windows(2).skip(1).map(|w| dot(first, cross(w[0], w[1]))).sum::<f64>())
+        })
+        .sum();
+    let area = geom::area(outer).abs() - holes.iter().map(|h| geom::area(h).abs()).sum::<f64>();
+    let depth = (six / 6.0).abs() / area;
+    if depth.is_finite() && area > 0.0 { depth } else { 0.0 }
 }
 
 /// A ring and its copy `up` from it, as faces turned out.
@@ -1114,8 +1139,9 @@ impl<'a> Reader<'a> {
         self.chosen(product).into_iter().find_map(|item| unread.get(&item).copied())
     }
 
-    /// The steel section a product's body sweeps, if it is one IFC names by its plates (an I, a channel, an angle, a tube, a
-    /// pipe): the section, its width and depth, and the direction its x runs in, in model coordinates.
+    /// The steel section a product's body sweeps, if it is one IFC names by its plates (an I, a channel, an angle, a T, a tube,
+    /// a pipe): the section, its width and depth, and the direction its x runs in, in model coordinates. One whose y points
+    /// down (an inverted T, as a foundation beam is drawn) is `turned`.
     fn section(&self, product: &Entity) -> Option<(crate::model::Profile, f64, f64, P3)> {
         use crate::profiles::Shape;
         let f = self.frame(product);
@@ -1127,7 +1153,8 @@ impl<'a> Reader<'a> {
         let size = |x: f64| (x * 1000.0).round() / 1000.0;
         let plate = |i: usize| len(i).map_or(0.0, size);
         let name = text(a(1)).map(clip).unwrap_or_default();
-        let bare = |shape| crate::model::Profile { shape, name: name.clone(), web: 0.0, flange: 0.0, thickness: 0.0, radius: 0.0 };
+        let bare =
+            |shape| crate::model::Profile { shape, name: name.clone(), web: 0.0, flange: 0.0, thickness: 0.0, radius: 0.0, turned: false };
         let (profile, width, depth) = match p.name.as_str() {
             "IFCISHAPEPROFILEDEF" => {
                 (crate::model::Profile { web: plate(5), flange: plate(6), radius: plate(7), ..bare(Shape::I) }, len(3)?, len(4)?)
@@ -1137,6 +1164,10 @@ impl<'a> Reader<'a> {
             }
             "IFCLSHAPEPROFILEDEF" => {
                 (crate::model::Profile { thickness: plate(5), radius: plate(6), ..bare(Shape::L) }, len(4).unwrap_or(len(3)?), len(3)?)
+            }
+            // Depth, flange width, web and flange thickness, root radius: its flange on top.
+            "IFCTSHAPEPROFILEDEF" => {
+                (crate::model::Profile { web: plate(5), flange: plate(6), radius: plate(7), ..bare(Shape::T) }, len(4)?, len(3)?)
             }
             "IFCRECTANGLEHOLLOWPROFILEDEF" => (crate::model::Profile { thickness: plate(5), ..bare(Shape::Rhs) }, len(3)?, len(4)?),
             "IFCCIRCLEHOLLOWPROFILEDEF" => {
@@ -1156,8 +1187,9 @@ impl<'a> Reader<'a> {
             profile.name.clear();
         }
         profile.check("", width, depth, profile.shape == Shape::Chs).ok()?;
-        let x = f.then(self.axes(reference(solid.args.get(1)))).then(self.axes(reference(a(2)))).x;
-        Some((profile, width, depth, x))
+        let axes = f.then(self.axes(reference(solid.args.get(1)))).then(self.axes(reference(a(2))));
+        profile.turned = axes.y[2] < -0.5;
+        Some((profile, width, depth, axes.x))
     }
 
     /// The line a product's body sweeps along: its points in the world and the radius of the section, mm. A disk swept along
@@ -1865,19 +1897,22 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
         _ => P2(0.0, 0.0),
     };
     let r = Reader::new(&file, mm, rad, shift);
-    // What an element is made of: its layers, when they add up to how thick it is, and so how thick.
+    // What an element is made of: its layers, when they add up to how thick it is, and so how thick. None when that comes to
+    // no thickness at all (a body measured flat, or layers of nothing): no type can be made of it, so the element comes in as
+    // a generic component of its class with the body it has (left unseen for them), never the file left unread.
     let made_of = |id: u64, t: f64| {
         let layers = layers_of(&r, &l, id, t);
-        (if layers.is_empty() { t } else { layers.iter().map(|l| l.thickness).sum() }, layers)
+        let t = if layers.is_empty() { t } else { layers.iter().map(|l| l.thickness).sum() };
+        (t.is_finite() && t > 0.0).then_some((t, layers))
     };
     // A slab's from the top down: the other way round where its usage stacks them up from its bottom.
     let top_down = |id: u64, t: f64| {
-        let (t, mut layers) = made_of(id, t);
+        let (t, mut layers) = made_of(id, t)?;
         let up = r.get(id).is_some_and(|x| r.frame(x).z[2] >= 0.0);
         if stacked_up(&r, &l, id) == Some(up) {
             layers.reverse();
         }
-        (t, layers)
+        Some((t, layers))
     };
     let e = |id: u64| r.get(id);
     let named = |names: &[&str]| -> Vec<u64> {
@@ -2070,7 +2105,10 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
             };
             let t = ((r1 - r0) * 100.0).round() / 100.0;
             let base = label(id).unwrap_or_else(|| format!("Imported - {}mm", num(t)));
-            let (t, layers) = made_of(id, t);
+            let Some((t, layers)) = made_of(id, t) else {
+                seen.remove(&id);
+                continue;
+            };
             let type_name = kind(
                 &mut m.types.wall,
                 &base,
@@ -2125,7 +2163,10 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
         let t = (c1 - c0) * 100.0;
         let t = t.round() / 100.0;
         let base = label(id).unwrap_or_else(|| format!("Imported - {}mm", num(t)));
-        let (t, layers) = made_of(id, t);
+        let Some((t, layers)) = made_of(id, t) else {
+            seen.remove(&id);
+            continue;
+        };
         let type_name = kind(
             &mut m.types.wall,
             &base,
@@ -2230,13 +2271,17 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
             continue;
         };
         // A top of several planes: a level floor at its highest point, its shape's points under it and its creases.
+        // One that measures no thickness so is read as a level or sloped one, below.
         if let Some(ShapedTop { high, region: geom::Region { outer, holes }, points, creases, depth, corners, level_under }) =
-            shaped_top(&faces)
+            shaped_top(&faces).filter(|sh| top_down(id, (sh.depth * 100.0).round() / 100.0).is_some())
         {
             let flat = |p: P2| micron(r.flat([p.0, p.1, 0.0]));
             let t = (depth * 100.0).round() / 100.0;
             let base = label(id).unwrap_or_else(|| format!("Imported - {}mm", num(t)));
-            let (t, mut layers) = top_down(id, t);
+            let Some((t, mut layers)) = top_down(id, t) else {
+                seen.remove(&id);
+                continue;
+            };
             guess_variable(&mut layers, level_under);
             let type_name = kind(
                 &mut m.types.floor,
@@ -2296,9 +2341,15 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
             let reach = ring.iter().map(|q| (*q - tail).dot(u)).fold(0.0, f64::max);
             [flat(tail), flat(tail + u * reach)]
         });
+        // Its underside's largest face above its top's (a slab stepped or recessed under): as thick, plumb, as it holds over
+        // its outline, on average.
+        let rise = if rise > 0.0 { rise } else { mean_depth(&faces, &ring, &holes) };
         let t = ((rise * tan.atan().cos()) * 100.0).round() / 100.0;
         let base = label(id).unwrap_or_else(|| format!("Imported - {}mm", num(t)));
-        let (t, layers) = top_down(id, t);
+        let Some((t, layers)) = top_down(id, t) else {
+            seen.remove(&id);
+            continue;
+        };
         let type_name = kind(
             &mut m.types.floor,
             &base,
@@ -2344,7 +2395,10 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
         };
         let t = ((z1 - z0) * 100.0).round() / 100.0;
         let base = label(id).unwrap_or_else(|| format!("Imported - {}mm", num(t)));
-        let (t, layers) = top_down(id, t);
+        let Some((t, layers)) = top_down(id, t) else {
+            seen.remove(&id);
+            continue;
+        };
         let type_name = kind(
             &mut m.types.ceiling,
             &base,
@@ -2382,7 +2436,8 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
         seen.insert(id);
         let read = roof_from(&r, &faces, &voided(id));
         // A flat roof whose top isn't one plane (MOD-16): shaped, unless its footprint and pitch make that top already.
-        if let Some(sh) = shaped_top(&faces) {
+        // One that measures no thickness by its shape is read as the others are.
+        if let Some(sh) = shaped_top(&faces).filter(|sh| top_down(id, (sh.depth * 100.0).round() / 100.0).is_some()) {
             // An extruded one is read by its profile, as before.
             let pitched_fits = read.as_ref().is_ok_and(|rd| rd.extrusion.is_some())
                 || read.as_ref().is_ok_and(|rd| {
@@ -2412,7 +2467,10 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
                 let flat = |p: P2| micron(r.flat([p.0, p.1, 0.0]));
                 let t = (depth * 100.0).round() / 100.0;
                 let base = label(id).unwrap_or_else(|| format!("Imported - {}mm", num(t)));
-                let (t, mut layers) = top_down(id, t);
+                let Some((t, mut layers)) = top_down(id, t) else {
+                    seen.remove(&id);
+                    continue;
+                };
                 guess_variable(&mut layers, level_under);
                 let type_name = kind(
                     &mut m.types.roof,
@@ -2469,7 +2527,10 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
         match read {
             Ok(rd) => {
                 let base = label(id).unwrap_or_else(|| format!("Imported - {}mm", num(rd.t)));
-                let (t, layers) = top_down(id, rd.t);
+                let Some((t, layers)) = top_down(id, rd.t) else {
+                    seen.remove(&id);
+                    continue;
+                };
                 let type_name = kind(
                     &mut m.types.roof,
                     &base,
@@ -3887,43 +3948,65 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
     // its first value's, for the categories of the elements holding one; up to as many as a project holds, and as many values
     // as `MAX_VALUES`.
     let (mut over, mut clash, mut values) = (BTreeSet::new(), BTreeSet::new(), 0);
-    // Puts `value` as `name` on the elements the products `on` made; false once a project can hold no more values.
-    let mut put = |m: &mut Model, skipped: &mut Vec<String>, on: &[u64], name: &str, kind: ParameterKind, value: &serde_json::Value| {
-        for id in on.iter().filter_map(|x| elements_from.get(x)).flatten() {
-            let Some(el) = m.elements.get(id) else { continue };
-            let cat = el.category();
-            // A component's parameter may not be one a family of the project has, whichever family it is: `Model::check` refuses it.
-            if cat == "component" && m.families.values().any(|f| f.parameters.iter().any(|p| p.name == name)) {
-                clash.insert(name.to_string());
-                continue;
+    // The set each parameter's values came in, by category (none: the project's own): a category's values of a name come in
+    // one set, the first; the others' are left out, said in `elsewhere`.
+    let (mut came_in, mut elsewhere) = (HashMap::<(String, String), Option<String>>::new(), BTreeSet::new());
+    // Puts `value` as `name` on the elements the products `on` made, as `how` says; false once a project can hold no more values.
+    let mut put =
+        |m: &mut Model, skipped: &mut Vec<String>, on: &[u64], name: &str, kind: ParameterKind, value: &serde_json::Value, how: &How| {
+            for id in on.iter().filter_map(|x| elements_from.get(x)).flatten() {
+                let Some(el) = m.elements.get(id) else { continue };
+                let cat = el.category();
+                // A component's parameter may not be one a family of the project has, whichever family it is: `Model::check` refuses it.
+                if cat == "component" && m.families.values().any(|f| f.parameters.iter().any(|p| p.name == name)) {
+                    clash.insert(name.to_string());
+                    continue;
+                }
+                // What a type says, its occurrences say unless they say otherwise.
+                if how.weak && el.params().is_some_and(|p| p.contains_key(name)) {
+                    continue;
+                }
+                let fits = PARAMETER_CATEGORIES.contains(&cat)
+                    && !crate::schedule::own_field(cat, name)
+                    && m.parameters.get(name).is_none_or(|p| p.kind == kind && p.classification.as_ref() == how.classification);
+                let p = ProjectParameter {
+                    kind,
+                    categories: vec![cat.to_string()],
+                    classification: how.classification.cloned(),
+                    ..ProjectParameter::default()
+                };
+                if !fits || !p.holds(value) {
+                    continue;
+                }
+                let set = how.set.filter(|s| crate::ifc::foreign_set(s) && !crate::ifc::own_property(s, name));
+                let first = came_in.entry((name.to_string(), cat.to_string())).or_insert_with(|| set.map(String::from));
+                if first.as_deref() != set {
+                    elsewhere.insert(format!("{name} of {cat}s in {}", set.unwrap_or(crate::ifc::PARAMETERS)));
+                    continue;
+                }
+                if !m.parameters.contains_key(name) && m.parameters.len() >= MAX_PROJECT_PARAMETERS {
+                    over.insert(name.to_string());
+                    continue;
+                }
+                if values >= MAX_VALUES {
+                    skipped.push(format!("project parameter values past the {MAX_VALUES} BIMCraft reads"));
+                    return false;
+                }
+                values += 1;
+                let p = m.parameters.entry(name.to_string()).or_insert(p);
+                if !p.categories.iter().any(|c| c == cat) {
+                    p.categories.push(cat.to_string());
+                    p.categories.sort();
+                }
+                if let Some(set) = set {
+                    p.sets.insert(cat.to_string(), set.to_string());
+                }
+                if let Some(params) = m.elements.get_mut(id).and_then(Element::params_mut) {
+                    params.insert(name.to_string(), value.clone());
+                }
             }
-            let fits = PARAMETER_CATEGORIES.contains(&cat)
-                && !crate::schedule::own_field(cat, name)
-                && m.parameters.get(name).is_none_or(|p| p.kind == kind);
-            let p = ProjectParameter { kind, categories: vec![cat.to_string()] };
-            if !fits || !p.holds(value) {
-                continue;
-            }
-            if !m.parameters.contains_key(name) && m.parameters.len() >= MAX_PROJECT_PARAMETERS {
-                over.insert(name.to_string());
-                continue;
-            }
-            if values >= MAX_VALUES {
-                skipped.push(format!("project parameter values past the {MAX_VALUES} BIMCraft reads"));
-                return false;
-            }
-            values += 1;
-            let p = m.parameters.entry(name.to_string()).or_insert(p);
-            if !p.categories.iter().any(|c| c == cat) {
-                p.categories.push(cat.to_string());
-                p.categories.sort();
-            }
-            if let Some(params) = m.elements.get_mut(id).and_then(Element::params_mut) {
-                params.insert(name.to_string(), value.clone());
-            }
-        }
-        true
-    };
+            true
+        };
     // Eberick names a beam V1 and a column P1, and BIMCraft names a product by its type (and says so as its object type too).
     for &pid in &ids {
         let Some(x) = e(pid) else { continue };
@@ -3933,19 +4016,36 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
         let marked =
             elements_from.get(&pid).into_iter().flatten().any(|id| m.elements.get(id).is_some_and(|el| MARKED.contains(&el.category())));
         if let (Some(mark), true) = (mark, marked)
-            && !put(&mut m, &mut skipped, &[pid], "Mark", ParameterKind::Text, &json!(mark))
+            && !put(&mut m, &mut skipped, &[pid], "Mark", ParameterKind::Text, &json!(mark), &How::default())
         {
             break;
         }
     }
-    'sets: for rel in named(&["IFCRELDEFINESBYPROPERTIES"]).into_iter().filter_map(e) {
-        let Some(set) = reference(rel.args.get(5)).and_then(e).filter(|x| x.name == "IFCPROPERTYSET") else { continue };
+    // The property sets: each product's own, then those its type object holds (`HasPropertySets`), for its occurrences.
+    let mut occurrences: BTreeMap<u64, Vec<u64>> = BTreeMap::new();
+    for (&occurrence, &ty) in &l.typed {
+        occurrences.entry(ty).or_default().push(occurrence);
+    }
+    occurrences.values_mut().for_each(|o| o.sort_unstable());
+    let own = named(&["IFCRELDEFINESBYPROPERTIES"])
+        .into_iter()
+        .filter_map(e)
+        .filter_map(|rel| Some((reference(rel.args.get(5))?, refs(rel.args.get(4)), false)));
+    let held =
+        occurrences.iter().filter_map(|(&ty, on)| Some(refs(e(ty)?.args.get(5)).into_iter().map(move |set| (set, on.clone(), true))));
+    'sets: for (set, on, weak) in own.chain(held.flatten()) {
+        let Some(set) = e(set).filter(|x| x.name == "IFCPROPERTYSET") else { continue };
         // What BIMCraft writes in sets of its own, other than the parameters, it reads into fields.
         let called = text(set.args.get(2)).unwrap_or("");
         let ours = called == crate::ifc::PARAMETERS;
-        if !ours && (called.starts_with("BIMCraft_") || called == crate::ifc::SEPARATION) {
+        if !ours && !crate::ifc::foreign_set(called) {
             continue;
         }
+        let how = How {
+            set: Some(called).filter(|c| !ours && c.chars().count() <= MAX_TEXT && c.trim() == *c && !c.is_empty()),
+            weak,
+            ..How::default()
+        };
         for prop in refs(set.args.get(4)).into_iter().filter_map(e).filter(|x| x.name == "IFCPROPERTYSINGLEVALUE") {
             let Some(raw) = text(prop.args.first()) else { continue };
             // `LoadBearing` is what makes a column or a floor structural, read above.
@@ -3967,14 +4067,60 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
                 },
                 _ => continue,
             };
-            if !put(&mut m, &mut skipped, &refs(rel.args.get(4)), &name, kind, &value) {
+            // A property renamed to be a parameter's name goes back out by that name: it keeps a set only by its own.
+            let how = How { set: how.set.filter(|_| name == raw), ..how };
+            if !put(&mut m, &mut skipped, &on, &name, kind, &value, &how) {
                 break 'sets;
+            }
+        }
+    }
+    // Classification references: each system's codes, a text parameter of it, named for the system. A reference within a
+    // reference is of the system at the top; a type's, its occurrences' unless they have their own.
+    let mut systems: BTreeMap<u64, Option<Classification>> = BTreeMap::new();
+    'classified: for rel in named(&["IFCRELASSOCIATESCLASSIFICATION"]).into_iter().filter_map(e) {
+        let Some(item) = reference(rel.args.get(5)).and_then(e).filter(|x| x.name == "IFCCLASSIFICATIONREFERENCE") else { continue };
+        // IFC4's `Identification`, IFC2x3's `ItemReference`; else its name.
+        let Some(code) = text(item.args.get(1)).or_else(|| text(item.args.get(2))).map(clip).filter(|c| !c.trim().is_empty()) else {
+            continue;
+        };
+        // Its `ReferencedSource`, up to the system.
+        let (mut at, mut system) = (item, None);
+        for _ in 0..MAX_DEPTH {
+            let Some(up) = reference(at.args.get(3)) else { break };
+            match e(up) {
+                Some(x) if x.name == "IFCCLASSIFICATION" => {
+                    system = Some((up, x));
+                    break;
+                }
+                Some(x) if x.name == "IFCCLASSIFICATIONREFERENCE" => at = x,
+                _ => break,
+            }
+        }
+        let Some((sid, system)) = system else { continue };
+        let c = systems.entry(sid).or_insert_with(|| {
+            let said = |i: usize| text(system.args.get(i)).map(str::trim).filter(|n| !n.is_empty() && n.chars().count() <= MAX_TEXT);
+            Some(Classification { system: said(3)?.to_string(), edition: said(1).map(String::from) })
+        });
+        let Some(c) = c.clone() else { continue };
+        let Some(name) = parameter_name(&c.system) else { continue };
+        // A type's code is its occurrences', unless they have their own: the associations with the occurrences first.
+        let related = refs(rel.args.get(4));
+        let (types, products): (Vec<u64>, Vec<u64>) = related.into_iter().partition(|x| occurrences.contains_key(x));
+        let on_types: Vec<u64> = types.iter().filter_map(|t| occurrences.get(t)).flatten().copied().collect();
+        for (on, weak) in [(products, false), (on_types, true)] {
+            let how = How { classification: Some(&c), weak, ..How::default() };
+            if !on.is_empty() && !put(&mut m, &mut skipped, &on, &name, ParameterKind::Text, &json!(code), &how) {
+                break 'classified;
             }
         }
     }
 
     if !over.is_empty() {
         skipped.push(format!("{} project parameters: past the {MAX_PROJECT_PARAMETERS} a project holds", over.len()));
+    }
+    if !elsewhere.is_empty() {
+        let names: Vec<&str> = elsewhere.iter().map(String::as_str).collect();
+        skipped.push(format!("{}: their values of that name came in another set first", names.join(", ")));
     }
     if !clash.is_empty() {
         let names: Vec<&str> = clash.iter().map(String::as_str).collect();
@@ -5064,6 +5210,37 @@ ENDSEC;END-ISO-10303-21;",
             layers.iter().map(|l| (l.function, l.thickness)).collect::<Vec<_>>(),
             [(Function::Finish, 150.0), (Function::Membrane, 0.0), (Function::Structure, 50.0)]
         );
+    }
+
+    #[test]
+    fn a_slab_that_measures_no_thickness_comes_in_as_a_generic_slab_and_the_file_opens() {
+        // Half a millimetre thick, of layers that add up to nothing: no floor type can be made of it, so it comes in as a
+        // component that remembers it's a slab, with its body.
+        let file = layered(&holed("#35=IFCSLAB('f',$,'Slab',$,$,#6,#34,$,.FLOOR.);", 35), 35, "AXIS3", 0.0)
+            .replace("#32=IFCEXTRUDEDAREASOLID(#30,$,#31,200.)", "#32=IFCEXTRUDEDAREASOLID(#30,$,#31,0.5)")
+            .replace("IFCMATERIALLAYER(#80,150.", "IFCMATERIALLAYER(#80,0.")
+            .replace("IFCMATERIALLAYER(#81,50.", "IFCMATERIALLAYER(#81,0.");
+        let i = ifc(file.as_bytes(), "x").unwrap();
+        i.model.check().unwrap();
+        assert!(only(&i.model, "floor").is_empty());
+        assert_eq!(only(&i.model, "component").len(), 1);
+        assert!(i.model.families.values().any(|f| f.ifc.as_ref().is_some_and(|c| c.class == "IFCSLAB")));
+    }
+
+    #[test]
+    fn a_slab_stepped_under_is_as_thick_as_it_holds_over_its_outline() {
+        let rect = |x0: f64, x1: f64, z: f64| vec![[x0, 0.0, z], [x1, 0.0, z], [x1, 4000.0, z], [x0, 4000.0, z]];
+        let outline = |x1: f64| vec![P2(0.0, 0.0), P2(x1, 0.0), P2(x1, 4000.0), P2(0.0, 4000.0)];
+        let mut faces = Vec::new();
+        prism(&mut faces, rect(0.0, 6000.0, 0.0), [0.0, 0.0, 200.0]);
+        assert!((mean_depth(&faces, &outline(6000.0), &[]) - 200.0).abs() < 1e-6);
+        // 60 thick over two thirds of it, 300 over the rest: 140 on average.
+        let mut faces = Vec::new();
+        prism(&mut faces, rect(0.0, 4000.0, 0.0), [0.0, 0.0, 60.0]);
+        prism(&mut faces, rect(4000.0, 6000.0, -240.0), [0.0, 0.0, 300.0]);
+        assert!((mean_depth(&faces, &outline(6000.0), &[]) - 140.0).abs() < 1e-6);
+        // Nothing to hold it over: no depth.
+        assert_eq!(mean_depth(&faces, &[], &[]), 0.0);
     }
 
     #[test]
