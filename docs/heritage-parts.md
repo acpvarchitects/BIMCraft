@@ -91,6 +91,11 @@ wall type was edited would be worse than a visible conflict.
 - **The number.** The Family Editor line holds the next steps: T23 owns 19→20, which also counts FE-12's sweep-profile
   dimensions. **Proposal:** Parts take the first number free when their PR is ready (21 if the family line lands
   first), and nothing is bumped independently before the branches are aligned.
+- **Superseded on 2026-11-12, to bring to Vincenzo and Emiliano at HP-9.** Upstream (IPedrax, closing #311) keeps
+  FORMAT 18 for everything until 0.12, so there is no 18→19 step to take. New fields fold into `Model::migrate`'s step
+  to 18 (a file of 17), with notes in 18's, and a file saved at 18 without them must still open, so they need serde
+  defaults. The proposal above, and the idea that a bump shields parts from older builds, no longer hold. HP-9 must
+  instead say how parts live in `elements` with serde defaults and what an older 18 build does when it saves such a file.
 
 ### 2.4 IFC: a decomposed element has no body of its own
 
@@ -342,7 +347,8 @@ Answered by Vincenzo on 2026-11-11 (the IFC one still for the maintainers to agr
 4. ~~`SU_Code` or `MSU_Code`~~: **`SU_Code`.**
 
 Still open:
-5. **The `FORMAT` number** (2.3), with the family line.
+5. **How parts are stored without a `FORMAT` bump** (2.3, changed 2026-11-12: FORMAT stays 18 until 0.12), with
+   Vincenzo and Emiliano at HP-9.
 6. **Parts in a project brought in by Insert from File**: a type with the same name but different layer GUIDs puts its
    parts in conflict, which `part {layer}` fixes. Is that acceptable?
 7. **`csg::MAX_TRIANGLES`** (20 000) can be reached by a large floor's part. Raise it for parts, or cut near the cutter
