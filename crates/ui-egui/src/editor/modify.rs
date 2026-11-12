@@ -480,6 +480,7 @@ fn refused_said(r: &TransformRefused, t: &Transform, names: &Names) -> String {
     match r {
         TransformRefused::Stays(s) => match s {
             Stays::Datum(n) => tf("{} is a datum: it stays where it is.", &[&said(n)]),
+            Stays::Pinned(n) => super::pin::pinned_said(&said(n)),
             Stays::Origin(n) => tf("{} defines the origin: it stays where it is.", &[&said(n)]),
             Stays::Pivot(n) => tf("{} turns about its pivot: turn it by its rotate grip.", &[&said(n)]),
             Stays::Formula(n) => tf("A number of {} it would change is worked out by a formula: change it in Family Types.", &[&said(n)]),

@@ -15,6 +15,7 @@ pub(crate) mod keys;
 pub(crate) mod lit3d;
 pub(crate) mod modify;
 mod nested;
+mod pin;
 pub(crate) mod options;
 mod pivot;
 pub(crate) mod select_box;
@@ -383,6 +384,8 @@ struct SymbolText {
     visible: String,
     /// The subcategory it is drawn in, by its English name (`Opening`); blank, its category.
     subcategory: String,
+    /// Pinned where it is (FE-17), as the family has it.
+    pinned: bool,
     /// Its Visibility Settings (F8): the detail levels it is drawn at; none, Medium and Fine.
     visibility: Option<bimcraft_core::family::Visibility>,
 }
@@ -402,6 +405,7 @@ impl SymbolText {
             align: LabelAlign::Left,
             visible: String::new(),
             subcategory: String::new(),
+            pinned: false,
             visibility: None,
         };
         match part {
@@ -420,6 +424,7 @@ impl SymbolText {
         t.visible = y.visible.as_ref().map(expr_text).unwrap_or_default();
         t.subcategory = y.subcategory.clone().unwrap_or_default();
         t.visibility = y.visibility;
+        t.pinned = y.pinned;
         if let Some(c) = &y.arc {
             (t.part, t.centre, t.radius, t.from, t.to) =
                 (Part::Arc, [ex(&c.centre[0]), ex(&c.centre[1])], ex(&c.radius), ex(&c.from), ex(&c.to));
@@ -437,7 +442,7 @@ impl SymbolText {
         let (id, guid) = self.ident;
         let centre = [text_expr(&self.centre[0]), text_expr(&self.centre[1])];
         let subcategory = (!self.subcategory.trim().is_empty()).then(|| self.subcategory.clone());
-        let base = Symbol { visible, id, guid, subcategory, visibility: self.visibility, ..Symbol::default() };
+        let base = Symbol { visible, id, guid, pinned: self.pinned, subcategory, visibility: self.visibility, ..Symbol::default() };
         Ok(match self.part {
             Part::Arc => Symbol {
                 arc: Some(Curve { centre, radius: text_expr(&self.radius), from: text_expr(&self.from), to: text_expr(&self.to) }),
@@ -1551,6 +1556,7 @@ fn sill_plane(family: &mut Family) {
     family.planes.push(RefPlane {
         id: 0,
         guid,
+        pinned: false,
         name: t("Sill").to_string(),
         start: [-1500.0, 0.0, 0.0],
         end: [1500.0, 0.0, 0.0],
@@ -1565,6 +1571,7 @@ fn sill_plane(family: &mut Family) {
     family.dimensions.push(FamilyDimension {
         id: 0,
         guid: bimcraft_core::ids::Guid::new(),
+        pinned: false,
         view: DimView::Front,
         refs: vec![DimRef::Plane(REF_LEVEL), DimRef::Plane(guid)],
         at: [1300.0, 0.0, 0.0],

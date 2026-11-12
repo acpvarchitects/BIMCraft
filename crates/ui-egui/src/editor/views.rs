@@ -582,6 +582,7 @@ impl FamilyEditor {
                 let lock = |r: DimRef| FamilyDimension {
                     id: 0,
                     guid: Guid::new(),
+                    pinned: false,
                     view: bimcraft_core::family::DimView::of(which),
                     refs: vec![r],
                     at: cache.staged.from_view(which, at_view(p)),
@@ -1641,6 +1642,7 @@ impl FamilyEditor {
             self.planes.push(RefPlane {
                 id: 0,
                 guid,
+                pinned: false,
                 name: String::new(),
                 start,
                 end,

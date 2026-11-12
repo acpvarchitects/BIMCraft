@@ -179,6 +179,7 @@ fn stays_said(s: &Stays, names: &Names) -> String {
     let said = |n: &Named| names.said(*n);
     match s {
         Stays::Datum(n) => tf("{} is a datum: it stays where it is.", &[&said(n)]),
+        Stays::Pinned(n) => super::pin::pinned_said(&said(n)),
         Stays::Origin(n) => tf("{} defines the origin: it stays where it is.", &[&said(n)]),
         Stays::Pivot(n) => tf("{} turns about its pivot: turn it by its rotate grip.", &[&said(n)]),
         Stays::Formula(n) => tf("A number of {} the move would change is worked out by a formula: change it in Family Types.", &[&said(n)]),

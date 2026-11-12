@@ -473,3 +473,19 @@ pub fn pin(family: &mut Family, picked: &[Picked], on: bool) -> Vec<Picked> {
     }
     changed
 }
+
+/// `p` as a message names it: a form, a plane and a reference line as a move's refusal does ([`Family::said`]), the rest
+/// by what it is and its place (`symbol 2`); English, as the core's messages are.
+pub fn said(family: &Family, p: Picked) -> String {
+    use super::constraints::Named;
+    let at = |what: &str, i: usize| format!("{what} {}", i + 1);
+    match p {
+        Picked::Form(i) => family.said(Named::Form(i)),
+        Picked::Plane(g) => family.said(Named::Plane(g)),
+        Picked::Line(g) => family.said(Named::Line(g)),
+        Picked::Dimension(g) => family.dimensions.iter().position(|d| d.guid == g).map_or_else(|| g.to_string(), |i| at("dimension", i)),
+        Picked::Symbol(i) => at("symbol", i),
+        Picked::Connector(i) => at("connector", i),
+        Picked::Nested(i) => at("nested instance", i),
+    }
+}

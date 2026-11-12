@@ -949,6 +949,7 @@ impl FamilyEditor {
         let lock = FamilyDimension {
             id: 0,
             guid: Guid::new(),
+            pinned: false,
             view: DimView::of(which),
             refs: vec![reference, target],
             at: st.from_view(which, at),
@@ -1229,6 +1230,7 @@ pub(super) fn new_dimension(
     FamilyDimension {
         id: 0,
         guid: Guid::new(),
+        pinned: false,
         view: DimView::of(which),
         refs: placed.into_iter().map(|(_, r)| r).collect(),
         at: st.from_view(which, at),

@@ -1383,6 +1383,7 @@ impl FamilyEditor {
                         s.offer = Some(FamilyDimension {
                             id: 0,
                             guid: Guid::new(),
+                            pinned: false,
                             view: DimView::of(which),
                             refs: vec![reference, DimRef::Sketch(s.guid, l.guid)],
                             at: st.from_view(which, q),
