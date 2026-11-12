@@ -811,6 +811,8 @@ fn the_browser_opens_level_plans_and_schedules() {
     for label in ["Views (all)", "Floor Plans", "Schedules/Quantities (all)"] {
         assert!(h.query_by_label(label).is_some(), "{label}");
     }
+    // The sheet list every project has, with the other six.
+    assert!(h.query_by_label("Sheet List").is_some(), "Sheet List");
     // Its floor plan, over its ceiling plan.
     topmost(&mut h, "Level 2");
     assert_eq!(h.state().sheet, Sheet::Plan(100001));
@@ -1125,6 +1127,26 @@ fn file_export_lists_the_3d_scene_as_gltf_in_both_profiles_and_an_export_leaves_
 }
 
 #[test]
+fn import_3d_model_brings_an_objs_objects_in_on_the_plans_level_selected_and_says_what_came_in() {
+    let mut h = app("");
+    let dir = std::env::temp_dir().join(format!("bimcraft-ui-mesh-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let obj = "o Table\nv 0 0 0\nv 1 0 0\nv 1 0 1\nv 0 0 1\nv 0 0.75 0\nf 1 2 3 4\nf 1 2 5\no Lamp\nv 2 0 0\nv 2.2 0 0\nv 2 1.5 0\nf 6 7 8\nl 1 2\n";
+    std::fs::write(dir.join("room.obj"), obj).unwrap();
+    press(&mut h, "Insert");
+    assert!(h.query_by_label("Import 3D Model").is_some(), "Insert > Import lists it");
+    h.state_mut().import_mesh_path(dir.join("room.obj"));
+    h.run();
+    let st = h.state();
+    assert_eq!(st.selection.len(), 2, "{}", st.status.text);
+    assert!(st.session.model.families.contains_key("Table") && st.session.model.families.contains_key("Lamp"));
+    assert!(st.status.text.contains("2 objects") && st.status.text.contains("1 lines and points"), "{}", st.status.text);
+    // One undo step.
+    assert_eq!(st.session.history().last().copied(), Some("Import Mesh"));
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn new_asks_before_dropping_unsaved_changes() {
     let mut h = app("");
     h.state_mut().session.execute("wall", &json!({"points": [[0, 0], [4000, 0]]})).unwrap();
@@ -1324,14 +1346,29 @@ fn typing_a_length_puts_the_next_point_that_far_toward_the_cursor() {
 fn a_selected_walls_temporary_dimension_sets_its_length() {
     let mut h = app(BOX);
     click(&mut h, P2(4000.0, 0.0));
-    h.get_by_label_contains("Temporary dimension").click();
+    h.get_by_label("Temporary dimension 8000").click();
     h.run();
     h.key_press_modifiers(Modifiers::COMMAND, Key::A);
     h.event(Event::Text("9000".into()));
     h.run();
     key(&mut h, Key::Enter);
-    assert_eq!(walls(&h)[0], (P2(0.0, 0.0), P2(9000.0, 0.0)));
-    assert_eq!(walls(&h)[1].0, P2(9000.0, 0.0), "the wall joined at that end followed");
+    // Both ends of the south wall are joined: both move evenly, and the walls joined there follow.
+    assert_eq!(walls(&h)[0], (P2(-500.0, 0.0), P2(8500.0, 0.0)));
+    assert_eq!(walls(&h)[1].0, P2(8500.0, 0.0), "the wall joined at that end followed");
+    assert_eq!(walls(&h)[3].1, P2(-500.0, 0.0), "the wall joined at the other end followed too");
+}
+
+#[test]
+fn a_selected_walls_temporary_dimension_to_a_parallel_wall_moves_it() {
+    let mut h = app(&format!("{BOX}\nwall {{\"points\": [[0, 2500], [8000, 2500]], \"type\": \"Interior - 100mm\"}}"));
+    let mid = ids(&h, "wall")[4];
+    click(&mut h, P2(4000.0, 2500.0));
+    assert_eq!(h.state().selection, [mid]);
+    // Centre line to centre line, square to it (#281): 2500 to the south wall, 3500 to the north one.
+    assert!(h.query_by_label("Temporary dimension 3500").is_some());
+    retype_dimension(&mut h, "2500", "2800");
+    assert_eq!((field(&h, mid, "start"), field(&h, mid, "end")), (json!([0.0, 2800.0]), json!([8000.0, 2800.0])));
+    assert!(h.query_by_label("Temporary dimension 3200").is_some(), "the other side follows");
 }
 
 #[test]
@@ -2739,6 +2776,34 @@ fn text_notes_go_where_clicked_in_plans_sections_and_sheets() {
     assert_eq!((field(&h, notes[2], "view"), field(&h, notes[2], "at")), (json!(sheet), json!([50.0, 50.0])));
 }
 
+/// Text with Leader ticked (#381): the first click is the point the leader reaches, the next where the note goes, in a plan
+/// and in a section; Esc between them forgets the first.
+#[test]
+fn the_text_tool_with_a_leader_takes_its_point_then_the_notes() {
+    let mut h = app_at(&format!("{BOX}\nsection {{\"start\": [-1000, 3000], \"end\": [9000, 3000]}}"), 0.05);
+    let section = ids(&h, "section")[0];
+    press(&mut h, "Annotate");
+    press(&mut h, "Text");
+    type_into(&mut h, "Text:", "Lintel");
+    press(&mut h, "Leader");
+    click(&mut h, P2(2000.0, 2000.0));
+    assert!(ids(&h, "text").is_empty(), "the first click is the leader's");
+    key(&mut h, Key::Escape);
+    assert_eq!(h.state().tool, Tool::Text, "Esc forgets the point, the tool stays");
+    click(&mut h, P2(3000.0, 2000.0));
+    click(&mut h, P2(4000.0, 2500.0));
+    let notes = ids(&h, "text");
+    assert_eq!((field(&h, notes[0], "at"), field(&h, notes[0], "leader")), (json!([4000.0, 2500.0]), json!([3000.0, 2000.0])));
+    browse(&mut h, "Section 1");
+    click(&mut h, P2(3000.0, 1000.0));
+    click(&mut h, P2(4000.0, 2500.0));
+    let notes = ids(&h, "text");
+    assert_eq!(
+        (field(&h, notes[1], "view"), field(&h, notes[1], "at"), field(&h, notes[1], "leader")),
+        (json!(section), json!([4000.0, 2500.0]), json!([3000.0, 1000.0]))
+    );
+}
+
 #[test]
 fn angular_and_radial_dimensions_and_spot_elevations_from_the_annotate_tab() {
     // Walls 3 to 6, a slanted one 7, a round column 8, the floor 9.
@@ -4021,7 +4086,7 @@ fn a_schedule_of_the_projects_own_is_deleted_from_the_browser_and_its_tab_closes
     assert_eq!(ids(&h, "schedule").len(), before - 1, "deleted");
     assert!(!h.state().session.model.elements.contains_key(sc), "it is the one deleted");
     assert_ne!(h.state().sheet, Sheet::Table(sc), "its tab is closed");
-    // The six every project has have no Delete.
+    // The seven every project has have no Delete.
     h.get_by_label("Room Schedule").scroll_to_me();
     h.run();
     let pos = h.get_by_label("Room Schedule").rect().center();
@@ -5378,6 +5443,21 @@ fn a_tool_with_choices_of_its_own_opens_them_from_a_panels_list() {
     assert!(!egui::Popup::is_any_open(&h.ctx), "the list and its choices close with it");
 }
 
+/// Manage > Project Language lists every language a project can be in, Vietnamese among them as it is in Settings > Language
+/// (#367), and picking it puts the project in it.
+#[test]
+fn project_language_lists_every_project_language_and_picks_vietnamese() {
+    use bimcraft_core::language::Language;
+    let mut h = app(BOX);
+    h.state_mut().tab = Tab::Manage;
+    h.run();
+    from_list(&mut h, "Settings", "Project Language");
+    let missing: Vec<&str> = Language::ALL.iter().map(|l| l.label()).filter(|l| h.query_all_by_label(l).next().is_none()).collect();
+    assert!(missing.is_empty(), "not in the list: {missing:?}");
+    press(&mut h, "Tiếng Việt");
+    assert_eq!(h.state().session.model.language, Language::Vietnamese);
+}
+
 /// UN (Project Units) at the least a window can be: the tool is in its panel's list by then, which the shortcut opens, and the
 /// first frame of the tab, which draws every tool, doesn't take the request for a button that is gone the next.
 #[test]
@@ -6151,6 +6231,7 @@ mod dock;
 mod draw;
 mod electrical;
 mod family_formulas;
+mod file_extensions;
 mod fills;
 mod filter;
 mod fonts;
@@ -6882,6 +6963,37 @@ fn a_selected_levels_plane_has_a_grip_on_each_edge_in_3d_that_drags_it() {
     assert!((extent[1][0].as_f64().unwrap() - 9000.0).abs() <= 10.0, "{extent}");
     assert_eq!((extent[0].clone(), extent[1][1].clone()), (json!([0.0, 0.0]), json!(6000.0)));
     assert_eq!(h.state().orbit.camera, before, "the grip took the drag, not the camera");
+}
+
+#[test]
+fn run_script_tries_a_script_then_runs_it_as_one_undo_step_and_never_touches_a_file() {
+    let mut h = app(BOX);
+    let walls = ids(&h, "wall").len();
+    // Manage grew past what a narrower window shows of it: wide enough for its last panel.
+    h.set_size(vec2(2200.0, 900.0));
+    press(&mut h, "Manage");
+    press(&mut h, "Run Script");
+    let field = "Commands, one a line (id {json params}; # starts a comment):";
+    let script = "# two walls\nwall {\"points\": [[20000, 0], [24000, 0]]}\nwall {\"points\": [[20000, 3000], [24000, 3000]]}";
+    type_into(&mut h, field, script);
+    // Try: what it would make, and nothing made.
+    press(&mut h, "Try");
+    assert!(h.query_by_label("Would make 2, change 0 and remove 0 elements.").is_some());
+    assert_eq!(ids(&h, "wall").len(), walls);
+    // Run: made, as one undo step, and the dialog closes.
+    press(&mut h, "Run");
+    assert_eq!(ids(&h, "wall").len(), walls + 2);
+    assert!(h.state().run_script.is_none());
+    assert!(!h.state().status.error && h.state().status.text.starts_with("Ran 2 lines as one undo step."), "{}", h.state().status.text);
+    assert_eq!(h.state().session.history().last().copied(), Some("Script"));
+    // A line that would write a file is refused before anything runs, and the dialog says which.
+    press(&mut h, "Run Script");
+    type_into(&mut h, field, "wall {\"points\": [[30000, 0], [34000, 0]]}\nsave {\"path\": \"/tmp/x.bimcraft\"}");
+    press(&mut h, "Run");
+    assert_eq!(ids(&h, "wall").len(), walls + 2);
+    assert!(h.state().run_script.as_ref().is_some_and(|d| d.said().is_some_and(|(s, error)| error && s.contains("line 2"))));
+    press(&mut h, "Close");
+    assert!(h.state().run_script.is_none());
 }
 
 #[test]

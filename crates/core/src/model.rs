@@ -72,7 +72,10 @@ pub const CEILING_CUT: f64 = 2300.0;
 pub const CEILING_HEIGHT: f64 = 2600.0;
 /// The steepest slope a floor or a roof may have, degrees.
 pub const MAX_SLOPE: f64 = 75.0;
-/// The version of the project file this build writes, and the newest it reads. 18: a beam's or a structural column's type may
+/// The version of the project file this build writes, and the newest it reads. 19: a schedule may be of sheets, the
+/// sheet list (`of: "sheet"`, as the Room or Level Schedule is); nothing in a file of 18 changes, but a build that reads
+/// up to 18 holds `sheet` as a category schedules aren't of, and would draw its sheet list with no columns, not say
+/// "saved by a newer BIMCraft". 18: a beam's or a structural column's type may
 /// have a steel section (`profile`), which a build that reads up to 17 would leave out as a field it doesn't know, drawing and
 /// scheduling the member as the solid rectangle or circle round its section; a family's connector may be a `pipe`,
 /// `data` or `earthing` one, with no `system` (a pipe's `domain`, `flow`, `size`), and any may have a place (`at`, `direction`);
@@ -86,11 +89,11 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// (`operation`: `sectional` or `roller`); a project may hold property lines (the `propertyline` category, a row of
 /// `graphics::MODEL` that views' graphics and Object Styles may name); it may pin elements where they are (`pinned`, their
 /// GUIDs); an elevation may keep the line it looks at (`reference`) and stand its mark apart from its line (`mark`); a
-/// project's language may be Polish (`pl`); a distribution board may hold its electrical data (a component's `panel`: its
+/// project's language may be Polish (`pl`) or Vietnamese (`vi`); a distribution board may hold its electrical data (a component's `panel`: its
 /// distribution system, mains, slots and the board that supplies it); and a project may hold circuits (the `circuit`
 /// category, each on its board's slots from its `number`), panel schedules (`panelschedule`) and demand factors by
 /// classification (`demand_factors`). Nothing in a file of 17 changes, but a build that reads up to 17 would answer such a
-/// connector, dimension, operation, property line, circuit or panel schedule, or Polish, with a serde error ("unknown
+/// connector, dimension, operation, property line, circuit or panel schedule, or Polish or Vietnamese, with a serde error ("unknown
 /// variant", "missing field `system`") and graphics or a style of `propertyline` as a category it doesn't have, would leave
 /// the title blocks and a viewport's `follow_scale` out as fields it doesn't know, drawing every sheet with the built-in
 /// title box, and would silently drop `join: false` and join the element again, and the pins, letting what was pinned move,
@@ -169,7 +172,7 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// 2: the library has ids and GUIDs too
 /// (`library`), and what names a library entry holds its GUID. 1: elements have GUIDs, ids six digits, and what points at
 /// an element holds its GUID. None (0): a file from before.
-pub const FORMAT: u32 = 18;
+pub const FORMAT: u32 = 19;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -1103,12 +1106,26 @@ impl End {
     }
 }
 
-/// How far a point stands from a line `toward` it (a unit vector along x or y): see [`Model::clearances`].
+/// How far a point, `from`, stands from a line `toward` it (a unit vector): see [`Model::clearances`].
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Clearance {
+    pub from: P2,
     pub toward: P2,
     pub distance: f64,
     pub to: Reference,
+}
+
+/// The nearest of `lines` from `at` going `toward` (a unit vector), as far as each runs; a line `at` stands on is no
+/// distance away, so the next one counts.
+fn nearest(lines: &[(Reference, Line)], at: P2, toward: P2) -> Option<Clearance> {
+    lines
+        .iter()
+        .filter_map(|&(to, (a, b))| {
+            let hit = geom::line_intersection(at, at + toward, a, b)?;
+            let distance = (hit - at).dot(toward);
+            (distance > TOL && geom::dist_to_segment(hit, a, b) <= 1e-6).then_some(Clearance { from: at, toward, distance, to })
+        })
+        .min_by(|x, y| x.distance.total_cmp(&y.distance))
 }
 
 /// A dimension in a level's plan. Aligned: the distances between parallel references, along a
@@ -1403,7 +1420,7 @@ pub struct Spot {
 #[serde(deny_unknown_fields)]
 pub struct Link {
     pub name: String,
-    /// The `.bimcraft` or `.ifc` it reads, as it was given: a relative one is relative to this project's file.
+    /// The `.bimc` (or earlier `.bimcraft`) or `.ifc` it reads, as it was given: a relative one is relative to this project's file.
     pub path: String,
     /// Where its origin stands in this project, and how far it is turned about it, degrees. Its levels stand at their own
     /// elevations.
@@ -2797,6 +2814,25 @@ pub struct ProjectParameter {
     #[serde(default)]
     pub kind: ParameterKind,
     pub categories: Vec<String>,
+    /// The property set an IFC export writes each category's values in, by category: the set they came in from another
+    /// program. A category it doesn't name writes them in the project's own, `Project Parameters`.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub sets: BTreeMap<String, String>,
+    /// A classification system's codes, which IFC holds as classification references rather than properties: a text
+    /// parameter whose value is an element's code in the system.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub classification: Option<Classification>,
+}
+
+/// A classification system, as IFC's `IfcClassification` names it: Uniclass, OmniClass, a national table.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Classification {
+    /// Its name.
+    pub system: String,
+    /// Its edition, where the file says.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub edition: Option<String>,
 }
 
 /// The most project parameters a project holds.
@@ -2839,6 +2875,42 @@ impl ProjectParameter {
             ParameterKind::Number | ParameterKind::Length => v.as_f64().is_some_and(|x| x.is_finite() && x.abs() <= MAX_COORD),
             ParameterKind::YesNo => v.is_boolean(),
         }
+    }
+
+    /// Whether what it says of IFC is what a file can hold: a set for each of its categories at most, named as no set
+    /// BIMCraft reads into fields of its own; a classification, a text parameter's in no set, with a system named.
+    fn check_ifc(&self) -> Result<(), String> {
+        let named = |what: &str, v: &str| -> Result<(), String> {
+            if v.trim().is_empty() || v.trim() != v {
+                return Err(format!("{what} needs a name, without spaces round it"));
+            }
+            if v.chars().count() > MAX_TEXT {
+                return Err(format!("{what} is longer than {MAX_TEXT} characters"));
+            }
+            Ok(())
+        };
+        for (c, set) in &self.sets {
+            if !self.categories.contains(c) {
+                return Err(format!("it has a set for {c}s, which it isn't for"));
+            }
+            named(&format!("the set for {c}s"), set)?;
+            if !crate::ifc::foreign_set(set) {
+                return Err(format!("BIMCraft reads `{set}` into fields of its own; put {c}s' values in another set"));
+            }
+        }
+        if let Some(cl) = &self.classification {
+            if self.kind != ParameterKind::Text {
+                return Err("a classification's codes are text".into());
+            }
+            if !self.sets.is_empty() {
+                return Err("a classification's codes go in IFC as references, not in a property set".into());
+            }
+            named("its classification system", &cl.system)?;
+            if let Some(e) = &cl.edition {
+                named("its classification's edition", e)?;
+            }
+        }
+        Ok(())
     }
 }
 
@@ -3808,14 +3880,14 @@ impl Model {
         // 17 to 18 (pipe, data and earthing connectors, a connector's place; title blocks of the project's own, with a
         // drawing area and a border of their own, their fields' values, and sheets with none; viewports that keep a scale
         // of their own; walls and runs that refuse to join; a dimension to the line across a column; sectional and roller
-        // doors; property lines; pinned elements; an elevation's reference and mark; Polish as a project's language; a
+        // doors; property lines; pinned elements; an elevation's reference and mark; Polish or Vietnamese as a project's language; a
         // distribution board's `panel`; circuits, panel schedules and `demand_factors`) has none either: a file of 17's
         // connectors are a power or a switch one, each with its system, which 18 reads as they were; a file of 17 holds no
         // title blocks, its sheets keeping the built-in one, no `follow_scale`, so its viewports follow their views' scales
         // from then on, as one placed without a scale does, no `join`, which reads as joining, as it always did, none of
         // its dimensions measures `across`, none of its operations is a gate's, it holds no property line and names no
         // `propertyline` in its graphics or styles, nothing in it is pinned, its elevations have no reference and their
-        // marks on their lines, its language isn't Polish, none of its components has a `panel`, and it has no circuits,
+        // marks on their lines, its language isn't Polish or Vietnamese, none of its components has a `panel`, and it has no circuits,
         // panel schedules or `demand_factors`.
         // The Family Editor's part of 18, and what places its families, takes
         // one step, in this order (it leaves the rest of 18 alone: title blocks, `join` and `across` aren't a family's, and a
@@ -3839,6 +3911,7 @@ impl Model {
         //    type whose void was clear of the solids and cut the wall with the old rule cuts it no more. That is the
         //    conservative side: the wall keeps the opening's rectangle, as 17 drew it, and one value per
         //    void can't hold both outcomes.
+        // 18 to 19 (a schedule of sheets, the sheet list) has no step either: a file of 18 holds none.
         // The rest needs nothing of a file of 17, which holds none of it: an adaptive family and a component's
         // adaptive frames, a family parameter's group, shared GUID and reporting (each defaults to what a file of 17 means:
         // grouped by its kind, the family's own, set), Doors > Opening and Windows > Opening, the project's reference planes
@@ -5879,8 +5952,36 @@ impl Model {
     /// of it (a straight wall the level's plan cuts, as far as it runs; a grid as far as it is drawn): the temporary
     /// dimensions of a column or a component. A line it stands on is no distance away, so the next one counts.
     pub fn clearances(&self, level: impl Key, at: P2) -> [Option<Clearance>; 4] {
+        let lines = self.plan_lines(level);
+        [P2(1.0, 0.0), P2(0.0, 1.0), P2(-1.0, 0.0), P2(0.0, -1.0)].map(|toward| nearest(&lines, at, toward))
+    }
+
+    /// How far straight wall `id`'s centre line stands from the nearest parallel wall centre line or grid to its left and to
+    /// its right (counter-clockwise from the way it runs, and clockwise), measured square to it from its middle, as
+    /// [`Model::clearances`] finds them on its level's plan: the temporary dimensions a selected wall moves by. None for a
+    /// curved wall, or a side with no such line across from its middle.
+    pub fn wall_clearances(&self, id: impl Key) -> [Option<Clearance>; 2] {
+        let Some(w) = self.wall(id).filter(|w| w.arc == 0.0) else { return [None, None] };
+        let (axis, (ext, int)) = (walls::Axis::of(w), walls::faces(self, w));
+        let length = axis.length();
+        if length <= TOL {
+            return [None, None];
+        }
+        let middle = axis.at(length / 2.0, (ext + int) / 2.0);
+        let u = (w.end - w.start) * (1.0 / w.start.dist(w.end));
+        let me = self.guid(id);
         let lines: Vec<(Reference, Line)> = self
-            .elements
+            .plan_lines(w.level)
+            .into_iter()
+            .filter(|(to, (a, b))| to.id != me && a.dist(*b) > TOL && u.cross((*b - *a) * (1.0 / a.dist(*b))).abs() < 1e-6)
+            .collect();
+        [P2(-u.1, u.0), P2(u.1, -u.0)].map(|toward| nearest(&lines, middle, toward))
+    }
+
+    /// The centre lines of the straight walls `level`'s plan cuts, and the grids, each as a reference to it: what temporary
+    /// dimensions measure to.
+    fn plan_lines(&self, level: impl Key) -> Vec<(Reference, Line)> {
+        self.elements
             .with_guids()
             .filter_map(|(_, id, e)| match e {
                 Element::Grid(g) => Some((Reference::line(id, Face::Centre), (g.start, g.end))),
@@ -5891,17 +5992,7 @@ impl Model {
                 }
                 _ => None,
             })
-            .collect();
-        [P2(1.0, 0.0), P2(0.0, 1.0), P2(-1.0, 0.0), P2(0.0, -1.0)].map(|toward| {
-            lines
-                .iter()
-                .filter_map(|&(to, (a, b))| {
-                    let hit = geom::line_intersection(at, at + toward, a, b)?;
-                    let distance = (hit - at).dot(toward);
-                    (distance > TOL && geom::dist_to_segment(hit, a, b) <= 1e-6).then_some(Clearance { toward, distance, to })
-                })
-                .min_by(|x, y| x.distance.total_cmp(&y.distance))
-        })
+            .collect()
     }
 
     /// The stretch of its wall's location line a door or window stands in, as distances along it: from the nearest face,
@@ -6708,6 +6799,7 @@ impl Model {
             {
                 return Err(format!("{who}: family `{f}` has a parameter of that name; name it otherwise"));
             }
+            p.check_ifc().map_err(|e| format!("{who}: {e}"))?;
         }
         graphics::check_project(self)?;
         phasing::check_project(self)?;
