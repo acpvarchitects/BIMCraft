@@ -17,6 +17,7 @@ mod nested;
 pub(crate) mod options;
 mod pivot;
 pub(crate) mod select_box;
+pub(crate) mod selection;
 pub(crate) mod shape_handles;
 pub(crate) mod sketch;
 mod sketch_dims;
@@ -517,6 +518,8 @@ pub(crate) struct FamilyEditor {
     /// What is selected (FE-1, `select_box.rs`): forms, planes, lines, dimensions, symbols, connectors and nested instances,
     /// one set; Properties show one alone's rows.
     pub(crate) selection: select_box::Selection,
+    /// The selection's commands (FE-20, `selection.rs`): Filter's, Select by ID's and IDs of Selection's dialogs.
+    pub(crate) selecting: selection::Selecting,
     /// The connector under the pointer in a view, lit as a click would select it.
     pub(crate) connector_hover: Option<usize>,
     /// What Family Types keeps while it is open: its search, the groups folded, the row selected, its own dialogs.
@@ -642,6 +645,7 @@ impl FamilyEditor {
             operation: f.operation,
             options: options::OptionsText::of(f),
             selection: Default::default(),
+            selecting: Default::default(),
             connector_hover: None,
             types_dialog: Default::default(),
             picked: 0,

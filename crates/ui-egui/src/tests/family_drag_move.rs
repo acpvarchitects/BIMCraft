@@ -289,14 +289,15 @@ fn an_extrusion_seen_edge_on_moves_its_start_and_end() {
 fn a_press_on_a_form_not_selected_selects_it_and_moves_it_and_ctrl_adds_it() {
     let mut h = plan();
     let (a0, b0) = (points(&h, 0), points(&h, 1));
-    drag(&mut h, [-800.0, 300.0, 0.0], [0.0, 300.0, 0.0], Modifiers::NONE);
+    // Each pressed on an edge: the face of a form not selected is the box's to begin in (FE-20).
+    drag(&mut h, [-600.0, 300.0, 0.0], [0.0, 300.0, 0.0], Modifiers::NONE);
     assert_eq!(editor(&h).selection.items(), &[Picked::Form(1)]);
     let d = shift(&b0, &points(&h, 1));
     assert!(near(d[1], 300.0) && near(d[0], 0.0), "{d:?} {}", status(&h));
     assert_eq!(points(&h, 0), a0);
     // Ctrl on A: added, and both move.
     let b1 = points(&h, 1);
-    drag(&mut h, [300.0, 300.0, 0.0], [100.0, 0.0, 0.0], Modifiers::CTRL);
+    drag(&mut h, [500.0, 300.0, 0.0], [100.0, 0.0, 0.0], Modifiers::CTRL);
     let mut sel = editor(&h).selection.items().to_vec();
     sel.sort();
     assert_eq!(sel, [Picked::Form(0), Picked::Form(1)]);
@@ -610,7 +611,8 @@ fn shift_on_an_element_not_selected_neither_moves_it_nor_boxes() {
     let mut h = plan();
     pick(&mut h, &[Picked::Form(0)]);
     let (a, b) = (points(&h, 0), points(&h, 1));
-    let at = press_and_move(&mut h, [-800.0, 300.0, 0.0], [300.0, 300.0, 0.0], Modifiers::SHIFT);
+    // On B's edge: its face, not selected, is the box's to begin in (FE-20), and Shift's box would take away what it takes.
+    let at = press_and_move(&mut h, [-600.0, 300.0, 0.0], [300.0, 300.0, 0.0], Modifiers::SHIFT);
     assert!(!editor(&h).boxing(), "no box");
     release(&mut h, at);
     assert_eq!((points(&h, 0), points(&h, 1)), (a, b));
@@ -630,4 +632,32 @@ fn the_options_bars_depth_is_wide_enough_for_its_value_after_a_multi_select() {
     }
     let widest = h.get_all_by_label("Depth").map(|n| n.rect().width()).fold(0.0f32, f32::max);
     assert!(widest >= 80.0, "the Depth field is {widest} wide");
+}
+
+/// With Select Elements by Face off a face selects nothing, but a press on the face of what is selected is still on it: a
+/// drag from there moves the selection, as it does with the toggle on (FE-20). The face of one not selected is the box's.
+#[test]
+fn with_select_elements_by_face_off_a_drag_from_a_selected_forms_face_moves_it() {
+    let mut h = plan();
+    h.state_mut().select_by_face = false;
+    h.run();
+    pick(&mut h, &[Picked::Form(0)]);
+    let (a0, b0) = (points(&h, 0), points(&h, 1));
+    // The status bar says a drag moves it while the pointer is over its face.
+    let (over, _) = ends(&h, [300.0, 300.0, 0.0], [0.0; 3]);
+    h.hover_at(over);
+    h.run();
+    h.run();
+    assert!(h.state().prompt().contains("Drag to move"), "{}", h.state().prompt());
+    drag(&mut h, [300.0, 300.0, 0.0], [300.0, 200.0, 0.0], Modifiers::NONE);
+    let d = shift(&a0, &points(&h, 0));
+    assert!(near(d[0], 300.0) && near(d[1], 200.0), "{d:?} {}", status(&h));
+    assert_eq!(editor(&h).selection.items(), &[Picked::Form(0)], "still selected");
+    assert_eq!(editor(&h).steps(), 1);
+    // From B's face, B not selected: a box, which moves nothing.
+    let at = press_and_move(&mut h, [-800.0, 300.0, 0.0], [-100.0, 100.0, 0.0], Modifiers::NONE);
+    assert!(editor(&h).boxing(), "a box from a face not selected");
+    release(&mut h, at);
+    assert_eq!(points(&h, 1), b0, "B stays");
+    assert_eq!(editor(&h).steps(), 1);
 }

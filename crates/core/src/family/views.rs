@@ -149,6 +149,48 @@ pub fn hidden_in(
         .collect()
 }
 
+/// Which of `family`'s nested instances view `which` (none, {3D}) at `detail` draws, sized by `values`: one a piece of
+/// which the view draws by its Visibility Settings (the instance's over its family's forms', F8: a plan by Plan/RCP, cut
+/// where its cut plane at `cut` mm passes through the piece; an elevation by Front/Back or Left/Right; {3D} by the detail
+/// level alone), or, in a plan, one whose family's plan symbols the plan draws there. One its `visible` leaves out, or that
+/// builds nothing the view draws, isn't shown: what Select All Instances' Visible in View and a selection box go by.
+pub fn nested_shown(
+    family: &Family,
+    values: &BTreeMap<String, Val>,
+    which: Option<Which>,
+    detail: crate::graphics::Detail,
+    cut: f64,
+) -> Vec<bool> {
+    let plan = matches!(which, Some(Which::Plan | Which::Ceiling));
+    (0..family.nested_instances.len())
+        .map(|i| {
+            let drawn = family.instance_pieces(i, values).iter().any(|p| draws_piece(p, which, detail, cut));
+            drawn || (plan && family.instance_marked(i, values, detail))
+        })
+        .collect()
+}
+
+/// Whether view `which` (none, {3D}) at `detail` draws piece `p` by its Visibility Settings (F8): a plan by Plan/RCP, cut
+/// where its cut plane at `cut` mm passes through the piece; an elevation by Front/Back or Left/Right; {3D} by the detail
+/// level alone. One with none, always.
+fn draws_piece(p: &super::Piece, which: Option<Which>, detail: crate::graphics::Detail, cut: f64) -> bool {
+    use super::visibility::class;
+    match (p.vis, which) {
+        (None, _) => true,
+        (Some(v), None) => v.in_3d(detail),
+        (Some(v), Some(Which::Plan | Which::Ceiling)) => v.in_plan(detail, p.bottom < cut && cut < p.top),
+        (Some(v), Some(Which::Elevation(side))) => v.along(class(side.looking(), P2(1.0, 0.0)), detail, false),
+    }
+}
+
+/// Nested instance `i`'s solids, in the family's axes, as view `which` of `st` draws them: the pieces its Visibility
+/// Settings leave in the view, at the Detail Level it is drawn at, a plan's cut plane counted. What the view picks and boxes
+/// it by: nothing, where it draws none of it.
+fn nested_drawn(family: &Family, values: &BTreeMap<String, Val>, st: &Staged, which: Which, i: usize) -> Vec<[P3; 3]> {
+    let detail = st.view_id(which).and_then(|id| crate::graphics::graphics_of(&st.model, id)).map(|g| g.detail).unwrap_or_default();
+    family.instance_pieces(i, values).into_iter().filter(|p| draws_piece(p, Some(which), detail, st.cut())).flat_map(|p| p.tris).collect()
+}
+
 /// What `family` takes up sized by `values`, in its axes, its least and greatest corners: what any of its types draws (a form
 /// the type hides is still drawn, halftone); a family that builds nothing, two metres round its origin.
 pub fn extents(family: &Family, values: &BTreeMap<String, Val>) -> (P3, P3) {
@@ -257,6 +299,11 @@ impl Staged {
     /// The elevation looking from `side`.
     pub fn elevation(&self, side: Side) -> Option<Id> {
         self.elevations.iter().find(|(s, ..)| *s == side).map(|(_, id, _)| *id)
+    }
+
+    /// The height its plans cut at: Ref. Level's cut plane.
+    pub fn cut(&self) -> f64 {
+        self.model.level(self.level).map_or(crate::model::CUT_HEIGHT, |l| l.view_range.cut)
     }
 
     /// The view element `which` is drawn from: the level, or an elevation.
@@ -426,10 +473,23 @@ pub fn plan_cut(tris: &[[P3; 3]], z: f64) -> Vec<Vec<P2>> {
 /// The solid form of `family` drawn at point `at` of view `which` (sized by `values`), its place in `forms`: the one nearest
 /// the eye there, in plan the highest. None where none is.
 pub fn form_at(family: &Family, values: &BTreeMap<String, Val>, st: &Staged, which: Which, at: P2) -> Option<usize> {
+    form_at_among(family, values, st, which, at, &|_| true)
+}
+
+/// [`form_at`] among the forms `shown` keeps, by place: those the view draws, so one it leaves out (hidden for now, or by
+/// its Visibility Settings while the family is previewed as placed) is never what a click there takes, and one under it is.
+pub fn form_at_among(
+    family: &Family,
+    values: &BTreeMap<String, Val>,
+    st: &Staged,
+    which: Which,
+    at: P2,
+    shown: &dyn Fn(usize) -> bool,
+) -> Option<usize> {
     let mut read = HashMap::new();
     let mut best: Option<(f64, usize)> = None;
     for i in 0..family.forms.len() {
-        if family.forms[i].void {
+        if family.forms[i].void || !shown(i) {
             continue;
         }
         let Some(piece) = family.solid(i, values, &mut read).ok().flatten() else { continue };
@@ -452,11 +512,12 @@ pub fn form_at(family: &Family, values: &BTreeMap<String, Val>, st: &Staged, whi
 }
 
 /// The nested instance of `family` drawn at point `at` of view `which` (sized by `values`), its place in `nested_instances`:
-/// the one nearest the eye there, as [`form_at`] finds a form. None where none is.
+/// the one nearest the eye there, as [`form_at`] finds a form, by the pieces the view draws of it (its Visibility Settings
+/// there). None where none is.
 pub fn nested_at(family: &Family, values: &BTreeMap<String, Val>, st: &Staged, which: Which, at: P2) -> Option<usize> {
     let mut best: Option<(f64, usize)> = None;
     for i in 0..family.nested_instances.len() {
-        for t in family.instance_pieces(i, values).iter().flat_map(|p| p.tris.iter()) {
+        for t in &nested_drawn(family, values, st, which, i) {
             let q = t.map(|p| st.to_view(which, p));
             if !inside(&q, at) {
                 continue;
@@ -474,10 +535,97 @@ pub fn nested_at(family: &Family, values: &BTreeMap<String, Val>, st: &Staged, w
     best.map(|(_, i)| i)
 }
 
-/// The outline nested instance `i` of `family` is seen with in view `which`: the hull of its pieces' corners there.
-pub fn nested_outline(family: &Family, values: &BTreeMap<String, Val>, st: &Staged, which: Which, i: usize) -> Vec<P2> {
-    let corners = family.instance_pieces(i, values).iter().flat_map(|p| p.tris.iter().flatten().map(|q| st.to_view(which, *q))).collect();
-    crate::geom::hull(corners)
+/// How near point `at` of view `which` the edges solid `tris` is seen with there pass ([`outline_edges`]), when within
+/// `reach`: none past it, or where it has no edge.
+fn edge_near(tris: &[[P3; 3]], st: &Staged, which: Which, at: P2, reach: f64) -> Option<f64> {
+    // Off the box round what it covers, no edge of it is near: the occlusion is worked out only for the solids under the cursor.
+    let seen: Vec<P2> = tris.iter().flatten().map(|p| st.to_view(which, *p)).collect();
+    let lo = seen.iter().fold(P2(f64::INFINITY, f64::INFINITY), |a, q| P2(a.0.min(q.0), a.1.min(q.1)));
+    let hi = seen.iter().fold(P2(f64::NEG_INFINITY, f64::NEG_INFINITY), |a, q| P2(a.0.max(q.0), a.1.max(q.1)));
+    if !(at.0 >= lo.0 - reach && at.0 <= hi.0 + reach && at.1 >= lo.1 - reach && at.1 <= hi.1 + reach) {
+        return None;
+    }
+    seen_edges(tris, st, which)
+        .iter()
+        .map(|(a, b)| crate::geom::dist_to_segment(at, *a, *b))
+        .filter(|d| d.is_finite() && *d <= reach)
+        .min_by(f64::total_cmp)
+}
+
+/// The solid form of `family` an edge of which, as view `which` draws it (sized by `values`), passes within `reach` of
+/// point `at`, its place in `forms`: the one whose edge is nearest. What a click takes while Revit's Select Elements by Face
+/// is off: a form by an edge the view draws it with ([`outline_edges`]: an L's inner corner, never the hull's chord across
+/// it), never by its face, which [`form_at`] takes it by. A void, never seen, is not.
+pub fn form_edge_at(family: &Family, values: &BTreeMap<String, Val>, st: &Staged, which: Which, at: P2, reach: f64) -> Option<usize> {
+    form_edge_at_among(family, values, st, which, at, reach, &|_| true)
+}
+
+/// [`form_edge_at`] among the forms `shown` keeps, by place, as [`form_at_among`] finds a face.
+pub fn form_edge_at_among(
+    family: &Family,
+    values: &BTreeMap<String, Val>,
+    st: &Staged,
+    which: Which,
+    at: P2,
+    reach: f64,
+    shown: &dyn Fn(usize) -> bool,
+) -> Option<usize> {
+    let mut read = HashMap::new();
+    let mut best: Option<(f64, usize)> = None;
+    for i in (0..family.forms.len()).filter(|i| !family.forms[*i].void && shown(*i)) {
+        let Some(piece) = family.solid(i, values, &mut read).ok().flatten() else { continue };
+        if let Some(d) = edge_near(&piece.tris, st, which, at, reach)
+            && best.is_none_or(|(b, _)| d < b)
+        {
+            best = Some((d, i));
+        }
+    }
+    best.map(|(_, i)| i)
+}
+
+/// The nested instance of `family` an edge of which, as view `which` draws it, passes within `reach` of point `at`, as
+/// [`form_edge_at`] finds a form ([`nested_outline_edges`]).
+pub fn nested_edge_at(family: &Family, values: &BTreeMap<String, Val>, st: &Staged, which: Which, at: P2, reach: f64) -> Option<usize> {
+    (0..family.nested_instances.len())
+        .filter_map(|i| edge_near(&nested_drawn(family, values, st, which, i), st, which, at, reach).map(|d| (d, i)))
+        .min_by(|a, b| a.0.total_cmp(&b.0))
+        .map(|(_, i)| i)
+}
+
+/// Whether selection box `boxed`, in view `which`'s millimetres, takes `part` of `family` (sized by `values`) by its faces,
+/// as Revit's box does while Select Elements by Face is on: a crossing where a face of it lies in the box, round it or
+/// across it, so one drawn wholly inside a face takes what the face is of; a window where every face lies in it. A void, never
+/// seen, and what builds nothing are never taken, nor a nested instance's pieces its Visibility Settings leave out of the view.
+pub fn face_in_box(
+    family: &Family,
+    values: &BTreeMap<String, Val>,
+    st: &Staged,
+    which: Which,
+    part: Part,
+    boxed: &crate::geom::SelectBox,
+) -> bool {
+    let tris: Vec<[P3; 3]> = match part {
+        Part::Form(i) if family.forms.get(i).is_some_and(|f| !f.void) => {
+            family.solid(i, values, &mut HashMap::new()).ok().flatten().map(|p| p.tris).unwrap_or_default()
+        }
+        Part::Form(_) => Vec::new(),
+        Part::Nested(i) => nested_drawn(family, values, st, which, i),
+    };
+    let seen = |t: &[P3; 3]| t.map(|p| st.to_view(which, p));
+    if tris.is_empty() {
+        false
+    } else if boxed.crossing {
+        tris.iter().any(|t| boxed.touches(&seen(t)))
+    } else {
+        tris.iter().all(|t| seen(t).iter().all(|q| q.is_finite() && boxed.holds(*q)))
+    }
+}
+
+/// The edges nested instance `i` of `family` is seen with in view `which`, as [`outline_edges`] finds a form's: the pieces
+/// the view draws of it, seen together, so one hides another. What it is picked, boxed and drawn selected by. Empty where the
+/// view draws none of it.
+pub fn nested_outline_edges(family: &Family, values: &BTreeMap<String, Val>, st: &Staged, which: Which, i: usize) -> Vec<(P2, P2)> {
+    seen_edges(&nested_drawn(family, values, st, which, i), st, which)
 }
 
 /// The solid form of `family` (sized by `values`) shown at pixel `px` of a picture taken through `cam`, the family at the
@@ -576,13 +724,19 @@ pub fn outline(family: &Family, values: &BTreeMap<String, Val>, st: &Staged, whi
 /// The edges form `i` of `family` is seen with in view `which`, as segments in the view's millimetres: each edge of its solid
 /// between a face turned toward the eye and one that isn't (or none), and each crease (more than [`CREASE`] degrees) between two
 /// faces turned toward it, as far as no face of the solid lies in front of it: an outline with its notches and holes, a Blend's
-/// top seen from above, and its real silhouette in an elevation, rather than the hull [`outline`] picks by. What a selected
-/// form is drawn with. Empty for a form that builds nothing.
+/// top seen from above, and its real silhouette in an elevation, rather than the hull [`outline`] is. What a selected form is
+/// drawn with, and what a click and a box take it by while a face doesn't select ([`form_edge_at`]). Empty for a form that
+/// builds nothing.
 pub fn outline_edges(family: &Family, values: &BTreeMap<String, Val>, st: &Staged, which: Which, i: usize) -> Vec<(P2, P2)> {
     if i >= family.forms.len() {
         return Vec::new();
     }
     let Some(piece) = family.solid(i, values, &mut HashMap::new()).ok().flatten() else { return Vec::new() };
+    seen_edges(&piece.tris, st, which)
+}
+
+/// The edges solid `tris` (in the family's axes) is seen with in view `which`, as [`outline_edges`] says.
+fn seen_edges(solid: &[[P3; 3]], st: &Staged, which: Which) -> Vec<(P2, P2)> {
     let eye: P3 = match which {
         Which::Plan => [0.0, 0.0, 1.0],
         Which::Ceiling => [0.0, 0.0, -1.0],
@@ -596,7 +750,7 @@ pub fn outline_edges(family: &Family, values: &BTreeMap<String, Val>, st: &Stage
     type Ends = ([i64; 3], [i64; 3]);
     let mut edges: BTreeMap<Ends, (P3, P3, Vec<P3>)> = BTreeMap::new();
     let mut tris: Vec<[P3; 3]> = Vec::new();
-    for t in &piece.tris {
+    for t in solid {
         let n = view3d::cross(view3d::sub(t[1], t[0]), view3d::sub(t[2], t[0]));
         let len = view3d::dot(n, n).sqrt();
         if len.is_nan() || len <= 1e-12 {
@@ -733,6 +887,60 @@ mod tests {
     /// Whether a pixel near `at` (within 2) is green.
     fn green_near(s: &Shown, at: (f32, f32)) -> bool {
         (-2..=2).any(|dx| (-2..=2).any(|dy| green(pixel(s, (at.0 + dx as f32, at.1 + dy as f32)))))
+    }
+
+    /// FE-20, Revit's Select Elements by Face: off, a form or a nested instance is taken by an edge of its outline alone; on,
+    /// a crossing box drawn wholly inside its face takes it too. A void, never seen, is taken by neither.
+    #[test]
+    fn a_form_is_taken_by_an_edge_of_its_outline_and_by_a_crossing_box_inside_its_face() {
+        use crate::geom::SelectBox;
+        let mut f = boxed(0.0, 2000.0);
+        let small = json!({"category": "generic", "types": {"S": {}},
+            "forms": [{"profile": [[0, 0], [100, 0], [100, 100], [0, 100]], "to": 100}]});
+        f.nested.push(serde_json::from_value(json!({"name": "Small", "family": small})).unwrap());
+        f.nested_instances.push(serde_json::from_value(json!({"family": "Small", "type": "S", "at": [1500, 0]})).unwrap());
+        let st = staged(&f);
+        let values = f.values("T", &BTreeMap::new()).unwrap();
+        for (which, inside, edge, off, far) in [
+            (Which::Plan, [750.0, 450.0, 0.0], [500.0, 450.0, 0.0], [470.0, 450.0, 0.0], [0.0, 1500.0, 0.0]),
+            (Which::Elevation(Side::Front), [750.0, 0.0, 1000.0], [750.0, 0.0, 2000.0], [750.0, 0.0, 2030.0], [-300.0, 0.0, 1000.0]),
+        ] {
+            let at = |p: P3| st.to_view(which, p);
+            assert_eq!(form_at(&f, &values, &st, which, at(inside)), Some(0), "{which:?}: by its face");
+            assert_eq!(form_edge_at(&f, &values, &st, which, at(inside), 20.0), None, "{which:?}: its face is no edge");
+            assert_eq!(form_edge_at(&f, &values, &st, which, at(edge), 20.0), Some(0), "{which:?}: on its outline");
+            assert_eq!(form_edge_at(&f, &values, &st, which, at(off), 20.0), None, "{which:?}: 30 mm off it, out of reach");
+            assert_eq!(form_edge_at(&f, &values, &st, which, at(off), 40.0), Some(0), "{which:?}: within a longer reach");
+            // A box 40 mm across round a point: dragged leftwards a crossing, rightwards a window.
+            let round = |p: P3, crossing: bool| {
+                let (c, d) = (at(p), P2(20.0, 20.0));
+                if crossing { SelectBox::dragged(c + d, c - d) } else { SelectBox::dragged(c - d, c + d) }
+            };
+            let form = Part::Form(0);
+            assert!(face_in_box(&f, &values, &st, which, form, &round(inside, true)), "{which:?}: a crossing inside its face");
+            assert!(face_in_box(&f, &values, &st, which, form, &round(edge, true)), "{which:?}: a crossing over its edge");
+            assert!(!face_in_box(&f, &values, &st, which, form, &round(far, true)), "{which:?}: a crossing off it");
+            assert!(!face_in_box(&f, &values, &st, which, form, &round(inside, false)), "{which:?}: a window holds none of it");
+            let (lo, hi) = (at([400.0, 200.0, -100.0]), at([1100.0, 700.0, 2100.0]));
+            let window = SelectBox { crossing: false, ..SelectBox::dragged(lo, hi) };
+            assert!(face_in_box(&f, &values, &st, which, form, &window), "{which:?}: a window round it");
+        }
+        // The nested instance, 100 mm each way from (1500, 0): by its outline, and by a crossing inside it.
+        let at = |p: P3| st.to_view(Which::Plan, p);
+        assert_eq!(nested_at(&f, &values, &st, Which::Plan, at([1550.0, 50.0, 0.0])), Some(0));
+        assert_eq!(nested_edge_at(&f, &values, &st, Which::Plan, at([1550.0, 50.0, 0.0]), 20.0), None);
+        assert_eq!(nested_edge_at(&f, &values, &st, Which::Plan, at([1500.0, 50.0, 0.0]), 20.0), Some(0));
+        let tiny = SelectBox::dragged(at([1560.0, 60.0, 0.0]), at([1540.0, 40.0, 0.0]));
+        assert!(tiny.crossing && face_in_box(&f, &values, &st, Which::Plan, Part::Nested(0), &tiny));
+        assert!(
+            !face_in_box(&f, &values, &st, Which::Plan, Part::Form(0), &tiny)
+                && !face_in_box(&f, &values, &st, Which::Plan, Part::Nested(3), &tiny)
+        );
+        // A void is never seen: neither its edge nor its face takes it.
+        f.forms[0].void = true;
+        let inside = SelectBox::dragged(at([760.0, 460.0, 0.0]), at([740.0, 440.0, 0.0]));
+        assert_eq!(form_edge_at(&f, &values, &st, Which::Plan, at([500.0, 450.0, 0.0]), 20.0), None);
+        assert!(!face_in_box(&f, &values, &st, Which::Plan, Part::Form(0), &inside));
     }
 
     /// F10: a window's frame, one extrusion across the wall with its light a hole, is cut in plan as its two jambs, as the
@@ -1158,6 +1366,29 @@ mod tests {
         assert_eq!(form_at(&f, &values, &st, front, st.to_view(front, [750.0, 0.0, 250.0])), Some(0));
         assert_eq!(form_at(&f, &values, &st, front, st.to_view(front, [750.0, 0.0, 900.0])), None);
         assert!(!outline(&f, &values, &st, front, 0).is_empty());
+    }
+
+    /// FE-20, Select Elements by Face off: an L, as a form and as a nested instance, is picked by the edges the view draws, its
+    /// inner corner's among them, and not by its hull's chord across the empty corner.
+    #[test]
+    fn an_l_is_picked_by_its_inner_edges_and_not_by_its_hulls_chord() {
+        let ell = json!({"category": "generic", "types": {"T": {}},
+            "forms": [{"profile": [[0, 0], [1000, 0], [1000, 500], [500, 500], [500, 1000], [0, 1000]], "from": 0, "to": 300}]});
+        let mut f: Family = serde_json::from_value(ell.clone()).unwrap();
+        f.nested.push(serde_json::from_value(json!({"name": "Ell", "family": ell})).unwrap());
+        f.nested_instances.push(serde_json::from_value(json!({"family": "Ell", "type": "T", "at": [3000, 0]})).unwrap());
+        let st = staged(&f);
+        let values = f.values("T", &BTreeMap::new()).unwrap();
+        let at = |x: f64, y: f64| st.to_view(Which::Plan, [x, y, 0.0]);
+        for (x, y) in [(750.0, 500.0), (500.0, 750.0), (1000.0, 250.0)] {
+            assert_eq!(form_edge_at(&f, &values, &st, Which::Plan, at(x, y), 20.0), Some(0), "the form's edge at ({x}, {y})");
+            assert_eq!(nested_edge_at(&f, &values, &st, Which::Plan, at(x + 3000.0, y), 20.0), Some(0), "the instance's at ({x}, {y})");
+        }
+        assert_eq!(form_edge_at(&f, &values, &st, Which::Plan, at(750.0, 750.0), 20.0), None, "the chord: nothing drawn there");
+        assert_eq!(nested_edge_at(&f, &values, &st, Which::Plan, at(3750.0, 750.0), 20.0), None, "nor the instance's");
+        let edges = nested_outline_edges(&f, &values, &st, Which::Plan, 0);
+        assert!(edges.iter().all(|(a, b)| a.dist(*b) > 0.0) && !edges.is_empty(), "{edges:?}");
+        assert!(nested_outline_edges(&f, &values, &st, Which::Plan, 1).is_empty(), "no such instance");
     }
 
     /// A selected form is drawn by its edges as seen: an L in plan with its notch and no diagonal across it; from the front its
