@@ -280,6 +280,10 @@ pub struct FamilyDimension {
     pub id: Id,
     #[serde(default, skip_serializing_if = "Guid::is_nil")]
     pub guid: Guid,
+    /// Pinned where it is (FE-17, Pin and Unpin): a move, a rotation, a mirror, a scale, Align and Delete refuse it. A copy
+    /// of it isn't.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub pinned: bool,
     #[serde(default)]
     pub view: DimView,
     pub refs: Vec<DimRef>,

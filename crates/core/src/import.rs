@@ -3059,6 +3059,7 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
                 family.connectors.push(Connector {
                     id: 0,
                     guid: Guid::default(),
+                    pinned: false,
                     name: String::new(),
                     kind,
                     system: Some(system),

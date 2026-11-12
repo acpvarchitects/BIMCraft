@@ -433,3 +433,43 @@ mod tests {
         assert_eq!(instances(&f, &[Picked::Nested(4)], Some(&shown)), [Picked::Nested(4)], "found by what the plan draws of it");
     }
 }
+
+/// Whether `p` is pinned where it is (FE-17): a datum always, else as the family has it. What `family` hasn't is not.
+pub fn pinned(family: &Family, p: Picked) -> bool {
+    match p {
+        Picked::Form(i) => family.forms.get(i).is_some_and(|f| f.pinned),
+        Picked::Plane(g) => family.planes.iter().any(|x| x.guid == g && (x.pinned || x.datum())),
+        Picked::Line(g) => family.lines.iter().any(|x| x.guid == g && x.pinned),
+        Picked::Dimension(g) => family.dimensions.iter().any(|x| x.guid == g && x.pinned),
+        Picked::Symbol(i) => family.symbols.get(i).is_some_and(|x| x.pinned),
+        Picked::Connector(i) => family.connectors.get(i).is_some_and(|x| x.pinned),
+        Picked::Nested(i) => family.nested_instances.get(i).is_some_and(|x| x.pinned),
+    }
+}
+
+/// The first of `picked` that is pinned, in their order: what a move, Delete or Align refuses, naming it.
+pub fn pinned_among(family: &Family, picked: &[Picked]) -> Option<Picked> {
+    picked.iter().copied().find(|p| pinned(family, *p))
+}
+
+/// Pins (`on`) or unpins each of `picked` that `family` has, as Pin and Unpin do (FE-17), and says which changed, in their
+/// order: a datum is pinned always and never among them.
+pub fn pin(family: &mut Family, picked: &[Picked], on: bool) -> Vec<Picked> {
+    let mut changed = Vec::new();
+    for &p in picked {
+        let flag = match p {
+            Picked::Form(i) => family.forms.get_mut(i).map(|x| &mut x.pinned),
+            Picked::Plane(g) => family.planes.iter_mut().find(|x| x.guid == g && !x.datum()).map(|x| &mut x.pinned),
+            Picked::Line(g) => family.lines.iter_mut().find(|x| x.guid == g).map(|x| &mut x.pinned),
+            Picked::Dimension(g) => family.dimensions.iter_mut().find(|x| x.guid == g).map(|x| &mut x.pinned),
+            Picked::Symbol(i) => family.symbols.get_mut(i).map(|x| &mut x.pinned),
+            Picked::Connector(i) => family.connectors.get_mut(i).map(|x| &mut x.pinned),
+            Picked::Nested(i) => family.nested_instances.get_mut(i).map(|x| &mut x.pinned),
+        };
+        if let Some(flag) = flag.filter(|f| **f != on) {
+            *flag = on;
+            changed.push(p);
+        }
+    }
+    changed
+}

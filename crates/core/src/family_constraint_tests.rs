@@ -10,26 +10,26 @@ use crate::family::{CENTER_FRONT_BACK, CENTER_LEFT_RIGHT, Family, REF_LEVEL};
 use crate::ids::Guid;
 use crate::model::Model;
 
-const LEFT: &str = "11111111-1111-4111-8111-000000000001";
-const RIGHT: &str = "11111111-1111-4111-8111-000000000002";
-const FRONT: &str = "11111111-1111-4111-8111-000000000003";
-const BACK: &str = "11111111-1111-4111-8111-000000000004";
-const TOP: &str = "11111111-1111-4111-8111-000000000005";
-const BAR: &str = "22222222-2222-4222-8222-000000000001";
-const POST: &str = "22222222-2222-4222-8222-000000000002";
+pub(crate) const LEFT: &str = "11111111-1111-4111-8111-000000000001";
+pub(crate) const RIGHT: &str = "11111111-1111-4111-8111-000000000002";
+pub(crate) const FRONT: &str = "11111111-1111-4111-8111-000000000003";
+pub(crate) const BACK: &str = "11111111-1111-4111-8111-000000000004";
+pub(crate) const TOP: &str = "11111111-1111-4111-8111-000000000005";
+pub(crate) const BAR: &str = "22222222-2222-4222-8222-000000000001";
+pub(crate) const POST: &str = "22222222-2222-4222-8222-000000000002";
 
-fn run(s: &mut Session, c: &str, p: Value) -> Value {
+pub(crate) fn run(s: &mut Session, c: &str, p: Value) -> Value {
     s.execute(c, &p).unwrap_or_else(|e| panic!("{c} {p}: {e}"))
 }
 
-fn g(s: &str) -> Guid {
+pub(crate) fn g(s: &str) -> Guid {
     serde_json::from_value(json!(s)).unwrap()
 }
 
 /// A parametric box: Left and Right labelled Width with EQ about Center (Left/Right), Front and Back labelled Depth with EQ
 /// about Center (Front/Back), Top labelled Height over Ref. Level. A bar along x on Center (Left/Right) whose start and end
 /// are locked to Left and Right, and a post on Ref. Level whose end is locked to Top.
-fn the_box() -> Value {
+pub(crate) fn the_box() -> Value {
     let plane = |guid: &str, name: &str, start: [f64; 3], end: [f64; 3], up: [f64; 3]| json!({"guid": guid, "name": name, "start": start, "end": end, "up": up});
     json!({
         "name": "Box",

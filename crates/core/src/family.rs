@@ -580,6 +580,10 @@ pub struct Symbol {
     pub id: crate::ids::Id,
     #[serde(default, skip_serializing_if = "crate::ids::Guid::is_nil")]
     pub guid: crate::ids::Guid,
+    /// Pinned where it is (FE-17, Pin and Unpin): a move, a rotation, a mirror, a scale, Align and Delete refuse it. A copy
+    /// of it isn't.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub pinned: bool,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub line: Vec<[Expr; 2]>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -691,6 +695,10 @@ pub struct Connector {
     pub id: crate::ids::Id,
     #[serde(default, skip_serializing_if = "crate::ids::Guid::is_nil")]
     pub guid: crate::ids::Guid,
+    /// Pinned where it is (FE-17, Pin and Unpin): a move, a rotation, a mirror, a scale, Align and Delete refuse it. A copy
+    /// of it isn't.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub pinned: bool,
     /// What it's called in its family (`Waste`, `Cold water`), for people; none is fine.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub name: String,
@@ -777,6 +785,10 @@ pub struct Form {
     pub id: crate::ids::Id,
     #[serde(default, skip_serializing_if = "crate::ids::Guid::is_nil")]
     pub guid: crate::ids::Guid,
+    /// Pinned where it is (FE-17, Pin and Unpin): a move, a rotation, a mirror, a scale, Align and Delete refuse it. A copy
+    /// of it isn't.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub pinned: bool,
     /// The plane its profile is drawn on, in that plane's axes, and swept along its normal from `from` to `to`
     /// (Revit's Extrusion Start and End); a revolve turns in it. Ref. Level unless said.
     #[serde(default)]
@@ -867,6 +879,8 @@ struct FormIn {
     #[serde(default)]
     guid: crate::ids::Guid,
     #[serde(default)]
+    pinned: bool,
+    #[serde(default)]
     host: Option<PlaneRef>,
     #[serde(default)]
     plane: Option<Plane>,
@@ -936,6 +950,7 @@ impl TryFrom<FormIn> for Form {
         Ok(Form {
             id: f.id,
             guid: f.guid,
+            pinned: f.pinned,
             host,
             sketch: lines,
             from,

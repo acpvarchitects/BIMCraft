@@ -169,6 +169,7 @@ fn lock(a: DimRef, b: DimRef) -> FamilyDimension {
     FamilyDimension {
         id: 0,
         guid: Guid::new(),
+        pinned: false,
         view: DimView::Plan,
         refs: vec![a, b],
         at: [0.0; 3],
