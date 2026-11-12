@@ -984,8 +984,10 @@ cut and paste the lines picked (`SketchClip`), never the Axis Line, into the sam
 the locks and dimensions among them coming along (to `FormSketch::dims`, an Align lock to `locks`), those to lines not copied
 dropped and counted, by the pointer (their middle where the click is) or in the same place; one change the sketch's Ctrl+Z
 takes back. A command that can't be used now is greyed with the reason as its tooltip (`clipboard_blocked`), as FE-8's tools
-are. The clipboard is the window's (`BimApp::clipboard`, `Held`), so it outlives views, ribbon tabs and document tabs; a copy
-also puts a line saying what it holds on the system's clipboard, since the window only hears Ctrl+V when that has text.
+are. The clipboard is the window's (`BimApp::clipboard`, `Held`), so it outlives views, ribbon tabs and document tabs, and it
+never writes or reads the system's: the window gets Ctrl+V as Paste only when the system's clipboard holds text, so Ctrl+V is
+heard as V let go with Ctrl held too, once per press (`clipboard::key`), and pastes the family's copies whatever text the
+system's clipboard holds.
 Pasting into another family's document is refused, naming the family to paste into: the copies name the first family's planes,
 parameters, formulas and nested families, which another may not have, and nothing maps them yet. The panel draws from a list
 of each command's state (`clipboard::panel`), which a project's clipboard can share. Nothing of it is saved. Revit has no keys

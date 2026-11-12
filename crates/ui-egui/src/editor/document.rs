@@ -709,7 +709,7 @@ impl BimApp {
                 });
                 if let (Some(c), Some(doc)) = (asked, doc) {
                     let done = super::clipboard::run(ed, &mut self.clipboard, doc, c);
-                    self.clipboard_said(c, done);
+                    self.clipboard_said(done);
                 }
                 let mut modify: Option<super::modify::Tool> = None;
                 ribbon::panel(ui, msg!("Modify"), |ui| {
@@ -1713,14 +1713,11 @@ impl BimApp {
         if self.show_shortcuts {
             return;
         }
-        // FE-14: Ctrl+C, Ctrl+X and Ctrl+V, in a family that isn't adaptive; a copy's line for the system's clipboard.
+        // FE-14: Ctrl+C, Ctrl+X and Ctrl+V, in a family that isn't adaptive.
         if self.active_family().is_some_and(|ed| ed.adaptive.is_none())
-            && let Some(c) = super::clipboard::key(ctx)
+            && let Some(c) = super::clipboard::key(ctx, &mut self.paste_heard)
         {
             self.family_clipboard(c);
-        }
-        if let Some(text) = self.clip_text.take() {
-            ctx.copy_text(text);
         }
         let Some(ed) = self.active_family_mut() else { return };
         // Zoom In Region armed: Escape gives it up, and nothing else.
@@ -1827,7 +1824,7 @@ impl BimApp {
         ed.go_to_view_dialog(ctx);
         // FE-14: Paste Aligned to Selected Views.
         if let Some(done) = ed.paste_views_dialog(ctx) {
-            self.clipboard_said(super::clipboard::Command::Paste(super::clipboard::Paste::SelectedViews), done.map(Some));
+            self.clipboard_said(done.map(Some));
         }
         // F8: Family Element Visibility Settings.
         ed.visibility_dialog(ctx);

@@ -570,22 +570,39 @@ pub(crate) fn run(ed: &mut FamilyEditor, held: &mut Option<Held>, doc: DocId, c:
     }
 }
 
-/// The clipboard's key in the events of the frame: Ctrl+C, Ctrl+X or Ctrl+V, as the window's own events (Copy, Cut, Paste) or
-/// as keys; taken from the frame.
-pub(crate) fn key(ctx: &Context) -> Option<Command> {
+/// The clipboard's key in the events of the frame: Ctrl+C, Ctrl+X or Ctrl+V, taken from the frame. Ctrl+C and Ctrl+X come as
+/// the window's Copy and Cut. Ctrl+V comes as Paste only when the system's clipboard holds text, and then as nothing more, but
+/// V let go with Ctrl still held always comes as a key: so Paste is heard either way, the system's clipboard never written or
+/// read, and `heard` (kept from frame to frame) says a Paste came with this press, so its V let go isn't heard twice. A
+/// harness's keys come as keys, down and up.
+pub(crate) fn key(ctx: &Context, heard: &mut bool) -> Option<Command> {
     ctx.input_mut(|i| {
         let mut found = None;
         i.events.retain(|e| {
             let c = match e {
                 egui::Event::Copy => Command::Copy,
                 egui::Event::Cut => Command::Cut,
-                egui::Event::Paste(_) => Command::Paste(Paste::Pointer),
+                egui::Event::Paste(_) => {
+                    *heard = true;
+                    Command::Paste(Paste::Pointer)
+                }
+                egui::Event::Key { key: egui::Key::V, pressed: true, modifiers, .. } if modifiers.command => {
+                    *heard = true;
+                    Command::Paste(Paste::Pointer)
+                }
+                egui::Event::Key { key: egui::Key::V, pressed: false, modifiers, .. } => {
+                    // Its press was heard (a Paste, or the key down): this is the same Ctrl+V.
+                    if std::mem::take(heard) || !modifiers.command {
+                        return !modifiers.command;
+                    }
+                    Command::Paste(Paste::Pointer)
+                }
                 _ => return true,
             };
             found = found.or(Some(c));
             false
         });
-        for (k, c) in [(egui::Key::C, Command::Copy), (egui::Key::X, Command::Cut), (egui::Key::V, Command::Paste(Paste::Pointer))] {
+        for (k, c) in [(egui::Key::C, Command::Copy), (egui::Key::X, Command::Cut)] {
             if i.consume_key(egui::Modifiers::COMMAND, k) {
                 found = found.or(Some(c));
             }
@@ -605,18 +622,13 @@ impl BimApp {
             None => Ok(None),
         };
         self.clipboard = held;
-        self.clipboard_said(c, done);
+        self.clipboard_said(done);
     }
 
-    /// What came of `c`, in the status bar; a copy also puts a line on the system's clipboard, so Ctrl+V reaches the window.
-    pub(crate) fn clipboard_said(&mut self, c: Command, done: Result<Option<String>, String>) {
+    /// What came of a clipboard command, in the status bar.
+    pub(crate) fn clipboard_said(&mut self, done: Result<Option<String>, String>) {
         match done {
-            Ok(said) => {
-                if matches!(c, Command::Copy | Command::Cut) {
-                    self.clip_text = said.clone();
-                }
-                self.status = Status { text: said.unwrap_or_default(), error: false };
-            }
+            Ok(said) => self.status = Status { text: said.unwrap_or_default(), error: false },
             Err(text) => self.status = Status { text, error: true },
         }
     }
