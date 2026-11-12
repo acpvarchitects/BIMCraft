@@ -466,3 +466,21 @@ fn a_second_dimension_reporting_one_parameter_is_refused_its_label() {
     // Its own dimension may keep it.
     assert!(ed(&mut h).set_label(g(DIM), Some("Span".into())).is_ok());
 }
+
+/// With Select Elements by Face off, Ctrl and a drag from the face of a form selected copy it, as with the toggle on (FE-20).
+#[test]
+fn with_select_elements_by_face_off_ctrl_and_a_drag_from_a_selected_forms_face_copy_it() {
+    let mut h = plan();
+    h.state_mut().select_by_face = false;
+    h.run();
+    pick(&mut h, &[Picked::Form(0)]);
+    let a0 = points(&h, 0);
+    copy_drag(&mut h, [300.0, 300.0, 0.0], [0.0, -700.0, 0.0]);
+    let f = family(&h);
+    assert_eq!(f.forms.len(), 3, "{}", status(&h));
+    assert_eq!(points(&h, 0), a0, "the original stays");
+    let d = shift(&a0, &points(&h, 1));
+    assert!(near(d[0], 0.0) && near(d[1], -700.0), "{d:?}");
+    assert_eq!(editor(&h).selection.items(), &[Picked::Form(1)], "the copy is selected");
+    assert_eq!(editor(&h).steps(), 1);
+}

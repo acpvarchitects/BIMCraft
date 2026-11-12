@@ -31,9 +31,9 @@
 //! face selects it and a crossing box takes one by its faces too, so one drawn wholly inside a face takes what the face
 //! is of; off, a crossing box wholly inside a face, meeting none of its edges, doesn't take it, as Revit's doesn't, and a
 //! click selects by an edge alone. The box may begin inside the face of a form or a nested instance that isn't selected
-//! (`Scene::under`); a drag from an element's edge, a plane, a line or a connector, or from one selected while a face
-//! selects, is the element's and draws none: it moves the selection (FE-7, `drag_move.rs`), the element selected first if
-//! it isn't. {3D} has no box: a drag there turns the view.
+//! (`Scene::under`); a drag from an element's edge, a plane, a line or a connector, or from the face of one selected (with
+//! Select Elements by Face on or off), is the element's and draws none: it moves the selection (FE-7, `drag_move.rs`), the
+//! element selected first if it isn't. {3D} has no box: a drag there turns the view.
 use super::*;
 use bimcraft_core::family::constraints::DimMark;
 use bimcraft_core::family::views::{self as fv, Staged, Which};
@@ -549,29 +549,35 @@ impl Scene<'_> {
             .or_else(|| self.form_edge(q, reach).map(Picked::Form))
     }
 
+    /// The nested instance or the form of `selected` whose face the view draws at `q`, nearest the eye, with Select
+    /// Elements by Face on or off: what is selected is held by its face, so a drag from there moves it (FE-7) and draws no
+    /// box. Whether a face selects is a click's question, never one about what is selected already.
+    fn held_face(&self, q: P2, selected: &[Picked]) -> Option<Picked> {
+        let nested = fv::nested_at(self.family, self.values, self.staged, self.which, q).map(Picked::Nested);
+        nested.filter(|p| selected.contains(p)).or_else(|| self.form_face(q).map(Picked::Form).filter(|p| selected.contains(p)))
+    }
+
     /// Whether a drag from `p` is an element's and so draws no box: a connector, a reference line, a plane, or a form or a
     /// nested instance by an edge the view draws it with. The face of a form or a nested instance is the box's to begin in, as
-    /// Revit's (FE-20), but for one of `selected` while a face selects: dragging what is selected is its own.
+    /// Revit's (FE-20), but for one of `selected`, with Select Elements by Face on or off: dragging what is selected is its
+    /// own.
     pub(super) fn under(&self, p: Pos2, selected: &[Picked]) -> bool {
         let q = self.view.mm((p.x - self.min.x, p.y - self.min.y));
         let reach = self.reach();
         let project = |x: [f64; 3]| Some(self.at(x));
-        let held = self.by_face
-            && (fv::nested_at(self.family, self.values, self.staged, self.which, q).is_some_and(|i| selected.contains(&Picked::Nested(i)))
-                || self.form_face(q).is_some_and(|i| selected.contains(&Picked::Form(i))));
         super::connector_marks::pick(self.connectors, &project, p).is_some()
             || fv::nested_edge_at(self.family, self.values, self.staged, self.which, q, reach).is_some()
             || self.staged.line_at(self.which, q, reach).is_some()
             || self.drawing.pick_all((p.x - self.min.x, p.y - self.min.y), 6.0).into_iter().any(|id| self.staged.plane_of(id).is_some())
             || self.form_edge(q, reach).is_some()
-            || held
+            || self.held_face(q, selected).is_some()
     }
 
     /// What a press at `p` is on, as a click there would select it (FE-7, in FE-20's order): a connector, a nested instance
     /// by its face while a face selects, a reference line, a plane (`plane`, the one Tab has come to), then a form by its
-    /// face while a face selects, a nested instance or a form by an edge (`body_hit`); else a symbol of `selected` by its
-    /// strokes, which a click doesn't select in a view but a drag moves. Whether a drag from there is the element's is
-    /// [`under`](Self::under)'s to say.
+    /// face while a face selects, a nested instance or a form by an edge (`body_hit`); else, a face selecting or not, one of
+    /// `selected` by its face (`held_face`), or a symbol of `selected` by its strokes, which a click doesn't select in a view
+    /// but a drag moves. Whether a drag from there is the element's is [`under`](Self::under)'s to say.
     pub(super) fn hit(&self, p: Pos2, plane: Option<Guid>, selected: &[Picked]) -> Option<Picked> {
         let q = self.view.mm((p.x - self.min.x, p.y - self.min.y));
         let project = |x: [f64; 3]| Some(self.at(x));
@@ -591,7 +597,7 @@ impl Scene<'_> {
                 })
             })
         };
-        line.or(plane.map(Picked::Plane)).or_else(body).or_else(symbol)
+        line.or(plane.map(Picked::Plane)).or_else(body).or_else(|| self.held_face(q, selected)).or_else(symbol)
     }
 
     /// What is selected, over the picture, as one selected alone is drawn: a form's and a nested instance's edges as seen, a

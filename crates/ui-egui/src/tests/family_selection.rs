@@ -487,9 +487,14 @@ fn select_elements_by_face_decides_whether_a_face_selects_by_a_click_and_by_a_cr
     assert!(selected(&h).is_empty(), "off, a crossing inside a face takes nothing, and lets the selection go");
     boxed(&mut h, [-400.0, 500.0, 0.0], [-600.0, 300.0, 0.0], Modifiers::NONE);
     assert_eq!(selected(&h), vec![Picked::Form(0)], "off, a crossing over its edge takes it");
-    // Off, the face of one selected is nothing a drag belongs to: a box is drawn from it.
+    // Off, the face of one selected is still its own: a drag from it moves it and draws no box, as on; Undo puts it back.
+    let unmoved = forms(&h);
     boxed(&mut h, [-650.0, 450.0, 0.0], [-750.0, 350.0, 0.0], Modifiers::NONE);
-    assert!(selected(&h).is_empty(), "off, a drag from inside a selected form's face is a box");
+    assert_eq!(selected(&h), vec![Picked::Form(0)], "off, a drag from inside a selected form's face is its own");
+    assert_ne!(forms(&h), unmoved, "and moves it");
+    h.state_mut().family_undo();
+    h.run();
+    assert_eq!(forms(&h), unmoved);
     // The status bar's toggle turns it on again.
     press(&mut h, "Select Elements by Face");
     assert!(h.state().select_by_face, "the status bar's toggle");
