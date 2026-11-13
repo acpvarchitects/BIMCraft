@@ -21,6 +21,8 @@ pub enum Picked {
     Plane(Guid),
     /// A reference line.
     Line(Guid),
+    /// A model line (FE-15).
+    ModelLine(Guid),
     Dimension(Guid),
     /// A plan symbol, by its place in the family's symbols.
     Symbol(usize),
@@ -42,6 +44,7 @@ pub enum Kind {
     Mesh,
     ReferencePlane,
     ReferenceLine,
+    ModelLine,
     Dimension,
     Symbol,
     Connector,
@@ -66,10 +69,11 @@ impl Kind {
             Kind::Mesh => 10,
             Kind::ReferencePlane => 11,
             Kind::ReferenceLine => 12,
-            Kind::Dimension => 13,
-            Kind::Symbol => 14,
-            Kind::Connector => 15,
-            Kind::Nested => 16,
+            Kind::ModelLine => 13,
+            Kind::Dimension => 14,
+            Kind::Symbol => 15,
+            Kind::Connector => 16,
+            Kind::Nested => 17,
         }
     }
 
@@ -89,6 +93,7 @@ impl Kind {
             Kind::Mesh => ui_msg!("Meshes"),
             Kind::ReferencePlane => ui_msg!("Reference Planes"),
             Kind::ReferenceLine => ui_msg!("Reference Lines"),
+            Kind::ModelLine => ui_msg!("Model Lines"),
             Kind::Dimension => ui_msg!("Dimensions"),
             Kind::Symbol => ui_msg!("Symbols"),
             Kind::Connector => ui_msg!("Connectors"),
@@ -104,6 +109,7 @@ fn ident(family: &Family, p: Picked) -> Option<(Id, Guid)> {
         Picked::Form(i) => family.forms.get(i).map(|f| (f.id, f.guid)),
         Picked::Plane(g) => family.planes.iter().find(|q| q.guid == g).map(|q| (q.id, q.guid)),
         Picked::Line(g) => family.lines.iter().find(|l| l.guid == g).map(|l| (l.id, l.guid)),
+        Picked::ModelLine(g) => family.model_lines.iter().find(|l| l.guid == g).map(|l| (l.id, l.guid)),
         Picked::Dimension(g) => family.dimensions.iter().find(|d| d.guid == g).map(|d| (d.id, d.guid)),
         Picked::Symbol(i) => family.symbols.get(i).map(|y| (y.id, y.guid)),
         Picked::Connector(i) => family.connectors.get(i).map(|c| (c.id, c.guid)),
@@ -129,6 +135,7 @@ pub fn kind(family: &Family, p: Picked) -> Option<Kind> {
         },
         Picked::Plane(_) => Kind::ReferencePlane,
         Picked::Line(_) => Kind::ReferenceLine,
+        Picked::ModelLine(_) => Kind::ModelLine,
         Picked::Dimension(_) => Kind::Dimension,
         Picked::Symbol(_) => Kind::Symbol,
         Picked::Connector(_) => Kind::Connector,
@@ -183,6 +190,7 @@ pub fn all(family: &Family) -> Vec<Picked> {
     let mut out: Vec<Picked> = (0..family.forms.len()).map(Picked::Form).collect();
     out.extend(family.planes.iter().map(|p| Picked::Plane(p.guid)));
     out.extend(family.lines.iter().map(|l| Picked::Line(l.guid)));
+    out.extend(family.model_lines.iter().map(|l| Picked::ModelLine(l.guid)));
     out.extend(family.dimensions.iter().map(|d| Picked::Dimension(d.guid)));
     out.extend((0..family.symbols.len()).map(Picked::Symbol));
     out.extend((0..family.connectors.len()).map(Picked::Connector));
@@ -256,6 +264,7 @@ pub fn pinned(family: &Family, p: Picked) -> bool {
         Picked::Form(i) => family.forms.get(i).is_some_and(|f| f.pinned),
         Picked::Plane(g) => family.planes.iter().any(|x| x.guid == g && (x.pinned || x.datum())),
         Picked::Line(g) => family.lines.iter().any(|x| x.guid == g && x.pinned),
+        Picked::ModelLine(g) => family.model_lines.iter().any(|x| x.guid == g && x.pinned),
         Picked::Dimension(g) => family.dimensions.iter().any(|x| x.guid == g && x.pinned),
         Picked::Symbol(i) => family.symbols.get(i).is_some_and(|x| x.pinned),
         Picked::Connector(i) => family.connectors.get(i).is_some_and(|x| x.pinned),
@@ -277,6 +286,7 @@ pub fn pin(family: &mut Family, picked: &[Picked], on: bool) -> Vec<Picked> {
             Picked::Form(i) => family.forms.get_mut(i).map(|x| &mut x.pinned),
             Picked::Plane(g) => family.planes.iter_mut().find(|x| x.guid == g && !x.datum()).map(|x| &mut x.pinned),
             Picked::Line(g) => family.lines.iter_mut().find(|x| x.guid == g).map(|x| &mut x.pinned),
+            Picked::ModelLine(g) => family.model_lines.iter_mut().find(|x| x.guid == g).map(|x| &mut x.pinned),
             Picked::Dimension(g) => family.dimensions.iter_mut().find(|x| x.guid == g).map(|x| &mut x.pinned),
             Picked::Symbol(i) => family.symbols.get_mut(i).map(|x| &mut x.pinned),
             Picked::Connector(i) => family.connectors.get_mut(i).map(|x| &mut x.pinned),
@@ -299,6 +309,7 @@ pub fn said(family: &Family, p: Picked) -> String {
         Picked::Form(i) => family.said(Named::Form(i)),
         Picked::Plane(g) => family.said(Named::Plane(g)),
         Picked::Line(g) => family.said(Named::Line(g)),
+        Picked::ModelLine(g) => family.model_lines.iter().position(|l| l.guid == g).map_or_else(|| g.to_string(), |i| at("model line", i)),
         Picked::Dimension(g) => family.dimensions.iter().position(|d| d.guid == g).map_or_else(|| g.to_string(), |i| at("dimension", i)),
         Picked::Symbol(i) => at("symbol", i),
         Picked::Connector(i) => at("connector", i),

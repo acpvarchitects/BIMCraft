@@ -2435,6 +2435,29 @@ impl Family {
                 f.lines[k].end = if how.is_some() { end } else { tidy(end) };
                 lines.push((l.guid, how));
             }
+            // A model line lies on what it is drawn on as a reference line does, and moves with it (FE-15).
+            for k in 0..f.model_lines.len() {
+                let l = f.model_lines[k].clone();
+                let host = match l.host {
+                    PlaneRef::Plane(g) => shift.iter().find(|(h, _)| *h == g).map(|(_, b)| *b),
+                    PlaneRef::Line(g, _) => lines.iter().find(|(h, _)| *h == g).map(|(_, b)| *b),
+                };
+                let (Ok(old), Ok(new)) = (self.frame(&l.host), f.frame(&l.host)) else { continue };
+                let (start, end) = match host {
+                    Some(Some(by)) => (add(l.start, by), add(l.end, by)),
+                    Some(None) => {
+                        let move_ = |p: P3| {
+                            let (q, t) = old.local(p);
+                            new.point(q, t)
+                        };
+                        let tidy = |p: P3| p.map(|v| (v * 1e9).round() / 1e9);
+                        (tidy(move_(l.start)), tidy(move_(l.end)))
+                    }
+                    None => continue,
+                };
+                f.model_lines[k].start = start;
+                f.model_lines[k].end = end;
+            }
         }
         for (i, end, v) in &s.ends {
             if let Some(form) = f.forms.get_mut(*i) {

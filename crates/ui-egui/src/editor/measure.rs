@@ -95,6 +95,7 @@ impl FamilyEditor {
             }
             Picked::Plane(_) => self.reference_plane_tool(),
             Picked::Line(_) => self.reference_line_tool(),
+            Picked::ModelLine(_) => self.model_line_tool(),
             Picked::Dimension(g) => match self.dimensions.iter().find(|d| d.guid == g).map(|d| d.kind) {
                 Some(DimKind::Aligned) | None => self.dimension_tool(),
                 Some(kind) => self.radial_tool(kind),

@@ -43,8 +43,8 @@ pub use options::{MAX_OMNICLASS, OPTION_KEYS, OmniClass};
 pub use visibility::Visibility;
 
 pub use planes::{
-    CENTER_FRONT_BACK, CENTER_LEFT_RIGHT, DATUMS, Face, Frame, MAX_LINES, MAX_PLANES, PlaneRef, Planes, REF_LEVEL, RefLine, RefPlane,
-    Reference, datums,
+    CENTER_FRONT_BACK, CENTER_LEFT_RIGHT, DATUMS, Face, Frame, MAX_LINES, MAX_PLANES, ModelLine, PlaneRef, Planes, REF_LEVEL, RefLine,
+    RefPlane, Reference, datums,
 };
 
 /// What a family is: how IFC names its components; a door or a window is hosted in a wall, which
@@ -995,6 +995,9 @@ pub struct Family {
     /// Its reference lines, each with four planes a form may be drawn on.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub lines: Vec<RefLine>,
+    /// Its model lines (FE-15): lines of its own, drawn on its planes, that every view shows.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub model_lines: Vec<ModelLine>,
     #[serde(default)]
     pub forms: Vec<Form>,
     /// Its dimensions (F7): between its planes and its extrusions' ends, labelled, locked and EQ, and the locks Align leaves;
@@ -1056,6 +1059,7 @@ impl Default for Family {
             types: BTreeMap::new(),
             planes: datums(),
             lines: Vec::new(),
+            model_lines: Vec::new(),
             forms: Vec::new(),
             dimensions: Vec::new(),
             symbols: Vec::new(),
@@ -2214,6 +2218,19 @@ impl Family {
                 }
             }
         }
+        for (i, l) in self.model_lines.iter().enumerate() {
+            let Some(name) = &l.subcategory else { continue };
+            if self.subcategory_key(name).is_none() {
+                let parent = self.category.graphics_category();
+                let has: Vec<&str> = crate::graphics::subcategories(parent).map(|s| s.name).collect();
+                let shown: String = name.chars().take(40).collect();
+                return Err(format!(
+                    "model line {}: its subcategory `{shown}` isn't one of its category's ({}); leave it out to draw it in the category",
+                    i + 1,
+                    if has.is_empty() { "it has none".to_string() } else { has.join(", ") }
+                ));
+            }
+        }
         for (i, y) in self.symbols.iter().enumerate() {
             let Some(name) = &y.subcategory else { continue };
             if self.subcategory_key(name).is_none() {
@@ -2505,6 +2522,31 @@ impl Family {
     /// instance's over its family's symbols, and with none Medium and Fine ([`visibility::SYMBOL_DEFAULT`]).
     pub fn marks_in(&self, values: &BTreeMap<String, Val>, detail: crate::graphics::Detail) -> Result<Vec<Tagged>, String> {
         self.marks_metered(values, Some(detail), &mut nested::Meter::default())
+    }
+
+    /// Its model lines (FE-15) for `values`, in its own axes: where its constraints put what they are drawn on; those its
+    /// Visibility Settings show in a plan at `detail` (`plan`), else at `detail` in any view; every one when `detail` is none.
+    /// Each with the subcategory key it is drawn in (`dooropening`; none, its category).
+    pub fn model_line_segments(
+        &self,
+        values: &BTreeMap<String, Val>,
+        detail: Option<crate::graphics::Detail>,
+        plan: bool,
+    ) -> Vec<([[f64; 3]; 2], Option<&'static str>)> {
+        if self.model_lines.is_empty() {
+            return Vec::new();
+        }
+        let Ok(flexed) = self.flexed(values) else { return Vec::new() };
+        flexed
+            .model_lines
+            .iter()
+            .filter(|l| match (l.visibility, detail) {
+                (Some(v), Some(d)) => v.at(d) && (!plan || v.plan) && !v.only_when_cut,
+                (Some(v), None) => !plan || v.plan,
+                (None, _) => true,
+            })
+            .map(|l| ([l.start, l.end], l.subcategory.as_deref().and_then(|n| self.subcategory_key(n))))
+            .collect()
     }
 
     /// [`Family::marks_tagged`], at `detail` if it says (else every symbol), its nested instances' counted by `meter`.

@@ -112,6 +112,8 @@ pub struct Staged {
     pub room: (P3, P3),
     /// The family's reference lines, each from its start to its end: drawn over every view.
     lines: Vec<(P3, P3)>,
+    /// Its model lines (FE-15), the same way: drawn over every view, as the family's lines.
+    model_lines: Vec<(P3, P3)>,
 }
 
 /// How far the elevations stand outside what they look at.
@@ -231,7 +233,7 @@ pub fn stage(mut m: Model, family: &Family, values: &BTreeMap<String, Val>, show
     }
     let (mut lo, mut hi) = extents(family, values);
     // The reference lines are in the room too, so the planes' traces and the level run past them.
-    for p in family.lines.iter().flat_map(|l| [l.start, l.end]) {
+    for p in family.lines.iter().map(|l| [l.start, l.end]).chain(family.model_lines.iter().map(|l| [l.start, l.end])).flatten() {
         for i in 0..3 {
             (lo[i], hi[i]) = (lo[i].min(p[i]), hi[i].max(p[i]));
         }
@@ -277,7 +279,8 @@ pub fn stage(mut m: Model, family: &Family, values: &BTreeMap<String, Val>, show
         elevations.push((side, m.insert(Element::Elevation(section)), start));
     }
     let lines = family.lines.iter().map(|l| (l.start, l.end)).collect();
-    Staged { model: m, level, elevations, planes, room, lines }
+    let model_lines = family.model_lines.iter().filter(|l| shown(l.guid)).map(|l| (l.start, l.end)).collect();
+    Staged { model: m, level, elevations, planes, room, lines, model_lines }
 }
 
 /// What one of a family's views draws, for a front end that paints it as vectors: its frame, its drawing (what picks), and
@@ -403,6 +406,8 @@ impl Staged {
             }
         };
         render::reference_lines(&mut drawing, &lines);
+        let model: Vec<(P2, P2)> = self.model_lines.iter().map(|(a, b)| (self.to_view(which, *a), self.to_view(which, *b))).collect();
+        render::family_model_lines(&mut drawing, &model);
         Ok(Lines { view, drawing, picture })
     }
 

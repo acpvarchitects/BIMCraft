@@ -222,6 +222,7 @@ impl FamilyEditor {
             Picked::Form(i) => i < self.forms.len(),
             Picked::Plane(g) => self.planes.iter().any(|q| q.guid == g),
             Picked::Line(g) => self.lines.iter().any(|l| l.guid == g),
+            Picked::ModelLine(g) => self.model_lines.iter().any(|l| l.guid == g),
             Picked::Dimension(g) => self.dimensions.iter().any(|d| d.guid == g),
             Picked::Symbol(i) => i < self.symbols.len(),
             Picked::Connector(i) => i < self.connectors.len(),
@@ -290,6 +291,7 @@ impl FamilyEditor {
             self.nested_instances.clone(),
             self.selection.clone(),
         );
+        let model_lines = self.model_lines.clone();
         let items: Vec<Picked> = self.selection.items().iter().copied().filter(|p| self.holds(*p)).collect();
         // What is pinned isn't taken away (FE-17), nor anything with it.
         if let Some(e) = self.pinned_refusal(&items) {
@@ -317,6 +319,9 @@ impl FamilyEditor {
             for i in places(|p| if let Picked::Connector(i) = p { Some(i) } else { None }) {
                 self.remove_connector(i);
             }
+            // A model line hosts nothing (FE-15): it always goes.
+            let gone = guids(|p| if let Picked::ModelLine(g) = p { Some(g) } else { None });
+            self.model_lines.retain(|l| !gone.contains(&l.guid));
             for g in guids(|p| if let Picked::Line(g) = p { Some(g) } else { None }) {
                 self.delete_line(g)?;
             }
@@ -330,6 +335,7 @@ impl FamilyEditor {
         if let Err(e) = done {
             (self.forms, self.planes, self.lines, self.dimensions, self.symbols, self.connectors, self.nested_instances, self.selection) =
                 kept;
+            self.model_lines = model_lines;
             return Err(e);
         }
         self.prune_selection();
@@ -422,6 +428,10 @@ impl Scene<'_> {
                 let Some(l) = self.family.lines.iter().find(|l| l.guid == g) else { return Vec::new() };
                 vec![[self.at(l.start), self.at(l.end)]]
             }
+            Picked::ModelLine(g) => {
+                let Some(l) = self.family.model_lines.iter().find(|l| l.guid == g) else { return Vec::new() };
+                vec![[self.at(l.start), self.at(l.end)]]
+            }
             Picked::Dimension(g) => {
                 let Some(m) = self.dims.iter().find(|m| !m.alignment && self.dimensions.get(m.index).is_some_and(|d| d.guid == g)) else {
                     return Vec::new();
@@ -479,6 +489,7 @@ impl Scene<'_> {
         }
         out.extend(planes.into_iter().map(Picked::Plane));
         out.extend(self.family.lines.iter().map(|l| Picked::Line(l.guid)));
+        out.extend(self.family.model_lines.iter().map(|l| Picked::ModelLine(l.guid)));
         out.extend(
             self.dims.iter().filter(|m| !m.alignment).filter_map(|m| self.dimensions.get(m.index)).map(|d| Picked::Dimension(d.guid)),
         );
@@ -598,6 +609,20 @@ impl Scene<'_> {
             return Some(Picked::Nested(i));
         }
         let line = self.staged.line_at(self.which, q, self.reach()).and_then(|i| self.family.lines.get(i)).map(|l| Picked::Line(l.guid));
+        // A model line (FE-15) by its stroke, as the view draws it.
+        let model = || {
+            let at = P2(p.x.into(), p.y.into());
+            self.family
+                .model_lines
+                .iter()
+                .map(|l| {
+                    let (a, b) = (self.at(l.start), self.at(l.end));
+                    (bimcraft_core::geom::dist_to_segment(at, P2(a.x.into(), a.y.into()), P2(b.x.into(), b.y.into())), l.guid)
+                })
+                .filter(|(d, _)| *d <= 6.0)
+                .min_by(|a, b| a.0.total_cmp(&b.0))
+                .map(|(_, g)| Picked::ModelLine(g))
+        };
         let body = || self.body_hit(q);
         let symbol = || {
             selected.iter().copied().filter(|s| matches!(s, Picked::Symbol(_))).find(|s| {
@@ -607,7 +632,7 @@ impl Scene<'_> {
                 })
             })
         };
-        line.or(plane.map(Picked::Plane)).or_else(body).or_else(|| self.held_face(q, selected)).or_else(symbol)
+        line.or_else(model).or(plane.map(Picked::Plane)).or_else(body).or_else(|| self.held_face(q, selected)).or_else(symbol)
     }
 
     /// What is selected, over the picture, as one selected alone is drawn: a form's and a nested instance's edges as seen, a
@@ -624,7 +649,7 @@ impl Scene<'_> {
                         painter.line_segment(s, Stroke::new(2.0, picked));
                     }
                 }
-                Picked::Plane(_) | Picked::Line(_) => {
+                Picked::Plane(_) | Picked::Line(_) | Picked::ModelLine(_) => {
                     for s in self.pieces(*p) {
                         painter.line_segment(s, Stroke::new(2.5, picked));
                     }

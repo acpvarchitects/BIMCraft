@@ -312,3 +312,23 @@ fn a_project_that_restyles_a_subcategory_is_saved_as_a_newer_format_and_read_bac
     let g = crate::graphics::graphics_of(&m, 100000).unwrap();
     assert!(g.hides("dooropening"));
 }
+
+#[test]
+fn a_doors_model_line_is_drawn_in_plan_in_its_subcategory_which_the_view_may_hide() {
+    let mut s = Session::new();
+    let id = door(&mut s);
+    // FE-15: a model line of the door's own, well off the wall, in Opening.
+    run(
+        &mut s,
+        "family",
+        json!({"name": "Single Door", "model_lines": [{"start": [-300, 1300, 0], "end": [300, 1300, 0], "subcategory": "Opening"}]}),
+    );
+    let lines = s.model.opening_model_lines(&s.model.elements[&id], crate::graphics::Detail::Fine);
+    assert_eq!(lines.len(), 1);
+    assert_eq!(lines[0].1, Some("dooropening"), "in Doors > Opening");
+    let [a, b] = lines[0].0;
+    let mid = P2((a.0 + b.0) / 2.0, (a.1 + b.1) / 2.0);
+    assert!(ink_near(&picture(&s), mid, 2).0 > 0, "drawn where the door stands");
+    run(&mut s, "graphics", json!({"view": "Level 1", "hide": ["dooropening"]}));
+    assert_eq!(ink_near(&picture(&s), mid, 2).0, 0, "hidden with Doors > Opening");
+}
