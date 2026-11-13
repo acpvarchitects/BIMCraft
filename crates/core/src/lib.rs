@@ -63,6 +63,8 @@ mod family_clipboard_tests;
 #[cfg(test)]
 mod family_constraint_tests;
 #[cfg(test)]
+mod family_model_line_tests;
+#[cfg(test)]
 mod family_nested_tests;
 #[cfg(test)]
 mod family_options_tests;

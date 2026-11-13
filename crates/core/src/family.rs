@@ -43,8 +43,8 @@ pub use options::{MAX_OMNICLASS, OPTION_KEYS, OmniClass};
 pub use visibility::Visibility;
 
 pub use planes::{
-    CENTER_FRONT_BACK, CENTER_LEFT_RIGHT, DATUMS, Face, Frame, MAX_LINES, MAX_PLANES, PlaneRef, Planes, REF_LEVEL, RefLine, RefPlane,
-    Reference, datums,
+    CENTER_FRONT_BACK, CENTER_LEFT_RIGHT, DATUMS, Face, Frame, MAX_LINES, MAX_PLANES, ModelLine, PlaneRef, Planes, REF_LEVEL, RefLine,
+    RefPlane, Reference, datums,
 };
 
 /// What a family is: how IFC names its components; a door or a window is hosted in a wall, which
@@ -995,6 +995,9 @@ pub struct Family {
     /// Its reference lines, each with four planes a form may be drawn on.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub lines: Vec<RefLine>,
+    /// Its model lines (FE-15): lines of its own, drawn on its planes, that every view shows.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub model_lines: Vec<ModelLine>,
     #[serde(default)]
     pub forms: Vec<Form>,
     /// Its dimensions (F7): between its planes and its extrusions' ends, labelled, locked and EQ, and the locks Align leaves;
@@ -1056,6 +1059,7 @@ impl Default for Family {
             types: BTreeMap::new(),
             planes: datums(),
             lines: Vec::new(),
+            model_lines: Vec::new(),
             forms: Vec::new(),
             dimensions: Vec::new(),
             symbols: Vec::new(),
@@ -2212,6 +2216,19 @@ impl Family {
                 if !self.parameters.iter().any(|p| p.name == name) {
                     return Err(format!("symbol {}: its text `{{{name}}}`: {}", i + 1, not_a_parameter(name, &self.parameters)));
                 }
+            }
+        }
+        for (i, l) in self.model_lines.iter().enumerate() {
+            let Some(name) = &l.subcategory else { continue };
+            if self.subcategory_key(name).is_none() {
+                let parent = self.category.graphics_category();
+                let has: Vec<&str> = crate::graphics::subcategories(parent).map(|s| s.name).collect();
+                let shown: String = name.chars().take(40).collect();
+                return Err(format!(
+                    "model line {}: its subcategory `{shown}` isn't one of its category's ({}); leave it out to draw it in the category",
+                    i + 1,
+                    if has.is_empty() { "it has none".to_string() } else { has.join(", ") }
+                ));
             }
         }
         for (i, y) in self.symbols.iter().enumerate() {
