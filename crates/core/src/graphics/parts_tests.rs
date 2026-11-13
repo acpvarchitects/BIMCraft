@@ -406,6 +406,31 @@ fn a_themes_legend_counts_the_parts_the_view_draws_and_is_drawn_in_its_corner() 
     assert_eq!(at_px(&d, swatch.0, swatch.1), rgb(first));
 }
 
+/// An elevation's legend counts what it shows: the parts hidden behind others are in no row, as a survey's key counts only
+/// what its drawing shows. A section counts what its line cuts too.
+#[test]
+fn an_elevations_legend_counts_only_the_parts_it_shows_and_a_sections_those_it_cuts() {
+    let (mut s, _, [plaster, masonry]) = historic();
+    run(&mut s, "part", json!({"id": plaster, "decay_pathology": "crust"}));
+    run(&mut s, "part", json!({"id": masonry, "decay_pathology": "efflorescence"}));
+    let values = |r: &serde_json::Value| -> Vec<String> {
+        r["rows"].as_array().unwrap().iter().map(|row| row["value"].as_str().unwrap().to_string()).collect()
+    };
+    // North, the plaster in front of the masonry; south, the masonry's bare face; each a view of the parts.
+    for (facing, shown) in [("north", "Crust"), ("south", "Efflorescence")] {
+        let view = run(&mut s, "elevation", json!({"facing": facing}))["id"].as_u64().unwrap();
+        run(&mut s, "graphics", json!({"view": view, "parts_visibility": "parts"}));
+        let r = theme(&mut s, json!({"view": view, "by": "Decay_Pathology"}));
+        assert_eq!(values(&r), [shown], "{facing}: {r}");
+        assert_eq!(r["parts"], json!(1), "{facing}: {r}");
+    }
+    // Across the wall, its line cutting both.
+    let section = run(&mut s, "section", json!({"start": [2000, 1500], "end": [2000, -1500]}))["id"].as_u64().unwrap();
+    run(&mut s, "graphics", json!({"view": section, "parts_visibility": "parts"}));
+    let r = theme(&mut s, json!({"view": section, "by": "Decay_Pathology"}));
+    assert_eq!(values(&r), ["Crust", "Efflorescence"], "{r}");
+}
+
 #[test]
 fn a_theme_that_is_not_one_is_refused_and_leaves_the_view_as_it_was() {
     let (mut s, _, _) = historic();

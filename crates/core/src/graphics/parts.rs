@@ -373,9 +373,13 @@ pub struct Legend {
     pub rows: Vec<LegendRow>,
 }
 
+/// The size, in pixels, of the picture a section's or an elevation's legend reads what it shows from.
+const PICTURE: (u32, u32) = (2400, 1600);
+
 /// The parts view `view` draws, as `look` (its own) shows them: a plan's, those its cut plane cuts and those it sees from
 /// it, in its crop; a section's or an elevation's, those that reach from its line to its far clip, between its ends and
-/// its crop's heights where it is cropped, hidden behind others or not; a 3D view's, those in its section box.
+/// its crop's heights where it is cropped, and that it shows: in its picture, in front of all else (a pixel of it, the
+/// view fitted to [`PICTURE`]), or a section's cut by its line; a 3D view's, those in its section box.
 pub fn drawn_in(m: &Model, view: Id, look: &Look) -> Vec<Id> {
     let shown = m.elements.iter().filter_map(|(id, e)| match e {
         Element::Part(p) if look.shows(*id) => Some((*id, p)),
@@ -395,7 +399,23 @@ pub fn drawn_in(m: &Model, view: Id, look: &Look) -> Vec<Id> {
         }
         Some(Element::Section(v) | Element::Elevation(v)) => {
             let (u, len) = ((v.end - v.start).unit(), v.start.dist(v.end));
+            // What its picture shows, a pixel or more of it in front of all else, as the view fits a sheet; and what its
+            // line cuts, between its ends: a solid with corners on both sides of it.
+            let fit = crate::render::section_fit(m, view, PICTURE.0, PICTURE.1);
+            let pictured = crate::render::section_picture(m, view, fit, &[]).map(|i| i.shows()).unwrap_or_default();
+            let cut = |p: &BuildingPart| {
+                let Ok(tris) = m.part_solid(p) else { return false };
+                let (mut before, mut past, mut along) = (false, false, (f64::MAX, f64::MIN));
+                for q in tris.iter().flatten() {
+                    let d = crate::geom::P2(q[0], q[1]) - v.start;
+                    let (k, a) = (d.dot(v.looking()), d.dot(u));
+                    (before, past) = (before || k < -crate::model::TOL, past || k > crate::model::TOL);
+                    along = (along.0.min(a), along.1.max(a));
+                }
+                before && past && along.1 >= 0.0 && along.0 <= len
+            };
             shown
+                .filter(|(id, p)| pictured.contains(id) || (matches!(m.elements.get(view), Some(Element::Section(_))) && cut(p)))
                 .filter(|(_, p)| {
                     let Some((lo, hi)) = reach(p) else { return false };
                     let corners =
