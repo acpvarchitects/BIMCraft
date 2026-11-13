@@ -148,6 +148,8 @@ pub mod pen;
 pub mod phasing;
 pub mod plumbing;
 #[cfg(test)]
+mod project_void_tests;
+#[cfg(test)]
 mod pset_tests;
 #[cfg(test)]
 mod raised_wall_room_tests;

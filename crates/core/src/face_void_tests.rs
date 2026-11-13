@@ -10,11 +10,11 @@ use crate::geom::P2;
 use crate::model::Id;
 use crate::render::{self, POCHE, Prim, View};
 
-fn run(s: &mut Session, id: &str, p: Value) -> Value {
+pub(crate) fn run(s: &mut Session, id: &str, p: Value) -> Value {
     s.execute(id, &p).unwrap_or_else(|e| panic!("{id} {p}: {e}"))
 }
 
-fn id_of(v: &Value) -> Id {
+pub(crate) fn id_of(v: &Value) -> Id {
     v["id"].as_u64().unwrap()
 }
 
@@ -60,7 +60,7 @@ fn floor(s: &mut Session) -> Id {
 }
 
 /// Whether `owner` is filled in the section from `start` to `end` at (along, z): a point inside one of its fills.
-fn filled(s: &mut Session, owner: Id, start: [f64; 2], end: [f64; 2]) -> impl Fn(f64, f64) -> bool + use<> {
+pub(crate) fn filled(s: &mut Session, owner: Id, start: [f64; 2], end: [f64; 2]) -> impl Fn(f64, f64) -> bool + use<> {
     let sec = id_of(&run(s, "section", json!({"start": start, "end": end})));
     let view = render::section_fit(&s.model, sec, 1200, 800);
     let d = render::section(&s.model, sec, view);
@@ -79,7 +79,7 @@ fn filled(s: &mut Session, owner: Id, start: [f64; 2], end: [f64; 2]) -> impl Fn
 }
 
 /// The section's picture from `start` to `end`: its colour at (along, z).
-fn section_pixel(s: &mut Session, start: [f64; 2], end: [f64; 2]) -> impl Fn(f64, f64) -> render::Rgb + use<> {
+pub(crate) fn section_pixel(s: &mut Session, start: [f64; 2], end: [f64; 2]) -> impl Fn(f64, f64) -> render::Rgb + use<> {
     let sec = id_of(&run(s, "section", json!({"start": start, "end": end})));
     let view = render::section_fit(&s.model, sec, 1200, 800);
     let pm = tiny_skia::Pixmap::decode_png(&render::section_png(&s.model, sec, view).unwrap()).unwrap();
@@ -117,7 +117,7 @@ fn plumb(s: &Session, owner: Id, x: f64, y: f64) -> Vec<f64> {
 }
 
 /// The STEP text of the project as IFC.
-fn ifc(s: &mut Session) -> String {
+pub(crate) fn ifc(s: &mut Session) -> String {
     let path = std::env::temp_dir().join(format!("bimcraft-face-void-{}-{:?}.ifc", std::process::id(), std::thread::current().id()));
     run(s, "save", json!({"path": path}));
     let text = std::fs::read_to_string(&path).unwrap();
@@ -127,7 +127,7 @@ fn ifc(s: &mut Session) -> String {
 
 /// The entities of `class` that an opening element voids (`IFCRELVOIDSELEMENT(…,#host,#opening)`), counted: an opening
 /// whose body is closed face sets (the voids' own shape).
-fn voided(text: &str, class: &str) -> usize {
+pub(crate) fn voided(text: &str, class: &str) -> usize {
     let hosts: Vec<String> =
         text.lines().filter(|l| l.contains(&format!("={class}("))).map(|l| l.split('=').next().unwrap().to_string()).collect();
     let openings: Vec<String> = text

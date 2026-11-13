@@ -2194,6 +2194,7 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
         let (top_level, height) = topped(w.level, w.z.0, w.z.1);
         let wall = Wall {
             params: Default::default(),
+            void_cuts: Vec::new(),
             type_name: w.type_name,
             level: w.level,
             start: w.start,
