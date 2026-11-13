@@ -63,6 +63,8 @@ icon_names! {
     Scale,
     Trim,
     Split,
+    CutGeometry,
+    UncutGeometry,
     Dimension,
     Tag,
     TagAll,
@@ -629,6 +631,16 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
                 g.line(&[(13.5, 4.0), (16.5, 7.0), (13.5, 10.0)]);
                 g.line(&[(13.5, 14.0), (16.5, 17.0), (13.5, 20.0)]);
             }
+        }
+        Icon::CutGeometry => {
+            // A block with a box-shaped notch taken out of its top, and the box that took it, sunk into the notch.
+            g.closed(&[(3.0, 9.0), (9.0, 9.0), (9.0, 14.0), (15.0, 14.0), (15.0, 9.0), (21.0, 9.0), (21.0, 20.0), (3.0, 20.0)]);
+            g.line(&[(9.0, 9.0), (9.0, 4.0), (15.0, 4.0), (15.0, 9.0)]);
+        }
+        Icon::UncutGeometry => {
+            // The block whole again, the box lifted clear of it.
+            g.closed(&[(3.0, 11.0), (21.0, 11.0), (21.0, 21.0), (3.0, 21.0)]);
+            g.closed(&[(9.0, 2.0), (15.0, 2.0), (15.0, 7.0), (9.0, 7.0)]);
         }
         Icon::Split => {
             // Two separated segments with a narrow cut mark.

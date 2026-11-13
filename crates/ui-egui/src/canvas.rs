@@ -1618,6 +1618,11 @@ impl BimApp {
             Tool::Split => {
                 d.pick_all(q, PICK).into_iter().find(|id| matches!(model.elements.get(id), Some(Element::Wall(_) | Element::DetailLine(_))))
             }
+            // Cut Geometry: the wall first, then the component whose voids cut it.
+            Tool::CutGeometry { wall: None, .. } => d.pick_all(q, PICK).into_iter().find(|id| model.wall(*id).is_some()),
+            Tool::CutGeometry { wall: Some(_), .. } => {
+                d.pick_all(q, PICK).into_iter().find(|id| matches!(model.elements.get(id), Some(Element::Component(_))))
+            }
             Tool::Trim(_) | Tool::Offset => {
                 d.pick_all(q, PICK).into_iter().find(|id| matches!(model.elements.get(id), Some(Element::Wall(_) | Element::DetailLine(_))))
             }
@@ -1807,7 +1812,9 @@ impl BimApp {
         // The floor or roof being shaped is drawn as it is, not in the selection's colour: edit mode's marks are what's lit.
         let shaped = self.shaping();
         let mut marked: Vec<Id> = self.selection.iter().copied().filter(|id| Some(*id) != shaped).collect();
-        if let Tool::Trim(Some((first, _))) | Tool::TrimTo { boundary: Some(first), .. } = self.tool {
+        if let Tool::Trim(Some((first, _))) | Tool::TrimTo { boundary: Some(first), .. } | Tool::CutGeometry { wall: Some(first), .. } =
+            self.tool
+        {
             marked.push(first);
         }
         let pictures = self.canvas.drawing.pictures(ui.ctx(), &d.drawing);
@@ -2318,6 +2325,15 @@ impl BimApp {
                 (Some((a, keep)), Some(b)) if b != a => {
                     self.run("corner", json!({"ids": [a, b], "keep": [point(keep), point(v.mm(at))]}));
                     self.tool = Tool::Trim(None);
+                }
+                _ => {}
+            },
+            &Tool::CutGeometry { uncut, wall } => match (wall, hovered) {
+                (None, Some(w)) => self.tool = Tool::CutGeometry { uncut, wall: Some(w) },
+                (Some(w), Some(c)) => {
+                    let (g, by) = (m.guid(w), m.guid(c));
+                    self.run(if uncut { "uncut_geometry" } else { "cut_geometry" }, json!({"target": g, "cutter": by}));
+                    self.tool = Tool::CutGeometry { uncut, wall: None };
                 }
                 _ => {}
             },

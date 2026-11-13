@@ -190,6 +190,12 @@ pub enum Tool {
     },
     /// Split the wall picked.
     Split,
+    /// Cut Geometry, or with `uncut` Uncut Geometry, in the project (T23): the wall to cut, once picked; then the component
+    /// whose voids cut it (or no longer do).
+    CutGeometry {
+        uncut: bool,
+        wall: Option<Id>,
+    },
     /// Copy (or move) the wall picked to the cursor's side, by the Options Bar's distance.
     Offset,
     /// Take the element picked down in the phase of the view on screen, or, if it comes down in it already, back up.
@@ -1612,6 +1618,7 @@ impl BimApp {
             | Tool::TrimTo { .. }
             | Tool::Vertex { .. }
             | Tool::Split
+            | Tool::CutGeometry { .. }
             | Tool::Offset
             | Tool::Demolish
             | Tool::Linework
@@ -2464,6 +2471,7 @@ impl BimApp {
                     return true;
                 }
                 Some("component") => Tool::Component,
+                Some("cut_geometry") => Tool::CutGeometry { uncut: false, wall: None },
                 Some("section") => Tool::Section(None),
                 Some("measure") => Tool::Measure(None),
                 Some("paint") => Tool::Paint,
@@ -2710,6 +2718,7 @@ impl BimApp {
                 | Tool::TrimTo { .. }
                 | Tool::Vertex { .. }
                 | Tool::Split
+                | Tool::CutGeometry { .. }
                 | Tool::Offset
                 | Tool::Demolish
                 | Tool::Linework
@@ -3028,6 +3037,7 @@ impl BimApp {
                 Tool::Align(None)
             }
             Tool::Trim(Some(_)) => Tool::Trim(None),
+            Tool::CutGeometry { uncut, wall: Some(_) } => Tool::CutGeometry { uncut, wall: None },
             Tool::TrimTo { boundary: Some(_), many } => Tool::TrimTo { boundary: None, many },
             Tool::Dimension(mode, refs) if !refs.is_empty() => Tool::Dimension(mode, Vec::new()),
             Tool::Angular(refs) if !refs.is_empty() => Tool::Angular(Vec::new()),
@@ -4930,6 +4940,18 @@ impl BimApp {
             }
         });
         panel(ui, msg!("Geometry"), |ui| {
+            // One button, as Revit's Cut, dropping down Cut Geometry and Uncut Geometry, so the panel stays narrow.
+            let tip = msg!("Cut Geometry (CU): pick a wall, then a component whose voids cut it; Uncut Geometry takes a cut back");
+            let on = matches!(self.tool, Tool::CutGeometry { .. });
+            let icon = if matches!(self.tool, Tool::CutGeometry { uncut: true, .. }) { Icon::UncutGeometry } else { Icon::CutGeometry };
+            let r = big_button(ui, icon, msg!("Cut"), on, tip);
+            ribbon::choices(ui, &r, false, |ui| {
+                for (uncut, label) in [(false, msg!("Cut Geometry")), (true, msg!("Uncut Geometry"))] {
+                    if ui.button(t(label)).clicked() {
+                        self.set_tool(Tool::CutGeometry { uncut, wall: None });
+                    }
+                }
+            });
             let tip = msg!("Paint (PT): lay a material, and its texture, over the face you click in the 3D view");
             if big_button(ui, Icon::Paint, "Paint", self.tool == Tool::Paint, tip).clicked() {
                 self.set_tool(Tool::Paint);
@@ -5463,6 +5485,14 @@ impl BimApp {
             Tool::Vertex { delete: false } => msg!("Click a polyline or a spline where a vertex goes."),
             Tool::Vertex { delete: true } => msg!("Click a polyline's corner or a spline's point to take it out."),
             Tool::Split => msg!("Click a wall or a line where to split it."),
+            Tool::CutGeometry { uncut: false, wall: None } => msg!("Pick the wall to cut."),
+            Tool::CutGeometry { uncut: false, wall: Some(_) } => {
+                msg!("Pick the component whose voids cut the wall. Esc picks another wall.")
+            }
+            Tool::CutGeometry { uncut: true, wall: None } => msg!("Pick the wall to uncut."),
+            Tool::CutGeometry { uncut: true, wall: Some(_) } => {
+                msg!("Pick the component that no longer cuts the wall. Esc picks another wall.")
+            }
             Tool::Offset => msg!("Point to a wall or a line: the offset goes to the cursor's side. Click to place it."),
             Tool::Demolish => msg!("Click an element to take it down in the view's phase; click it again to take it back."),
             Tool::Linework => msg!("Click an edge to draw it in the line style in the Options Bar; <By Category> puts it back."),

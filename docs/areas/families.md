@@ -1354,8 +1354,10 @@ A component that stands on a level, not on a face, cuts a wall only when Cut Geo
 project's unattached void families do: `cut_geometry {target, cutter}` (CU), the wall and the component by id or GUID, adds
 the component's GUID to the wall's `void_cuts`, and `uncut_geometry` takes it off. It is refused unless the cutter's family
 is set to Cut with Voids When Loaded, has a void that cuts a host (`cuts` `both` or `host`; a `forms` void never cuts a
-project's element), and those voids, placed where the component stands, pass into the wall (their outline in plan meets the
-wall's and their heights its own); a pair already tied, or a component on a face of that wall, is refused too. From then on
+project's element), and those voids, placed where the component stands, take more than a cubic centimetre of the wall (their
+outline in plan meeting the wall's and their heights its own as a quick reject, then `view3d::takes_from_wall` subtracting
+them from the wall's prisms with `csg`: the floor is against `csg`'s noise, and a concave or tilted void whose outline spans
+the wall while it misses is refused); a pair already tied, or a component on a face of that wall, is refused too. From then on
 `Model::hosted_voids` adds the voids of each component the wall names (`Model::cut_voids`, placed by
 `Model::placed_host_voids` through `component_placement`, as a face-hosted one's), so plan, section, 3D and IFC cut the wall
 by the same path as a face-hosted component's. The tie follows the component when it moves, sleeps while the flag is off or
@@ -1363,6 +1365,11 @@ the voids miss the wall, is kept by undo, redo and the file (`void_cuts` is writ
 18), goes when either element is deleted (`delete` and its oracle), and a copy of the wall and the cutter together ties the
 copies. `Model::check` refuses a `void_cuts` that names anything but a component, or one twice. Join and Unjoin Geometry
 between project elements are not here.
+
+In the desktop, Modify > Geometry's Cut button drops down Cut Geometry (CU) and Uncut Geometry (`Tool::CutGeometry`; one
+button, so the panel doesn't widen the ribbon into folding): in a plan, pick the wall,
+then the component (its marks in plan pick it; its voids draw nothing); the picked wall stays lit, Esc lets go of it and then
+of the tool, and after each cut the tool asks for the next wall. A refusal shows the core's reason in the status bar.
 
 ## Plan symbols
 
