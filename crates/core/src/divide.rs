@@ -272,6 +272,32 @@ impl PieceKey {
     }
 }
 
+impl PieceKey {
+    /// A key as [`PieceKey`]'s `Display` writes it (`0.front.0/2.inside.1`, `whole`); none for text that is no key.
+    pub fn parse(text: &str) -> Option<PieceKey> {
+        let text = text.trim();
+        if text == "whole" {
+            return Some(PieceKey::default());
+        }
+        let step = |s: &str| -> Option<Step> {
+            let mut bits = s.split('.');
+            let cut = bits.next()?.parse().ok()?;
+            let side = match bits.next()? {
+                "front" => Side::Front,
+                "back" => Side::Back,
+                "left" => Side::Left,
+                "right" => Side::Right,
+                "inside" => Side::Inside,
+                "outside" => Side::Outside,
+                _ => return None,
+            };
+            let lump = bits.next()?.parse().ok()?;
+            bits.next().is_none().then_some(Step { cut, side, lump })
+        };
+        text.split('/').map(step).collect::<Option<Vec<_>>>().filter(|steps| steps.len() <= MAX_CUTS).map(PieceKey)
+    }
+}
+
 impl fmt::Display for PieceKey {
     /// As `0.front.0/2.inside.1`; `whole` for the solid undivided.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -322,6 +348,35 @@ pub struct Recipe {
     pub cuts: Vec<Division>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub offsets: Vec<Offset>,
+}
+
+impl Recipe {
+    /// The same recipe moved by a motion that keeps lengths and angles: `point` takes a place where it goes, `direction`
+    /// a direction. A part keeps its division in its host's own coordinates and brings it to the model, and back, so.
+    pub fn moved(&self, point: &dyn Fn(P3) -> P3, direction: &dyn Fn(P3) -> P3) -> Recipe {
+        let frame = |f: &Frame| Frame { origin: point(f.origin), x: direction(f.x), normal: direction(f.normal) };
+        let cut = |c: &Cut| match c {
+            Cut::Plane { point: at, normal } => Cut::Plane { point: point(*at), normal: direction(*normal) },
+            Cut::Sketch { frame: f, points, closed, depth } => {
+                Cut::Sketch { frame: frame(f), points: points.clone(), closed: *closed, depth: *depth }
+            }
+            Cut::Profile { frame: f, points, from, to } => Cut::Profile { frame: frame(f), points: points.clone(), from: *from, to: *to },
+        };
+        Recipe {
+            cuts: self.cuts.iter().map(|d| Division { cut: cut(&d.cut), ..d.clone() }).collect(),
+            offsets: self
+                .offsets
+                .iter()
+                .map(|o| Offset {
+                    face: match o.face {
+                        FaceRef::Cut(k) => FaceRef::Cut(k),
+                        FaceRef::Plane { point: at, normal } => FaceRef::Plane { point: point(at), normal: direction(normal) },
+                    },
+                    ..o.clone()
+                })
+                .collect(),
+        }
+    }
 }
 
 /// One piece of a divided solid.

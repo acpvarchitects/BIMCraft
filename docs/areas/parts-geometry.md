@@ -161,9 +161,9 @@ same keys, sides, lump order, noise rule and conflicts as the general way (two t
 ## Wiring it to parts
 
 A part's solid is `Model::part_solid(part)` (the data model's half: a closed mesh in model coordinates, the same
-winding). Keep a `Recipe` on the part, in the host's coordinates; on any change of the host call `regenerate` on the
-solid brought into those coordinates, make a sub-part per `Piece` under its `PieceKey` (which is `Ord`, `Hash` and
-serializes), and show `Outcome::conflicts` on the part. `volume` and `area_facing` give each sub-part's quantities.
+winding). `divide_parts` keeps the `Recipe` on the part in the host's coordinates (`Recipe::moved` carries one by a
+rigid motion), and `Model::part_division` calls `regenerate` on the solid brought into them; each `Piece` is a part of its
+own under its `PieceKey`, and `Outcome::conflicts` are shown on the divided part ([parts](parts.md#divide-parts)). `volume` and `area_facing` give each sub-part's quantities.
 The other half's `parts/solid.rs` has its own `volume`, `facing` and `closed`; they agree with these on a closed mesh
 (its welding is 1e-6 mm, finer than `WELD`, so what it calls closed is closed here; its `facing` takes a hundredth of a
 degree where `area_facing` takes the tolerance it is given).
