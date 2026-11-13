@@ -58,6 +58,7 @@ impl Clip {
         let h = &self.held;
         h.planes.len()
             + h.lines.len()
+            + h.model_lines.len()
             + h.forms.len()
             + h.symbols.len()
             + h.connectors.len()
@@ -75,6 +76,7 @@ impl Clip {
         let h = &self.held;
         !(h.planes.is_empty()
             && h.lines.is_empty()
+            && h.model_lines.is_empty()
             && h.forms.is_empty()
             && h.symbols.is_empty()
             && h.connectors.is_empty()
@@ -122,6 +124,7 @@ impl Family {
         let held = Family {
             planes: copies.planes,
             lines: copies.lines,
+            model_lines: copies.model_lines,
             forms: copies.forms,
             symbols: copies.symbols,
             connectors: copies.connectors,
@@ -154,6 +157,7 @@ impl Family {
         let all = Copying {
             planes: h.planes.iter().map(|p| p.guid).collect(),
             lines: h.lines.iter().map(|l| l.guid).collect(),
+            model_lines: h.model_lines.iter().map(|l| l.guid).collect(),
             forms: (0..h.forms.len()).collect(),
             symbols: (0..h.symbols.len()).collect(),
             connectors: (0..h.connectors.len()).collect(),
@@ -174,7 +178,13 @@ impl Family {
             PlaneRef::Plane(g) => out.planes.iter().any(|p| p.guid == *g),
             PlaneRef::Line(g, _) => out.lines.iter().any(|l| l.guid == *g),
         };
-        let hosts = out.lines.iter().map(|l| l.host).chain(out.forms.iter().map(|f| f.host)).chain(out.nested.iter().map(|n| n.host));
+        let hosts = out
+            .lines
+            .iter()
+            .map(|l| l.host)
+            .chain(out.model_lines.iter().map(|l| l.host))
+            .chain(out.forms.iter().map(|f| f.host))
+            .chain(out.nested.iter().map(|n| n.host));
         for host in hosts {
             if !own(&host) && !has_host(self, &host) {
                 let (PlaneRef::Plane(g) | PlaneRef::Line(g, _)) = host;

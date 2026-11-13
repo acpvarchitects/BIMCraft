@@ -165,3 +165,57 @@ fn a_model_line_on_a_plane_a_dimension_moves_moves_with_it() {
     assert_eq!(at("A"), vec![[[0.0, 0.0, 500.0], [300.0, 0.0, 500.0]]]);
     assert_eq!(at("B"), vec![[[0.0, 0.0, 800.0], [300.0, 0.0, 800.0]]], "with Shelf, 800 up");
 }
+
+/// Family `P` with one model line on Ref. Level and one on Shelf, as the session has it, and its type A's values.
+fn two_lines(s: &mut Session) -> (crate::family::Family, std::collections::BTreeMap<String, crate::family::Val>) {
+    family(
+        s,
+        json!([{"start": [0, -900, 0], "end": [800, -900, 0]}, {"start": [0, 0, 500], "end": [300, 0, 500], "host": {"plane": SHELF}}]),
+    );
+    let f = s.model.families["P"].clone();
+    let values = f.values("A", &Default::default()).unwrap();
+    (f, values)
+}
+
+#[test]
+fn a_model_line_is_copied_with_a_new_guid_on_its_host_and_its_host_copied_takes_it() {
+    use crate::family::constraints::{Copying, Transform, Transforming};
+    let mut s = Session::new();
+    let (f, values) = two_lines(&mut s);
+    let g = f.model_lines[0].guid;
+    let c = f.copies(&Copying { model_lines: vec![g], ..Default::default() }).unwrap();
+    assert_eq!(c.model_lines.len(), 1);
+    assert_ne!(c.model_lines[0].guid, g, "a new GUID");
+    assert_eq!((c.model_lines[0].start, c.model_lines[0].host), (f.model_lines[0].start, f.model_lines[0].host));
+    // On the clipboard and pasted back: one more.
+    let clip = f.clip(&Copying { model_lines: vec![g], ..Default::default() }).unwrap();
+    assert_eq!(clip.count(), 1);
+    assert_eq!(f.paste(&clip).unwrap().model_lines.len(), 1);
+    // Mirrored across x = 1000 on Ref. Level: its copy where the mirror puts it.
+    let t = Transform::Mirror { point: [1000.0, 0.0, 0.0], normal: [1.0, 0.0, 0.0] };
+    let out = f.transformed(&values, &Transforming { model_lines: vec![g], ..Default::default() }, &t).unwrap();
+    assert_eq!(out.model_lines, vec![g]);
+    let l = &out.family.model_lines[0];
+    assert_eq!((l.start, l.end), ([2000.0, -900.0, 0.0], [1200.0, -900.0, 0.0]));
+    // Shelf moved: the line on it goes with it, though not asked for.
+    let shelf = f.planes[3].guid;
+    let up = Transform::Rotate { centre: [0.0, 0.0, 0.0], axis: [0.0, 0.0, 1.0], degrees: 90.0 };
+    let out = f.transformed(&values, &Transforming { planes: vec![shelf], ..Default::default() }, &up).unwrap();
+    assert_eq!(out.model_lines, vec![f.model_lines[1].guid], "drawn on what is taken");
+}
+
+#[test]
+fn a_pinned_model_line_or_one_a_turn_would_take_off_its_host_stays() {
+    use crate::family::constraints::{Transform, TransformRefused, Transforming};
+    let mut s = Session::new();
+    let (mut f, values) = two_lines(&mut s);
+    let g = f.model_lines[0].guid;
+    // Turned about x, a line on Ref. Level would leave it.
+    let t = Transform::Rotate { centre: [0.0, 0.0, 0.0], axis: [1.0, 0.0, 0.0], degrees: 90.0 };
+    let r = f.transformed(&values, &Transforming { model_lines: vec![g], ..Default::default() }, &t);
+    assert!(matches!(r, Err(TransformRefused::Stays(_))), "{r:?}");
+    f.model_lines[0].pinned = true;
+    let t = Transform::Rotate { centre: [0.0, 0.0, 0.0], axis: [0.0, 0.0, 1.0], degrees: 90.0 };
+    let r = f.transformed(&values, &Transforming { model_lines: vec![g], ..Default::default() }, &t);
+    assert!(matches!(r, Err(TransformRefused::Stays(crate::family::constraints::Stays::Pinned(_)))), "{r:?}");
+}

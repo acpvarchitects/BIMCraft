@@ -65,6 +65,8 @@ pub(super) struct Draft {
     planes: Vec<RefPlane>,
     /// Its reference lines: drawn, pivoted and deleted in its plans and elevations.
     lines: Vec<RefLine>,
+    /// Its model lines (FE-15).
+    model_lines: Vec<bimcraft_core::family::ModelLine>,
     /// Its dimensions: drawn, labelled and locked in its plans and elevations.
     dimensions: Vec<bimcraft_core::family::FamilyDimension>,
     /// Its options: Family Category and Parameters' table, Properties' Other group.
@@ -89,6 +91,7 @@ impl Draft {
             picked: ed.picked,
             planes: ed.planes.clone(),
             lines: ed.lines.clone(),
+            model_lines: ed.model_lines.clone(),
             dimensions: ed.dimensions.clone(),
             options: ed.options.clone(),
             nested: ed.nested.clone(),
@@ -115,6 +118,7 @@ impl Draft {
         ed.picked = self.picked;
         ed.planes = self.planes;
         ed.lines = self.lines;
+        ed.model_lines = self.model_lines;
         ed.dimensions = self.dimensions;
         ed.options = self.options;
         ed.nested = self.nested;
