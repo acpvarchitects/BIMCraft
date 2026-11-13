@@ -1008,10 +1008,67 @@ fn solids_in_with(
                     out.push(Solid::Box { owner: id, color, tex, frame, a, c: (-25.0, 25.0), z: (z, z + t.height) });
                 }
             }
+            Element::Part(p) => part_solids(&mut out, m, id, p, components),
             _ => {}
         }
     }
     out
+}
+
+/// The solids of part `id`, `p`, of a building element (`parts.rs`), where it is one a view draws
+/// ([`crate::graphics::parts::drawable`]): the prisms its solid is made of ([`Model::part_prisms`]), in its material's
+/// colour and texture as a layer's are, which a section cuts as it cuts its host's; a component's part, its family's
+/// forms, each in its own material unless the part says another. They are the part's own, beside its host's: which of the
+/// two a view draws is its [`Look`]'s to say.
+fn part_solids(
+    out: &mut Vec<Solid>,
+    m: &Model,
+    id: Id,
+    p: &crate::parts::BuildingPart,
+    components: &mut crate::component_geometry::Components,
+) {
+    if !crate::graphics::parts::drawable(m, id, p) {
+        return;
+    }
+    let Some(host) = m.elements.get(p.host) else { return };
+    let made_of = |name: &str| m.materials.get(name).map(|x| (Rgb(x.color[0], x.color[1], x.color[2]), skin(m, name)));
+    match (m.part_prisms(p), host) {
+        (Ok(Some(prisms)), _) => {
+            let base = match host {
+                Element::Wall(_) => WALL,
+                Element::Roof(_) => ROOF,
+                Element::Ceiling(_) => CEILING,
+                _ => SLAB,
+            };
+            let (color, tex) = m.part_material(p).and_then(made_of).unwrap_or((base, 0));
+            // Of a curved wall, its faces are one surface each: those nearer the centre than its middle, and those farther.
+            let curve = match host {
+                Element::Wall(w) => Axis::of(w).centre().and_then(|c| {
+                    let far = prisms.iter().flat_map(|x| &x.ring).map(|q| q.dist(c));
+                    let (lo, hi) = far.fold((f64::MAX, f64::MIN), |(lo, hi), d| (lo.min(d), hi.max(d)));
+                    (lo <= hi).then_some((c, (lo + hi) / 2.0))
+                }),
+                _ => None,
+            };
+            out.extend(prisms.into_iter().map(|x| Solid::Prism {
+                owner: id,
+                color,
+                tex,
+                ring: x.ring,
+                bottom: x.bottom,
+                top: x.top,
+                curve,
+            }));
+        }
+        (Ok(None), Element::Component(c)) => {
+            let own = p.material.as_deref().and_then(made_of);
+            for piece in components.pieces(c) {
+                let (color, tex) = own.or_else(|| made_of(&piece.material)).unwrap_or((COMPONENT, 0));
+                out.push(Solid::Mesh { owner: id, color, tex, tris: piece.tris, caps: piece.caps, round: piece.round, cut: false });
+            }
+        }
+        _ => {}
+    }
 }
 
 /// A slab: `face`, its copy `rise` above, and the sides between them.
@@ -1038,19 +1095,38 @@ fn prism(out: &mut Vec<Tri>, owner: Id, (color, tex): (Rgb, u32), face: &[P3], r
 
 /// Each triangle's plane, as an index the triangles lying in it (within half a millimetre) share;
 /// the facets of one curved surface (a curved wall's face, a mesh's curve) share one too.
+#[cfg(test)]
 fn planes(tris: &[Tri]) -> Vec<usize> {
-    let mut table = PlaneTable::default();
+    planes_apart(tris, HashSet::new())
+}
+
+/// [`planes`], the triangles of each of `apart` numbered among that element's alone ([`PlaneTable::apart`]).
+fn planes_apart(tris: &[Tri], apart: HashSet<Id>) -> Vec<usize> {
+    let mut table = PlaneTable { apart, ..PlaneTable::default() };
     tris.iter().map(|t| table.assign(t)).collect()
 }
+
+/// The parts of building elements (`parts.rs`) among `owners`, which come an element's run at a time: what a scene numbers
+/// the planes of apart.
+fn parts_among(m: &Model, owners: impl Iterator<Item = Id>) -> HashSet<Id> {
+    let mut last = None;
+    owners.filter(|id| last.replace(*id) != Some(*id)).filter(|id| matches!(m.elements.get(*id), Some(Element::Part(_)))).collect()
+}
+
+/// A plane found: its normal, its distance and its number.
+type PlaneFound = (P3, f64, usize);
 
 /// The planes found so far, and the curved surfaces: what numbers a triangle's plane, kept with a scene so the triangles an
 /// edit makes are numbered among those it keeps.
 #[derive(Clone, Default)]
 struct PlaneTable {
     /// Planes by their normal, in cells wider than the tolerance, and a millimetre's slab of distance: each plane's normal,
-    /// distance and number.
-    found: HashMap<[i64; 4], Vec<(P3, f64, usize)>>,
+    /// distance and number. Those of an element numbered apart, under its id; the rest under none, 0.
+    found: HashMap<(Id, [i64; 4]), Vec<PlaneFound>>,
     curves: HashMap<(Id, usize), usize>,
+    /// The elements whose planes are their own, shared with no other element's: the parts of building elements, so the
+    /// edge where two of them meet in one plane (two parts of one face of a wall) is drawn, as their outlines are.
+    apart: HashSet<Id>,
     /// The next number to give.
     next: usize,
 }
@@ -1081,13 +1157,14 @@ impl PlaneTable {
         let q = cell.map(|x| x.round() as i64);
         let near = |k: usize| [q[k], q[k] + if cell[k] < q[k] as f64 { -1 } else { 1 }];
         let slab = d.floor() as i64;
+        let own = if self.apart.contains(&t.owner) { t.owner } else { 0 };
         for a in near(0) {
             for b in near(1) {
                 for c in near(2) {
                     for s in slab - 1..=slab + 1 {
                         let same = self
                             .found
-                            .get(&[a, b, c, s])
+                            .get(&(own, [a, b, c, s]))
                             .and_then(|v| v.iter().find(|(m, e, _)| dot(*m, n) > 1.0 - 1e-9 && (e - d).abs() < 0.5));
                         if let Some(&(_, _, id)) = same {
                             self.next -= 1;
@@ -1097,7 +1174,7 @@ impl PlaneTable {
                 }
             }
         }
-        self.found.entry([q[0], q[1], q[2], slab]).or_default().push((n, d, made));
+        self.found.entry((own, [q[0], q[1], q[2], slab])).or_default().push((n, d, made));
         made
     }
 }
@@ -1502,7 +1579,7 @@ impl Scene {
         if cancelled() {
             return None;
         }
-        let mut table = PlaneTable::default();
+        let mut table = PlaneTable { apart: parts_among(m, spans.iter().map(|s| s.id)), ..PlaneTable::default() };
         let planes = tris.iter().map(|t| table.assign(t)).collect();
         if cancelled() {
             return None;
@@ -1587,6 +1664,7 @@ impl Scene {
                         | Element::Window(_)
                         | Element::Column(_)
                         | Element::StructuralColumn(_)
+                        | Element::Part(_)
                 )
             )
         };
@@ -1673,7 +1751,7 @@ impl Scene {
         if cancelled() {
             return None;
         }
-        let planes = planes(&tris);
+        let planes = planes_apart(&tris, parts_among(m, tris.iter().map(|t| t.owner)));
         if cancelled() {
             return None;
         }
@@ -2629,7 +2707,9 @@ impl Scene {
                 lit(if dot(n, toward(t.p[0])) < 0.0 { mul(n, -1.0) } else { n })
             })
             .collect();
-        let shade: Vec<Rgb> = self.tris.iter().zip(&light).map(|(t, l)| if flat { PAPER } else { paint(colour(t), *l) }).collect();
+        // In hidden line a face is paper, but one the view fills, which is that colour, flat.
+        let paper = |t: &Tri| if plain { PAPER } else { look.surface(t.owner, PAPER) };
+        let shade: Vec<Rgb> = self.tris.iter().zip(&light).map(|(t, l)| if flat { paper(t) } else { paint(colour(t), *l) }).collect();
         // A textured triangle's colour at pixel `k`, where its surface lies `z` toward the camera: the texture at that point of
         // its plane, for a pixel's width of it. None for any other, or where the view colours it its own way, or in a section.
         let texturing = !flat && self.skins.iter().any(Option::is_some);

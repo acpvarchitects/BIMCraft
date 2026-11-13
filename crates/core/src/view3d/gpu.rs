@@ -460,7 +460,8 @@ impl Mesh {
         // A texture is looked up as the CPU does unless the view colours its surface another way.
         let colour = |t: &super::Tri| {
             if lines {
-                crate::render::PAPER
+                // Paper, but a face the view fills, as the processor's hidden line draws it.
+                if plain { crate::render::PAPER } else { look.surface(t.owner, crate::render::PAPER) }
             } else if plain {
                 t.color
             } else {
