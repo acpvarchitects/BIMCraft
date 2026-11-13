@@ -1251,9 +1251,11 @@ pub fn sketch(m: &Model, view: View, id: Id, e: &Element) -> Drawing {
         }
         Element::Component(c) => {
             component(&mut d, m, &m.component_pieces(c));
-            for [a, b] in m.component_model_lines(c, Some(d.detail), true) {
+            for ([a, b], sub) in m.component_model_lines(c, Some(d.detail), true) {
+                d.sub(sub);
                 d.line(&[P2(a[0], a[1]), P2(b[0], b[1])], BY_CATEGORY, INK, false);
             }
+            d.sub(None);
             if d.detail != Detail::Coarse {
                 marks(&mut d, &m.component_marks(c));
             }
@@ -3130,12 +3132,14 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
             }
         }
         // Its model lines (FE-15) the plan sees between its cut plane and its view depth, in projection, as Revit draws them.
-        for [a, b] in m.component_model_lines(c, Some(d.detail), true) {
+        for ([a, b], sub) in m.component_model_lines(c, Some(d.detail), true) {
             let (lo, hi) = (a[2].min(b[2]), a[2].max(b[2]));
             if lo <= range.cut + TOL && hi >= range.depth - TOL {
+                d.sub(sub);
                 d.line(&[P2(a[0], a[1]), P2(b[0], b[1])], BY_CATEGORY, INK, false);
             }
         }
+        d.sub(None);
         // Its symbols are annotation of its level: in that level's plan and ceiling plan, whatever height its forms reach, at
         // the detail levels their Visibility Settings say (Medium and Fine, unless they say).
         if c.level == level {
@@ -4276,6 +4280,14 @@ fn opening(d: &mut Drawing, m: &Model, e: &Element, o: &Opening, w: &Wall, cut: 
             }
             d.sub(sub);
             marks(d, std::slice::from_ref(&mark));
+        }
+        // Its family's model lines (FE-15), each in its subcategory as a mark is.
+        for ([a, b], sub) in m.opening_model_lines(e, detail) {
+            if sub.is_some_and(hides) {
+                continue;
+            }
+            d.sub(sub);
+            d.line(&[a, b], BY_CATEGORY, INK, false);
         }
         d.sub(None);
         d.part(Part::Cut);

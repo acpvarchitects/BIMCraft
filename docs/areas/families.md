@@ -484,7 +484,8 @@ planes (*The family's views*, below). Create > Datum > Reference Line (FE-11) dr
 any category that isn't adaptive (an adaptive family draws its own in {3D}): two clicks, each where the view looks through it
 onto the view's work plane (`family::views::new_line`), the line hosted there and selected; refused, saying why, where the
 view sees its work plane edge on. Create Similar on a reference line turns it on; it has no key yet
-(`tests/family_reference_line.rs`).
+(`tests/family_reference_line.rs`). A connector has no place yet: when it gets `at` and
+`direction` (upstream #269) it takes an optional host too. IFC is unchanged: it writes the forms' triangles.
 
 A family's `model_lines` (FE-15, `family::ModelLine`) are lines of its own, each `start` to `end` on a `host` it lies on (as a
 reference line's, Ref. Level when none), shown in every view of the family and of the project, drawn in its `subcategory` (the
@@ -494,10 +495,10 @@ reference line is (`check_planes`), kept by the `family` command (`model_lines`,
 or a reload), and stays on its host when a type's dimensions move it (`flexed`). Copy, the clipboard and the Modify tools take
 it as they take a reference line (`Copying`, `Transforming`), refusing what would take it off a host that stays. The project's
 plans draw a component's model lines where its placement puts them (`Model::component_model_lines`) between the cut plane and
-the view depth; sections, elevations and 3D views don't yet. Create > Model > Model Line draws one as Reference Line does, on
+the view depth, and a door's or window's with its marks (`Model::opening_model_lines`), each in its subcategory, which a view
+hides and restyles as it does a symbol's; sections, elevations and 3D views don't yet. Create > Model > Model Line draws one as Reference Line does, on
 the view's work plane; a click picks it, Delete takes it away, a drag slides it along its host and a plane moved takes the lines
-on it along; Properties sets its subcategory. It has no key yet (`tests/family_model_line.rs`, `family_model_line_tests.rs`). A connector has no place yet: when it gets `at` and
-`direction` (upstream #269) it takes an optional host too. IFC is unchanged: it writes the forms' triangles.
+on it along; Properties sets its subcategory. It has no key yet (`tests/family_model_line.rs`, `family_model_line_tests.rs`).
 
 An adaptive family's work planes are these planes too: a reference point is drawn on a datum, a named plane of the family's own
 or a reference line's face, and keeps it as its Work Plane by `PlaneRef`; the three datums an adaptive definition had of its own

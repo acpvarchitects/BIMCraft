@@ -161,7 +161,9 @@ fn a_model_line_on_a_plane_a_dimension_moves_moves_with_it() {
                "model_lines": [{"start": [0, 0, 500], "end": [300, 0, 500], "host": {"plane": SHELF}}]}),
     );
     let f = &s.model.families["P"];
-    let at = |t: &str| f.model_line_segments(&f.values(t, &Default::default()).unwrap(), None, false);
+    let at = |t: &str| {
+        f.model_line_segments(&f.values(t, &Default::default()).unwrap(), None, false).into_iter().map(|(s, _)| s).collect::<Vec<_>>()
+    };
     assert_eq!(at("A"), vec![[[0.0, 0.0, 500.0], [300.0, 0.0, 500.0]]]);
     assert_eq!(at("B"), vec![[[0.0, 0.0, 800.0], [300.0, 0.0, 800.0]]], "with Shelf, 800 up");
 }

@@ -2526,12 +2526,13 @@ impl Family {
 
     /// Its model lines (FE-15) for `values`, in its own axes: where its constraints put what they are drawn on; those its
     /// Visibility Settings show in a plan at `detail` (`plan`), else at `detail` in any view; every one when `detail` is none.
+    /// Each with the subcategory key it is drawn in (`dooropening`; none, its category).
     pub fn model_line_segments(
         &self,
         values: &BTreeMap<String, Val>,
         detail: Option<crate::graphics::Detail>,
         plan: bool,
-    ) -> Vec<[[f64; 3]; 2]> {
+    ) -> Vec<([[f64; 3]; 2], Option<&'static str>)> {
         if self.model_lines.is_empty() {
             return Vec::new();
         }
@@ -2544,7 +2545,7 @@ impl Family {
                 (Some(v), None) => !plan || v.plan,
                 (None, _) => true,
             })
-            .map(|l| [l.start, l.end])
+            .map(|l| ([l.start, l.end], l.subcategory.as_deref().and_then(|n| self.subcategory_key(n))))
             .collect()
     }
 

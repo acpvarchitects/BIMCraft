@@ -3637,7 +3637,12 @@ impl Model {
 
     /// Component `c`'s model lines (FE-15) in the model, at `detail` in a plan (`plan`) if it says: its family's for its
     /// values, mirrored if it is, then placed as its family's axes are ([`Model::component_placement`]).
-    pub fn component_model_lines(&self, c: &Component, detail: Option<crate::graphics::Detail>, plan: bool) -> Vec<[[f64; 3]; 2]> {
+    pub fn component_model_lines(
+        &self,
+        c: &Component,
+        detail: Option<crate::graphics::Detail>,
+        plan: bool,
+    ) -> Vec<([[f64; 3]; 2], Option<&'static str>)> {
         let Some(f) = self.families.get(&c.family) else { return Vec::new() };
         if f.model_lines.is_empty() {
             return Vec::new();
@@ -3645,7 +3650,10 @@ impl Model {
         let Ok(values) = f.values(&c.type_name, &c.params) else { return Vec::new() };
         let placed = self.component_placement(c);
         let flip = |p: [f64; 3]| [p[0], if c.mirrored { -p[1] } else { p[1] }, p[2]];
-        f.model_line_segments(&values, detail, plan).into_iter().map(|[a, b]| [placed.place(flip(a)), placed.place(flip(b))]).collect()
+        f.model_line_segments(&values, detail, plan)
+            .into_iter()
+            .map(|([a, b], sub)| ([placed.place(flip(a)), placed.place(flip(b))], sub))
+            .collect()
     }
 
     /// Where component `c`'s room is found from: its family's room calculation point for its values, mirrored, turned and
@@ -4766,6 +4774,23 @@ impl Model {
         let (Element::Door(o) | Element::Window(o)) = e else { return Vec::new() };
         let (Some((_, marks)), Some((at, u, _))) = (self.opening_local_at(e, detail), self.opening_frame(o)) else { return Vec::new() };
         marks.iter().map(|(k, sub)| (k.map(|q| at + u * q.0 + u.perp() * q.1), *sub)).collect()
+    }
+
+    /// The model lines (FE-15) a door's or window's family draws in a plan at `detail`, in plan where it stands (flipped and
+    /// placed as its marks are), each with the subcategory key it is drawn in.
+    pub fn opening_model_lines(&self, e: &Element, detail: crate::graphics::Detail) -> Vec<([P2; 2], Option<&'static str>)> {
+        let (Element::Door(o) | Element::Window(o)) = e else { return Vec::new() };
+        let Some(f) = o.family.as_ref().and_then(|n| self.families.get(n)) else { return Vec::new() };
+        if f.model_lines.is_empty() {
+            return Vec::new();
+        }
+        let Some(values) = self.wall(o.host).and_then(|w| f.values_in(&o.type_name, &o.params, self.thickness(w)).ok()) else {
+            return Vec::new();
+        };
+        let Some((at, u, _)) = self.opening_frame(o) else { return Vec::new() };
+        let (fx, fy) = (if o.flip_hand { -1.0 } else { 1.0 }, if o.flip_facing { -1.0 } else { 1.0 });
+        let place = |p: [f64; 3]| at + u * (fx * p[0]) + u.perp() * (fy * p[1]);
+        f.model_line_segments(&values, Some(detail), true).into_iter().map(|([a, b], sub)| ([place(a), place(b)], sub)).collect()
     }
 
     /// The level an element stands on: a door's or window's is its wall's, a tag's its door's or
