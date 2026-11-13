@@ -40,6 +40,7 @@ use crate::walls::{self, Axis, stacked};
 use crate::workplane::{Surface, WorkPlane};
 use crate::{pdf, render, schedule, sheet, snap, stairs, view3d};
 
+mod cut_geometry;
 mod work_plane;
 
 type R = Result<Value, String>;
@@ -211,6 +212,26 @@ other_files(
         work_plane::reference_plane,
     )
     .menu("Architecture > Reference Plane"),
+    edit(
+        "cut_geometry",
+        ui_msg!("Cut Geometry"),
+        &[],
+        "{target: wall, cutter: component} (each an id or GUID) Cut Geometry: the component's voids that cut a host (its family's \
+         void forms whose `cuts` is `both` or `host`) cut the wall from now on, wherever the component stands: in plan, in section, \
+         in 3D and as an IFC opening. The family must be set to Cut with Voids When Loaded (`family` options \
+         `cut_with_voids_when_loaded`) and the voids must pass into the wall when cut. The wall keeps the cut while both stand \
+         (it lists the component in `void_cuts`); it does nothing while the flag is off or the voids miss the wall, and goes \
+         with either's deletion. Uncut with `uncut_geometry`",
+        cut_geometry::cut_geometry,
+    ),
+    edit(
+        "uncut_geometry",
+        ui_msg!("Uncut Geometry"),
+        &[],
+        "{target: wall, cutter: component} (each an id or GUID) Uncut Geometry: the component no longer cuts the wall, as \
+         `cut_geometry` made it",
+        cut_geometry::uncut_geometry,
+    ),
     edit(
         "edit_work_plane",
         "Edit Work Plane",
@@ -1301,7 +1322,7 @@ other_files(
          component is in (else its insertion point's: `elements` says `room`, IFC references it in that space beside its storey); `cut_in_views` \
          overrides whether sections cut its forms, which by default its category says; `omniclass` is a number of digits and \
          dots (`23.30.20.17`) and a title, which IFC writes as a classification reference on its type; work_plane_based (off), \
-         always_vertical (on) and cut_with_voids_when_loaded (off) are kept for later and change nothing yet; shared (off) makes it a \
+         always_vertical (on); cut_with_voids_when_loaded (off) lets `cut_geometry` cut a wall with its components' voids; shared (off) makes it a \
          shared nested family (below); \
          a reply's `options` has them all), rename?, delete?: true, dry_run?, path?, definition?, save?, overwrite?: no|version|version_and_values, \
          shared_nested?: {name: project|family}, nest?: {path | definition, name?, overwrite?, shared_nested?}, nested?: [{name, family}], \
@@ -8778,6 +8799,7 @@ fn wall(s: &mut Session, p: &Value) -> R {
         .filter_map(|seg| match seg {
             [a, b] => Some(m.insert(Element::Wall(Wall {
                 params: Default::default(),
+                void_cuts: Vec::new(),
                 type_name: type_name.clone(),
                 level,
                 start: *a,
@@ -10705,6 +10727,7 @@ fn dormer(s: &mut Session, p: &Value) -> R {
     let wall = |start: P2, end: P2| {
         Element::Wall(Wall {
             params: Default::default(),
+            void_cuts: Vec::new(),
             type_name: type_name.clone(),
             level,
             start,
@@ -15653,11 +15676,15 @@ fn duplicate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion) -> R {
         hosts.insert(m.guid(from), m.guid(id));
         made.push(id);
     }
-    // Copied walls attached to roofs or floors copied with them attach to the copies.
+    // Copied walls attached to roofs or floors copied with them attach to the copies, and are cut by the copies of the
+    // components that cut them (Cut Geometry, T23).
     for id in &made {
         if let Some(Element::Wall(w)) = m.elements.get_mut(id) {
             for at in [&mut w.attach_top, &mut w.attach_base] {
                 *at = at.map(|a| hosts.get(&a).copied().unwrap_or(a));
+            }
+            for g in &mut w.void_cuts {
+                *g = hosts.get(g).copied().unwrap_or(*g);
             }
         }
     }
@@ -16913,7 +16940,11 @@ fn delete_indexed(s: &mut Session, p: &Value) -> R {
         .iter()
         .flat_map(|g| lookup.referrers(g))
         .filter(|id| match m.elements.get(*id) {
-            Some(Element::Wall(w)) => w.attach_top.is_some_and(|g| gone.contains(&g)) || w.attach_base.is_some_and(|g| gone.contains(&g)),
+            Some(Element::Wall(w)) => {
+                w.attach_top.is_some_and(|g| gone.contains(&g))
+                    || w.attach_base.is_some_and(|g| gone.contains(&g))
+                    || w.void_cuts.iter().any(|g| gone.contains(g))
+            }
             Some(Element::Roof(r)) => r.join.is_some_and(|g| gone.contains(&g)),
             // A 3D view whose work plane's level goes sketches on the lowest level again.
             Some(Element::View3D(v)) => v.work_plane.as_ref().is_some_and(|wp| wp.level.is_some_and(|l| gone.contains(&l))),
@@ -16961,6 +16992,7 @@ fn delete_indexed(s: &mut Session, p: &Value) -> R {
                 if w.attach_base.is_some_and(|g| gone.contains(&g)) {
                     w.attach_base = None;
                 }
+                w.void_cuts.retain(|g| !gone.contains(g));
             }
             Some(Element::Roof(r)) if r.join.is_some_and(|g| gone.contains(&g)) => r.join = None,
             Some(Element::View3D(v)) if v.work_plane.as_ref().is_some_and(|wp| wp.level.is_some_and(|l| gone.contains(&l))) => {
@@ -17101,8 +17133,12 @@ fn delete_from_scratch(s: &mut Session, p: &Value) -> R {
     for (id, d) in kept {
         m.elements.insert(id, Element::Dimension(d));
     }
-    // Walls attached to a roof or a floor that goes come loose, and roofs running into one end nowhere.
+    // Walls attached to a roof or a floor that goes come loose, and roofs running into one end nowhere; a wall forgets the
+    // voids that cut it and go.
     for e in m.elements.values_mut() {
+        if let Element::Wall(w) = e {
+            w.void_cuts.retain(|g| !gone.contains(g));
+        }
         let ties = match e {
             Element::Wall(w) => vec![&mut w.attach_top, &mut w.attach_base],
             Element::Roof(r) => vec![&mut r.join],

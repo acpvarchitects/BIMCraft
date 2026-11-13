@@ -1224,7 +1224,8 @@ family is on a plane is refused by the project on Load into Project, said in the
   when `component` is given no `offset` (Revit's Default Elevation); finite and within `MAX_COORD`. A component placed keeps
   its offset, so changing it moves nothing. An adaptive one (`Model::placed_by_points`, by `component` or `adaptive_place`)
   never takes it: Revit places it by its points alone.
-- `cut_with_voids_when_loaded` (off) is stored only: a project's voids cutting a component will read it (T23).
+- `cut_with_voids_when_loaded` (off): its components' voids that cut a host may cut a wall they stand in, once Cut Geometry
+  names them (*Cut Geometry in the project*, below); while it is off, the cuts made sleep.
 - `shared` (off) makes the family a shared nested family when another nests it (*Nested families*, below).
 - `cut_in_views`: none, a section cuts the family's forms as its category says (`Category::cut`); `true` or `false`
   overrides that. `Family::cuts_in_views` is the one place that decides, for a component's solids in the 3D scene
@@ -1359,7 +1360,7 @@ rule, as a door's in its wall; `Family::face_voids`), and reaches into its host 
 there; a `forms` void cuts the family's own forms alone. Before, a `both` void listed after a solid it overlapped cut the
 face no more (T22's order rule, which F10d dropped for walls only); Place on Face came with 18, so no file needs a step.
 There is no option: any face-hosted component's such voids cut, whatever
-`cut_with_voids_when_loaded` says, which is about the project's voids cutting a component; and a work plane-based family's
+`cut_with_voids_when_loaded` says, which is about a component cutting what it doesn't stand on (*Cut Geometry in the project*); and a work plane-based family's
 void that cuts none of its forms is not warned of as cutting nothing. `Model::face_voids` gives a component's voids placed
 where it stands (mirrored, on its face's frame), `Model::hosted_voids` those of everything on a host's faces (found through
 the lookup's referrers, so an edit of the component or the host makes the other again in the 3D scene). A wall's go with its
@@ -1373,7 +1374,23 @@ top face (`render::slab_holes`), its edge and the floor's surface pattern left o
 ceiling's underside; a plan's cut through a wall clears it where it passes through the voids, as a door's do. IFC writes an
 `IfcOpeningElement` for each component whose voids reach its host (`view3d::reaching_voids`), its body the voids as closed
 face sets in the host's frame, and an `IfcRelVoidsElement` to the `IfcSlab`, `IfcRoof`, `IfcCovering` or `IfcWall`. Nothing
-new is in a file. A void family placed alone (T23) and Cut Geometry are not here.
+new is in a file.
+
+### Cut Geometry in the project
+
+A component that stands on a level, not on a face, cuts a wall only when Cut Geometry names it (T23), as a Revit
+project's unattached void families do: `cut_geometry {target, cutter}`, the wall and the component by id or GUID, adds
+the component's GUID to the wall's `void_cuts`, and `uncut_geometry` takes it off. It is refused unless the cutter's family
+is set to Cut with Voids When Loaded, has a void that cuts a host (`cuts` `both` or `host`; a `forms` void never cuts a
+project's element), and those voids, placed where the component stands, pass into the wall (their outline in plan meets the
+wall's and their heights its own); a pair already tied, or a component on a face of that wall, is refused too. From then on
+`Model::hosted_voids` adds the voids of each component the wall names (`Model::cut_voids`, placed by
+`Model::placed_host_voids` through `component_placement`, as a face-hosted one's), so plan, section, 3D and IFC cut the wall
+by the same path as a face-hosted component's. The tie follows the component when it moves, sleeps while the flag is off or
+the voids miss the wall, is kept by undo, redo and the file (`void_cuts` is written only when there is one, so FORMAT stays
+18), goes when either element is deleted (`delete` and its oracle), and a copy of the wall and the cutter together ties the
+copies. `Model::check` refuses a `void_cuts` that names anything but a component, or one twice. Join and Unjoin Geometry
+between project elements are not here.
 
 ## Plan symbols
 

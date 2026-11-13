@@ -2648,6 +2648,10 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"name": "T", "drawing_area": [[50, 50], [10, 10]], "template_border": "x"}),
         json!({"name": "T", "drawing_area": [[0, 0], [f64::MAX, 1e300]]}),
         json!({"name": "T", "drawing_area": [[0, 0]], "template_border": true}),
+        // Cut Geometry's pair: a wall cut by itself, by nothing, by what isn't an element.
+        json!({"target": 100002, "cutter": 100002}),
+        json!({"target": 100002, "cutter": u64::MAX, "extra": []}),
+        json!({"target": "x", "cutter": 1e300}),
     ];
     let mut base = Session::new();
     house(&mut base);

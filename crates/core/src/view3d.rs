@@ -976,6 +976,28 @@ fn wall_solids(m: &Model, id: Id, index: Option<&walls::Index>) -> Vec<Solid> {
     cut_by_voids(id, WALL, prisms, &voids).unwrap_or_else(|| walls::prisms_rect_in(m, id, index).into_iter().map(prism).collect())
 }
 
+/// Whether `voids` take anything of wall `id`'s solids (its prisms round its doors' and windows' rectangles): some void whose
+/// box reaches a prism's takes more than a cubic centimetre of it ([`crate::csg::subtract`]), so a void whose box or outline
+/// spans the wall while the void itself misses it (an L round the wall's end, one tilted past it) takes nothing. What Cut
+/// Geometry asks before it ties a component to a wall (T23); where cutting fails, nothing is taken.
+pub(crate) fn takes_from_wall(m: &Model, id: Id, voids: &[Vec<[P3; 3]>]) -> bool {
+    let volume = |tris: &[[P3; 3]]| tris.iter().map(|[a, b, c]| dot(*a, cross(*b, *c)) / 6.0).sum::<f64>().abs();
+    let boxes: Vec<(P3, P3)> = voids.iter().map(|v| tri_box(v)).collect();
+    let mut meter = crate::csg::Meter::default();
+    walls::prisms_in(m, id, true, None).into_iter().any(|p| {
+        let solid = Solid::Prism { owner: id, color: WALL, tex: 0, ring: p.ring, bottom: p.bottom, top: p.top, curve: p.curve };
+        let mut made = Vec::new();
+        solid.tris(&mut made);
+        let tris: Vec<[P3; 3]> = made.into_iter().map(|t| t.p).collect();
+        let (lo, hi) = tri_box(&tris);
+        let whole = volume(&tris);
+        voids.iter().zip(&boxes).any(|(v, b)| {
+            (0..3).all(|c| b.0[c] < hi[c] && lo[c] < b.1[c])
+                && crate::csg::subtract(&tris, v, &mut meter).is_ok_and(|left| whole - volume(&left) > 1000.0)
+        })
+    })
+}
+
 /// `solids`, element `owner`'s, less `voids`: each solid a void's box reaches as its triangles less them, a mesh in `color`
 /// a section cuts in its own shape; the others as they are, so a host nothing reaches is drawn as before. None where cutting
 /// fails (too many faces).

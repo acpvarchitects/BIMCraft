@@ -325,6 +325,7 @@ pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
             let (start, end, arc) = if flip == Some(true) { (end, start, -arc) } else { (start, end, arc) };
             let wall = Wall {
                 params: Default::default(),
+                void_cuts: Vec::new(),
                 type_name,
                 level,
                 start,
