@@ -529,7 +529,26 @@ impl Model {
     /// component on a level or a plane, of a family with none, or one that doesn't build. Whether each reaches its host is
     /// for the host's solids to find: one that doesn't cuts nothing.
     pub fn face_voids(&self, c: &Component) -> Vec<Vec<P3Tri>> {
-        if !matches!(c.host, Some(Hosted { host: HostRef::Face { .. }, .. })) || self.placed_by_points(c) {
+        if !matches!(c.host, Some(Hosted { host: HostRef::Face { .. }, .. })) {
+            return Vec::new();
+        }
+        self.placed_host_voids(c)
+    }
+
+    /// The voids component `c` cuts a wall with when Cut Geometry names it in the wall's `void_cuts` (T23): its family's
+    /// voids that cut a host ([`Model::placed_host_voids`]), while the family is set to Cut with Voids When Loaded; none when it isn't.
+    pub fn cut_voids(&self, c: &Component) -> Vec<Vec<P3Tri>> {
+        if !self.families.get(&c.family).is_some_and(|f| f.cut_with_voids_when_loaded) {
+            return Vec::new();
+        }
+        self.placed_host_voids(c)
+    }
+
+    /// Component `c`'s family's voids that cut a host (`cuts` `both` or `host`: [`crate::family::Family::face_voids`]), in the
+    /// model's axes: mirrored if it is and placed where it stands ([`Model::component_placement`]). None for a component
+    /// placed by its points, of a family with none, or one that doesn't build.
+    pub fn placed_host_voids(&self, c: &Component) -> Vec<Vec<P3Tri>> {
+        if self.placed_by_points(c) {
             return Vec::new();
         }
         let Some(f) = self.families.get(&c.family) else { return Vec::new() };
@@ -561,7 +580,8 @@ impl Model {
         let mut ids: Vec<Id> = lookup.referrers(&g).collect();
         ids.sort_unstable();
         ids.dedup();
-        ids.into_iter()
+        let mut out: Vec<(Id, Vec<Vec<P3Tri>>)> = ids
+            .into_iter()
             .filter_map(|id| match self.elements.get(id) {
                 Some(Element::Component(c)) if matches!(c.host, Some(Hosted { host: HostRef::Face { element, .. }, .. }) if element == g) =>
                 {
@@ -570,7 +590,23 @@ impl Model {
                 }
                 _ => None,
             })
-            .collect()
+            .collect();
+        // And the components Cut Geometry named on a wall (T23), which cut it from wherever they stand.
+        if let Element::Wall(w) = e {
+            for cutter in &w.void_cuts {
+                let Some(id) = self.elements.id(*cutter) else { continue };
+                if out.iter().any(|(by, _)| *by == id) {
+                    continue;
+                }
+                if let Some(Element::Component(c)) = self.elements.get(id) {
+                    let voids = self.cut_voids(c);
+                    if !voids.is_empty() {
+                        out.push((id, voids));
+                    }
+                }
+            }
+        }
+        out
     }
 
     /// The hosted components' `at` and `offset` worked out again from their hosts, and their place on the host from their

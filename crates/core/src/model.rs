@@ -353,6 +353,10 @@ pub struct Wall {
     /// Its values of the project's parameters, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
+    /// The components whose voids cut it, as Cut Geometry made them (T23): each one cuts while its family is set to
+    /// Cut with Voids When Loaded and a void of it reaches the wall, and is kept, cutting nothing, while it doesn't.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub void_cuts: Vec<Guid>,
 }
 
 /// A room's Limit Offset unless it says: its top 2500 mm over its own level.
@@ -2160,6 +2164,7 @@ macro_rules! visit_refs {
                 if let Some(g) = & $($m)? w.top_level { f(g) }
                 if let Some(g) = & $($m)? w.attach_top { f(g) }
                 if let Some(g) = & $($m)? w.attach_base { f(g) }
+                for g in & $($m)? w.void_cuts { f(g) }
             }
             Element::Floor(Floor { level, .. }) | Element::Ceiling(Ceiling { level, .. }) => f(level),
             Element::Room(Room { level, top_level, .. }) => {
@@ -7216,6 +7221,17 @@ impl Model {
                         return Err(format!("{who}: {what} {} isn't a roof or a floor", self.shown(a)));
                     }
                 }
+                for (i, g) in w.void_cuts.iter().enumerate() {
+                    if !matches!(self.elements.get(*g), Some(Element::Component(_))) {
+                        return Err(format!(
+                            "{who}: void_cuts names {}, which isn't a component; Uncut Geometry takes it off",
+                            self.shown(*g)
+                        ));
+                    }
+                    if w.void_cuts[..i].contains(g) {
+                        return Err(format!("{who}: void_cuts names {} twice", self.shown(*g)));
+                    }
+                }
                 match w.top_level {
                     Some(t) => level_ok(t)?,
                     None => size(&format!("{who} height"), w.height)?,
@@ -8674,6 +8690,7 @@ mod tests {
     fn wall(level: Guid, a: P2, b: P2) -> Element {
         Element::Wall(Wall {
             params: Default::default(),
+            void_cuts: Vec::new(),
             type_name: "Generic - 200mm".into(),
             level,
             start: a,
