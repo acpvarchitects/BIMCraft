@@ -131,6 +131,14 @@ pub(super) fn picked(
 
 impl FamilyEditor {
     /// The reference line selected, while it alone is and the family has it.
+    /// The model line selected (FE-15), while it alone is.
+    pub(crate) fn selected_model_line(&self) -> Option<Guid> {
+        match self.only_selected() {
+            Some(super::select_box::Picked::ModelLine(g)) => Some(g),
+            _ => None,
+        }
+    }
+
     pub(crate) fn selected_line(&self) -> Option<Guid> {
         match self.only_selected() {
             Some(super::select_box::Picked::Line(g)) => Some(g),

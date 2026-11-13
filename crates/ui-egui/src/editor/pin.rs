@@ -21,6 +21,7 @@ impl FamilyEditor {
             Picked::Form(i) => self.forms.get(i).is_some_and(|f| f.original.pinned),
             Picked::Plane(g) => self.planes.iter().any(|x| x.guid == g && (x.pinned || x.datum())),
             Picked::Line(g) => self.lines.iter().any(|x| x.guid == g && x.pinned),
+            Picked::ModelLine(g) => self.model_lines.iter().any(|x| x.guid == g && x.pinned),
             Picked::Dimension(g) => self.dimensions.iter().any(|x| x.guid == g && x.pinned),
             Picked::Symbol(i) => self.symbols.get(i).is_some_and(|x| x.pinned),
             Picked::Connector(i) => self.connectors.get(i).is_some_and(|x| x.pinned()),
@@ -67,6 +68,11 @@ impl FamilyEditor {
                 }
                 Picked::Line(g) => {
                     if let Some(x) = self.lines.iter_mut().find(|x| x.guid == g) {
+                        x.pinned = on;
+                    }
+                }
+                Picked::ModelLine(g) => {
+                    if let Some(x) = self.model_lines.iter_mut().find(|x| x.guid == g) {
                         x.pinned = on;
                     }
                 }

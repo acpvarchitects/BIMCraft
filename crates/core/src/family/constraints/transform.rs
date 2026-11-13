@@ -44,6 +44,7 @@ pub enum Transform {
 pub struct Transforming {
     pub planes: Vec<Guid>,
     pub lines: Vec<Guid>,
+    pub model_lines: Vec<Guid>,
     pub forms: Vec<usize>,
 }
 
@@ -70,6 +71,8 @@ pub struct Transformed {
     pub family: Family,
     pub planes: Vec<Guid>,
     pub lines: Vec<Guid>,
+    /// The model lines taken (FE-15): asked for, or drawn on what is.
+    pub model_lines: Vec<Guid>,
     pub forms: Vec<usize>,
     pub dimensions: Vec<Guid>,
     /// The dimensions deleted: each measured between what is taken and what isn't, and no longer could.
@@ -242,6 +245,17 @@ impl Family {
                 return stays(Stays::Pivot(Named::Line(l.guid)));
             }
         }
+        // The model lines asked for and those drawn on what is taken (FE-15).
+        let model_lines: Vec<Guid> =
+            self.model_lines.iter().filter(|l| taking.model_lines.contains(&l.guid) || taken(&l.host)).map(|l| l.guid).collect();
+        for l in self.model_lines.iter().filter(|l| model_lines.contains(&l.guid)) {
+            if l.pinned {
+                return stays(Stays::Pinned(Named::ModelLine(l.guid)));
+            }
+            if turning(&l.host) {
+                return stays(Stays::Pivot(Named::ModelLine(l.guid)));
+            }
+        }
         let mut forms: Vec<usize> = (0..self.forms.len()).filter(|i| taking.forms.contains(i) || taken(&self.forms[*i].host)).collect();
         forms.dedup();
         // A pinned form keeps its place, taken itself or drawn on what is.
@@ -289,6 +303,18 @@ impl Family {
             let fr = out.frame(&l.host).map_err(|e| TransformRefused::Unsat(e.into()))?;
             if [l.start, l.end].iter().any(|p| fr.local(*p).1.abs() > ON * (1.0 + dot(*p, *p).sqrt())) {
                 return stays(Stays::Hosted(Named::Line(self.lines[k].guid)));
+            }
+        }
+        for l in out.model_lines.iter_mut().filter(|l| model_lines.contains(&l.guid)) {
+            (l.start, l.end) = (t.point(l.start), t.point(l.end));
+            if !finite(l.start) || !finite(l.end) {
+                return Err(TransformRefused::Bad(format!("{} would go past {MAX_COORD} mm", self.said(Named::ModelLine(l.guid)))));
+            }
+        }
+        for l in out.model_lines.iter().filter(|l| model_lines.contains(&l.guid) && !taken(&l.host)) {
+            let fr = out.frame(&l.host).map_err(|e| TransformRefused::Unsat(e.into()))?;
+            if [l.start, l.end].iter().any(|p| fr.local(*p).1.abs() > ON * (1.0 + dot(*p, *p).sqrt())) {
+                return stays(Stays::Hosted(Named::ModelLine(l.guid)));
             }
         }
         // The forms: each point of a sketch on its host, taken through the family's space onto the host as it is left.
@@ -403,6 +429,6 @@ impl Family {
             }
         }
         out.dimensions.retain(|d| !dropped.contains(&d.guid));
-        Ok(Transformed { family: out, planes, lines, forms, dimensions, dropped })
+        Ok(Transformed { family: out, planes, lines, model_lines, forms, dimensions, dropped })
     }
 }

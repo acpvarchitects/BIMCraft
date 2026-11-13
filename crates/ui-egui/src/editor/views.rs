@@ -43,6 +43,8 @@ pub(crate) struct Views {
     pub(crate) drawing: Option<Option<P2>>,
     /// What `drawing` draws: a reference line on the view's work plane (FE-11), else a reference plane.
     pub(crate) drawing_line: bool,
+    /// The line `drawing` draws a model line (FE-15), not a reference line.
+    pub(crate) drawing_model: bool,
     /// The Measure tool, on (FE-17): its first click and the ruler last laid.
     pub(crate) measuring: Option<super::measure::Measuring>,
     /// The plane being dragged: where the pointer was, in the view's millimetres, and the view as the drag began, which the
@@ -331,11 +333,20 @@ impl FamilyEditor {
         self.datum_tool(true);
     }
 
+    /// Model Line (FE-15): the tool, where Reference Line's is, drawing a model line on the view's work plane instead.
+    pub(crate) fn model_line_tool(&mut self) {
+        self.datum_tool(true);
+        if self.editing_2d() {
+            self.views.drawing_model = true;
+        }
+    }
+
     /// Reference Plane's tool, or Reference Line's (`line`), on; the selection goes.
     fn datum_tool(&mut self, line: bool) {
         if self.editing_2d() {
             self.views.drawing = Some(None);
             self.views.drawing_line = line;
+            self.views.drawing_model = false;
             self.views.picking = None;
             self.views.modify = None;
             self.views.pasting = None;
@@ -1399,13 +1410,27 @@ impl FamilyEditor {
                     .staged
                     .line_at(which, q, 6.0 / view.scale.max(1e-9))
                     .and_then(|i| family.as_ref().and_then(|f| f.lines.get(i)).map(|l| l.guid));
-                let plane = if line.is_some() { None } else { pick_plane(p) };
+                // A model line (FE-15) by its stroke, as the view draws it, where no reference line is.
+                let reach = 6.0 / view.scale.max(1e-9);
+                let model = line.is_none().then_some(family.as_ref()).flatten().and_then(|f| {
+                    f.model_lines
+                        .iter()
+                        .map(|l| {
+                            let (a, b) = (c.staged.to_view(which, l.start), c.staged.to_view(which, l.end));
+                            (bimcraft_core::geom::dist_to_segment(q, a, b), l.guid)
+                        })
+                        .filter(|(d, _)| d.is_finite() && *d <= reach)
+                        .min_by(|a, b| a.0.total_cmp(&b.0))
+                        .map(|(_, g)| Picked::ModelLine(g))
+                });
+                let plane = if line.is_some() || model.is_some() { None } else { pick_plane(p) };
                 // Then a form by its face, or a nested instance or a form by an edge of its outline: after the plane and the
                 // line, so an edge lying on a plane leaves the plane to be clicked (FE-20).
                 let body = scene.as_ref().and_then(|s| s.body_hit(q));
                 select = Some(match (plane, line, body) {
                     (Some(g), _, _) => Some(Picked::Plane(g)),
                     (None, Some(g), _) => Some(Picked::Line(g)),
+                    (None, None, _) if model.is_some() => model,
                     (None, None, body) => body,
                 });
             }
@@ -1694,6 +1719,7 @@ impl FamilyEditor {
         // follows, and what can't hold says so.
         // Refused where it leaves the family failing its checks it passed (FE-7 review): put back, saying why.
         let kept = moved.map(|_| (self.draft(), self.sound()));
+        let was = (self.planes.clone(), self.lines.clone());
         let held = family.as_ref().is_some_and(|f| {
             f.constrained() && f.dimensions.iter().any(|d| d.refs.contains(&DimRef::Plane(moved.map_or(Guid::default(), |m| m.0))))
         });
@@ -1716,6 +1742,8 @@ impl FamilyEditor {
             // The reference lines drawn on it go with it (FE-7 review).
             super::drag_move::carry_lines(&mut self.lines, g, std::array::from_fn(|i| n[i] * along));
         }
+        // The model lines drawn on what moved go with it (FE-15).
+        self.carry_model_lines(&was.0, &was.1);
         if let Some((draft, true)) = kept
             && let Err(e) = self.family().and_then(|f| f.check(&|_| true))
         {
@@ -1743,8 +1771,13 @@ impl FamilyEditor {
         }
         if let Some((start, end, host)) = new_line {
             let guid = Guid::new();
-            self.lines.push(RefLine { guid, start, end, host, ..Default::default() });
-            self.select_only(Picked::Line(guid));
+            if self.views.drawing_model {
+                self.model_lines.push(bimcraft_core::family::ModelLine { guid, start, end, host, ..Default::default() });
+                self.select_only(Picked::ModelLine(guid));
+            } else {
+                self.lines.push(RefLine { guid, start, end, host, ..Default::default() });
+                self.select_only(Picked::Line(guid));
+            }
         }
         problem.or_else(|| self.views.status.take())
     }

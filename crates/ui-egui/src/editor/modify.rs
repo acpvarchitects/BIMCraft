@@ -462,6 +462,7 @@ fn datum_host(names: &Names, n: Named) -> Option<String> {
     let host = match names.origin.named(n) {
         Named::Form(i) => f.forms.get(i)?.host,
         Named::Line(g) => f.lines.iter().find(|l| l.guid == g)?.host,
+        Named::ModelLine(g) => f.model_lines.iter().find(|l| l.guid == g)?.host,
         Named::Plane(_) => return None,
     };
     match host {
@@ -670,6 +671,7 @@ impl FamilyEditor {
             match *p {
                 Picked::Plane(g) => taking.planes.push(g),
                 Picked::Line(g) => taking.lines.push(g),
+                Picked::ModelLine(g) => taking.model_lines.push(g),
                 Picked::Form(i) => taking.forms.push(i),
                 Picked::Dimension(_) => {}
                 Picked::Symbol(_) | Picked::Connector(_) | Picked::Nested(_) => {
@@ -699,6 +701,13 @@ impl FamilyEditor {
         }
         for g in &done.lines {
             if let (Some(l), Some(m)) = (self.lines.iter_mut().find(|l| l.guid == *g), done.family.lines.iter().find(|l| l.guid == *g)) {
+                *l = m.clone();
+            }
+        }
+        for g in &done.model_lines {
+            if let (Some(l), Some(m)) =
+                (self.model_lines.iter_mut().find(|l| l.guid == *g), done.family.model_lines.iter().find(|l| l.guid == *g))
+            {
                 *l = m.clone();
             }
         }

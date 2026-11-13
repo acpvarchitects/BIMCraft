@@ -1300,7 +1300,9 @@ other_files(
          left|center_left_right|right|front|center_front_back|back|bottom|center_elevation|top, defines_origin?, subcategory?}], \
          ref_plane?: {id | guid, …a plane's fields}, delete_ref_plane?: [id | guid, …], ref_lines?: [{guid?, start: [x, y, z], \
          end: [x, y, z], host?: {plane: guid} | {line: guid, face}, reference?, subcategory?}], ref_line?: {id | guid, …}, \
-         delete_ref_line?: [id | guid, …], dimensions?: [{guid?, view?: plan|ceiling|front|back|left|right, refs: [{plane: guid} | \
+         delete_ref_line?: [id | guid, …], model_lines?: [{guid?, start: [x, y, z], end: [x, y, z], host?: {plane: guid} | \
+         {line: guid, face}, subcategory?, visibility?: {coarse?, medium?, fine?}}], model_line?: {id | guid, …}, \
+         delete_model_line?: [id | guid, …], dimensions?: [{guid?, view?: plan|ceiling|front|back|left|right, refs: [{plane: guid} | \
          {form: guid, end: start|end} | {form: guid, line: guid} | {form: guid, line: guid, point: start|end|centre} | \
          {line: guid, face: horizontal|vertical|start|end}, …], at: [x, y, z], kind?: aligned|radial|diameter, label?: parameter, \
          locked?: [{segment, length}], equal?, alignment?}], \
@@ -12400,6 +12402,9 @@ struct Patches {
     lines_replaced: usize,
     lines_patched: Vec<Id>,
     lines_deleted: Vec<String>,
+    model_lines_replaced: usize,
+    model_lines_patched: Vec<Id>,
+    model_lines_deleted: Vec<Id>,
     dimensions_replaced: usize,
     dimensions_patched: Vec<Id>,
     dimensions_deleted: Vec<Id>,
@@ -12829,6 +12834,7 @@ pub(crate) fn family_reload(mut incoming: crate::family::Family, old: &crate::fa
     crate::library::keep_parts(&mut old.connectors, &mut incoming.connectors);
     crate::library::keep_parts(&mut old.planes, &mut incoming.planes);
     crate::library::keep_parts(&mut old.lines, &mut incoming.lines);
+    crate::library::keep_parts(&mut old.model_lines, &mut incoming.model_lines);
     crate::library::keep_parts(&mut old.dimensions, &mut incoming.dimensions);
     crate::library::keep_parts(&mut old.nested, &mut incoming.nested);
     crate::library::keep_parts(&mut old.nested_instances, &mut incoming.nested_instances);
@@ -12909,6 +12915,7 @@ fn family(s: &mut Session, p: &Value) -> R {
             "adaptive",
             "planes",
             "lines",
+            "model_lines",
             "dimensions",
             "nested",
             "nested_instances",
@@ -13038,6 +13045,9 @@ fn family(s: &mut Session, p: &Value) -> R {
         "ref_line",
         "delete_ref_plane",
         "delete_ref_line",
+        "model_lines",
+        "model_line",
+        "delete_model_line",
         "options",
         "dimensions",
         "dimension",
@@ -13190,6 +13200,21 @@ fn family(s: &mut Session, p: &Value) -> R {
     }
     if let Some(v) = p.get("ref_line").filter(|v| !v.is_null()) {
         patches.lines_patched.push(patch_part(c, &name, &mut f.lines, v, "ref_line")?);
+    }
+    // Its model lines (FE-15): given again, patched, taken away; nothing is drawn on one, so any goes.
+    if let Some(v) = p.get("model_lines").filter(|v| !v.is_null()) {
+        let mut lines: Vec<crate::family::ModelLine> = serde_json::from_value(v.clone()).map_err(|e| field("model_lines", e))?;
+        crate::library::keep_parts(&mut f.model_lines, &mut lines);
+        patches.model_lines_replaced = lines.len();
+        f.model_lines = lines;
+    }
+    if let Some(v) = p.get("model_line").filter(|v| !v.is_null()) {
+        patches.model_lines_patched.push(patch_part(c, &name, &mut f.model_lines, v, "model_line")?);
+    }
+    if let Some(list) = p.get("delete_model_line").and_then(Value::as_array) {
+        for v in list {
+            patches.model_lines_deleted.push(take_part(c, &name, &mut f.model_lines, v, "model_line")?);
+        }
     }
     // The forms as they were: a sketch line a form no longer has takes its dimensions with it (F7b).
     let forms_were = f.forms.clone();
@@ -13507,6 +13532,7 @@ fn family_changes(was: Option<&crate::family::Family>, now: &crate::family::Fami
         "symbols": {"replaced": patches.symbols_replaced, "patched": patches.symbols_patched, "deleted": patches.symbols_deleted},
         "ref_planes": {"replaced": patches.planes_replaced, "patched": patches.planes_patched, "deleted": patches.planes_deleted},
         "ref_lines": {"replaced": patches.lines_replaced, "patched": patches.lines_patched, "deleted": patches.lines_deleted},
+        "model_lines": {"replaced": patches.model_lines_replaced, "patched": patches.model_lines_patched, "deleted": patches.model_lines_deleted},
         "dimensions": {"replaced": patches.dimensions_replaced, "patched": patches.dimensions_patched, "deleted": patches.dimensions_deleted, "dropped": patches.dimensions_dropped},
         "rename": rename,
         "parameters_renamed": patches.params_renamed.iter().map(|(a, b)| json!({"from": a, "to": b})).collect::<Vec<_>>(),
