@@ -37,20 +37,27 @@ fn kind(m: &Model, id: Id) -> &'static str {
     m.elements.get(id).map_or("nothing", Element::category)
 }
 
-/// Whether any of `voids` passes into wall `id`: their outline in plan overlaps the wall's, and their heights its own.
+/// Whether any of `voids` passes into wall `id` and takes some of it. First cheaply: their outline in plan (a hull) overlaps
+/// the wall's, and their heights its own; then on the solids themselves ([`crate::view3d::takes_from_wall`]), since a concave
+/// or tilted void's hull may span the wall while the void misses it.
 fn reaches(m: &Model, id: Id, voids: &[Vec<[P3; 3]>]) -> bool {
     let Some(w) = m.wall(id) else { return false };
     let outline = crate::walls::outline(m, id);
     let (base, top) = crate::walls::heights(m, w);
-    voids.iter().any(|v| {
-        let pts: Vec<P3> = v.iter().flatten().copied().collect();
-        let (lo, hi) = pts.iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), p| (lo.min(p[2]), hi.max(p[2])));
-        if hi <= base + 1e-6 || lo >= top - 1e-6 {
-            return false;
-        }
-        let hull = crate::geom::hull(pts.iter().map(|p| P2(p[0], p[1])).collect());
-        hull.len() >= 3 && overlap(&hull, &outline)
-    })
+    let near: Vec<Vec<[P3; 3]>> = voids
+        .iter()
+        .filter(|v| {
+            let pts: Vec<P3> = v.iter().flatten().copied().collect();
+            let (lo, hi) = pts.iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), p| (lo.min(p[2]), hi.max(p[2])));
+            if hi <= base + 1e-6 || lo >= top - 1e-6 {
+                return false;
+            }
+            let hull = crate::geom::hull(pts.iter().map(|p| P2(p[0], p[1])).collect());
+            hull.len() >= 3 && overlap(&hull, &outline)
+        })
+        .cloned()
+        .collect();
+    !near.is_empty() && crate::view3d::takes_from_wall(m, id, &near)
 }
 
 /// Whether rings `a` and `b` share some area: a corner of one inside the other, or two of their sides crossing.

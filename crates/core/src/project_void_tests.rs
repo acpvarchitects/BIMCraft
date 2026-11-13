@@ -228,6 +228,29 @@ fn cut_geometry_refuses_what_it_cannot_cut_and_says_why() {
 }
 
 #[test]
+fn a_concave_void_whose_outline_spans_the_wall_but_misses_it_is_refused() {
+    let mut s = Session::new();
+    // An L in plan: an arm along x north of the wall (y 150 to 450) and an arm down its west side past the wall's start, so the
+    // L's hull crosses the wall's first 300 or so while the L itself stays clear of it.
+    run(
+        &mut s,
+        "family",
+        json!({"name": "Ell", "category": "generic", "types": {"A": {}}, "options": {"cut_with_voids_when_loaded": true},
+               "forms": [{"void": true, "profile": [[-500, -400], [-300, -400], [-300, 150], [300, 150], [300, 450], [-500, 450]],
+                          "from": 900, "to": 1500}]}),
+    );
+    let w = wall(&mut s);
+    let ell = place(&mut s, "Ell", [200.0, 0.0]);
+    let e = cut(&mut s, w, ell).unwrap_err();
+    assert!(e.contains("don't pass into"), "{e}");
+    assert!(s.model.wall(w).unwrap().void_cuts.is_empty());
+    // Moved 300 south, its arm along x (y -150 to 150) passes right through the wall: then it cuts.
+    run(&mut s, "move", json!({"ids": [ell], "by": [0, -300]}));
+    cut(&mut s, w, ell).unwrap();
+    assert_eq!(across(&s, w, 300.0, 1200.0), 0);
+}
+
+#[test]
 fn a_wall_names_only_components_and_each_once() {
     let mut s = Session::new();
     cutter_family(&mut s, "Cutter", true);
