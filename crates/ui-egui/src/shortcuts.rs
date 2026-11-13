@@ -98,6 +98,8 @@ pub const ACTIONS: &[&str] = &[
     "Shaded",
     "Project Units",
     "Delete",
+    "Pin",
+    "Unpin",
     "Show Mass",
     "Mass",
     "Mass Floors",
@@ -148,6 +150,7 @@ pub const ACTIONS: &[&str] = &[
     msg!("Select All Instances: In Entire Family"),
     msg!("Select Elements by Face"),
     msg!("Drag Elements on Selection"),
+    msg!("Select Pinned Elements"),
     msg!("Copy to Clipboard"),
     msg!("Cut to Clipboard"),
     msg!("Paste"),
@@ -177,6 +180,7 @@ pub(crate) const FAMILY_ONLY: &[&str] = &[
     "Select All Instances: In Entire Family",
     "Select Elements by Face",
     "Drag Elements on Selection",
+    "Select Pinned Elements",
     "Copy to Clipboard",
     "Cut to Clipboard",
     "Paste",
@@ -442,6 +446,8 @@ impl BimApp {
                 self.open_units = true;
             }
             "Delete" => self.delete(),
+            "Pin" => self.set_pinned(true),
+            "Unpin" => self.set_pinned(false),
             // Revit's snap overrides, for the next point picked.
             "Snap to Endpoints" => self.snap_once = Some(Once::Only(Snap::Endpoint)),
             "Snap to Midpoints" => self.snap_once = Some(Once::Only(Snap::Midpoint)),

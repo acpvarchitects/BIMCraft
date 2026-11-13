@@ -208,6 +208,8 @@ icon_names! {
     LoadIntoProject,
     LoadIntoProjectClose,
     DragOnSelection,
+    Pin,
+    Unpin,
 }
 
 /// A single unfilled contour in grid coordinates, shared by egui and the catalog.
@@ -546,6 +548,15 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             g.line(&[(14.0, 20.0), (16.0, 22.0), (18.0, 20.0)]);
             g.line(&[(12.0, 14.0), (10.0, 16.0), (12.0, 18.0)]);
             g.line(&[(20.0, 14.0), (22.0, 16.0), (20.0, 18.0)]);
+        }
+        Icon::Pin | Icon::Unpin => {
+            // A pushpin: its head, its collar and its point; Unpin's struck through.
+            g.circle((12.0, 6.5), 3.5);
+            g.closed(&[(8.0, 10.0), (16.0, 10.0), (17.5, 14.0), (6.5, 14.0)]);
+            g.line(&[(12.0, 14.0), (12.0, 22.0)]);
+            if icon == Icon::Unpin {
+                g.line(&[(4.0, 21.0), (20.0, 3.0)]);
+            }
         }
         Icon::RepeatingDetail => {
             // A brick course: the same block again and again along a line.

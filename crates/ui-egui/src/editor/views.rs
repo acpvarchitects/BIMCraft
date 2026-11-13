@@ -41,6 +41,8 @@ pub(crate) struct Views {
     pub(crate) detail: bimcraft_core::graphics::Detail,
     /// The Reference Plane tool, on, with its first click once made.
     pub(crate) drawing: Option<Option<P2>>,
+    /// The Measure tool, on (FE-17): its first click and the ruler last laid.
+    pub(crate) measuring: Option<super::measure::Measuring>,
     /// The plane being dragged: where the pointer was, in the view's millimetres, and the view as the drag began, which the
     /// pointer is read through while it goes on (the view refitting round the plane would otherwise change its scale under
     /// the hand).
@@ -582,6 +584,7 @@ impl FamilyEditor {
                 let lock = |r: DimRef| FamilyDimension {
                     id: 0,
                     guid: Guid::new(),
+                    pinned: false,
                     view: bimcraft_core::family::DimView::of(which),
                     refs: vec![r],
                     at: cache.staged.from_view(which, at_view(p)),
@@ -1115,6 +1118,27 @@ impl FamilyEditor {
                 if ui.input(|i| i.modifiers.shift) { screen(bimcraft_core::snap::orthogonal_step(first, at_view(hover)).0) } else { hover };
             painter.line_segment([screen(first), hover], Stroke::new(1.5, PICKED));
         }
+        // Measure's ruler (FE-17): from its first click to the pointer, and the one laid in this view, read beside it.
+        if let Some(m) = self.views.measuring.as_ref() {
+            if let (Some(first), Some(hover)) = (m.first, response.hover_pos()) {
+                painter.line_segment([screen(first), hover], Stroke::new(1.5, PICKED));
+            }
+            if let Some((a, b, _)) = m.laid.filter(|l| l.2 == which) {
+                let (pa, pb) = (screen(a), screen(b));
+                painter.line_segment([pa, pb], Stroke::new(2.0, PICKED));
+                for q in [pa, pb] {
+                    let mark = egui::Rect::from_center_size(q, egui::vec2(8.0, 8.0));
+                    painter.rect_stroke(mark, 0.0, Stroke::new(2.0, PICKED), egui::StrokeKind::Middle);
+                }
+                let n = (pb - pa).normalized().rot90();
+                let text = super::measure::read(&bimcraft_core::snap::ruler(a, b), base.units);
+                // On a backing of the canvas's colour, so it reads over what the view draws.
+                let galley = painter.layout_no_wrap(text, egui::FontId::proportional(12.0), PICKED);
+                let at = egui::Rect::from_center_size(pa + (pb - pa) / 2.0 + n * 16.0, galley.size());
+                painter.rect_filled(at.expand(3.0), 3.0, crate::style::pal().surface);
+                painter.galley(at.min, galley, PICKED);
+            }
+        }
         // A selected extrusion's Start and End, where the view sees its plane edge-on: shape handles to drag (F5); one tied to
         // a parameter, a formula or a dimension, greyed. Its profile's edges' handles too (FE-5), drawn alike.
         let handles = if editable { self.end_handles(&c.staged, which) } else { Vec::new() };
@@ -1222,11 +1246,13 @@ impl FamilyEditor {
         let mut align = None;
         let mut on_dims: Option<(Clicked, Vec<f64>)> = None;
         let mut modify_at: Option<super::modify::Click> = None;
+        let mut measure_at: Option<P2> = None;
         let mut paste_at: Option<P2> = None;
         let mut clicked_any = false;
         // A double click on a form sketches it again, as Edit Extrusion or Edit Revolve does (F5).
         let edit = (editable
             && response.double_clicked()
+            && self.views.measuring.is_none()
             && self.views.drawing.is_none()
             && self.views.picking.is_none()
             && self.views.modify.is_none()
@@ -1262,6 +1288,14 @@ impl FamilyEditor {
                 // Offset reads the side clicked, so its point isn't snapped onto what it offsets.
                 let offsetting = self.views.modify.as_ref().is_some_and(|m| m.tool == super::modify::Tool::Offset);
                 modify_at = Some((if offsetting { q } else { snapped(p) }, axis_at(p), offset_at(p)));
+            } else if self.views.measuring.is_some() {
+                // Measure (FE-17): a ruler by two clicks, snapped as a Modify tool's points are; Shift keeps it square.
+                let first = self.views.measuring.as_ref().and_then(|m| m.first);
+                let at = match first {
+                    Some(a) if ui.input(|i| i.modifiers.shift) => bimcraft_core::snap::orthogonal_step(a, snapped(p)).0,
+                    _ => snapped(p),
+                };
+                measure_at = Some(at);
             } else if let Some(first) = self.views.drawing {
                 match first {
                     None => self.views.drawing = Some(Some(q)),
@@ -1353,7 +1387,10 @@ impl FamilyEditor {
         // unless Drag Elements on Selection is on),
         // or a selected symbol's strokes; never a handle, a grip or a padlock.
         let chosen: Vec<Picked> = self.selection.items().to_vec();
+        let pins = self.selecting.pins;
+        let is_pinned = |p: Picked| family.as_ref().is_some_and(|f| bimcraft_core::family::select::pinned(f, p));
         let tools_free = editable
+            && self.views.measuring.is_none()
             && self.views.drawing.is_none()
             && self.views.picking.is_none()
             && self.views.pivoting.is_none()
@@ -1377,8 +1414,13 @@ impl FamilyEditor {
             }
             let s = scene.as_ref()?;
             let hit = s.hit(p, pick_plane(p), &chosen)?;
+            // Select Pinned Elements off (FE-17): what is pinned is passed over, a box beginning on it instead.
+            if !pins && is_pinned(hit) {
+                return None;
+            }
             (matches!(hit, Picked::Symbol(_)) || s.under(p, &chosen)).then_some(hit)
         };
+        let on_pinned = |s: &super::select_box::Scene, p: egui::Pos2| !pins && s.hit(p, pick_plane(p), &chosen).is_some_and(is_pinned);
         self.views.over_selected =
             !self.selection.is_empty() && response.hover_pos().and_then(press_hit).is_some_and(|h| self.selection.contains(h));
         // Ctrl held: a drag of the selection copies it (FE-4), and the status bar says so.
@@ -1403,6 +1445,7 @@ impl FamilyEditor {
         // a window left to right, a crossing right to left; Ctrl adds what it takes, Shift takes it away (FE-1).
         let free = editable
             && pressed.is_none()
+            && self.views.measuring.is_none()
             && self.views.drawing.is_none()
             && self.views.picking.is_none()
             && self.views.pivoting.is_none()
@@ -1417,14 +1460,14 @@ impl FamilyEditor {
             && self.views.pasting.is_none();
         let start =
             response.drag_started_by(PointerButton::Primary).then(|| ui.input(|i| i.pointer.press_origin())).flatten().filter(|p| {
-                free && scene.as_ref().is_some_and(|s| !s.under(*p, &chosen))
+                free && scene.as_ref().is_some_and(|s| !s.under(*p, &chosen) || on_pinned(s, *p))
                     && !on_handle(*p)
                     && grips.iter().all(|(_, at)| at.distance(*p) > super::pivot::REACH)
                     && dims::clicked(&marks, &self.dimensions, selected_dim, align_lock, &locks, *p, &on_screen).is_none()
             });
         let boxed = super::select_box::track(&mut self.selection, ui, &response, &painter, pane, start);
         if let (Some((from, to)), Some(scene)) = (boxed, scene.as_ref()) {
-            let taken = scene.in_box(from, to);
+            let taken: Vec<Picked> = scene.in_box(from, to).into_iter().filter(|p| pins || !is_pinned(*p)).collect();
             self.selection.apply(&taken, super::select_box::How::of(crate::canvas::click_modifiers(ui)));
         }
         // The view's ways in the family's axes, for the move below (the view's drawing isn't read past here).
@@ -1576,6 +1619,8 @@ impl FamilyEditor {
         {
             problem = Some(e);
         }
+        // Select Pinned Elements off (FE-17): a click on what is pinned is one on nothing.
+        let select = select.map(|hit| hit.filter(|p| pins || !is_pinned(*p)));
         if let Some(hit) = select {
             self.click_select(hit, crate::canvas::click_modifiers(ui));
         }
@@ -1588,6 +1633,11 @@ impl FamilyEditor {
             }
         }
         // A Modify tool's click (FE-8), and Rotate's Angle typed.
+        if let Some(at) = measure_at
+            && let Some(text) = self.measure_click(at, which, base.units)
+        {
+            self.views.said = Some(text);
+        }
         if let Some((q, axis, offset)) = modify_at
             && let Some(e) =
                 self.modify_click(q, (which, view, pass), space, &shown_selection, axis, offset, ui.input(|i| i.modifiers.shift))
@@ -1604,6 +1654,14 @@ impl FamilyEditor {
         if let Some(m) = self.views.modify.as_mut() {
             m.selection = now;
         }
+        // A plane pinned keeps its place (FE-17): the drag is refused, saying so.
+        let pinned_plane = moved.and_then(|(g, _)| self.pinned_refusal(&[Picked::Plane(g)]));
+        let moved = if pinned_plane.is_some() {
+            problem = pinned_plane;
+            None
+        } else {
+            moved
+        };
         // A plane its dimensions hold is dragged through them: a label it changes takes the new length, what is locked to it
         // follows, and what can't hold says so.
         // Refused where it leaves the family failing its checks it passed (FE-7 review): put back, saying why.
@@ -1641,6 +1699,7 @@ impl FamilyEditor {
             self.planes.push(RefPlane {
                 id: 0,
                 guid,
+                pinned: false,
                 name: String::new(),
                 start,
                 end,

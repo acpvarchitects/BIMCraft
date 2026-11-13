@@ -277,6 +277,7 @@ fn in_a_sketch_lines_paste_into_it_with_the_locks_among_them() {
     let lock = |a, b| bimcraft_core::family::FamilyDimension {
         id: 0,
         guid: bimcraft_core::ids::Guid::new(),
+        pinned: false,
         view: DimView::Plan,
         refs: vec![DimRef::Sketch(form, a), DimRef::Sketch(form, b)],
         at: [0.0; 3],

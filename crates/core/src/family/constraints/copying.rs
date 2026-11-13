@@ -37,7 +37,7 @@ pub enum CopyRefused {
     Pivot(Named),
 }
 
-/// The copies, made where the originals are, each list in the order of what it copies: to be added after the family's own.
+/// The copies, made where the originals are, unpinned (FE-17), each list in the order of what it copies: to be added after the family's own.
 /// `selected`, the dimensions among them copied because they were selected (the rest hold constraints among the copies);
 /// `guids`, each original's GUID (an element's or a sketch line's) and its copy's.
 #[derive(Clone, Debug, Default)]
@@ -128,6 +128,7 @@ impl Family {
             let mut c = p.clone();
             c.id = 0;
             c.guid = out.renew(p.guid);
+            c.pinned = false;
             // A name and a named reference (Left through Top) are one plane's: the copy has neither, as Revit's.
             c.name.clear();
             if c.reference.named() {
@@ -139,6 +140,7 @@ impl Family {
             let mut c = l.clone();
             c.id = 0;
             c.guid = out.renew(l.guid);
+            c.pinned = false;
             c.host = out.host(l.host);
             if c.reference.named() {
                 c.reference = Reference::Weak;
@@ -150,6 +152,7 @@ impl Family {
             let mut c = f.clone();
             c.id = 0;
             c.guid = out.renew(f.guid);
+            c.pinned = false;
             c.host = out.host(f.host);
             for l in c.all_lines_mut() {
                 l.id = 0;
@@ -159,16 +162,22 @@ impl Family {
         }
         for &i in &copying.symbols {
             let Some(s) = self.symbols.get(i) else { continue };
-            out.symbols.push(Symbol { id: 0, guid: if s.guid.is_nil() { s.guid } else { Guid::new() }, ..s.clone() });
+            out.symbols.push(Symbol { id: 0, pinned: false, guid: if s.guid.is_nil() { s.guid } else { Guid::new() }, ..s.clone() });
         }
         for &i in &copying.connectors {
             let Some(c) = self.connectors.get(i) else { continue };
-            out.connectors.push(Connector { id: 0, guid: if c.guid.is_nil() { c.guid } else { Guid::new() }, ..c.clone() });
+            out.connectors.push(Connector { id: 0, pinned: false, guid: if c.guid.is_nil() { c.guid } else { Guid::new() }, ..c.clone() });
         }
         for &i in &copying.nested {
             let Some(n) = self.nested_instances.get(i) else { continue };
             let host = out.host(n.host);
-            out.nested.push(NestedInstance { id: 0, guid: if n.guid.is_nil() { n.guid } else { Guid::new() }, host, ..n.clone() });
+            out.nested.push(NestedInstance {
+                id: 0,
+                pinned: false,
+                guid: if n.guid.is_nil() { n.guid } else { Guid::new() },
+                host,
+                ..n.clone()
+            });
         }
         let reporting = |l: &str| self.reporting(l);
         for (k, d) in self.dimensions.iter().enumerate() {
@@ -183,7 +192,7 @@ impl Family {
             }
             // A reporting parameter is what one dimension measures: the copy measures without it.
             let label = d.label.clone().filter(|l| !reporting(l));
-            out.dimensions.push(FamilyDimension { id: 0, guid, refs, label, ..d.clone() });
+            out.dimensions.push(FamilyDimension { id: 0, pinned: false, guid, refs, label, ..d.clone() });
             out.dimensions_of.push(k);
         }
         Ok(out)

@@ -104,6 +104,15 @@ impl ConnectorText {
     pub(crate) fn kind(&self) -> ConnectorKind {
         self.base.kind
     }
+
+    /// Whether it is pinned where it is (FE-17).
+    pub(super) fn pinned(&self) -> bool {
+        self.base.pinned
+    }
+
+    pub(super) fn set_pinned(&mut self, on: bool) {
+        self.base.pinned = on;
+    }
 }
 
 /// A connector made of nothing but its defaults, as a file without its fields reads one: one pole, a power factor of one.
@@ -111,6 +120,7 @@ fn connector_default() -> Connector {
     Connector {
         id: Default::default(),
         guid: Default::default(),
+        pinned: false,
         name: String::new(),
         kind: ConnectorKind::Power,
         system: None,

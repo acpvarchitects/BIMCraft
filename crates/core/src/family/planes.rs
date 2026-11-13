@@ -65,6 +65,10 @@ pub struct RefPlane {
     pub id: Id,
     #[serde(default, skip_serializing_if = "Guid::is_nil")]
     pub guid: Guid,
+    /// Pinned where it is (FE-17, Pin and Unpin): a move, a rotation, a mirror, a scale, Align and Delete refuse it. A copy
+    /// of it isn't.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub pinned: bool,
     /// Unique in the family where it has one; Revit's planes may have none.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub name: String,
@@ -182,6 +186,10 @@ pub struct RefLine {
     pub id: Id,
     #[serde(default, skip_serializing_if = "Guid::is_nil")]
     pub guid: Guid,
+    /// Pinned where it is (FE-17, Pin and Unpin): a move, a rotation, a mirror, a scale, Align and Delete refuse it. A copy
+    /// of it isn't.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub pinned: bool,
     pub start: [f64; 3],
     pub end: [f64; 3],
     #[serde(default)]
@@ -251,6 +259,7 @@ pub fn datums() -> Vec<RefPlane> {
     let datum = |guid, name: &str, end: P3, up: P3, reference, level| RefPlane {
         id: 0,
         guid,
+        pinned: false,
         name: name.to_string(),
         start: end.map(|x| -x),
         end,

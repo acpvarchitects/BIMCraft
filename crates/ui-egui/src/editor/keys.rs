@@ -67,6 +67,13 @@ pub(crate) const FAMILY_SHORTCUTS: &[(&str, &str)] = &[
     ("SA", "Select All Instances"),
     ("SV", "Select All Instances: In Entire Family"),
     ("BF", "Select Elements by Face"),
+    // FE-17: PN and UP as the project's; PE, the status bar's Select Pinned Elements, the family's alone.
+    ("PN", "Pin"),
+    ("UP", "Unpin"),
+    ("PE", "Select Pinned Elements"),
+    // Measure and Create Similar, as the project's.
+    ("ME", "Measure"),
+    ("CS", "Create Similar"),
 ];
 
 /// The family document's commands Revit gives no key: Keyboard Shortcuts lists them, and a key made there works on a family
@@ -147,6 +154,13 @@ impl BimApp {
             "Select Elements by Face" => {
                 if self.active_family().is_some_and(FamilyEditor::picks_by_face) {
                     self.select_by_face = !self.select_by_face;
+                }
+                return true;
+            }
+            // FE-17's Select Pinned Elements beside them: in any family that isn't adaptive, a view of it or {3D}.
+            "Select Pinned Elements" => {
+                if self.active_family().is_some_and(|ed| ed.adaptive.is_none()) {
+                    self.select_pinned = !self.select_pinned;
                 }
                 return true;
             }
@@ -274,6 +288,10 @@ impl BimApp {
             "Select by ID" => ed.open_select_by_id(),
             "Select All Instances" => ed.select_instances(true),
             "Select All Instances: In Entire Family" => ed.select_instances(false),
+            "Measure" => ed.measure_tool(),
+            "Create Similar" => said = Some(ed.create_similar()),
+            "Pin" => ed.pin_selected(true),
+            "Unpin" => ed.pin_selected(false),
             _ => return in_family(action),
         }
         match said {

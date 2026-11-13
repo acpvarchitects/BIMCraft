@@ -172,6 +172,7 @@ impl FamilyEditor {
         self.modeller.tool = Draw::Modify;
         self.modeller.picking_plane = false;
         self.views.drawing = None;
+        self.views.measuring = None;
         self.views.picking = None;
         self.views.dimensioning = None;
         self.views.aligning = None;
@@ -786,12 +787,27 @@ impl BimApp {
                         later_small(ui, Icon::Trim, msg!("Trim/Extend"));
                         later_small(ui, Icon::Split, msg!("Split Element"));
                     }
+                    // FE-17: Pin, or Unpin where all that is selected is pinned already: one slot, so the panel keeps its width.
+                    let (on, icon, label, tip) = if ed.can_pin(true) || !ed.can_pin(false) {
+                        (true, Icon::Pin, "Pin", msg!("Pin (PN): what is selected keeps its place; moving or deleting it is refused"))
+                    } else {
+                        (false, Icon::Unpin, "Unpin", msg!("Unpin (UP): what is selected may be moved and deleted again"))
+                    };
+                    if ui.add_enabled_ui(ed.can_pin(on), |ui| crate::small_button(ui, icon, label, false, tip)).inner.clicked() {
+                        ed.pin_selected(on);
+                    }
                     let tip = msg!("Delete (DE): what is selected, with what depends on it");
-                    if ui.add_enabled_ui(some || ed.deletable(), |ui| big_button(ui, Icon::Delete, "Delete", false, tip)).inner.clicked()
+                    // Small, as Revit's Modify panel has it, in one column with Pin: the panel fits a 1600 px window whole.
+                    if ui
+                        .add_enabled_ui(some || ed.deletable(), |ui| crate::small_button(ui, Icon::Delete, "Delete", false, tip))
+                        .inner
+                        .clicked()
                         && let Err(e) = ed.delete_selected()
                     {
                         self.status = Status { text: e, error: true };
                     }
+                    // Small buttons only, in one row: the panel keeps the ribbon's height, its name on the others' baseline.
+                    ribbon::full_height(ui);
                 });
                 if let Some(tool) = modify {
                     match ed.modify_tool_on(tool) {
@@ -800,7 +816,21 @@ impl BimApp {
                     }
                 }
                 ribbon::panel(ui, msg!("Measure"), |ui| {
-                    later(ui, Icon::Measure, msg!("Measure"));
+                    // FE-17: Measure, in a plan or an elevation of a family that isn't adaptive.
+                    if ed.editing_2d() && ed.sketch.is_none() {
+                        let tip = msg!("Measure (ME): click two points; the ruler reads its length, its angle and its parts");
+                        if big_button(ui, Icon::Measure, msg!("Measure"), ed.measuring(), tip).clicked() {
+                            ed.measure_tool();
+                        }
+                    } else if adaptive {
+                        later(ui, Icon::Measure, msg!("Measure"));
+                    } else {
+                        // Greyed in {3D} and while a form is sketched, saying where it works, as FE-8's tools do.
+                        let tip = msg!("Measure (ME): click two points; the ruler reads its length, its angle and its parts");
+                        ui.add_enabled_ui(false, |ui| big_button(ui, Icon::Measure, msg!("Measure"), false, tip))
+                            .inner
+                            .on_disabled_hover_text(t("Measure works in a plan or an elevation, not while a form is sketched."));
+                    }
                 });
                 if tab == DocTab::Context {
                     if let Some(i) = ed.selected_nested() {
@@ -1305,6 +1335,7 @@ impl BimApp {
         let Some(mut ed) = self.take_family() else { return };
         ed.snaps = self.snaps_now();
         (ed.selecting.by_face, ed.selecting.drag_faces) = (self.select_by_face, self.drag_on_selection);
+        ed.selecting.pins = self.select_pinned;
         let pane = ui.available_rect_before_wrap();
         self.view_rect = pane;
         self.pane = pane;
@@ -1557,6 +1588,10 @@ impl BimApp {
             (Some(_), false) if ed.views.aligning.as_ref().is_some_and(Option::is_none) => msg!("Click the reference to align to."),
             (Some(_), false) if ed.views.aligning.is_some() => msg!("Click what moves onto it."),
             (Some(_), false) if ed.placing.is_some() => msg!("Click where the component goes, on the view's work plane."),
+            (Some(_), false) if ed.views.measuring.as_ref().is_some_and(|m| m.first.is_some()) => {
+                msg!("Measure: click the second point; Esc lets the first go.")
+            }
+            (Some(_), false) if ed.measuring() => msg!("Measure: click the first point (Shift keeps the second square)."),
             (Some(_), false) if ed.views.pivoting.is_some() => {
                 msg!("Click the point it turns about: where two planes cross, a line's end, a point of a sketch, or anywhere.")
             }
@@ -1776,6 +1811,7 @@ impl BimApp {
                 || ed.stop_picking()
                 || ed.views.pivoting.take().is_some()
                 || ed.modify_escape()
+                || ed.measure_escape()
             {
             } else if let Some(refs) = ed.views.dimensioning.as_mut() {
                 if refs.is_empty() {

@@ -25,7 +25,7 @@ fn release_with(h: &mut Harness<BimApp>, at: egui::Pos2, mods: Modifiers) {
 }
 
 /// Ctrl and a drag from family point `p` by `by` (mm), Ctrl still held as the button comes up.
-fn copy_drag(h: &mut Harness<BimApp>, p: [f64; 3], by: [f64; 3]) {
+pub(super) fn copy_drag(h: &mut Harness<BimApp>, p: [f64; 3], by: [f64; 3]) {
     let at = press_and_move(h, p, by, Modifiers::CTRL);
     release_with(h, at, Modifiers::CTRL);
 }

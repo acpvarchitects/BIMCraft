@@ -179,6 +179,7 @@ fn stays_said(s: &Stays, names: &Names) -> String {
     let said = |n: &Named| names.said(*n);
     match s {
         Stays::Datum(n) => tf("{} is a datum: it stays where it is.", &[&said(n)]),
+        Stays::Pinned(n) => super::pin::pinned_said(&said(n)),
         Stays::Origin(n) => tf("{} defines the origin: it stays where it is.", &[&said(n)]),
         Stays::Pivot(n) => tf("{} turns about its pivot: turn it by its rotate grip.", &[&said(n)]),
         Stays::Formula(n) => tf("A number of {} the move would change is worked out by a formula: change it in Family Types.", &[&said(n)]),
@@ -415,6 +416,9 @@ impl FamilyEditor {
     /// with it. Refused by the constraints, why and where it was going (for F4's dialog); else what went wrong.
     #[allow(clippy::type_complexity)]
     fn plane_dragged(&mut self, g: Guid, d: [f64; 3]) -> Result<(), Result<(Unsat, f64), String>> {
+        if let Some(e) = self.pinned_refusal(&[Picked::Plane(g)]) {
+            return Err(Err(e));
+        }
         let f = self.family().map_err(Err)?;
         let Some(p) = f.planes.iter().find(|p| p.guid == g) else { return Ok(()) };
         let n = p.frame().z;
@@ -455,6 +459,10 @@ impl FamilyEditor {
     /// then each type solved and built. Refused, why; the caller puts the draft back.
     /// A refusal names what it is about as `names` does.
     pub(super) fn move_picked(&mut self, items: &[Picked], d: [f64; 3], broken: &[String], names: &Names) -> Result<(), String> {
+        // What is pinned keeps its place (FE-17): a copy, made unpinned, moves.
+        if let Some(e) = self.pinned_refusal(items) {
+            return Err(e);
+        }
         let f = self.family()?;
         let values = self.values();
         let mut moving = Moving::default();

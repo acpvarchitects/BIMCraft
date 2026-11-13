@@ -204,6 +204,9 @@ impl Family {
         for g in &taking.planes {
             let said = Named::Plane(*g);
             let Some(p) = self.planes.iter().find(|p| p.guid == *g && !p.datum()) else { return stays(Stays::Datum(said)) };
+            if p.pinned {
+                return stays(Stays::Pinned(said));
+            }
             if p.defines_origin {
                 return stays(Stays::Origin(said));
             }
@@ -232,12 +235,19 @@ impl Family {
             PlaneRef::Line(h, _) => self.lines.iter().any(|l| l.guid == *h && l.pivot.is_some()),
         };
         for l in self.lines.iter().filter(|l| lines.contains(&l.guid)) {
+            if l.pinned {
+                return stays(Stays::Pinned(Named::Line(l.guid)));
+            }
             if l.pivot.is_some() || turning(&l.host) {
                 return stays(Stays::Pivot(Named::Line(l.guid)));
             }
         }
         let mut forms: Vec<usize> = (0..self.forms.len()).filter(|i| taking.forms.contains(i) || taken(&self.forms[*i].host)).collect();
         forms.dedup();
+        // A pinned form keeps its place, taken itself or drawn on what is.
+        if let Some(&i) = forms.iter().find(|i| self.forms[**i].pinned) {
+            return stays(Stays::Pinned(Named::Form(i)));
+        }
         for &i in &forms {
             let form = &self.forms[i];
             let said = Named::Form(i);

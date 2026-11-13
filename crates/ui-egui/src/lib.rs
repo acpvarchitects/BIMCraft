@@ -535,6 +535,9 @@ pub struct BimApp {
     /// selected selects it and moves it, where a face selects; off (at first), that face is a selection box's to begin in.
     /// The user's, kept in the settings file.
     pub(crate) drag_on_selection: bool,
+    /// Revit's Select Pinned Elements (PE, FE-17), in a family document: on (at first), a click and a box take what is
+    /// pinned as anything else; off, they pass over it. The user's, kept in the settings file.
+    pub(crate) select_pinned: bool,
     /// The origin marker on a plan, and the view's name in its corner (File > Settings): working aids, drawn on the screen and
     /// never in a drawing that is printed or exported.
     show_origin: bool,
@@ -1349,6 +1352,7 @@ impl BimApp {
             grid_snapping: false,
             select_by_face: true,
             drag_on_selection: false,
+            select_pinned: true,
             show_origin: true,
             show_view_name: true,
             ribbon_bottom: Pos2::ZERO,
@@ -3426,6 +3430,7 @@ impl BimApp {
         fresh.scan_contrast = self.scan_contrast;
         fresh.grid_snapping = self.grid_snapping;
         (fresh.select_by_face, fresh.drag_on_selection) = (self.select_by_face, self.drag_on_selection);
+        fresh.select_pinned = self.select_pinned;
         (fresh.show_origin, fresh.show_view_name) = (self.show_origin, self.show_view_name);
         fresh.custom_shortcuts = std::mem::take(&mut self.custom_shortcuts);
         (fresh.light_canvas, fresh.scheme, fresh.accent) = (self.light_canvas, self.scheme, self.accent);
@@ -5569,9 +5574,14 @@ impl BimApp {
                         None => self.open_filter(),
                     }
                 }
-                // Drag Elements on Selection and Select Elements by Face (BF), left of it as Revit's status bar has them: a
+                // Select Pinned Elements (PE, FE-17), in any family document that isn't adaptive; then Drag Elements on
+                // Selection and Select Elements by Face (BF), left of it as Revit's status bar has them: a
                 // family document's that isn't adaptive, greyed where they change nothing ({3D}, a sketch).
                 if let Some(usable) = self.active_family().filter(|ed| ed.adaptive.is_none()).map(|ed| ed.picks_by_face()) {
+                    let on = self.select_pinned;
+                    if editor::selection::pinned_toggle(ui, on).clicked() {
+                        self.select_pinned = !on;
+                    }
                     let on = self.drag_on_selection;
                     if ui.add_enabled_ui(usable, |ui| editor::selection::drag_toggle(ui, on)).inner.clicked() {
                         self.drag_on_selection = !on;

@@ -191,7 +191,7 @@ impl Family {
             return Err(PasteRefused::Kind);
         }
         let pasted: Vec<FamilyDimension> =
-            clip.loose.iter().map(|d| FamilyDimension { id: 0, guid: Guid::new(), view, ..d.clone() }).collect();
+            clip.loose.iter().map(|d| FamilyDimension { id: 0, guid: Guid::new(), pinned: false, view, ..d.clone() }).collect();
         let trial = Family { dimensions: pasted.clone(), ..self.clone() };
         if !trial.dangling_dimensions().is_empty() {
             return Err(PasteRefused::Gone);

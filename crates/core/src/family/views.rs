@@ -852,6 +852,7 @@ mod tests {
         f.planes.push(crate::family::RefPlane {
             id: 0,
             guid: Guid::new(),
+            pinned: false,
             name: "Edge".into(),
             start: [-400.0, -2000.0, 0.0],
             end: [-400.0, 2000.0, 0.0],
@@ -1486,6 +1487,7 @@ mod tests {
         let plane = |name: &str, start: [f64; 3], end: [f64; 3], up: [f64; 3]| crate::family::RefPlane {
             id: 0,
             guid: Guid::new(),
+            pinned: false,
             name: name.into(),
             start,
             end,

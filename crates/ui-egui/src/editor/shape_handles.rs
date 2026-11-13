@@ -5,6 +5,7 @@
 //! one step of the document's history. An edge a lock, a labelled dimension or EQ holds, or whose numbers are formulas, is
 //! greyed and refuses a drag, saying why; so does a drag that would leave no profile, or that the constraints would undo,
 //! and the form is left as it was.
+use super::select_box::Picked;
 use super::sketch::{edge_on, flat, looking, reader};
 use super::*;
 use bimcraft_core::family::forms::FormKind;
@@ -88,6 +89,7 @@ impl FamilyEditor {
             && self.adaptive.is_none()
             && self.placing.is_none()
             && self.views.drawing.is_none()
+            && self.views.measuring.is_none()
             && self.views.picking.is_none()
             && self.views.pivoting.is_none()
             && self.views.dimensioning.is_none()
@@ -118,6 +120,7 @@ impl FamilyEditor {
         }
         let (Ok(from), Ok(to)) = (num(&flexed.from), num(&flexed.to)) else { return Vec::new() };
         let look = looking(which);
+        let pinned = self.pinned_refusal(&[Picked::Form(i)]);
         let mut out: Vec<ShapeHandle> = Vec::new();
         for h in hs::edge_handles(&flexed.sketch, &mut num) {
             let way: [f64; 3] = std::array::from_fn(|k| frame.x[k] * h.out.0 + frame.y[k] * h.out.1);
@@ -136,11 +139,11 @@ impl FamilyEditor {
             if out.iter().any(|o| (o.at.0 - at.0).hypot(o.at.1 - at.1) < 1e-6) {
                 continue;
             }
-            let blocked = match form.sketch.get(h.line).map(|l| drawn.edge_held(form.guid, l.guid)) {
+            let blocked = pinned.clone().or_else(|| match form.sketch.get(h.line).map(|l| drawn.edge_held(form.guid, l.guid)) {
                 Some(Some(held)) => Some(held_said(&held, false)),
                 Some(None) => greyed(&form.sketch, h.line, h.out, &mut num),
                 None => Some(said(Refused::Invalid)),
-            };
+            });
             out.push(ShapeHandle { at, way, line: h.line, out: h.out, blocked });
         }
         out

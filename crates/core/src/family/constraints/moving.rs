@@ -31,6 +31,8 @@ pub enum Named {
 pub enum Stays {
     /// A datum: Ref. Level and the two Center planes stay where they are.
     Datum(Named),
+    /// Pinned (FE-17): it keeps its place until unpinned, taken along or followed through the constraints.
+    Pinned(Named),
     /// A plane that defines the origin.
     Origin(Named),
     /// What a pivot turns, or a form on a plane a pivot turns.
@@ -175,6 +177,9 @@ impl Family {
             let said = Named::Plane(*g);
             let Some(i) = flexed.planes.iter().position(|p| p.guid == *g && !p.datum()) else { return stays(Stays::Datum(said)) };
             let p = &flexed.planes[i];
+            if p.pinned {
+                return stays(Stays::Pinned(said));
+            }
             if p.defines_origin {
                 return stays(Stays::Origin(said));
             }
@@ -189,6 +194,9 @@ impl Family {
             let Some(i) = flexed.lines.iter().position(|l| l.guid == *g) else { continue };
             let l = &flexed.lines[i];
             let said = Named::Line(*g);
+            if l.pinned {
+                return stays(Stays::Pinned(said));
+            }
             if l.pivot.is_some() || turning(&l.host) {
                 return stays(Stays::Pivot(said));
             }
@@ -204,6 +212,9 @@ impl Family {
         for &i in &moving.forms {
             let (Some(form), Some(drawn)) = (flexed.forms.get(i), self.forms.get(i)) else { continue };
             let said = Named::Form(i);
+            if form.pinned {
+                return stays(Stays::Pinned(said));
+            }
             if !form.mesh.is_empty() {
                 return stays(Stays::Mesh(said));
             }
@@ -232,12 +243,43 @@ impl Family {
         // Its ends: an extrusion's or a blend's moved along its normal, as numbers.
         let mut read = HashMap::new();
         for (i, end, v) in &s.ends {
-            let Some(form) = flexed.forms.get(*i).filter(|_| moving.forms.contains(i)) else { continue };
+            let Some(form) = flexed.forms.get(*i) else { continue };
             let was = number(end_expr(form, *end), values, &mut read).map_err(Unsat::from)?;
-            if (was - v).abs() > NONE {
+            if (was - v).abs() <= NONE {
+                continue;
+            }
+            if moving.forms.contains(i) {
                 out.push(Edit::End(*i, *end, *v));
+            } else if form.pinned {
+                // One the constraints take along, pinned: it keeps its place, so the move can't be.
+                return stays(Stays::Pinned(Named::Form(*i)));
             }
         }
+        // What the constraints take along must not be pinned: it keeps its place, so the move can't be.
+        if let Some(n) = flexed.pinned_follower(&out, moving) {
+            return stays(Stays::Pinned(n));
+        }
         Ok(out)
+    }
+
+    /// The first pinned plane, reference line or form `edits` (worked out from this family, flexed to a type) would change
+    /// that `moving` doesn't take itself: what the constraints would drag along with it, which its pin holds where it is.
+    fn pinned_follower(&self, edits: &[Edit], moving: &Moving) -> Option<Named> {
+        let plane = |g: &Guid, at: Option<f64>| {
+            let p = self.planes.iter().find(|p| p.guid == *g && p.pinned && !moving.planes.contains(g))?;
+            let still = at.is_some_and(|v| (v - dot(p.start, p.frame().z)).abs() <= 1e-6);
+            (!still).then_some(Named::Plane(*g))
+        };
+        let line = |g: &Guid| (!moving.lines.contains(g) && self.lines.iter().any(|l| l.guid == *g && l.pinned)).then_some(Named::Line(*g));
+        let form = |i: &usize| (!moving.forms.contains(i) && self.forms.get(*i).is_some_and(|f| f.pinned)).then_some(Named::Form(*i));
+        edits.iter().find_map(|e| match e {
+            Edit::Plane(g, v) => plane(g, Some(*v)),
+            Edit::PlaneTurn(g, _) => plane(g, None),
+            Edit::Line(g, _) | Edit::LineEnds(g, _, _) => line(g),
+            Edit::PivotAngle(g, _) => plane(g, None).or_else(|| line(g)),
+            // An arc's turn comes with every solve, its points with a change alone.
+            Edit::End(i, _, _) | Edit::Point(i, _, _, _) | Edit::FormShift(i, _) => form(i),
+            Edit::Turn(..) | Edit::Parameter(..) => None,
+        })
     }
 }

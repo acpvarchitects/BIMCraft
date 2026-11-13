@@ -1313,7 +1313,9 @@ other_files(
          and symbols replaced, patched and deleted by id, the `rename`) instead of doing it; a change that's refused comes back \
          as an error, as it would without it. `form` merges its fields over the one form of that `id` or `guid` (a `null` takes \
          a field away; its place, its id and its GUID stay), `delete_form` takes those forms away; `symbol` and `delete_symbol` \
-         do the same for symbols — where `forms` and `symbols` still replace whole lists. `visibility` is Revit's Visibility \
+         do the same for symbols — where `forms` and `symbols` still replace whole lists. A form, a reference plane or line, a \
+         dimension, a symbol, a connector or a nested instance may hold `pinned`: true (FE-17), kept where it is in the family's \
+         editor, as Revit's Pin. `visibility` is Revit's Visibility \
          Settings, drawing only (IFC, schedules and `visible` are untouched; it ANDs with `visible`): {plan?, front_back?, \
          left_right?, coarse?, medium?, fine?, only_when_cut?}, each true by default but `only_when_cut`; `plan` is plans and \
          ceiling plans, cut or not; `front_back` sections and elevations looking along the family's y axis, `left_right` along \

@@ -69,6 +69,8 @@ mod family_options_tests;
 #[cfg(test)]
 mod family_parameter_tests;
 #[cfg(test)]
+mod family_pin_tests;
+#[cfg(test)]
 mod family_pivot_tests;
 #[cfg(test)]
 mod family_plane_tests;
