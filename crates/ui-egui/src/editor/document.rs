@@ -136,7 +136,7 @@ impl Draft {
                 let tag = tags.get(i)?;
                 ed.forms.iter().position(|f| f.tag == *tag).map(Picked::Form)
             }
-            Picked::Plane(_) | Picked::Line(_) | Picked::Dimension(_) => Some(p),
+            Picked::Plane(_) | Picked::Line(_) | Picked::ModelLine(_) | Picked::Dimension(_) => Some(p),
             Picked::Symbol(i) => followed(&symbols, &ed.symbols, i, |s| s.ident.1).map(Picked::Symbol),
             Picked::Connector(i) => followed(&connectors, &ed.connectors, i, |c| c.guid()).map(Picked::Connector),
             Picked::Nested(i) => followed(&nested, &ed.nested_instances, i, |n| n.guid).map(Picked::Nested),
@@ -367,6 +367,9 @@ fn context(ed: &FamilyEditor) -> Option<&'static str> {
         if let Some(title) = ed.sketch_title() {
             return Some(title);
         }
+        if ed.editing_2d() && ed.views.drawing.is_some() && ed.views.drawing_model {
+            return Some(msg!("Modify | Place Lines"));
+        }
         if ed.editing_2d() && ed.views.drawing.is_some() && ed.views.drawing_line {
             return Some(msg!("Modify | Place Reference Line"));
         }
@@ -400,6 +403,9 @@ fn context(ed: &FamilyEditor) -> Option<&'static str> {
         }
         if ed.selected_line().is_some() {
             return Some(msg!("Modify | Reference Lines"));
+        }
+        if ed.selected_model_line().is_some() {
+            return Some(msg!("Modify | Lines"));
         }
         if ed.selected_symbol().is_some() {
             return Some(msg!("Modify | Symbols"));
@@ -599,6 +605,14 @@ impl BimApp {
                     {
                         ed.component_tool();
                     }
+                    // FE-15: a model line of the family's own, which every view shows; an adaptive family draws its own in {3D}.
+                    let tip = msg!(
+                        "Model Line: a line of the family's own on the view's work plane, which every view shows, drawn by two clicks in a plan or an elevation"
+                    );
+                    let on = ed.views.drawing.is_some() && ed.views.drawing_model;
+                    if ui.add_enabled_ui(ed.editing_2d(), |ui| big_button(ui, Icon::Line, msg!("Model Line"), on, tip)).inner.clicked() {
+                        ed.model_line_tool();
+                    }
                     later(ui, Icon::Text, msg!("Model Text"));
                 });
                 ribbon::yielding(ui, msg!("Datum"), |ui| {
@@ -611,7 +625,7 @@ impl BimApp {
                     }
                     // FE-11: in a family of any category; an adaptive family draws its own in {3D}.
                     let tip = msg!("Reference Line: a line on the view's work plane, drawn by two clicks in a plan or an elevation");
-                    let on = ed.views.drawing.is_some() && ed.views.drawing_line;
+                    let on = ed.views.drawing.is_some() && ed.views.drawing_line && !ed.views.drawing_model;
                     if ui
                         .add_enabled_ui(ed.editing_2d(), |ui| big_button(ui, Icon::ReferenceLine, msg!("Reference Line"), on, tip))
                         .inner
@@ -1039,6 +1053,31 @@ impl BimApp {
         // Several selected (FE-1): how many, as Revit's Properties say, and none of their rows.
         if ed.adaptive.is_none() && ed.selection.len() > 1 {
             selector(ui, Icon::Modify, &tf("Multi-Select ({})", &[&ed.selection.len().to_string()]));
+            self.put_family(ed);
+            return;
+        }
+        // A model line selected (FE-15): its subcategory, the line style it is drawn in.
+        if let Some(g) = ed.selected_model_line() {
+            let i = ed.model_lines.iter().position(|l| l.guid == g).unwrap_or_default();
+            selector(ui, Icon::Line, &tf("Model Line {}", &[&(i + 1).to_string()]));
+            ui.add_space(6.0);
+            let parent = ed.category.graphics_category();
+            if let Some(l) = ed.model_lines.iter_mut().find(|l| l.guid == g) {
+                let shown = l.subcategory.as_deref().map_or_else(|| tf("<{}>", &[&category]), |s| t(s).to_string());
+                ui.horizontal(|ui| {
+                    ui.label(t("Subcategory"));
+                    ComboBox::from_id_salt("family-model-line-subcategory").selected_text(shown).show_ui(ui, |ui| {
+                        if ui.selectable_label(l.subcategory.is_none(), tf("<{}>", &[&category])).clicked() {
+                            l.subcategory = None;
+                        }
+                        for sub in bimcraft_core::graphics::subcategories(parent) {
+                            if ui.selectable_label(l.subcategory.as_deref() == Some(sub.name), t(sub.name)).clicked() {
+                                l.subcategory = Some(sub.name.to_string());
+                            }
+                        }
+                    });
+                });
+            }
             self.put_family(ed);
             return;
         }

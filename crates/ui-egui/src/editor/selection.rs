@@ -171,6 +171,7 @@ impl FamilyEditor {
                 _ => t("Reference Plane").to_string(),
             },
             Picked::Line(_) => t("Reference Line").to_string(),
+            Picked::ModelLine(_) => t("Model Line").to_string(),
             Picked::Dimension(_) => t("Dimension").to_string(),
             Picked::Symbol(i) => self.symbol_name(i),
             Picked::Connector(i) => self.connector_name(i),

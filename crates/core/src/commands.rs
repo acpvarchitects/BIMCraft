@@ -12892,6 +12892,7 @@ fn family(s: &mut Session, p: &Value) -> R {
             "adaptive",
             "planes",
             "lines",
+            "model_lines",
             "dimensions",
             "nested",
             "nested_instances",

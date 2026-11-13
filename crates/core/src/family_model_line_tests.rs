@@ -219,3 +219,30 @@ fn a_pinned_model_line_or_one_a_turn_would_take_off_its_host_stays() {
     let r = f.transformed(&values, &Transforming { model_lines: vec![g], ..Default::default() }, &t);
     assert!(matches!(r, Err(TransformRefused::Stays(crate::family::constraints::Stays::Pinned(_)))), "{r:?}");
 }
+
+#[test]
+fn model_lines_given_to_a_family_that_has_none_are_kept() {
+    let mut s = Session::new();
+    family(&mut s, json!([]));
+    run(&mut s, "family", json!({"name": "P", "model_lines": [{"start": [0, -900, 0], "end": [800, -900, 0]}]}));
+    assert_eq!(s.model.families["P"].model_lines.len(), 1);
+}
+
+#[test]
+fn a_family_file_with_model_lines_loads_them_and_reloads_them_over_the_projects() {
+    let mut s = Session::new();
+    family(&mut s, json!([{"start": [0, 0, 500], "end": [300, 0, 500], "host": {"plane": SHELF}}]));
+    let file = std::env::temp_dir().join(format!("bimcraft-test-{}-model-lines.json", std::process::id()));
+    run(&mut s, "family", json!({"name": "P", "save": file}));
+    run(&mut s, "family", json!({"name": "Q", "path": file}));
+    // Loaded over a family of the name without them, as a new version: they come in.
+    let id = s.model.families["P"].model_lines[0].id;
+    run(&mut s, "family", json!({"name": "P", "delete_model_line": [id]}));
+    run(&mut s, "family", json!({"name": "P", "path": file, "overwrite": "version"}));
+    let _ = std::fs::remove_file(&file);
+    let (p, q) = (&s.model.families["P"], &s.model.families["Q"]);
+    assert_eq!(q.model_lines.len(), 1, "loaded from the file");
+    assert_eq!(q.model_lines[0].host, PlaneRef::Plane(q.planes[3].guid), "on the copy's own Shelf");
+    assert_eq!(p.model_lines.len(), 1, "reloaded over the project's");
+    assert_eq!(s.model.check(), Ok(()));
+}

@@ -2584,6 +2584,18 @@ pub(crate) fn reference_lines(d: &mut Drawing, lines: &[(P2, P2)]) {
     }
 }
 
+/// A family's model lines (FE-15) over its own views, `lines` in the view's mm: thin and dark, as the family's lines are.
+pub(crate) fn family_model_lines(d: &mut Drawing, lines: &[(P2, P2)]) {
+    d.own(None);
+    d.part(Part::Projection);
+    for &(a, b) in lines {
+        let (pa, pb) = (d.view.px(a), d.view.px(b));
+        if (pb.0 - pa.0).hypot(pb.1 - pa.1) >= 1.0 {
+            d.stroke(vec![pa, pb], Pen::PROJECTION, INK, None, false);
+        }
+    }
+}
+
 /// What a drawing's reference-plane names are placed among: the boxes the names lettered so far take up, in pixels
 /// (`[left, top, right, bottom]`), and every plane's trace it draws, each with its plane, in pixels.
 #[derive(Default)]
