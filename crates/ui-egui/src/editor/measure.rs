@@ -94,9 +94,7 @@ impl FamilyEditor {
                 self.create_form(f.kind(), f.void);
             }
             Picked::Plane(_) => self.reference_plane_tool(),
-            Picked::Line(_) => {
-                return Err(t("Reference lines are drawn from a file or a command here; there is no tool for them yet.").to_string());
-            }
+            Picked::Line(_) => self.reference_line_tool(),
             Picked::Dimension(g) => match self.dimensions.iter().find(|d| d.guid == g).map(|d| d.kind) {
                 Some(DimKind::Aligned) | None => self.dimension_tool(),
                 Some(kind) => self.radial_tool(kind),

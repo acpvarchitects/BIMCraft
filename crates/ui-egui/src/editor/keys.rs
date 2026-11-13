@@ -91,6 +91,7 @@ pub(crate) const FAMILY_KEYLESS: &[&str] = &[
     "Aligned to Selected Levels",
     "Aligned to Picked Level",
     "Drag Elements on Selection",
+    "Reference Line",
 ];
 
 /// Whether `action` is a command the family document has: one its table gives a key, or one it has with none.
@@ -214,6 +215,7 @@ impl BimApp {
             // Create > Model's Component: enabled once a family is loaded into one that isn't adaptive.
             "Component" if !sketching && ordinary && !ed.nested.is_empty() => ed.component_tool(),
             "Reference Plane" if ed.editing_2d() => ed.reference_plane_tool(),
+            "Reference Line" if ed.editing_2d() => ed.reference_line_tool(),
             // Work Plane's Set: the Work Plane dialog, for the sketch's plane while a form is sketched.
             "Work Plane" if ordinary => {
                 let target = if sketching { super::work_plane::Target::Sketch } else { super::work_plane::Target::View };
