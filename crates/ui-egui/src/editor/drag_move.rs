@@ -148,6 +148,7 @@ impl Origin {
         match n {
             Named::Plane(g) => Named::Plane(self.guids.get(&g).copied().unwrap_or(g)),
             Named::Line(g) => Named::Line(self.guids.get(&g).copied().unwrap_or(g)),
+            Named::ModelLine(g) => Named::ModelLine(self.guids.get(&g).copied().unwrap_or(g)),
             Named::Form(i) => Named::Form(self.form(i)),
         }
     }
@@ -323,6 +324,7 @@ impl FamilyEditor {
             match *p {
                 Picked::Plane(g) => c.planes.push(g),
                 Picked::Line(g) => c.lines.push(g),
+                Picked::ModelLine(g) => c.model_lines.push(g),
                 Picked::Form(i) => c.forms.push(i),
                 Picked::Symbol(i) => c.symbols.push(i),
                 Picked::Connector(i) => c.connectors.push(i),
@@ -383,6 +385,10 @@ impl FamilyEditor {
             moved.push(Picked::Line(l.guid));
             self.lines.push(l);
         }
+        for l in copies.model_lines {
+            moved.push(Picked::ModelLine(l.guid));
+            self.model_lines.push(l);
+        }
         origin.symbols = (self.symbols.len(), c.symbols.clone());
         for y in &copies.symbols {
             moved.push(Picked::Symbol(self.symbols.len()));
@@ -420,6 +426,7 @@ impl FamilyEditor {
             return Err(Err(e));
         }
         let f = self.family().map_err(Err)?;
+        let was = (self.planes.clone(), self.lines.clone());
         let Some(p) = f.planes.iter().find(|p| p.guid == g) else { return Ok(()) };
         let n = p.frame().z;
         let dot = |a: [f64; 3]| a[0] * n[0] + a[1] * n[1] + a[2] * n[2];
@@ -436,6 +443,7 @@ impl FamilyEditor {
             }
             carry_lines(&mut self.lines, g, std::array::from_fn(|i| n[i] * along));
         }
+        self.carry_model_lines(&was.0, &was.1);
         Ok(())
     }
 
@@ -465,6 +473,8 @@ impl FamilyEditor {
         }
         let f = self.family()?;
         let values = self.values();
+        // Where the planes and lines were, for the model lines on them to follow (FE-15).
+        let was = (self.planes.clone(), self.lines.clone());
         let mut moving = Moving::default();
         for p in items {
             match *p {
@@ -553,7 +563,14 @@ impl FamilyEditor {
                         }
                     }
                 }
-                Picked::Form(_) | Picked::Plane(_) | Picked::Line(_) => {}
+                Picked::Form(_) | Picked::Plane(_) | Picked::Line(_) | Picked::ModelLine(_) => {}
+            }
+        }
+        // The model lines: on what moved, with it; those selected, by the move along what they are drawn on.
+        self.carry_model_lines(&was.0, &was.1);
+        for p in items {
+            if let Picked::ModelLine(g) = *p {
+                self.slide_model_line(g, d);
             }
         }
         self.builds(broken, names)
@@ -609,6 +626,39 @@ impl FamilyEditor {
         }
         let tag = ft.tag;
         self.forms[i] = FormText::again(&f, tag);
+    }
+}
+
+impl FamilyEditor {
+    /// The model lines (FE-15) drawn on what moved from where `planes` and `lines` had it, carried with it: from its axes
+    /// as they were into its axes as they now stand.
+    pub(super) fn carry_model_lines(&mut self, planes: &[RefPlane], lines: &[RefLine]) {
+        let was = bimcraft_core::family::Planes { planes, lines };
+        let now = bimcraft_core::family::Planes { planes: &self.planes, lines: &self.lines };
+        for l in self.model_lines.iter_mut() {
+            let (Ok(a), Ok(b)) = (was.frame(&l.host), now.frame(&l.host)) else { continue };
+            if a == b {
+                continue;
+            }
+            let carry = |p: [f64; 3]| {
+                let (q, t) = a.local(p);
+                b.point(q, t)
+            };
+            (l.start, l.end) = (carry(l.start), carry(l.end));
+        }
+    }
+
+    /// Model line `g` moved by `d` (the family's axes) where it is drawn: along its host, what crosses it left out.
+    fn slide_model_line(&mut self, g: Guid, d: [f64; 3]) {
+        let planes = bimcraft_core::family::Planes { planes: &self.planes, lines: &self.lines };
+        let Some(l) = self.model_lines.iter_mut().find(|l| l.guid == g) else { return };
+        let Ok(fr) = planes.frame(&l.host) else { return };
+        let across = d[0] * fr.z[0] + d[1] * fr.z[1] + d[2] * fr.z[2];
+        for k in 0..3 {
+            let by = d[k] - fr.z[k] * across;
+            l.start[k] += by;
+            l.end[k] += by;
+        }
     }
 }
 

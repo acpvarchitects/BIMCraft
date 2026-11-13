@@ -18,6 +18,7 @@ use crate::family::nested::NestedInstance;
 pub struct Copying {
     pub planes: Vec<Guid>,
     pub lines: Vec<Guid>,
+    pub model_lines: Vec<Guid>,
     pub forms: Vec<usize>,
     pub symbols: Vec<usize>,
     pub connectors: Vec<usize>,
@@ -44,6 +45,7 @@ pub enum CopyRefused {
 pub struct Copies {
     pub planes: Vec<RefPlane>,
     pub lines: Vec<RefLine>,
+    pub model_lines: Vec<super::super::ModelLine>,
     pub forms: Vec<Form>,
     pub symbols: Vec<Symbol>,
     pub connectors: Vec<Connector>,
@@ -119,6 +121,11 @@ impl Family {
                 return Err(CopyRefused::Pivot(Named::Line(l.guid)));
             }
         }
+        for l in self.model_lines.iter().filter(|l| copying.model_lines.contains(&l.guid)) {
+            if turns(&l.host) {
+                return Err(CopyRefused::Pivot(Named::ModelLine(l.guid)));
+            }
+        }
         for &i in &copying.forms {
             if self.forms.get(i).is_some_and(|f| turns(&f.host)) {
                 return Err(CopyRefused::Pivot(Named::Form(i)));
@@ -146,6 +153,14 @@ impl Family {
                 c.reference = Reference::Weak;
             }
             out.lines.push(c);
+        }
+        for l in self.model_lines.iter().filter(|l| copying.model_lines.contains(&l.guid)) {
+            let mut c = l.clone();
+            c.id = 0;
+            c.guid = out.renew(l.guid);
+            c.pinned = false;
+            c.host = out.host(l.host);
+            out.model_lines.push(c);
         }
         for &i in &copying.forms {
             let Some(f) = self.forms.get(i) else { continue };

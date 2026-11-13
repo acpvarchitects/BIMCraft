@@ -312,6 +312,7 @@ impl FamilyEditor {
             match p {
                 Picked::Plane(g) => c.planes.push(g),
                 Picked::Line(g) => c.lines.push(g),
+                Picked::ModelLine(g) => c.model_lines.push(g),
                 Picked::Form(i) => c.forms.push(i),
                 Picked::Symbol(i) => c.symbols.push(i),
                 Picked::Connector(i) => c.connectors.push(i),
@@ -486,11 +487,13 @@ impl FamilyEditor {
         items.extend((0..c.forms.len()).map(|k| Picked::Form(f.forms.len() + k)));
         items.extend(c.planes.iter().map(|x| Picked::Plane(x.guid)));
         items.extend(c.lines.iter().map(|x| Picked::Line(x.guid)));
+        items.extend(c.model_lines.iter().map(|x| Picked::ModelLine(x.guid)));
         items.extend((0..c.symbols.len()).map(|k| Picked::Symbol(f.symbols.len() + k)));
         items.extend((0..c.nested.len()).map(|k| Picked::Nested(f.nested_instances.len() + k)));
         f.forms.extend(c.forms);
         f.planes.extend(c.planes);
         f.lines.extend(c.lines);
+        f.model_lines.extend(c.model_lines);
         f.symbols.extend(c.symbols);
         f.nested_instances.extend(c.nested);
         f.connectors.extend(c.connectors);

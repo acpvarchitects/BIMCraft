@@ -203,6 +203,31 @@ pub struct RefLine {
     pub pivot: Option<super::Pivot>,
 }
 
+/// A model line of a family (FE-15): from `start` to `end` (the family's axes, mm), drawn on `host`, which it lies on, and
+/// shown in every view of the family and of the project, drawn in its `subcategory` (the line style a family's model line
+/// takes; none, the category). It is no reference: nothing is drawn on it. Straight for now; an arc would come as a field of
+/// its own.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ModelLine {
+    #[serde(default, skip_serializing_if = "crate::ids::unset")]
+    pub id: Id,
+    #[serde(default, skip_serializing_if = "Guid::is_nil")]
+    pub guid: Guid,
+    /// Pinned where it is (FE-17): a move, a rotation, a mirror, a scale, Align and Delete refuse it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub pinned: bool,
+    pub start: [f64; 3],
+    pub end: [f64; 3],
+    #[serde(default)]
+    pub host: PlaneRef,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subcategory: Option<String>,
+    /// Its Visibility Settings (F8): the detail levels it is drawn at; none, every one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub visibility: Option<super::Visibility>,
+}
+
 /// A plane's own axes in the family's: a point `p` of a profile drawn on it, `t` along its normal, is
 /// `origin + x p.0 + y p.1 + z t`.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -497,6 +522,8 @@ impl Family {
     pub fn hosted_on(&self, guid: Guid) -> Vec<String> {
         let forms = self.forms.iter().enumerate().filter(|(_, f)| f.host.guid() == guid).map(|(i, _)| format!("form {}", i + 1));
         let lines = self.lines.iter().enumerate().filter(|(_, l)| l.host.guid() == guid).map(|(i, _)| format!("line {}", i + 1));
+        let model = self.model_lines.iter().enumerate().filter(|(_, l)| l.host.guid() == guid);
+        let lines = lines.chain(model.map(|(i, _)| format!("model line {}", i + 1)));
         let points = self.adaptive.iter().flat_map(|d| d.drawn_on(guid)).map(|id| format!("adaptive point `{id}`"));
         forms.chain(lines).chain(points).chain(self.nested_on(guid)).collect()
     }
@@ -515,6 +542,7 @@ impl Family {
         };
         self.forms.iter_mut().for_each(|f| follow(&mut f.host));
         self.lines.iter_mut().for_each(|l| follow(&mut l.host));
+        self.model_lines.iter_mut().for_each(|l| follow(&mut l.host));
         self.nested_instances.iter_mut().for_each(|n| follow(&mut n.host));
         self.adaptive.iter_mut().for_each(|d| d.work_planes_mut(&mut |h| follow(h)));
         let moved: Vec<(Guid, Guid)> = planes.iter().chain(lines).copied().collect();
@@ -536,6 +564,7 @@ impl Family {
         };
         self.forms.iter_mut().for_each(|f| resolve(&mut f.host));
         self.lines.iter_mut().for_each(|l| resolve(&mut l.host));
+        self.model_lines.iter_mut().for_each(|l| resolve(&mut l.host));
         self.nested_instances.iter_mut().for_each(|n| resolve(&mut n.host));
         self.adaptive.iter_mut().for_each(|d| d.work_planes_mut(&mut |h| resolve(h)));
         self.resolve_dimension_refs(&[]);
@@ -545,7 +574,11 @@ impl Family {
     /// if Ref. Level; each named reference (Left through Top) taken once; the origin defined at most once in each direction,
     /// by a plane square to it; each line drawable and lying on its host.
     pub(super) fn check_planes(&self) -> Result<(), String> {
-        for (what, n, most) in [("planes", self.planes.len(), MAX_PLANES), ("reference lines", self.lines.len(), MAX_LINES)] {
+        for (what, n, most) in [
+            ("planes", self.planes.len(), MAX_PLANES),
+            ("reference lines", self.lines.len(), MAX_LINES),
+            ("model lines", self.model_lines.len(), MAX_LINES),
+        ] {
             if n > most {
                 return Err(format!("it has more than {most} {what}"));
             }
@@ -608,6 +641,24 @@ impl Family {
                 return Err(format!("{who}: {other} is {} already; each of Left through Top is one plane or line", json!(l.reference)));
             }
             let (_, on) = self.line_frame(i, MAX_LINES)?;
+            let off = |p: P3| dot(sub(p, on.origin), on.z).abs() > ON_PLANE + 1e-9 * dot(p, p).sqrt();
+            if off(l.start) || off(l.end) {
+                return Err(format!("{who}: it doesn't lie on {}, which it is drawn on", l.host));
+            }
+        }
+        for (i, l) in self.model_lines.iter().enumerate() {
+            let who = format!("model line {}", i + 1);
+            if !usable(&l.start) || !usable(&l.end) {
+                return Err(format!("{who}: its start and end are numbers within {MAX_COORD} mm"));
+            }
+            let d = sub(l.end, l.start);
+            if dot(d, d).sqrt() < ON_PLANE {
+                return Err(format!("{who}: its start and end are one point"));
+            }
+            if !l.guid.is_nil() && !guids.insert(l.guid) {
+                return Err(format!("{who}: another plane or line holds its GUID"));
+            }
+            let on = self.frame(&l.host).map_err(|e| format!("{who}: what it is drawn on, {e}"))?;
             let off = |p: P3| dot(sub(p, on.origin), on.z).abs() > ON_PLANE + 1e-9 * dot(p, p).sqrt();
             if off(l.start) || off(l.end) {
                 return Err(format!("{who}: it doesn't lie on {}, which it is drawn on", l.host));

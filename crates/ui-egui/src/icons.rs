@@ -115,6 +115,7 @@ icon_names! {
     Units,
     Line,
     ReferenceLine,
+    ModelLine,
     Arc,
     Flip,
     Attach,
@@ -1054,6 +1055,13 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             g.line(&[(7.0, 17.0), (17.0, 7.0)]);
             g.closed(&[(3.0, 17.0), (7.0, 17.0), (7.0, 21.0), (3.0, 21.0)]);
             g.closed(&[(17.0, 3.0), (21.0, 3.0), (21.0, 7.0), (17.0, 7.0)]);
+        }
+        Icon::ModelLine => {
+            // A plain segment, ticked square at each end: a line of the family's own, told apart from Reference Plane's
+            // square handles and Reference Line's round ends.
+            g.line(&[(5.0, 19.0), (19.0, 5.0)]);
+            g.line(&[(3.0, 17.0), (7.0, 21.0)]);
+            g.line(&[(17.0, 3.0), (21.0, 7.0)]);
         }
         Icon::ReferenceLine => {
             // A segment between round endpoints, crossed at its middle by the plane it carries: the family's Reference

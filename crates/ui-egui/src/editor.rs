@@ -512,6 +512,8 @@ pub(crate) struct FamilyEditor {
     /// Its reference planes and lines, as the family has them: the editor has no tab for them yet, and keeps them as they are.
     pub(crate) planes: Vec<RefPlane>,
     pub(crate) lines: Vec<RefLine>,
+    /// Its model lines (FE-15): drawn on the view's work plane, selected and taken away in its plans and elevations.
+    pub(crate) model_lines: Vec<bimcraft_core::family::ModelLine>,
     /// Its dimensions (F7): drawn, labelled, locked and taken away in its plans and elevations.
     pub(crate) dimensions: Vec<bimcraft_core::family::FamilyDimension>,
     /// Which fixture or fitting it is, as the family has it: set with the `family` command, kept as it is here.
@@ -646,6 +648,7 @@ impl FamilyEditor {
             connectors: f.connectors.iter().map(connectors::ConnectorText::of).collect(),
             planes: f.planes.clone(),
             lines: f.lines.clone(),
+            model_lines: f.model_lines.clone(),
             dimensions: f.dimensions.clone(),
             kind: f.kind.clone(),
             ifc: f.ifc.clone(),
@@ -817,6 +820,7 @@ impl FamilyEditor {
             adaptive: self.adaptive.clone(),
             planes: self.planes.clone(),
             lines: self.lines.clone(),
+            model_lines: self.model_lines.clone(),
             dimensions: self.dimensions.clone(),
             nested: self.nested.clone(),
             nested_instances: self.nested_instances.clone(),

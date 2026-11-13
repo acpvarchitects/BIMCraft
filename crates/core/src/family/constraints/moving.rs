@@ -23,6 +23,8 @@ pub struct Moving {
 pub enum Named {
     Plane(Guid),
     Line(Guid),
+    /// A model line (FE-15).
+    ModelLine(Guid),
     Form(usize),
 }
 
@@ -159,6 +161,9 @@ impl Family {
             Named::Plane(g) => plane_said(self, g),
             Named::Line(g) => {
                 self.lines.iter().position(|l| l.guid == g).map_or_else(|| g.to_string(), |i| format!("reference line {}", i + 1))
+            }
+            Named::ModelLine(g) => {
+                self.model_lines.iter().position(|l| l.guid == g).map_or_else(|| g.to_string(), |i| format!("model line {}", i + 1))
             }
             Named::Form(i) => format!("form {}", i + 1),
         }
