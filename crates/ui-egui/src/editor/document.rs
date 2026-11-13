@@ -363,6 +363,9 @@ fn context(ed: &FamilyEditor) -> Option<&'static str> {
         if let Some(title) = ed.sketch_title() {
             return Some(title);
         }
+        if ed.editing_2d() && ed.views.drawing.is_some() && ed.views.drawing_line {
+            return Some(msg!("Modify | Place Reference Line"));
+        }
         if ed.editing_2d() && ed.views.drawing.is_some() {
             return Some(msg!("Modify | Place Reference Plane"));
         }
@@ -605,7 +608,10 @@ impl BimApp {
                     // FE-11: in a family of any category; an adaptive family draws its own in {3D}.
                     let tip = msg!("Reference Line: a line on the view's work plane, drawn by two clicks in a plan or an elevation");
                     let on = ed.views.drawing.is_some() && ed.views.drawing_line;
-                    if ui.add_enabled_ui(ed.editing_2d(), |ui| big_button(ui, Icon::Line, msg!("Reference Line"), on, tip)).inner.clicked()
+                    if ui
+                        .add_enabled_ui(ed.editing_2d(), |ui| big_button(ui, Icon::ReferenceLine, msg!("Reference Line"), on, tip))
+                        .inner
+                        .clicked()
                     {
                         ed.reference_line_tool();
                     }
@@ -1035,7 +1041,7 @@ impl BimApp {
         // A reference line selected (F7d): its pivot.
         if let Some(g) = ed.selected_line() {
             let i = ed.lines.iter().position(|l| l.guid == g).unwrap_or_default();
-            selector(ui, Icon::Line, &tf("Reference Line {}", &[&(i + 1).to_string()]));
+            selector(ui, Icon::ReferenceLine, &tf("Reference Line {}", &[&(i + 1).to_string()]));
             ui.add_space(6.0);
             if let Some(e) = ed.pivot_properties(ui, g, self.session.model.units) {
                 self.status = Status { text: e, error: true };
@@ -1119,7 +1125,7 @@ impl BimApp {
                     Some(PointType::ShapeHandle) => (t("Shape Handle Point").to_string(), Icon::MakeAdaptive),
                     Some(PointType::Reference) => (t("Reference Point").to_string(), Icon::PointElement),
                     None if d.nodes.iter().any(|n| &n.id == id && n.is_form()) => (t("Form").to_string(), Icon::CreateForm),
-                    None => (t("Reference Line").to_string(), Icon::Line),
+                    None => (t("Reference Line").to_string(), Icon::ReferenceLine),
                 },
                 many => (tf("Multi-Select ({})", &[&many.len().to_string()]), Icon::Modify),
             };

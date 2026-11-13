@@ -32,6 +32,8 @@ fn a_reference_line_drawn_in_plan_lies_on_ref_level_and_loads_with_the_family() 
     reference_line(&mut h);
     click_family(&mut h, [-1000.0, -800.0, 0.0]);
     click_family(&mut h, [1000.0, -800.0, 0.0]);
+    assert!(h.query_all_by_label("Modify | Place Reference Line").count() > 0, "the contextual tab names the tool");
+    assert_eq!(h.query_all_by_label("Modify | Place Reference Plane").count(), 0);
     let lines = &editor(&h).lines;
     assert_eq!(lines.len(), 1, "one line drawn");
     let l = &lines[0];
@@ -104,4 +106,52 @@ fn an_adaptive_family_has_no_reference_line_tool_in_its_plans() {
 #[test]
 fn reference_line_is_a_family_command_with_no_key_yet() {
     assert!(crate::editor::keys::FAMILY_KEYLESS.contains(&"Reference Line"));
+}
+
+#[test]
+fn undo_takes_a_drawn_reference_line_away_and_redo_puts_it_back() {
+    let (mut h, _) = open(BOX, "Box");
+    view(&mut h, Some(Which::Plan));
+    reference_line(&mut h);
+    click_family(&mut h, [-1000.0, -800.0, 0.0]);
+    click_family(&mut h, [1000.0, -800.0, 0.0]);
+    key(&mut h, Key::Escape);
+    let drawn = editor(&h).lines.clone();
+    assert_eq!(drawn.len(), 1, "drawn");
+    h.state_mut().family_undo();
+    h.run();
+    assert!(editor(&h).lines.is_empty(), "undone: gone");
+    assert_eq!(editor(&h).only_selected(), None, "and gone from the selection");
+    h.state_mut().family_redo();
+    h.run();
+    assert_eq!(editor(&h).lines, drawn, "redone: back as it was");
+}
+
+/// The Datum panel in a wide window and, folded, in a narrow one with its list open, and a line just drawn in plan,
+/// selected, saved where `BIMCRAFT_FE11_DUMP` says (only then).
+#[test]
+fn family_reference_line_screenshots() {
+    let Ok(folder) = std::env::var("BIMCRAFT_FE11_DUMP") else { return };
+    std::fs::create_dir_all(&folder).unwrap();
+    let save = |h: &mut Harness<BimApp>, name: &str| {
+        h.run();
+        h.run();
+        h.render().unwrap().save(std::path::Path::new(&folder).join(format!("fe11-{name}.png"))).unwrap();
+    };
+    for (w, name) in [(1920.0, "wide"), (1280.0, "narrow")] {
+        let mut h = app(BOX);
+        h.set_size(egui::vec2(w, 1000.0));
+        h.state_mut().edit_family("Box");
+        h.run();
+        view(&mut h, Some(Which::Plan));
+        save(&mut h, &format!("ribbon-{name}"));
+        if h.query_by_label("Reference Line").is_none() {
+            press(&mut h, "Datum ▾");
+            save(&mut h, &format!("ribbon-{name}-list"));
+        }
+        press(&mut h, "Reference Line");
+        click_family(&mut h, [-1000.0, -800.0, 0.0]);
+        click_family(&mut h, [1000.0, -800.0, 0.0]);
+        save(&mut h, &format!("drawn-{name}"));
+    }
 }
