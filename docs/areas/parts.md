@@ -64,6 +64,26 @@ has parts gets those it lacks; refused when none lacks any. `part {id | ids, …
 `predefined_type`, `object_type`, `excluded`, the heritage set (keys in any case) and `layer`. `parts {host?, ids?, conflicts?}`
 lists them with what they hold and what they are now. `modify` and `elements` work on a part as on any element.
 
+## Divide Parts
+
+`divide_parts {id | ids, cuts, offsets?}` (Revit's Divide Parts) cuts a part into pieces with the engine of `divide.rs`
+([parts-geometry](parts-geometry.md)): the command takes a `Recipe`'s `cuts` and `offsets` as the engine serializes them,
+in model millimetres, divides the part's solid strictly (`divide::divide`: a cut that misses is refused, nothing changes),
+and keeps the recipe on the part (`BuildingPart::division`) in its host's own coordinates (`Model::host_frame`: a wall's
+start and the way it runs, a slab's first corner and side, a component's place and angle, at its level's elevation;
+`HostFrame::local_recipe` and `model_recipe`). Each piece is a part of its own with the same host and source, its
+`parent` the divided part and `piece` its `PieceKey`; it starts with the divided part's material, kind, heritage values and
+parameters. Its solid is worked out when asked for (`Model::part_division`, then the piece by its key, brought back to the
+model), so the pieces follow the host as the part does; a cut that no longer meets the solid is left out
+(`divide::regenerate`), listed on the divided part as `division_conflicts`, and a piece it no longer makes is in conflict.
+Divided again, a part keeps the pieces whose keys the new recipe still makes (ids and values) and the others are deleted,
+with what was divided from them; `cuts: []` makes it whole. A part divided by hand (`parent` without `piece`) is refused,
+since its pieces would be counted with the division's. The divided part is the sum of its pieces, as HP-1 already counted
+it: listings, schedules and IFC count the pieces.
+
+What is approximate: each piece works its parent's division out again, so a part of n pieces is divided n times when all
+are drawn or listed; a mirrored component's frame doesn't mirror, so a division of one follows it turned, not mirrored.
+
 ## The heritage set
 
 Five values every part may have (`Heritage`), shown everywhere under `Heritage::NAMES`: `SU_Code` (the stratigraphic unit's
@@ -112,8 +132,7 @@ the category `part`, which an older one refuses on opening, saying so.
 
 ## Next
 
-Divide Parts (the engine is `divide.rs`, written up in [parts-geometry](parts-geometry.md); a division is a new `Source`, its cuts in the host's own coordinates, and the divided
-part the sum of its divisions), edge offsets and gaps, parts in plans, sections and the 3D view with Parts Visibility (Show
+Divide Parts in the desktop (a sketch on the part's face), parts in plans, sections and the 3D view with Parts Visibility (Show
 Original, Show Parts, Show Both) and colours by `Decay_Pathology` or `Historical_Period`, schedules and tags of parts, the
 desktop's tools (the material's weight and heat among them), reading parts and a material's values from IFC, and the
 `FORMAT` step.

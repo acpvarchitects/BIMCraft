@@ -22,7 +22,7 @@ pub mod solid;
 mod state;
 
 pub(crate) use state::json;
-pub use state::{PartState, exported};
+pub use state::{HostFrame, PartState, exported};
 
 /// The categories of element that may have parts.
 pub const HOSTS: [&str; 5] = ["wall", "floor", "roof", "ceiling", "component"];
@@ -266,6 +266,14 @@ pub struct BuildingPart {
     /// The part it was divided from; none, it was made straight from its host. It goes when that part does.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parent: Option<Guid>,
+    /// How it is divided (`divide_parts`): the cuts and offsets that make the parts divided from it, in its host's own
+    /// coordinates ([`Model::host_frame`]), so they move and turn with the host. None, it is whole.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub division: Option<crate::divide::Recipe>,
+    /// Which piece of its parent's division it is, by the cuts that made it; none for a part made straight from its host,
+    /// or divided from its parent by hand (all of its source).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub piece: Option<crate::divide::PieceKey>,
     /// What it is made of, where that isn't its layer's material: one of the project's library's.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub material: Option<String>,
@@ -294,6 +302,8 @@ impl BuildingPart {
             host,
             source,
             parent: None,
+            division: None,
+            piece: None,
             material: None,
             predefined_type: PartType::NotDefined,
             object_type: String::new(),
@@ -395,6 +405,14 @@ pub(crate) fn check(m: &Model, who: &str, id: Id, p: &BuildingPart) -> Result<()
         }
         at = up.parent;
     }
+    if p.piece.is_some() && p.parent.is_none() {
+        return Err(format!("{who}: a piece of a division is divided from a part; it has no `parent`"));
+    }
+    if let Some(r) = &p.division
+        && (r.cuts.len() > crate::divide::MAX_CUTS || r.offsets.len() > crate::divide::MAX_CUTS)
+    {
+        return Err(format!("{who}: a division has {} cuts and {0} offsets at most", crate::divide::MAX_CUTS));
+    }
     if let Some(name) = &p.material {
         text("material", name)?;
         if name.trim().is_empty() {
@@ -428,7 +446,7 @@ pub(crate) fn check(m: &Model, who: &str, id: Id, p: &BuildingPart) -> Result<()
         .referrers(&p.host)
         .filter(|other| {
             *other != id
-                && matches!(m.elements.get(*other), Some(Element::Part(o)) if o.host == p.host && o.source == p.source && o.parent == p.parent)
+                && matches!(m.elements.get(*other), Some(Element::Part(o)) if o.host == p.host && o.source == p.source && o.parent == p.parent && o.piece == p.piece)
         })
         .min();
     if let Some(other) = twin {
