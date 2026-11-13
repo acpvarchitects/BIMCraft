@@ -1412,7 +1412,7 @@ impl FamilyEditor {
                     .and_then(|i| family.as_ref().and_then(|f| f.lines.get(i)).map(|l| l.guid));
                 // A model line (FE-15) by its stroke, as the view draws it, where no reference line is.
                 let reach = 6.0 / view.scale.max(1e-9);
-                let model = line.is_none().then(|| family.as_ref()).flatten().and_then(|f| {
+                let model = line.is_none().then_some(family.as_ref()).flatten().and_then(|f| {
                     f.model_lines
                         .iter()
                         .map(|l| {
