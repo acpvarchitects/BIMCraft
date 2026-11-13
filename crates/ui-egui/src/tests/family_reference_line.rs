@@ -16,11 +16,20 @@ fn near(a: [f64; 3], b: [f64; 3]) -> bool {
     (0..3).all(|k| (a[k] - b[k]).abs() < 20.0)
 }
 
+/// Reference Line pressed: on the ribbon, or, in a window too narrow for it, from the Datum panel's list (Datum yields first,
+/// keeping Reference Plane in sight).
+fn reference_line(h: &mut Harness<BimApp>) {
+    if h.query_by_label("Reference Line").is_none() {
+        press(h, "Datum ▾");
+    }
+    press(h, "Reference Line");
+}
+
 #[test]
 fn a_reference_line_drawn_in_plan_lies_on_ref_level_and_loads_with_the_family() {
     let (mut h, _) = open(BOX, "Box");
     view(&mut h, Some(Which::Plan));
-    press(&mut h, "Reference Line");
+    reference_line(&mut h);
     click_family(&mut h, [-1000.0, -800.0, 0.0]);
     click_family(&mut h, [1000.0, -800.0, 0.0]);
     let lines = &editor(&h).lines;
@@ -46,7 +55,7 @@ fn a_reference_line_drawn_in_plan_lies_on_ref_level_and_loads_with_the_family() 
 fn a_reference_line_drawn_in_a_windows_front_elevation_lies_on_center_front_back() {
     let (mut h, _) = open(WINDOW, "Pane");
     view(&mut h, Some(Which::Elevation(Side::Front)));
-    press(&mut h, "Reference Line");
+    reference_line(&mut h);
     click_family(&mut h, [-300.0, 0.0, 200.0]);
     click_family(&mut h, [300.0, 0.0, 900.0]);
     let lines = &editor(&h).lines;
@@ -61,7 +70,7 @@ fn a_work_plane_the_view_sees_edge_on_takes_no_reference_line_and_says_why() {
     let (mut h, _) = open(BOX, "Box");
     view(&mut h, Some(Which::Plan));
     h.state_mut().active_family_mut().unwrap().views.set_work_plane(PlaneRef::Plane(CENTER_FRONT_BACK));
-    press(&mut h, "Reference Line");
+    reference_line(&mut h);
     click_family(&mut h, [-1000.0, -800.0, 0.0]);
     click_family(&mut h, [1000.0, -800.0, 0.0]);
     assert!(editor(&h).lines.is_empty(), "no line");
@@ -72,7 +81,7 @@ fn a_work_plane_the_view_sees_edge_on_takes_no_reference_line_and_says_why() {
 fn create_similar_on_a_reference_line_turns_the_tool_on() {
     let (mut h, _) = open(BOX, "Box");
     view(&mut h, Some(Which::Plan));
-    press(&mut h, "Reference Line");
+    reference_line(&mut h);
     click_family(&mut h, [-1000.0, -800.0, 0.0]);
     click_family(&mut h, [1000.0, -800.0, 0.0]);
     key(&mut h, Key::Escape);
@@ -88,7 +97,7 @@ fn create_similar_on_a_reference_line_turns_the_tool_on() {
 fn an_adaptive_family_has_no_reference_line_tool_in_its_plans() {
     let (mut h, ..) = super::family_temporary_hide::adaptive();
     view(&mut h, Some(Which::Plan));
-    press(&mut h, "Reference Line");
+    reference_line(&mut h);
     assert!(editor(&h).views.drawing.is_none(), "no Reference Line in an adaptive family's views");
 }
 

@@ -1316,9 +1316,8 @@ impl FamilyEditor {
                         if self.views.drawing_line {
                             // Reference Line (FE-11): on the view's work plane, where the view looks onto it.
                             let host = self.views.work_plane();
-                            let edge_on = || {
-                                t("The view sees its work plane edge on: set a work plane it sees flat (Work Plane > Set).").to_string()
-                            };
+                            let edge_on =
+                                || t("The view sees its work plane edge on: set a work plane it sees flat (Work Plane > Set).").to_string();
                             match self
                                 .plane_set()
                                 .frame(&host)
