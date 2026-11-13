@@ -920,7 +920,7 @@ fn sa_takes_what_the_view_in_front_shows_and_keeps_the_selection_where_it_shows_
 
 /// An L-shaped extrusion, its inner corner at (600, 600): the two edges that meet there run back into what its hull spans,
 /// whose chord from (1200, 600) to (600, 1200) crosses empty space.
-const ELL: &str = concat!(
+pub(super) const ELL: &str = concat!(
     r#"family {"name": "Ell", "category": "generic", "types": {"T": {}}, "#,
     r#""forms": [{"profile": [[200, 200], [1200, 200], [1200, 600], [600, 600], [600, 1200], [200, 1200]], "to": 500}]}"#
 );
