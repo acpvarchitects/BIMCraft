@@ -215,7 +215,7 @@ other_files(
     edit(
         "cut_geometry",
         ui_msg!("Cut Geometry"),
-        &["CU"],
+        &[],
         "{target: wall, cutter: component} (each an id or GUID) Cut Geometry: the component's voids that cut a host (its family's \
          void forms whose `cuts` is `both` or `host`) cut the wall from now on, wherever the component stands: in plan, in section, \
          in 3D and as an IFC opening. The family must be set to Cut with Voids When Loaded (`family` options \
