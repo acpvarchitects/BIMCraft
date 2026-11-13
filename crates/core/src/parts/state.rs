@@ -59,6 +59,44 @@ pub fn exported(m: &Model) -> std::collections::BTreeMap<Id, Vec<[P3; 3]>> {
     }
 }
 
+/// An element's own coordinates ([`Model::host_frame`]): its origin in the model, and its x, level and of length one. Its
+/// y is its x turned a quarter counter-clockwise, its z the model's.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct HostFrame {
+    pub origin: P3,
+    pub x: P2,
+}
+
+impl HostFrame {
+    /// A model point in its coordinates.
+    pub fn local(&self, p: P3) -> P3 {
+        let d = [p[0] - self.origin[0], p[1] - self.origin[1], p[2] - self.origin[2]];
+        self.turned(d, -1.0)
+    }
+
+    /// A point in its coordinates, in the model.
+    pub fn model(&self, q: P3) -> P3 {
+        let d = self.turned(q, 1.0);
+        [d[0] + self.origin[0], d[1] + self.origin[1], d[2] + self.origin[2]]
+    }
+
+    /// Direction `d` turned by its x (`way` 1) or back (`way` -1).
+    fn turned(&self, d: P3, way: f64) -> P3 {
+        let (c, s) = (self.x.0, self.x.1 * way);
+        [d[0] * c - d[1] * s, d[0] * s + d[1] * c, d[2]]
+    }
+
+    /// A division given in the model, in its coordinates.
+    pub fn local_recipe(&self, r: &crate::divide::Recipe) -> crate::divide::Recipe {
+        r.moved(&|p| self.local(p), &|d| self.turned(d, -1.0))
+    }
+
+    /// A division in its coordinates, in the model.
+    pub fn model_recipe(&self, r: &crate::divide::Recipe) -> crate::divide::Recipe {
+        r.moved(&|p| self.model(p), &|d| self.turned(d, 1.0))
+    }
+}
+
 /// A part's solid before it is triangles: prisms side by side, or the triangles a family's forms are.
 enum Shape {
     Prisms(Vec<Prism>, Facing),
@@ -190,6 +228,9 @@ impl Model {
     /// in plan as its host gives it: what [`Model::part_solid`] closes into one surface. None for a component's part,
     /// which is triangles from the start. For what divides a part in plan, where a prism is easier to cut than a mesh.
     pub fn part_prisms(&self, p: &BuildingPart) -> Result<Option<Vec<Prism>>, String> {
+        if p.piece.is_some() {
+            return Ok(None);
+        }
         Ok(match self.part_recipe(p)? {
             Shape::Prisms(prisms, _) => Some(prisms),
             Shape::Mesh(_) => None,
@@ -213,6 +254,9 @@ impl Model {
     /// The way part `p`'s main face looks: what [`solid::facing`] takes the area of on its solid, or on a division of
     /// it. None for a component's part.
     pub fn part_facing(&self, p: &BuildingPart) -> Result<Option<Facing>, String> {
+        if p.piece.is_some() {
+            return self.part_shape(p).map(|(_, facing)| facing);
+        }
         Ok(match self.part_recipe(p)? {
             Shape::Prisms(_, facing) => Some(facing),
             Shape::Mesh(_) => None,
@@ -240,6 +284,9 @@ impl Model {
 
     /// Part `p`'s solid and the way its main face looks.
     fn part_shape(&self, p: &BuildingPart) -> Result<(Vec<[P3; 3]>, Option<Facing>), String> {
+        if let Some(key) = &p.piece {
+            return self.piece_shape(p, key);
+        }
         let (tris, facing) = match self.part_recipe(p)? {
             Shape::Prisms(prisms, facing) => (solid::mesh(&prisms), Some(facing)),
             Shape::Mesh(tris) => (tris, None),
@@ -249,6 +296,55 @@ impl Model {
             return Err(format!("there is nothing of it: {host} {} has no solid there; exclude it or delete it", self.shown(p.host)));
         }
         Ok((tris, facing))
+    }
+
+    /// Element `host`'s own coordinates, which a part's division is kept in: where it starts, at its level's elevation,
+    /// and the way it sets off, level. A wall's from its start toward its end; a floor's, a roof's or a ceiling's from
+    /// the first corner of its outline along its first side; a component's from where it stands, the way it is turned.
+    /// None for what has no such place (a wall of no length), or isn't there.
+    pub fn host_frame(&self, host: impl Key) -> Option<HostFrame> {
+        let e = self.elements.get(host)?;
+        let (at, x, level) = match e {
+            Element::Wall(w) => (w.start, w.end - w.start, w.level),
+            Element::Floor(f) => (*f.boundary.first()?, *f.boundary.get(1)? - *f.boundary.first()?, f.level),
+            Element::Roof(r) => (*r.boundary.first()?, *r.boundary.get(1)? - *r.boundary.first()?, r.level),
+            Element::Ceiling(c) => (*c.boundary.first()?, *c.boundary.get(1)? - *c.boundary.first()?, c.level),
+            Element::Component(c) => {
+                let (sin, cos) = c.angle.to_radians().sin_cos();
+                (c.at, P2(cos, sin), c.level)
+            }
+            _ => return None,
+        };
+        let length = x.length();
+        (length > crate::model::TOL && length.is_finite() && at.0.is_finite() && at.1.is_finite())
+            .then(|| HostFrame { origin: [at.0, at.1, self.elevation(level)], x: P2(x.0 / length, x.1 / length) })
+    }
+
+    /// What part `p`'s division makes of `solid`, its solid in the model: the pieces in its host's own coordinates, with
+    /// the cuts and offsets that no longer meet it left out and listed. An error for a part that isn't divided, or whose
+    /// division can't be made at all.
+    pub fn part_division(&self, p: &BuildingPart, solid: &[[P3; 3]]) -> Result<crate::divide::Outcome, String> {
+        let recipe = p.division.as_ref().ok_or("it isn't divided")?;
+        let frame = self.host_frame(p.host).ok_or("its host has no place to keep its division in")?;
+        let local: Vec<[P3; 3]> = solid.iter().map(|t| t.map(|q| frame.local(q))).collect();
+        crate::divide::regenerate(&local, recipe).map_err(|e| e.to_string())
+    }
+
+    /// Part `p`, the piece `key` of its parent's division: its solid, brought back to the model, and the way its parent's
+    /// main face looks.
+    fn piece_shape(&self, p: &BuildingPart, key: &crate::divide::PieceKey) -> Result<(Vec<[P3; 3]>, Option<Facing>), String> {
+        let g = p.parent.ok_or("it is a piece of a division with no part divided")?;
+        let Some(Element::Part(parent)) = self.elements.get(g) else {
+            return Err(format!("the part it was divided from, {}, is gone: delete it", self.shown(g)));
+        };
+        let who = self.shown(g);
+        let (solid, facing) = self.part_shape(parent).map_err(|e| format!("part {who}, which it was divided from, is in conflict: {e}"))?;
+        let outcome = self.part_division(parent, &solid).map_err(|e| format!("part {who}'s division can't be made: {e}"))?;
+        let piece = outcome.piece(key).ok_or_else(|| {
+            format!("part {who}'s division no longer makes its piece, {key}: divide part {who} again (`divide_parts`), or delete this one")
+        })?;
+        let frame = self.host_frame(p.host).ok_or("its host has no place to keep its division in")?;
+        Ok((piece.mesh.iter().map(|t| t.map(|q| frame.model(q))).collect(), facing))
     }
 
     /// What part `p` is of its host, as prisms or triangles: its recipe followed, or why it can't be.
@@ -452,6 +548,22 @@ pub(crate) fn json(m: &Model, id: Id, p: &BuildingPart, extra: &mut Map<String, 
         extra.insert("volume_m3".into(), json!((state.net_volume / 1e3).round() / 1e6));
     } else {
         extra.insert("divisions".into(), json!(divisions));
+    }
+    // Which piece of its parent's division it is, as its key reads; and how it is divided, in the model, with what of it
+    // no longer meets it.
+    if let Some(key) = &p.piece {
+        extra.insert("piece".into(), json!(key.to_string()));
+    }
+    if let (Some(recipe), Some(frame)) = (&p.division, m.host_frame(p.host)) {
+        extra.insert("division".into(), json!(frame.model_recipe(recipe)));
+        let made = m.part_solid(p).and_then(|solid| m.part_division(p, &solid));
+        let conflicts: Vec<String> = match made {
+            Ok(outcome) => outcome.conflicts.iter().map(|(at, c)| format!("{at}: {c}")).collect(),
+            Err(e) => vec![e],
+        };
+        if !conflicts.is_empty() {
+            extra.insert("division_conflicts".into(), json!(conflicts));
+        }
     }
     let h = &p.heritage;
     let [su, period, decay, severity, intervention] = Heritage::NAMES;
