@@ -597,10 +597,17 @@ impl BimApp {
                 ribbon::yielding(ui, msg!("Datum"), |ui| {
                     // Drawn in a plan or an elevation of a family that isn't adaptive, as Revit's (F4).
                     let tip = msg!("Reference Plane (RP): a plane drawn by two clicks in a plan or an elevation");
-                    let on = ed.views.drawing.is_some();
+                    let on = ed.views.drawing.is_some() && !ed.views.drawing_line;
                     if ui.add_enabled_ui(ed.editing_2d(), |ui| big_button(ui, Icon::Line, msg!("Reference Plane"), on, tip)).inner.clicked()
                     {
                         ed.reference_plane_tool();
+                    }
+                    // FE-11: in a family of any category; an adaptive family draws its own in {3D}.
+                    let tip = msg!("Reference Line: a line on the view's work plane, drawn by two clicks in a plan or an elevation");
+                    let on = ed.views.drawing.is_some() && ed.views.drawing_line;
+                    if ui.add_enabled_ui(ed.editing_2d(), |ui| big_button(ui, Icon::Line, msg!("Reference Line"), on, tip)).inner.clicked()
+                    {
+                        ed.reference_line_tool();
                     }
                     later(ui, Icon::Level, "Level");
                 });
@@ -1583,6 +1590,9 @@ impl BimApp {
             }
             (Some(_), false) if ed.views.picking.is_some() => {
                 msg!("Click a reference plane or a datum for the work plane. Esc goes back to the dialog.")
+            }
+            (Some(_), false) if ed.views.drawing.is_some() && ed.views.drawing_line => {
+                msg!("Click two points: a reference line between them, on the view's work plane.")
             }
             (Some(_), false) if ed.views.drawing.is_some() => msg!("Click two points: a reference plane through them."),
             (Some(_), false) if ed.views.dimensioning.is_some() => dimension_prompt(ed.views.dim_kind),
