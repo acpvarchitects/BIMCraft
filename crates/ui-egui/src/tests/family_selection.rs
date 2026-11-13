@@ -1142,3 +1142,22 @@ fn pr_keeps_symbols_and_nested_instances_an_undo_didnt_touch() {
     shortcut(&mut h, "PR");
     assert_eq!(selected(&h), vec![Picked::Symbol(0)], "the symbol alone");
 }
+
+/// Undo takes a connector placed since away again, and Redo puts it back, as for every other part of the family: the
+/// document's history holds the connectors, and a step restores them.
+#[test]
+fn undo_and_redo_take_a_connector_away_and_put_it_back() {
+    let mut h = plan();
+    let before = editor(&h).draft_family().unwrap().connectors.len();
+    editor_mut(&mut h).add_connector(bimcraft_core::family::ConnectorKind::Pipe);
+    h.run();
+    assert_eq!(editor(&h).draft_family().unwrap().connectors.len(), before + 1, "placed");
+    assert_eq!(selected(&h), vec![Picked::Connector(before)]);
+    h.state_mut().family_undo();
+    h.run();
+    assert_eq!(editor(&h).draft_family().unwrap().connectors.len(), before, "undone: gone");
+    assert!(selected(&h).is_empty(), "and gone from the selection");
+    h.state_mut().family_redo();
+    h.run();
+    assert_eq!(editor(&h).draft_family().unwrap().connectors.len(), before + 1, "redone: back");
+}
