@@ -100,3 +100,33 @@ fn the_manage_commands_have_no_key_in_a_family_yet() {
         assert!(crate::editor::keys::FAMILY_KEYLESS.contains(&a), "{a}");
     }
 }
+
+/// The family's Manage tab, Object Styles and Materials opened from it with their notes, Project Units' list, and Purge
+/// Unused offering Spare, saved where `BIMCRAFT_FE19_DUMP` says (only then).
+#[test]
+fn family_manage_screenshots() {
+    let Ok(folder) = std::env::var("BIMCRAFT_FE19_DUMP") else { return };
+    std::fs::create_dir_all(&folder).unwrap();
+    let save = |h: &mut Harness<BimApp>, name: &str| {
+        h.run();
+        h.run();
+        h.render().unwrap().save(std::path::Path::new(&folder).join(format!("fe19-{name}.png"))).unwrap();
+    };
+    let mut h = app(SHELF);
+    h.set_size(egui::vec2(1920.0, 1000.0));
+    h.state_mut().edit_family("Shelf");
+    h.run();
+    manage(&mut h);
+    save(&mut h, "ribbon");
+    press(&mut h, "Object Styles");
+    save(&mut h, "object-styles");
+    press(&mut h, "Cancel");
+    press(&mut h, "Materials");
+    save(&mut h, "materials");
+    press(&mut h, "Close");
+    press(&mut h, "Project Units");
+    save(&mut h, "units");
+    key(&mut h, Key::Escape);
+    press(&mut h, "Purge Unused");
+    save(&mut h, "purge");
+}
