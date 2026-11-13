@@ -93,3 +93,51 @@ fn a_void_only_family_is_picked_by_its_outline_and_uncut_finds_a_sleeping_tie() 
     click(&mut h, EDGE);
     assert_eq!(cuts(&h), 0, "{:?}", h.state().status);
 }
+
+/// The Cut button and its drop-down in a wide window and a narrow one, its two icons, the wall picked with a void-only family's
+/// outline drawn and the prompt, the plan after the cut, and a refusal in the status bar: saved where `BIMCRAFT_T23_DUMP` says
+/// (only then).
+#[test]
+fn cut_geometry_screenshots() {
+    let Ok(folder) = std::env::var("BIMCRAFT_T23_DUMP") else { return };
+    std::fs::create_dir_all(&folder).unwrap();
+    let save = |h: &mut Harness<BimApp>, name: &str| {
+        h.run();
+        h.run();
+        h.render().unwrap().save(std::path::Path::new(&folder).join(format!("t23-{name}.png"))).unwrap();
+    };
+    let only_void = CUTTER.replace(r#", {"profile": [[-50, -650], [50, -650], [50, -550], [-50, -550]], "from": 0, "to": 50}"#, "");
+    for (w, name) in [(1920.0, "wide"), (1280.0, "narrow")] {
+        let mut h = app(&only_void);
+        h.set_size(egui::vec2(w, 1000.0));
+        h.run();
+        topmost(&mut h, "Modify");
+        save(&mut h, &format!("ribbon-{name}"));
+        if h.query_by_label("Cut").is_none() {
+            press(&mut h, "Geometry ▾");
+            save(&mut h, &format!("ribbon-{name}-list"));
+        }
+        press(&mut h, "Cut");
+        save(&mut h, &format!("dropdown-{name}"));
+        press(&mut h, "Cut Geometry");
+        click(&mut h, P2(1000.0, 0.0));
+        h.hover_at(h.state().screen(EDGE));
+        save(&mut h, &format!("picked-{name}"));
+        click(&mut h, EDGE);
+        key(&mut h, Key::Escape);
+        key(&mut h, Key::Escape);
+        save(&mut h, &format!("cut-{name}"));
+        // Uncut's icon on the button, while its tool is on.
+        topmost(&mut h, "Modify");
+        press(&mut h, "Cut");
+        press(&mut h, "Uncut Geometry");
+        save(&mut h, &format!("uncut-icon-{name}"));
+    }
+    let off = CUTTER.replace("\"cut_with_voids_when_loaded\": true", "\"cut_with_voids_when_loaded\": false");
+    let mut h = app(&off);
+    h.set_size(egui::vec2(1920.0, 1000.0));
+    shortcut(&mut h, "CU");
+    click(&mut h, P2(1000.0, 0.0));
+    click(&mut h, EDGE);
+    save(&mut h, "refused");
+}
