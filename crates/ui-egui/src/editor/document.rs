@@ -610,7 +610,8 @@ impl BimApp {
                         "Model Line: a line of the family's own on the view's work plane, which every view shows, drawn by two clicks in a plan or an elevation"
                     );
                     let on = ed.views.drawing.is_some() && ed.views.drawing_model;
-                    if ui.add_enabled_ui(ed.editing_2d(), |ui| big_button(ui, Icon::Line, msg!("Model Line"), on, tip)).inner.clicked() {
+                    if ui.add_enabled_ui(ed.editing_2d(), |ui| big_button(ui, Icon::ModelLine, msg!("Model Line"), on, tip)).inner.clicked()
+                    {
                         ed.model_line_tool();
                     }
                     later(ui, Icon::Text, msg!("Model Text"));
@@ -1059,7 +1060,7 @@ impl BimApp {
         // A model line selected (FE-15): its subcategory, the line style it is drawn in.
         if let Some(g) = ed.selected_model_line() {
             let i = ed.model_lines.iter().position(|l| l.guid == g).unwrap_or_default();
-            selector(ui, Icon::Line, &tf("Model Line {}", &[&(i + 1).to_string()]));
+            selector(ui, Icon::ModelLine, &tf("Model Line {}", &[&(i + 1).to_string()]));
             ui.add_space(6.0);
             let parent = ed.category.graphics_category();
             if let Some(l) = ed.model_lines.iter_mut().find(|l| l.guid == g) {
@@ -1639,6 +1640,9 @@ impl BimApp {
             }
             (Some(_), false) if ed.views.picking.is_some() => {
                 msg!("Click a reference plane or a datum for the work plane. Esc goes back to the dialog.")
+            }
+            (Some(_), false) if ed.views.drawing.is_some() && ed.views.drawing_model => {
+                msg!("Click two points: a model line between them, on the view's work plane.")
             }
             (Some(_), false) if ed.views.drawing.is_some() && ed.views.drawing_line => {
                 msg!("Click two points: a reference line between them, on the view's work plane.")

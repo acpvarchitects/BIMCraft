@@ -38,6 +38,7 @@ fn a_model_line_drawn_in_plan_lies_on_ref_level_is_selected_and_loads_with_the_f
     click_family(&mut h, [-1000.0, -800.0, 0.0]);
     click_family(&mut h, [1000.0, -800.0, 0.0]);
     assert!(h.query_all_by_label("Modify | Place Lines").count() > 0, "the contextual tab names the tool");
+    assert!(h.query_by_label_contains("a model line between them").is_some(), "the prompt says what is drawn");
     let ed = editor(&h);
     assert_eq!(ed.model_lines.len(), 1, "one model line: {}", status(&h));
     assert!(ed.lines.is_empty(), "no reference line");
@@ -126,4 +127,33 @@ fn a_model_line_drawn_on_a_plane_goes_with_it_when_the_plane_is_dragged() {
 #[test]
 fn model_line_is_a_family_command_with_no_key_yet() {
     assert!(crate::editor::keys::FAMILY_KEYLESS.contains(&"Model Line"));
+}
+
+/// The Model panel, a model line just drawn in plan, selected, and one in the Front elevation, saved where
+/// `BIMCRAFT_FE15_DUMP` says (only then).
+#[test]
+fn family_model_line_screenshots() {
+    let Ok(folder) = std::env::var("BIMCRAFT_FE15_DUMP") else { return };
+    std::fs::create_dir_all(&folder).unwrap();
+    let save = |h: &mut Harness<BimApp>, name: &str| {
+        h.run();
+        h.run();
+        h.render().unwrap().save(std::path::Path::new(&folder).join(format!("fe15-{name}.png"))).unwrap();
+    };
+    let mut h = app(BOX);
+    h.set_size(egui::vec2(1920.0, 1000.0));
+    h.state_mut().edit_family("Box");
+    h.run();
+    view(&mut h, Some(Which::Plan));
+    save(&mut h, "ribbon");
+    model_line(&mut h);
+    click_family(&mut h, [-1000.0, -800.0, 0.0]);
+    click_family(&mut h, [1000.0, -800.0, 0.0]);
+    save(&mut h, "plan-drawn");
+    key(&mut h, Key::Escape);
+    key(&mut h, Key::Escape);
+    view(&mut h, Some(Which::Elevation(Side::Front)));
+    draw(&mut h, [-300.0, 0.0, 200.0], [300.0, 0.0, 900.0]);
+    key(&mut h, Key::Escape);
+    save(&mut h, "front");
 }
