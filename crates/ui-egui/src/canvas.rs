@@ -2348,7 +2348,13 @@ impl BimApp {
                 (None, Some(w)) => self.tool = Tool::CutGeometry { uncut, wall: Some(w) },
                 (Some(w), Some(c)) => {
                     let (g, by) = (m.guid(w), m.guid(c));
-                    self.run(if uncut { "uncut_geometry" } else { "cut_geometry" }, json!({"target": g, "cutter": by}));
+                    let family = match m.elements.get(c) {
+                        Some(Element::Component(x)) => x.family.clone(),
+                        _ => String::new(),
+                    };
+                    if self.run(if uncut { "uncut_geometry" } else { "cut_geometry" }, json!({"target": g, "cutter": by})).is_none() {
+                        self.status.text = cut_refusal(&self.status.text, &family);
+                    }
                     self.tool = Tool::CutGeometry { uncut, wall: None };
                 }
                 _ => {}
@@ -5000,5 +5006,25 @@ pub(crate) fn snap_mark(p: &Painter, at: Pos2, from: Option<Pos2>, kind: Kind, n
     }
     if !matches!(kind, Kind::Free | Kind::Angle) {
         tag(p, at + vec2(12.0, 14.0), Align2::LEFT_TOP, name);
+    }
+}
+
+/// What Cut Geometry's or Uncut Geometry's refusal `error` (the core's, written for agents) says to someone at the window: what
+/// to do there, of family `family`; any other error as it is.
+fn cut_refusal(error: &str, family: &str) -> String {
+    if error.contains("isn't set to Cut with Voids When Loaded") {
+        tf("{} isn't set to Cut with Voids When Loaded. Turn it on in the family's Family Category and Parameters, then cut.", &[family])
+    } else if error.contains("has no void to cut with") {
+        tf("{} has no void that cuts a host. Give it one in the Family Editor (a void that cuts the host, or both), then cut.", &[family])
+    } else if error.contains("don't pass into") {
+        t("The component's voids don't reach the wall. Move it so they pass into the wall, then cut.").to_string()
+    } else if error.contains("already cuts it as its host") {
+        t("The component stands on a face of this wall and cuts it already.").to_string()
+    } else if error.contains("already cuts") {
+        t("The component cuts this wall already.").to_string()
+    } else if error.contains("nothing to uncut") {
+        t("The component doesn't cut this wall: there is nothing to uncut.").to_string()
+    } else {
+        error.to_string()
     }
 }

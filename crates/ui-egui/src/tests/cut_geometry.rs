@@ -67,8 +67,26 @@ fn a_cut_the_core_refuses_says_why_and_leaves_the_wall() {
     click(&mut h, P2(1000.0, 0.0));
     click(&mut h, EDGE);
     assert_eq!(cuts(&h), 0);
+    // In the window's words: what to do there, not the command's JSON.
     let status = &h.state().status;
-    assert!(status.error && status.text.contains("Cut with Voids When Loaded"), "{status:?}");
+    assert!(status.error, "{status:?}");
+    assert_eq!(
+        status.text,
+        "Cutter isn't set to Cut with Voids When Loaded. Turn it on in the family's Family Category and Parameters, then cut."
+    );
+    // A cutter whose voids miss the wall: offered, refused in the window's words.
+    let away = CUTTER.replace(r#""at": [3000, 0]"#, r#""at": [3000, 3000]"#);
+    let mut h = app(&away);
+    shortcut(&mut h, "CU");
+    click(&mut h, P2(1000.0, 0.0));
+    click(&mut h, P2(3200.0, 2700.0));
+    assert_eq!(cuts(&h), 0);
+    assert_eq!(
+        h.state().status.text,
+        "The component's voids don't reach the wall. Move it so they pass into the wall, then cut.",
+        "{:?}",
+        h.state().status
+    );
 }
 
 #[test]
