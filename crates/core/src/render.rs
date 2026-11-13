@@ -1251,6 +1251,9 @@ pub fn sketch(m: &Model, view: View, id: Id, e: &Element) -> Drawing {
         }
         Element::Component(c) => {
             component(&mut d, m, &m.component_pieces(c));
+            for [a, b] in m.component_model_lines(c, Some(d.detail), true) {
+                d.line(&[P2(a[0], a[1]), P2(b[0], b[1])], BY_CATEGORY, INK, false);
+            }
             if d.detail != Detail::Coarse {
                 marks(&mut d, &m.component_marks(c));
             }
@@ -3112,6 +3115,13 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
                 // Its forms the plan's Visibility Settings leave out (F8) aren't drawn, nor hide what is under them.
                 pieces.retain(|p| plan_draws(p, d.detail, range.cut));
                 component(&mut d, m, &pieces);
+            }
+        }
+        // Its model lines (FE-15) the plan sees between its cut plane and its view depth, in projection, as Revit draws them.
+        for [a, b] in m.component_model_lines(c, Some(d.detail), true) {
+            let (lo, hi) = (a[2].min(b[2]), a[2].max(b[2]));
+            if lo <= range.cut + TOL && hi >= range.depth - TOL {
+                d.line(&[P2(a[0], a[1]), P2(b[0], b[1])], BY_CATEGORY, INK, false);
             }
         }
         // Its symbols are annotation of its level: in that level's plan and ceiling plan, whatever height its forms reach, at

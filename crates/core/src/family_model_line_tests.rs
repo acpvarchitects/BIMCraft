@@ -104,3 +104,64 @@ fn a_model_line_hosts_nothing() {
     );
     assert!(e.contains("model line 2"), "{e}");
 }
+
+/// Level 1's plan round (2000, 1000): 0.5 px a mm.
+fn plan_view() -> crate::render::View {
+    crate::render::View { scale: 0.5, cx: 2000.0, cy: 1000.0, width: 1200, height: 1200 }
+}
+
+/// The pixels that aren't paper within 6 mm of model point `p` in Level 1's plan at `detail`.
+fn ink_at(s: &mut Session, detail: &str, p: crate::geom::P2) -> usize {
+    use crate::render::{self, Rgb};
+    run(s, "detail", json!({"view": "Level 1", "detail": detail}));
+    let view = plan_view();
+    let pm = tiny_skia::Pixmap::decode_png(&render::png(&render::draw(&s.model, 100000, view)).unwrap()).unwrap();
+    let (a, b) = (view.px(p - crate::geom::P2(6.0, 6.0)), view.px(p + crate::geom::P2(6.0, 6.0)));
+    let (x0, x1) = (a.0.min(b.0) as u32, a.0.max(b.0) as u32);
+    let (y0, y1) = (a.1.min(b.1) as u32, a.1.max(b.1) as u32);
+    let paper = Rgb(255, 255, 255);
+    (x0..=x1)
+        .flat_map(|x| (y0..=y1).map(move |y| (x, y)))
+        .filter(|&(x, y)| pm.pixel(x, y).is_some_and(|c| Rgb(c.red(), c.green(), c.blue()) != paper))
+        .count()
+}
+
+#[test]
+fn a_components_model_line_is_drawn_in_plan_where_it_stands_turned_with_it() {
+    let mut s = Session::new();
+    // Far from the box, so only the line can ink there: from (0, -900) to (800, -900) in the family.
+    family(&mut s, json!([{"start": [0, -900, 0], "end": [800, -900, 0]}]));
+    run(&mut s, "component", json!({"family": "P", "at": [2000, 1000], "angle": 90}));
+    // Its middle (400, -900), turned a quarter about the insertion point: (900, 400) from it.
+    let at = crate::geom::P2(2900.0, 1400.0);
+    assert!(ink_at(&mut s, "fine", at) > 0, "drawn where it stands, turned");
+    assert_eq!(ink_at(&mut s, "fine", crate::geom::P2(2400.0, 100.0)), 0, "not where it would be unturned");
+}
+
+#[test]
+fn a_model_line_its_visibility_settings_leave_out_at_coarse_is_not_drawn_there() {
+    let mut s = Session::new();
+    family(&mut s, json!([{"start": [0, -900, 0], "end": [800, -900, 0], "visibility": {"coarse": false}}]));
+    run(&mut s, "component", json!({"family": "P", "at": [2000, 1000]}));
+    let at = crate::geom::P2(2400.0, 100.0);
+    assert!(ink_at(&mut s, "fine", at) > 0, "drawn at Fine");
+    assert_eq!(ink_at(&mut s, "coarse", at), 0, "left out at Coarse");
+}
+
+#[test]
+fn a_model_line_on_a_plane_a_dimension_moves_moves_with_it() {
+    let mut s = Session::new();
+    run(
+        &mut s,
+        "family",
+        json!({"name": "P", "category": "generic", "parameters": [{"name": "H", "value": 500}], "types": {"A": {}, "B": {"H": 800}},
+               "forms": [{"profile": [[0, 0], [100, 0], [100, 50], [0, 50]], "to": 10}],
+               "ref_planes": [{"guid": SHELF, "name": "Shelf", "start": [-1000, 0, 500], "end": [1000, 0, 500], "up": [0, 1, 0]}],
+               "dimensions": [{"refs": [{"plane": REF_LEVEL.to_string()}, {"plane": SHELF}], "view": "front", "at": [1200, 0, 0], "label": "H"}],
+               "model_lines": [{"start": [0, 0, 500], "end": [300, 0, 500], "host": {"plane": SHELF}}]}),
+    );
+    let f = &s.model.families["P"];
+    let at = |t: &str| f.model_line_segments(&f.values(t, &Default::default()).unwrap(), None, false);
+    assert_eq!(at("A"), vec![[[0.0, 0.0, 500.0], [300.0, 0.0, 500.0]]]);
+    assert_eq!(at("B"), vec![[[0.0, 0.0, 800.0], [300.0, 0.0, 800.0]]], "with Shelf, 800 up");
+}

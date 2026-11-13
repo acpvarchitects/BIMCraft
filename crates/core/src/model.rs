@@ -3635,6 +3635,19 @@ impl Model {
         marks.iter().map(|k| k.map(|q| P2(c.at.0 + q.0 * cos - flip * q.1 * sin, c.at.1 + q.0 * sin + flip * q.1 * cos))).collect()
     }
 
+    /// Component `c`'s model lines (FE-15) in the model, at `detail` in a plan (`plan`) if it says: its family's for its
+    /// values, mirrored if it is, then placed as its family's axes are ([`Model::component_placement`]).
+    pub fn component_model_lines(&self, c: &Component, detail: Option<crate::graphics::Detail>, plan: bool) -> Vec<[[f64; 3]; 2]> {
+        let Some(f) = self.families.get(&c.family) else { return Vec::new() };
+        if f.model_lines.is_empty() {
+            return Vec::new();
+        }
+        let Ok(values) = f.values(&c.type_name, &c.params) else { return Vec::new() };
+        let placed = self.component_placement(c);
+        let flip = |p: [f64; 3]| [p[0], if c.mirrored { -p[1] } else { p[1] }, p[2]];
+        f.model_line_segments(&values, detail, plan).into_iter().map(|[a, b]| [placed.place(flip(a)), placed.place(flip(b))]).collect()
+    }
+
     /// Where component `c`'s room is found from: its family's room calculation point for its values, mirrored, turned and
     /// moved with it to where it stands (x, y and the height over the project's origin); its insertion point where its family
     /// has none, or the point doesn't work out.

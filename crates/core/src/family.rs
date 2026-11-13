@@ -2524,6 +2524,30 @@ impl Family {
         self.marks_metered(values, Some(detail), &mut nested::Meter::default())
     }
 
+    /// Its model lines (FE-15) for `values`, in its own axes: where its constraints put what they are drawn on; those its
+    /// Visibility Settings show in a plan at `detail` (`plan`), else at `detail` in any view; every one when `detail` is none.
+    pub fn model_line_segments(
+        &self,
+        values: &BTreeMap<String, Val>,
+        detail: Option<crate::graphics::Detail>,
+        plan: bool,
+    ) -> Vec<[[f64; 3]; 2]> {
+        if self.model_lines.is_empty() {
+            return Vec::new();
+        }
+        let Ok(flexed) = self.flexed(values) else { return Vec::new() };
+        flexed
+            .model_lines
+            .iter()
+            .filter(|l| match (l.visibility, detail) {
+                (Some(v), Some(d)) => v.at(d) && (!plan || v.plan) && !v.only_when_cut,
+                (Some(v), None) => !plan || v.plan,
+                (None, _) => true,
+            })
+            .map(|l| [l.start, l.end])
+            .collect()
+    }
+
     /// [`Family::marks_tagged`], at `detail` if it says (else every symbol), its nested instances' counted by `meter`.
     pub(crate) fn marks_metered(
         &self,
