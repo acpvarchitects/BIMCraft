@@ -28,7 +28,7 @@ Compare: <https://github.com/acpvarchitects/BIMCraft/compare/f202abd...feature/h
 | HP-1 | The part element, its solid and quantities, its values by name, `create_parts` / `part` / `parts`, IFC export, material values, `docs/areas/parts.md` | `feature/heritage-parts` (b7a9847) | **Done**, waiting for review |
 | HP-1 fix | A part measured on the face it shows: a wall's interior plaster on the interior face, a ceiling's plaster on its underside (Vincenzo's decision, 10.2) | [#19](https://github.com/acpvarchitects/BIMCraft/pull/19), `vp/heritage-parts-net-area` | **Done**, in review |
 | HP-2 | The division engine: a part's solid cut by planes, lines drawn on a face, extruded profiles; gaps and offsets; measuring | [#16](https://github.com/acpvarchitects/BIMCraft/pull/16), `vp/heritage-parts-divide`, `docs/areas/parts-geometry.md` | **Done**, in review |
-| HP-3 | `divide_parts`: HP-1 and HP-2 wired together | | Next (on HP-2) |
+| HP-3 | `divide_parts`: HP-1 and HP-2 wired together; the division kept in the host's own coordinates, pieces as parts with keys | [#34](https://github.com/acpvarchitects/BIMCraft/pull/34), `vp/heritage-parts-divide-cmd`, stacked on #16 | **Done**, in review |
 | HP-4 | Parts Visibility per view: Show Original, Show Parts, Show Both | [#20](https://github.com/acpvarchitects/BIMCraft/pull/20), `vp/heritage-parts-views` | **Done**, in review |
 | HP-5 | Colour maps (`theme`) by `Decay_Pathology`, `Historical_Period` or any part value, with a legend | same PR | **Done**, in review |
 | HP-6 | Schedules of parts: the bill of quantities (Restoration Quantities), CSV and xlsx | [#17](https://github.com/acpvarchitects/BIMCraft/pull/17), `vp/heritage-parts-schedules` | **Done**, in review |
@@ -239,7 +239,7 @@ optional gap, then offsets.
 **Robustness.** Hostile input is capped and every step is metered: an error, never a hang. The engine adds `intersect`
 beside `csg::subtract`, in the same style, and leaves `subtract` unchanged.
 
-**HP-3** wires the engine to the model. A division becomes a new `Source` holding the recipe and the piece key. The
+**HP-3** wires the engine to the model. The divided part holds the recipe (`division`, in its host's own coordinates) and each piece is a part with its `parent` and its piece key (`piece`); `Source` stays the layer, so a piece still knows its layer. The
 divided part has no area or volume of its own, because its divisions hold them, so nothing is counted twice.
 `divide_parts` checks a recipe once, the way `Session::execute` checks every command.
 
