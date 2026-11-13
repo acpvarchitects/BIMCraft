@@ -1844,8 +1844,8 @@ other_files(
          elevation's, so a sheet the view is placed on prints it). `off: true` takes the theme away. With `view` alone \
          it reads. Replies with `theme` (null for none), the view's `parts_visibility`, `available` (what parts can be \
          coloured by) and the legend, `rows`: for each value among the parts the view draws (a plan: those it cuts or \
-         sees, in its crop; a section or an elevation: those from its line to its far clip, hidden behind others or \
-         not; a 3D view: all it shows, in its section box) its `value` (null: not set), `label`, `color`, `count` and \
+         sees, in its crop; a section or an elevation: those it shows from its line to its far clip, a part hidden \
+         behind others left out, and a section's cut by its line; a 3D view: all it shows, in its section box) its `value` (null: not set), `label`, `color`, `count` and \
          `area_m2`, the net area of their main faces together; and `parts` and `area_m2`, their totals",
         view_theme,
     ),

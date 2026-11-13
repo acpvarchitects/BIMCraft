@@ -823,7 +823,9 @@ free where two of a project's values meet; a part with none is grey (`NOT_SET`);
 `by` forgets them. The legend (`parts::legend`: a row for each value among the parts the view draws, `drawn_in`, with its
 colour, count and net area, named decays in the list's order, numbers by value, the rest in order, none last) is what
 `theme` replies, and with `legend: true` a key in the drawing's top left corner (`render::parts::key`, the view's own, so a
-sheet prints it; a plan, a section or an elevation, not a ceiling plan).
+sheet prints it; a plan, a section or an elevation, not a ceiling plan). A section or an elevation counts only the parts it
+shows, as a survey's key does: those with a pixel of its picture (the view fitted to 2400 by 1600, `PICTURE`) in front of all else,
+and a section's cut by its line; a part hidden behind another, or seen edge on, is in no row.
 
 What is approximate, or left for later: a plan doesn't hide what a seen part covers; a part that is all of a layered host
 is poché, not its layers; a part can't be hidden or overridden on its own in a view (nothing but a part may point at a part
