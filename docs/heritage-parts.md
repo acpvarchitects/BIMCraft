@@ -269,7 +269,7 @@ divided part has no area or volume of its own, because its divisions hold them, 
   one green); `Decay_Severity` a ramp; any other value a palette slot by a hash of its text; or the user's choice.
 - **The command.** `theme {view, by, colors?, legend?, off?}`; a template holding a Parts Visibility holds the theme too.
 - **The legend** lists value, colour, count and total net area, the figure a decay map reports. "Not set" is a row of
-  its own.
+  its own. An elevation or a section counts only the parts it shows (Vincenzo, 2026-11-12).
 - **How it is built.** It rides on the existing view filters and overrides (`graphics.rs`, `Look`), not on a parallel
   mechanism.
 
@@ -339,12 +339,14 @@ Each tool drives a command; the UI stays thin.
 
 ## 10. Open questions
 
-Answered by Vincenzo on 2026-11-11 (the IFC one still for the maintainers to agree, as 2.4):
+Answered by Vincenzo on 2026-11-11 and 12 (the IFC one still for the maintainers to agree, as 2.4):
 1. ~~IFC body of a decomposed host~~: **no body on the host; HP-8 rebuilds it from the parts.**
 2. ~~A wall part's net area~~: **each layer on the face it shows**: a wall's interior plaster on the interior face, a
    ceiling's plaster on its underside (#19).
 3. ~~The decay list~~: **the 26 terms stand.**
 4. ~~`SU_Code` or `MSU_Code`~~: **`SU_Code`.**
+8. ~~A theme's legend in an elevation~~ (2026-11-12): **only the parts the elevation or section shows**, those hidden
+   behind others left out; a section also counts what its line cuts (#20).
 
 Still open:
 5. **How parts are stored without a `FORMAT` bump** (2.3, changed 2026-11-12: FORMAT stays 18 until 0.12), with
@@ -353,5 +355,3 @@ Still open:
    parts in conflict, which `part {layer}` fixes. Is that acceptable?
 7. **`csg::MAX_TRIANGLES`** (20 000) can be reached by a large floor's part. Raise it for parts, or cut near the cutter
    only (`parts-geometry.md`)?
-8. **A theme's legend in an elevation** counts every part from its line to its far clip, hidden behind others or not
-   (a box seen from the south lists the north wall's parts too). Count only what the elevation shows?
