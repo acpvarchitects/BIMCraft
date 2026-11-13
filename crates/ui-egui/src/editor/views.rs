@@ -623,12 +623,11 @@ impl FamilyEditor {
                 let q = at_view(p);
                 let f = family.as_ref()?;
                 let mut best: Option<(f64, (P2, P2))> = None;
+                // An edge the view draws the form with (FV-2): an L's inner edges, never its hull's chord across the corner.
                 for i in (0..f.forms.len()).filter(|i| Some(*i) != editing) {
-                    let ring = fv::outline(f, &values, &cache.staged, which, i);
-                    for k in 0..ring.len() {
-                        let (a, b) = (ring[k], ring[(k + 1) % ring.len()]);
+                    for (a, b) in fv::outline_edges(f, &values, &cache.staged, which, i) {
                         let d = bimcraft_core::geom::dist_to_segment(q, a, b);
-                        if d <= reach && best.is_none_or(|(e, _)| d < e) {
+                        if d <= reach && a.dist(b) > 1e-6 && best.is_none_or(|(e, _)| d < e) {
                             best = Some((d, (a, b)));
                         }
                     }
@@ -959,10 +958,9 @@ impl FamilyEditor {
                 return (a.dist(b) > 1e-6).then_some((a, b));
             }
             let mut best: Option<(f64, (P2, P2))> = None;
+            // An edge the view draws a form with (FV-2), as Pick Lines takes: never its hull's chord.
             for i in 0..f.forms.len() {
-                let ring = fv::outline(f, &values, &c.staged, which, i);
-                for k in 0..ring.len() {
-                    let (a, b) = (ring[k], ring[(k + 1) % ring.len()]);
+                for (a, b) in fv::outline_edges(f, &values, &c.staged, which, i) {
                     let d = bimcraft_core::geom::dist_to_segment(q, a, b);
                     if d <= reach && a.dist(b) > 1e-6 && best.is_none_or(|(e, _)| d < e) {
                         best = Some((d, (a, b)));
