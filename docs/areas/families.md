@@ -1351,7 +1351,7 @@ new is in a file.
 ### Cut Geometry in the project
 
 A component that stands on a level, not on a face, cuts a wall only when Cut Geometry names it (T23), as a Revit
-project's unattached void families do: `cut_geometry {target, cutter}`, the wall and the component by id or GUID, adds
+project's unattached void families do: `cut_geometry {target, cutter}` (CU), the wall and the component by id or GUID, adds
 the component's GUID to the wall's `void_cuts`, and `uncut_geometry` takes it off. It is refused unless the cutter's family
 is set to Cut with Voids When Loaded, has a void that cuts a host (`cuts` `both` or `host`; a `forms` void never cuts a
 project's element), and those voids, placed where the component stands, take more than a cubic centimetre of the wall (their
