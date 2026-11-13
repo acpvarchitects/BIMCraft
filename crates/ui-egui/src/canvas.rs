@@ -1594,6 +1594,8 @@ impl BimApp {
             std::mem::swap(&mut self.typed_length, &mut self.drawing.other);
             self.drawing.field = 1 - self.drawing.field.min(1);
         }
+        // Cut Geometry's second pick goes by the voids' outlines and places, not by what the plan draws of the components.
+        let cut_candidates = self.cut_candidates().to_vec();
         let c = &mut self.canvas;
         // How near the cursor a dimension's reference line must be, mm.
         let near = 2.0 * f64::from(PICK) / view.scale;
@@ -1621,7 +1623,7 @@ impl BimApp {
             // Cut Geometry: the wall first, then the component whose voids cut it.
             Tool::CutGeometry { wall: None, .. } => d.pick_all(q, PICK).into_iter().find(|id| model.wall(*id).is_some()),
             Tool::CutGeometry { wall: Some(_), .. } => {
-                d.pick_all(q, PICK).into_iter().find(|id| matches!(model.elements.get(id), Some(Element::Component(_))))
+                bimcraft_core::project_geometry::pick(&cut_candidates, view.mm(q), f64::from(PICK) / view.scale)
             }
             Tool::Trim(_) | Tool::Offset => {
                 d.pick_all(q, PICK).into_iter().find(|id| matches!(model.elements.get(id), Some(Element::Wall(_) | Element::DetailLine(_))))
@@ -1926,6 +1928,20 @@ impl BimApp {
             tag(&p, pa + (pb - pa) / 2.0 + n * 20.0, Align2::CENTER_CENTER, text);
             for q in [pa, pb] {
                 p.rect_stroke(Rect::from_center_size(q, vec2(8.0, 8.0)), 0.0, Stroke::new(2.0, pal().accent), StrokeKind::Middle);
+            }
+        }
+        // Cut Geometry's second pick: what it can take, drawn whether or not the plan shows the component (a family that is only
+        // a void shows nothing): each void's outline and a cross where the component stands, the one under the cursor bolder.
+        if matches!(self.tool, Tool::CutGeometry { wall: Some(_), .. }) {
+            let scene = Scene { p: &p, m: &model, d: &d, place: d.place, level, key, v: &view };
+            for cand in &cut_candidates {
+                let stroke = Stroke::new(if hovered == Some(cand.id) { 2.5 } else { 1.25 }, pal().accent);
+                for [a, b] in &cand.edges {
+                    p.line_segment([scene.screen(*a), scene.screen(*b)], stroke);
+                }
+                let q = scene.screen(cand.anchor);
+                p.line_segment([q - vec2(5.0, 5.0), q + vec2(5.0, 5.0)], stroke);
+                p.line_segment([q + vec2(-5.0, 5.0), q + vec2(5.0, -5.0)], stroke);
             }
         }
         self.grip_overlay(ui, &model, &view, rect, level, &d, d.place);

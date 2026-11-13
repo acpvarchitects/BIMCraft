@@ -886,6 +886,9 @@ pub struct BimApp {
     door_flip_hand: bool,
     /// An adaptive component's points clicked so far, in the project, before the last one places it.
     pub(crate) adaptive_clicks: Vec<[f64; 3]>,
+    /// What Cut Geometry's second pick can take (T23), for the model, wall and mode it was worked out for: kept between frames,
+    /// since a project's every component is asked for its voids.
+    cut_candidates: Option<((usize, Id, bool), Vec<bimcraft_core::project_geometry::Candidate>)>,
     /// An adaptive instance's grip being dragged in a plan: the instance, and its point's number.
     pub(crate) adaptive_grip: Option<(Id, u32)>,
     /// The Component tool's Placement Plane for a work plane-based family: a reference plane of the project, by GUID; none,
@@ -1550,6 +1553,7 @@ impl BimApp {
             component_angle: 0.0,
             door_flip_hand: false,
             adaptive_clicks: Vec::new(),
+            cut_candidates: None,
             adaptive_grip: None,
             placement_plane: None,
             place_on_face: false,
@@ -1588,6 +1592,7 @@ impl BimApp {
     /// Run a command; when it fails, say why.
     fn run(&mut self, id: &str, params: Value) -> Option<Value> {
         self.made_in();
+        self.cut_candidates = None;
         match self.session.execute(id, &params) {
             Ok(v) => {
                 self.status = Status::default();
@@ -1600,6 +1605,17 @@ impl BimApp {
                 None
             }
         }
+    }
+
+    /// What Cut Geometry's second pick can take on the wall picked (T23), worked out again when the model, the wall or the mode
+    /// changes; none while the tool waits for a wall.
+    pub(crate) fn cut_candidates(&mut self) -> &[bimcraft_core::project_geometry::Candidate] {
+        let Tool::CutGeometry { uncut, wall: Some(wall) } = self.tool else { return &[] };
+        let key = (Arc::as_ptr(&self.session.model) as usize, wall, uncut);
+        if self.cut_candidates.as_ref().is_none_or(|(k, _)| *k != key) {
+            self.cut_candidates = Some((key, bimcraft_core::project_geometry::cutters(&self.session.model, wall, uncut)));
+        }
+        self.cut_candidates.as_ref().map_or(&[], |(_, c)| c.as_slice())
     }
 
     /// The contextual tab's name while a tool is on or something is selected.
@@ -2699,6 +2715,7 @@ impl BimApp {
 
     fn set_tool(&mut self, mut tool: Tool) {
         self.adaptive_clicks.clear();
+        self.cut_candidates = None;
         self.note_arrow = None;
         // Trim/Extend to Corner with two lines or walls selected (or picked, sketching) joins them at once, keeping the
         // parts toward their middles; with any other selection it asks for the picks.

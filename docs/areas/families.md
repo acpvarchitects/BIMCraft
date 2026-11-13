@@ -1368,7 +1368,9 @@ between project elements are not here.
 
 In the desktop, Modify > Geometry's Cut button drops down Cut Geometry (CU) and Uncut Geometry (`Tool::CutGeometry`; one
 button, so the panel doesn't widen the ribbon into folding): in a plan, pick the wall,
-then the component (its marks in plan pick it; its voids draw nothing); the picked wall stays lit, Esc lets go of it and then
+then the component, by its voids' outline or the cross where it stands (`project_geometry::cutters` and `pick`, drawn over
+the plan while the tool waits, so a family that is only a void, which a plan draws nothing of, is picked too; for Uncut, the
+wall's ties, a sleeping one by its outline and one whose voids are gone by its cross); the picked wall stays lit, Esc lets go of it and then
 of the tool, and after each cut the tool asks for the next wall. A refusal shows the core's reason in the status bar.
 
 ## Plan symbols
