@@ -28,12 +28,19 @@ pub(crate) struct Kept {
     range_dialog: Option<RangeDialog>,
     /// The views that reveal what they hide (RH): drawn in magenta, so it can be picked and unhidden.
     reveal: BTreeSet<Option<Which>>,
-    /// View-Specific Element Graphics (EO), open: the view, the forms it overrides (by GUID) and the override as edited.
-    override_dialog: Option<(Option<Which>, Vec<Guid>, Override)>,
+    /// View-Specific Element Graphics (EO), open: the view, the forms it overrides (by GUID), the override it opened on and
+    /// the override as edited.
+    override_dialog: Option<(Option<Which>, Vec<Guid>, Override, Override)>,
 }
 
 /// Reveal Hidden Elements' colour, the project's.
 const REVEALED: [u8; 3] = [255, 0, 255];
+
+/// What Reveal Hidden Elements draws a hidden element with: magenta, cut and seen.
+fn revealed() -> Override {
+    let magenta = bimcraft_core::graphics::Style { color: Some(REVEALED), ..Default::default() };
+    Override { projection: magenta.clone(), cut: magenta, ..Default::default() }
+}
 
 /// The View Range dialog, open.
 struct RangeDialog {
@@ -75,13 +82,13 @@ impl Kept {
         self.reveal.contains(&which)
     }
 
-    /// The graphics view `which` is drawn with: its own, but while it reveals what it hides, nothing hidden (what is, drawn
-    /// apart in magenta).
+    /// The graphics view `which` is drawn with: its own, but while it reveals what it hides, nothing hidden: an element it
+    /// hides (a plane) in magenta, and a form, drawn apart in magenta (`apart_forms`).
     pub(crate) fn drawn_graphics(&self, which: Option<Which>) -> Graphics {
         let mut g = self.graphics_of(which);
         if self.revealing(which) {
             g.categories.values_mut().for_each(|o| o.hidden = false);
-            g.elements.values_mut().for_each(|o| o.hidden = false);
+            g.elements.values_mut().filter(|o| o.hidden).for_each(|o| *o = revealed());
         }
         g
     }
@@ -89,6 +96,13 @@ impl Kept {
     /// Whether view `which` hides element `g` (a form or a plane, by its GUID) by itself, and doesn't reveal it.
     pub(crate) fn hides(&self, which: Option<Which>, g: Guid) -> bool {
         !self.revealing(which) && self.hidden_by_element(which, g)
+    }
+
+    /// The colour view `which` draws plane `g`'s trace in while it reveals what it hides and hides the plane: magenta. None
+    /// otherwise.
+    pub(crate) fn revealed_plane(&self, which: Option<Which>, g: Guid) -> Option<bimcraft_core::render::Rgb> {
+        let [r, g2, b] = REVEALED;
+        (self.revealing(which) && self.hidden_by_element(which, g)).then_some(bimcraft_core::render::Rgb(r, g2, b))
     }
 
     /// Whether view `which` hides element `g` by itself, revealed or not.
@@ -191,6 +205,12 @@ impl FamilyEditor {
         self.form_guid(i).is_some_and(|g| k.hidden_by_element(which, g)) || k.hidden_category(which, self.forms_category())
     }
 
+    /// The solid forms the view shown leaves out, hidden in it for good or for now, by GUID: what no Dimension or Align picks
+    /// there (a reference that names one).
+    pub(crate) fn forms_out_of_view(&self) -> Vec<Guid> {
+        (0..self.forms.len()).filter(|i| self.temp_hidden_form(*i)).filter_map(|i| self.form_guid(i)).collect()
+    }
+
     /// Whether view `which` hides plane `g` for good, and doesn't reveal it.
     pub(crate) fn kept_hides(&self, which: Option<Which>, g: Guid) -> bool {
         self.views.kept.hides(which, g)
@@ -208,19 +228,18 @@ impl FamilyEditor {
     ) -> Vec<(usize, Override)> {
         let own = self.views.kept.graphics_of(which);
         let editing = self.sketch.as_ref().and_then(|s| s.index);
-        let revealed = Override {
-            projection: bimcraft_core::graphics::Style { color: Some(REVEALED), ..Default::default() },
-            cut: bimcraft_core::graphics::Style { color: Some(REVEALED), ..Default::default() },
-            ..Default::default()
-        };
         let mut out = Vec::new();
         for (i, form) in f.forms.iter().enumerate() {
             let in_type = form.visible.as_ref().is_some_and(|v| crate::adaptive_editor::worth(v, values) == Some(0.0));
             if form.void || in_type || by_view.get(i).copied().unwrap_or(false) || self.temp_only_form(i) || editing == Some(i) {
                 continue;
             }
-            if self.views.kept.revealing(which) && self.kept_hidden_form(which, i) {
-                out.push((i, revealed.clone()));
+            if self.kept_hidden_form(which, i) {
+                // Hidden for good, by itself or with its category, whatever else it overrides: drawn only when revealed (a door's
+                // forms drawn apart are a generic family, which its category's hide wouldn't reach).
+                if self.views.kept.revealing(which) {
+                    out.push((i, revealed()));
+                }
             } else if let Some(o) = own.elements.get(&form.guid).filter(|o| !o.hidden && !o.is_empty()) {
                 out.push((i, o.clone()));
             }
@@ -449,7 +468,7 @@ impl FamilyEditor {
         let which = self.views.shown;
         let mut o = self.views.kept.graphics_of(which).elements.get(first).cloned().unwrap_or_default();
         o.hidden = false;
-        self.views.kept.override_dialog = Some((which, forms, o));
+        self.views.kept.override_dialog = Some((which, forms, o.clone(), o));
         Ok(())
     }
 }
@@ -478,7 +497,7 @@ impl BimApp {
     /// override in the view, whether they are hidden there staying as it is.
     pub(crate) fn family_override_window(&mut self, ctx: &Context) {
         let Some(ed) = self.active_family_mut() else { return };
-        let Some((which, forms, mut o)) = ed.views.kept.override_dialog.take() else { return };
+        let Some((which, forms, start, mut o)) = ed.views.kept.override_dialog.take() else { return };
         let (mut ok, mut cancel) = (false, false);
         let r = crate::popup::Modal::new(UiId::new("family-element-graphics"), t("View-Specific Element Graphics")).width(520.0).show(
             ctx,
@@ -495,12 +514,12 @@ impl BimApp {
                 });
             },
         );
-        if ok {
+        if ok && o != start {
             let mut g = ed.views.kept.graphics_of(which);
             for id in &forms {
-                let hidden = g.elements.get(id).is_some_and(|x| x.hidden);
-                let mut set = o.clone();
-                set.hidden = hidden;
+                let was = g.elements.get(id).cloned().unwrap_or_default();
+                let mut set = edited(&was, &start, &o);
+                set.hidden = was.hidden;
                 if set.is_empty() {
                     g.elements.remove(id);
                 } else {
@@ -508,10 +527,48 @@ impl BimApp {
                 }
             }
             ed.views.kept.set_graphics(which, g);
-        } else if !cancel && !r.should_close() {
-            ed.views.kept.override_dialog = Some((which, forms, o));
+        } else if !ok && !cancel && !r.should_close() {
+            ed.views.kept.override_dialog = Some((which, forms, start, o));
         }
     }
+}
+
+/// Override `was` with what View-Specific Element Graphics changed from `start` to `now`, field by field, and nothing else: on
+/// several forms it opens on the first's, and what no one edited stays each form's own.
+fn edited(was: &Override, start: &Override, now: &Override) -> Override {
+    fn patch(was: &mut serde_json::Value, start: &serde_json::Value, now: &serde_json::Value) {
+        let (Some(s), Some(n)) = (start.as_object(), now.as_object()) else {
+            *was = now.clone();
+            return;
+        };
+        let keys: BTreeSet<&String> = s.keys().chain(n.keys()).collect();
+        for k in keys {
+            let (a, b) = (s.get(k), n.get(k));
+            if a == b {
+                continue;
+            }
+            if !was.is_object() {
+                *was = serde_json::Value::Object(Default::default());
+            }
+            let Some(w) = was.as_object_mut() else { return };
+            match (a, b) {
+                (Some(a), Some(b)) if a.is_object() && b.is_object() => {
+                    patch(w.entry(k.clone()).or_insert_with(|| serde_json::Value::Object(Default::default())), a, b);
+                }
+                (_, Some(b)) => {
+                    w.insert(k.clone(), b.clone());
+                }
+                (_, None) => {
+                    w.remove(k);
+                }
+            }
+        }
+    }
+    let (Ok(mut w), Ok(s), Ok(n)) = (serde_json::to_value(was), serde_json::to_value(start), serde_json::to_value(now)) else {
+        return now.clone();
+    };
+    patch(&mut w, &s, &n);
+    serde_json::from_value(w).unwrap_or_else(|_| now.clone())
 }
 
 /// View `which`'s name, as the Project Browser and its tab name it.

@@ -180,9 +180,12 @@ impl FamilyEditor {
     }
 
     /// Apply Hide/Isolate to View (FE-18): the forms and planes hidden for now, and Forms hidden as a category, hidden in the view
-    /// shown for good, as its Hide in View does; what a family's view has no way to keep (the reference planes, the wall, an
-    /// adaptive family's elements as categories) stays hidden for now.
+    /// shown for good, as its Hide in View does; what a family's view has no way to keep (the reference planes, the wall as
+    /// categories) stays hidden for now. Not in an adaptive family, whose views hide for now only.
     pub(crate) fn apply_temp_to_view(&mut self) {
+        if self.adaptive.is_some() {
+            return;
+        }
         let which = self.views.shown;
         let t = std::mem::take(&mut self.document.temp);
         let mut forms: Vec<bimcraft_core::ids::Guid> =
@@ -253,8 +256,8 @@ impl BimApp {
                 }
             }
             ui.separator();
-            // FE-18: what is hidden for now, hidden in the view for good.
-            if ui.add_enabled(hides, egui::Button::new(t("Apply Hide/Isolate to View"))).clicked() {
+            // FE-18: what is hidden for now, hidden in the view for good; an adaptive family's views hide for now only.
+            if ui.add_enabled(hides && ed.adaptive.is_none(), egui::Button::new(t("Apply Hide/Isolate to View"))).clicked() {
                 ed.apply_temp_to_view();
             }
             if ui.add_enabled(hides, egui::Button::new(t("Reset Temporary Hide/Isolate (HR)"))).clicked() {

@@ -389,7 +389,8 @@ impl FamilyEditor {
         // is its View Range's (FE-18).
         let cut = match which {
             Which::Plan => self.views.kept.range_of(which).cut,
-            // The ceiling plan and the elevations cut where the scratch project's level does.
+            // The ceiling plan and the elevations cut at the project's default cut height, not the scratch level's range: a
+            // family view keeps a View Range for its floor plan alone (FE-18), and the scratch level's is that default.
             Which::Ceiling | Which::Elevation(_) => bimcraft_core::model::CUT_HEIGHT,
         };
         let by_view = fv::hidden_in(&f, &values, Some(which), self.views.detail, cut);
@@ -507,7 +508,17 @@ impl FamilyEditor {
             Ok((st, shown))
         });
         match drawn {
-            Ok((staged, shown)) => {
+            Ok((staged, mut shown)) => {
+                // A plane the view hides, revealed (FE-18): its trace in magenta, as a form is (the drawing draws every plane in
+                // the one colour, whatever its graphics).
+                for (prim, owner) in shown.drawing.prims.iter_mut().zip(&shown.drawing.owners) {
+                    if let bimcraft_core::render::Prim::Line { color, .. } = prim
+                        && let Some(g) = owner.and_then(|o| staged.plane_of(o))
+                        && let Some(c) = self.views.kept.revealed_plane(Some(which), g)
+                    {
+                        *color = c;
+                    }
+                }
                 // The drawing is painted as vectors, as a project's plan is; an elevation's hidden-line picture goes under it, as a
                 // section's does, dark on a dark canvas as the drawing over it is.
                 let texture = shown.picture.as_ref().map(|image| {
@@ -642,6 +653,7 @@ impl FamilyEditor {
             // Lock on (F10a), what Align would take there (a plane, a reference line, another form's line), as its lock waits.
             let locking = self.sketch.as_ref().is_some_and(|s| s.lock && s.options().offset == 0.0);
             let own = self.sketch.as_ref().map(|s| s.guid).unwrap_or_default();
+            let gone = self.forms_out_of_view();
             let pick = |p: egui::Pos2| -> Option<super::sketch::PickedInView> {
                 let picked = plane_at(&cache.drawing, &cache.staged, p);
                 let lock = |r: DimRef| FamilyDimension {
@@ -668,8 +680,8 @@ impl FamilyEditor {
                 };
                 if locking && let Some(flexed) = flexed.as_ref() {
                     let screen_of = dims::screen_of(view, pane.min);
-                    if let Some(r) =
-                        dims::reference_at(flexed, &values, &cache.staged, which, picked, p, &screen_of).filter(|r| !r.names(own))
+                    if let Some(r) = dims::reference_at(flexed, &values, &cache.staged, which, picked, p, &screen_of)
+                        .filter(|r| !r.names(own) && !gone.iter().any(|g| r.names(*g)))
                         && let Some((a, b)) = dims::drawn_as(flexed, &values, &cache.staged, which, &r).filter(|(a, b)| a != b)
                     {
                         // A plane's whole trace, as Pick Lines takes it unlocked; else the line the reference is drawn as.
@@ -748,7 +760,8 @@ impl FamilyEditor {
                         let screen_of = dims::screen_of(view, pane.min);
                         let plane = plane_at(&cache.drawing, &cache.staged, p);
                         let outside = flexed.as_ref().and_then(|f| {
-                            let r = dims::reference_at(f, &values, &cache.staged, which, plane, p, &screen_of).filter(|r| !r.names(own))?;
+                            let r = dims::reference_at(f, &values, &cache.staged, which, plane, p, &screen_of)
+                                .filter(|r| !r.names(own) && !gone.iter().any(|g| r.names(*g)))?;
                             let (a, b) = dims::drawn_as(f, &values, &cache.staged, which, &r)?;
                             (a != b).then_some((r, (a, b)))
                         });
@@ -798,9 +811,12 @@ impl FamilyEditor {
         let crossing = angular && self.views.dimensioning.is_some();
         // Radial and Diameter Dimension pick a circle or an arc by its edge, Angular Dimension lines, the others references.
         let tool_kind = if circles || crossing { kind } else { bimcraft_core::family::DimKind::Aligned };
+        let gone = self.forms_out_of_view();
         let reference_at = |p: egui::Pos2| -> Option<DimRef> {
             let f = family.as_ref()?;
+            // What the view leaves out is picked by no tool.
             dims::pick_reference(f, &values, &c.staged, which, tool_kind, pick_plane(p), p, &on_screen)
+                .filter(|r| !gone.iter().any(|g| r.names(*g)))
         };
         // Its dimensions, the one being placed with them, over the picture: the selected one, and those that can't hold, picked.
         let placing = match (&self.views.dimensioning, response.hover_pos(), family.as_ref()) {
@@ -1022,7 +1038,7 @@ impl FamilyEditor {
             }
             let mut best: Option<(f64, (P2, P2))> = None;
             // An edge the view draws a form with (FV-2), as Pick Lines takes: never its hull's chord.
-            for i in 0..f.forms.len() {
+            for i in (0..f.forms.len()).filter(|i| !hidden.get(*i).copied().unwrap_or(false)) {
                 for (a, b) in fv::outline_edges(f, &values, &c.staged, which, i) {
                     let d = bimcraft_core::geom::dist_to_segment(q, a, b);
                     if d <= reach && a.dist(b) > 1e-6 && best.is_none_or(|(e, _)| d < e) {
@@ -1893,7 +1909,11 @@ pub(super) fn apart_family(
     let mut g = f.clone();
     let mut any = false;
     for (i, form) in g.forms.iter_mut().enumerate() {
-        let off = !form.void && on(i, form);
+        // Voids stay as the family has them, cutting what is drawn apart as they cut it in the family.
+        if form.void {
+            continue;
+        }
+        let off = on(i, form);
         form.visible = if off { None } else { Some(Expr::Number(0.0)) };
         form.visibility = None;
         any |= off;
