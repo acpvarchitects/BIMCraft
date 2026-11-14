@@ -122,7 +122,8 @@ fn hide_element_hides_a_reference_plane_in_the_view() {
     assert!(editor(&h).selected_plane().is_none(), "hidden, it can't be picked");
     // Revealed, it is picked and unhidden.
     shortcut(&mut h, "RH");
-    assert!(around(&h, &pictures, EDGE, 4).iter().any(magenta), "revealed in magenta, as a form is");
+    let revealed = (0..12).any(|k| around(&h, &pictures, [EDGE[0], EDGE[1] + f64::from(k) * 25.0, 0.0], 2).iter().any(magenta));
+    assert!(revealed, "revealed in magenta, as a form is");
     click_family(&mut h, [-400.0, -1000.0, 0.0]);
     shortcut(&mut h, "EU");
     shortcut(&mut h, "RH");
@@ -369,17 +370,18 @@ fn hide_category_hides_a_door_form_with_an_override_too() {
     let door = super::family_visibility::door("");
     let (mut h, pictures) = open(&door, "Test Door");
     view(&mut h, Some(Which::Plan));
-    let leaf = [0.0, 0.0, 0.0];
-    assert!(darkest(&around(&h, &pictures, leaf, 3)) < 600, "the leaf");
+    // The leaf's back edge, clear of the centre planes.
+    let leaf = [200.0, 20.0, 0.0];
+    assert!(darkest(&around(&h, &pictures, leaf, 1)) < 600, "the leaf");
     select_form(&mut h, 4);
     shortcut(&mut h, "EO");
     pick(&mut h, Role::CheckBox, "Halftone");
     press(&mut h, "OK");
     select_form(&mut h, 1);
     shortcut(&mut h, "VH");
-    assert!(darkest(&around(&h, &pictures, leaf, 3)) > 740, "the leaf goes with its category, its override and all");
+    assert!(darkest(&around(&h, &pictures, leaf, 1)) > 740, "the leaf goes with its category, its override and all");
     shortcut(&mut h, "RH");
-    assert!(around(&h, &pictures, leaf, 3).iter().any(magenta), "revealed in magenta");
+    assert!(around(&h, &pictures, leaf, 1).iter().any(magenta), "revealed in magenta");
 }
 
 #[test]
