@@ -104,9 +104,14 @@ pub(crate) fn insert_as(to: &mut Model, from: &Model, ids: &[Id], linked: bool, 
     }
     bring_type_values(to, from, &renames, &mut out.left_out);
     let mut names = Names::of(to);
+    // A join comes along with both of its pair (T23): what cuts an element that comes alone is left behind.
+    let coming: BTreeSet<Guid> = take.iter().filter_map(|id| from.elements.guid(*id)).collect();
     for &id in &take {
         let (Some(e), Some(g)) = (from.elements.get(id), from.elements.guid(id)) else { continue };
         let mut e = e.clone();
+        if let Some(list) = e.joined_by_mut() {
+            list.retain(|g| coming.contains(g));
+        }
         e.refs_mut(&mut |r| {
             if let Some(n) = instead.get(r) {
                 *r = *n;
@@ -145,10 +150,19 @@ pub(crate) fn insert_as(to: &mut Model, from: &Model, ids: &[Id], linked: bool, 
     Ok(out)
 }
 
-/// What `e` can't be without: what it points at, but the elements its view's graphics override, which are left behind.
+/// What `e` can't be without: what it points at, but the elements its view's graphics override and what Join Geometry cuts
+/// it with (T23), which are left behind.
 fn needs(e: &Element) -> Vec<Guid> {
     let overridden: BTreeSet<Guid> = graphics::graphics_of_element(e).map(|g| g.elements.keys().copied().collect()).unwrap_or_default();
-    e.refs().into_iter().filter(|g| !overridden.contains(g)).collect()
+    if e.joined_by().is_empty() {
+        return e.refs().into_iter().filter(|g| !overridden.contains(g)).collect();
+    }
+    // What it is joined to it still needs where it points at that element otherwise too (a wall attached to a floor).
+    let mut bare = e.clone();
+    if let Some(list) = bare.joined_by_mut() {
+        list.clear();
+    }
+    bare.refs().into_iter().filter(|g| !overridden.contains(g)).collect()
 }
 
 /// The names each library entry `from` names goes by here, where they differ: `(kind, name there)` to the name here.

@@ -30,6 +30,18 @@ neighbour nor stretches with one whose end is dragged (`walls::arms` leaves it o
 footing under such a wall stops at its face as if it were a wall too. The desktop's right-click menu offers Disallow Join and
 Allow Join for the walls and runs selected (`context::Action`, a `modify {join}` command).
 
+Join Geometry (T23) is another thing: two of the walls, floors, roofs and ceilings that meet are joined by `join_geometry
+{first, second}`, and the first cuts the second, which loses what the first's own solids take of it in section and in 3D
+(`view3d::join_voids`, through the same cut as a hosted void's; plans are as they were). The second names the first in its
+`joined_by` (FORMAT 33, with Cut Geometry's `void_cuts`). To join, they must meet: one's own solids, as they are or moved a
+millimetre along an axis, take more than 100 mm³ of the other's (`view3d::meets`), so a floor under a wall's foot, sharing a
+face, joins and cuts nothing. A pair is joined one way at a time: `switch_join_order` flips it and `unjoin_geometry` takes it
+off. Joins may go round in a cycle, since each is cut by the other's solids as they are before anything cuts them. A pair an
+edit parts stays joined, cutting nothing, and `Model::warnings` says so; the check refuses only what can't be (itself, an
+element of another kind, a pair joined both ways, more than `MAX_JOINS`). Copy and Insert from File keep a join when both of
+the pair come along and drop it when one comes alone; deleting either takes it off. IFC writes an IfcRelConnectsElements for
+each pair, the cutter relating, and both bodies whole: that relation clips neither.
+
 At a square corner of two compound walls, one core runs through and the other stops on it (`walls/compound.rs`). It takes
 two walls and nothing else joined there, ending at the same point square to each other, straight, on their centre lines,
 unattached, with the same base and top; each type three layers, finish, structure and finish, each with a material and a

@@ -431,10 +431,18 @@ fn made(r: &Room, part: Part, ty: &str, offset: f64, boundary: Vec<P2>, openings
             sketch: Vec::new(),
             shape: Default::default(),
             params,
+            joined_by: Vec::new(),
         }),
-        Part::Ceiling => {
-            Element::Ceiling(Ceiling { type_name: ty.into(), level: r.level, boundary, openings, offset, sketch: Vec::new(), params })
-        }
+        Part::Ceiling => Element::Ceiling(Ceiling {
+            type_name: ty.into(),
+            level: r.level,
+            boundary,
+            openings,
+            offset,
+            sketch: Vec::new(),
+            params,
+            joined_by: Vec::new(),
+        }),
     }
 }
 
