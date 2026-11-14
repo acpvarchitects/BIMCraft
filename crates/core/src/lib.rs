@@ -77,6 +77,8 @@ mod family_pivot_tests;
 #[cfg(test)]
 mod family_plane_tests;
 #[cfg(test)]
+mod family_purge_tests;
+#[cfg(test)]
 mod family_section_tests;
 #[cfg(test)]
 mod family_shared_nested_tests;
