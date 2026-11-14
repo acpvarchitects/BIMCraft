@@ -91,6 +91,10 @@ pub(crate) const FAMILY_KEYLESS: &[&str] = &[
     "Aligned to Selected Levels",
     "Aligned to Picked Level",
     "Drag Elements on Selection",
+    "Object Styles",
+    "Materials",
+    "Project Units",
+    "Purge Unused",
     "Reference Line",
     "Model Line",
 ];
@@ -218,6 +222,14 @@ impl BimApp {
             "Reference Plane" if ed.editing_2d() => ed.reference_plane_tool(),
             "Reference Line" if ed.editing_2d() => ed.reference_line_tool(),
             "Model Line" if ed.editing_2d() => ed.model_line_tool(),
+            // FE-19: Manage's Object Styles, Materials and Purge Unused, opened when the frame ends; Project Units' list.
+            "Object Styles" if !sketching => ed.ask.manage = Some(super::Manage::ObjectStyles),
+            "Materials" if !sketching => ed.ask.manage = Some(super::Manage::Materials),
+            "Purge Unused" if !sketching => ed.ask.manage = Some(super::Manage::Purge),
+            "Project Units" if !sketching => {
+                ed.doc_tab = super::DocTab::Manage;
+                self.open_units = true;
+            }
             // Work Plane's Set: the Work Plane dialog, for the sketch's plane while a form is sketched.
             "Work Plane" if ordinary => {
                 let target = if sketching { super::work_plane::Target::Sketch } else { super::work_plane::Target::View };
