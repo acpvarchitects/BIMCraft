@@ -296,8 +296,7 @@ fn a_family_zoom_never_touches_the_projects_views_nor_a_projects_key_the_familys
     let family = look(&h);
     press(&mut h, "Level 1");
     assert!(h.state().active_family().is_none(), "the project's tab");
-    // (Not ZO or ZP: with Ctrl held there they are Undo, then Open or print.)
-    for keys in ["ZV", "ZR", "ZZ", "ZC"] {
+    for keys in ["ZO", "ZV", "ZR", "ZZ", "ZP", "ZC"] {
         h.state_mut().typed.clear();
         shortcut(&mut h, keys);
     }

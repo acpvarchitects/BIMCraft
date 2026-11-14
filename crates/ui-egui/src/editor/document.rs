@@ -1829,9 +1829,10 @@ impl BimApp {
             if pressed(egui::Modifiers::COMMAND | egui::Modifiers::SHIFT, egui::Key::S) {
                 self.family_save(true);
             }
-            // In a text field Ctrl's keys are the field's but S and K, which act at once; elsewhere they are letters typed
-            // with Ctrl (`family_typed`), which wait for a second.
-            if ctx.text_edit_focused() {
+            // In a text field Ctrl's keys are the field's but S and K, which act at once; so they do everywhere with plain
+            // letters for shortcuts. With Shortcuts need Ctrl they are letters typed with Ctrl (`family_typed`) elsewhere,
+            // which wait for a second.
+            if ctx.text_edit_focused() || !self.shortcuts_need_ctrl {
                 if pressed(egui::Modifiers::COMMAND, egui::Key::S) {
                     self.family_save(false);
                 }
@@ -1851,8 +1852,9 @@ impl BimApp {
         if self.show_shortcuts {
             return;
         }
-        // FE-14: the window's Copy, Cut and Paste (Ctrl+C, Ctrl+X and Ctrl+V), in a family that isn't adaptive. C, X and V
-        // pressed as keys with Ctrl held are letters (`family_typed`): on their own they do the same (`family_ctrl_key`).
+        // FE-14: the window's Copy, Cut and Paste (Ctrl+C, Ctrl+X and Ctrl+V), in a family that isn't adaptive. With Shortcuts
+        // need Ctrl they, and C, X and V pressed as keys with Ctrl held, are letters (`family_typed`) that never reach this:
+        // on their own they do the same (`family_ctrl_key`).
         if self.active_family().is_some_and(|ed| ed.adaptive.is_none())
             && let Some(c) = super::clipboard::key(ctx, &mut self.paste_heard)
         {
@@ -1934,7 +1936,7 @@ impl BimApp {
         {
             refused = Some(e);
         }
-        // Ctrl+Z and Ctrl+Y are letters typed with Ctrl (`family_ctrl_key`); Ctrl+Shift+Z redoes at once.
+        // Ctrl+Z and Ctrl+Y are `family_ctrl_key`'s (`family_typed`); Ctrl+Shift+Z redoes at once.
         if pressed(egui::Modifiers::COMMAND | egui::Modifiers::SHIFT, egui::Key::Z) {
             ed.ask.redo = true;
         }

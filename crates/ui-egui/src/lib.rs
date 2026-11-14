@@ -483,25 +483,48 @@ const SHORTCUTS: [(&str, &str); 58] = [
 pub(crate) const CTRL_WAIT: f64 = 0.5;
 
 /// The letters and digits typed this frame with Ctrl held (Cmd on a Mac) and no other modifier, taken out of the frame's
-/// events, upper case: BIMCraft's shortcuts are two of them, as Revit's are two letters.
-pub(crate) fn ctrl_letters(ctx: &Context) -> Vec<char> {
+/// events, upper case: BIMCraft's shortcuts are two of them, as Revit's are two letters (when Shortcuts need Ctrl is on).
+/// A window gets Ctrl+C, Ctrl+X and Ctrl+V as its Copy, Cut and Paste, never as keys: they are C, X and V here too. Ctrl+V
+/// comes as Paste only when the system's clipboard holds text, and its V let go always comes as a key: `heard` (kept from
+/// frame to frame, as `editor::clipboard::key` keeps it) says a V's press came, so its V let go is not a second V, and a V let
+/// go with no press heard is V.
+pub(crate) fn ctrl_letters(ctx: &Context, heard: &mut bool) -> Vec<char> {
     ctx.input_mut(|i| {
         let mut out = Vec::new();
         i.events.retain(|e| {
-            let Event::Key { key, pressed: true, modifiers, .. } = e else { return true };
-            let name = key.name();
-            let mut chars = name.chars();
-            match (modifiers.command && !modifiers.shift && !modifiers.alt, chars.next(), chars.next()) {
-                (true, Some(c), None) if c.is_ascii_alphanumeric() => {
-                    out.push(c.to_ascii_uppercase());
-                    false
+            let letter = match e {
+                Event::Key { key, pressed: true, modifiers, .. } if modifiers.command && !modifiers.shift && !modifiers.alt => {
+                    let name = key.name();
+                    let mut chars = name.chars();
+                    match (chars.next(), chars.next()) {
+                        (Some(c), None) if c.is_ascii_alphanumeric() => c.to_ascii_uppercase(),
+                        _ => return true,
+                    }
                 }
-                _ => true,
+                Event::Copy => 'C',
+                Event::Cut => 'X',
+                Event::Paste(_) => 'V',
+                Event::Key { key: Key::V, pressed: false, modifiers, .. } if modifiers.command => {
+                    if std::mem::take(heard) {
+                        return false;
+                    }
+                    'V'
+                }
+                _ => return true,
+            };
+            if letter == 'V' && !matches!(e, Event::Key { pressed: false, .. }) {
+                *heard = true;
             }
+            out.push(letter);
+            false
         });
         out
     })
 }
+
+/// Ctrl's own keys that act at once, as Ctrl+S saves: in a text field whatever the setting, and everywhere when shortcuts are
+/// plain letters. (C, X and V are the field's, or the family's clipboard's.)
+const CTRL_AT_ONCE: [(Key, char); 6] = [(Key::S, 'S'), (Key::O, 'O'), (Key::N, 'N'), (Key::K, 'K'), (Key::P, 'P'), (Key::Num1, '1')];
 
 fn shortcuts() -> Vec<(&'static str, &'static str)> {
     let aliases = engine::commands().iter().flat_map(|c| c.aliases.iter().map(move |a| (*a, c.label)));
@@ -592,6 +615,10 @@ pub struct BimApp {
     background_grid_dialog: Option<background_grid::GridDialog>,
     /// Global grid snapping preference, independent of view graphics and templates.
     grid_snapping: bool,
+    /// Shortcuts need Ctrl (Settings > User Interface): two letters typed with Ctrl held (Cmd on a Mac) are a shortcut, and
+    /// a Ctrl key of its own waits for a second ([`CTRL_WAIT`]). Off, the default, plain letters are, as in Revit. The user's,
+    /// kept in the settings file.
+    shortcuts_need_ctrl: bool,
     /// Revit's Select Elements by Face (BF), in a family document's plans and elevations (`editor/selection.rs`): on, a
     /// face selects what it is of; off, only an edge does. The user's, kept in the settings file.
     pub(crate) select_by_face: bool,
@@ -849,7 +876,8 @@ pub struct BimApp {
     edit: Option<(Id, String, String)>,
     /// The Level tool's elevation and name, as typed in the Options Bar.
     new_level: (String, String),
-    /// The letters typed with Ctrl held, for two-letter shortcuts: one waits for a second ([`CTRL_WAIT`]).
+    /// The letters typed for two-letter shortcuts: the last two plain letters, or those typed with Ctrl held when Shortcuts
+    /// need Ctrl is on, when one waits for a second ([`CTRL_WAIT`]).
     typed: String,
     /// When the one letter in `typed` was typed, by the window's clock.
     typed_at: f64,
@@ -1504,6 +1532,7 @@ impl BimApp {
             scan_contrast: footer::HIGH_CONTRAST,
             background_grid_dialog: None,
             grid_snapping: false,
+            shortcuts_need_ctrl: false,
             select_by_face: true,
             drag_on_selection: false,
             select_pinned: true,
@@ -2374,24 +2403,37 @@ impl BimApp {
         if pressed(Modifiers::COMMAND, Key::Comma) {
             self.settings_page = Some(settings::Page::Interface);
         }
-        // A text field has the letters: there Ctrl's own keys that aren't a field's act at once, and no shortcut is typed.
-        if ctx.egui_wants_keyboard_input() {
-            for (key, letter) in [(Key::S, 'S'), (Key::O, 'O'), (Key::N, 'N'), (Key::K, 'K'), (Key::P, 'P'), (Key::Num1, '1')] {
+        // A text field has the letters: there Ctrl's own keys that aren't a field's act at once, and no shortcut is typed. With
+        // plain letters for shortcuts (Shortcuts need Ctrl off) they act at once everywhere.
+        let field = ctx.egui_wants_keyboard_input();
+        if field || !self.shortcuts_need_ctrl {
+            for (key, letter) in CTRL_AT_ONCE {
                 if pressed(Modifiers::COMMAND, key) {
                     self.ctrl_key(ctx, letter);
                 }
             }
+        }
+        if field {
             self.typed.clear();
             return;
         }
         if self.sketch.is_none() && pressed(Modifiers::COMMAND | Modifiers::SHIFT, Key::Z) {
             self.run("redo", json!({}));
         }
-        // Shortcuts are two letters typed with Ctrl held; a letter that is a Ctrl key of its own waits for a second.
-        for letter in ctrl_letters(ctx) {
-            self.ctrl_letter(ctx, letter);
+        if self.shortcuts_need_ctrl {
+            // Shortcuts are two letters typed with Ctrl held; a letter that is a Ctrl key of its own waits for a second.
+            for letter in ctrl_letters(ctx, &mut self.paste_heard) {
+                self.ctrl_letter(ctx, letter);
+            }
+            self.ctrl_waited(ctx);
+        } else {
+            // Plain letters are the shortcuts: Ctrl's own keys act at once (Ctrl+Shift+Z, taken above, redoes).
+            for (key, letter) in [(Key::D, 'D'), (Key::Y, 'Y'), (Key::Z, 'Z')] {
+                if pressed(Modifiers::COMMAND, key) {
+                    self.ctrl_key(ctx, letter);
+                }
+            }
         }
-        self.ctrl_waited(ctx);
         // Esc while a custom fill pattern is picked brings its dialog back.
         if pressed(Modifiers::NONE, Key::Escape) && !self.cancel_pattern_pick() {
             self.escape();
@@ -2487,13 +2529,25 @@ impl BimApp {
                 .collect()
         });
         // A digit starts a length while a tool is picking its next point, and everything typed
-        // after it (feet, inches, fractions, a unit) is the length's until Enter. Letters typed
-        // without Ctrl are no shortcut.
+        // after it (feet, inches, fractions, a unit) is the length's until Enter; letters before
+        // one are shortcuts, unless Shortcuts need Ctrl is on.
+        let mut shortcut = String::new();
         for ch in typed.chars() {
             let listening = self.base().is_some() || self.filleting() || self.rotating();
             let sign = ch == '-' && self.rotating() && self.typed_length.is_empty();
             if listening && (ch.is_ascii_digit() || ch == '.' || sign || !self.typed_length.is_empty()) {
                 self.typed_length.push(ch);
+            } else if !self.shortcuts_need_ctrl {
+                shortcut.push(ch);
+            }
+        }
+        for ch in shortcut.chars().filter(char::is_ascii_alphanumeric) {
+            self.typed.push(ch.to_ascii_uppercase());
+            if self.typed.len() > 2 {
+                self.typed.remove(0);
+            }
+            if self.typed.len() == 2 && self.shortcut() {
+                self.typed.clear();
             }
         }
     }
@@ -3810,6 +3864,7 @@ impl BimApp {
         fresh.font_finder = self.font_finder;
         fresh.scan_contrast = self.scan_contrast;
         fresh.grid_snapping = self.grid_snapping;
+        fresh.shortcuts_need_ctrl = self.shortcuts_need_ctrl;
         (fresh.select_by_face, fresh.drag_on_selection) = (self.select_by_face, self.drag_on_selection);
         fresh.select_pinned = self.select_pinned;
         fresh.cut_fills_3d = self.cut_fills_3d;

@@ -512,9 +512,12 @@ impl BimApp {
         let r = Modal::new(UiId::new("shortcuts"), t("Keyboard Shortcuts")).width(580.0).show(ctx, |ui| {
             crate::popup::body(ui, |ui| {
                 ui.add_space(4.0);
-                ui.label(
-                    RichText::new(t("Shortcuts are typed with Ctrl held (Cmd on a Mac): Ctrl, then W and A for Wall.")).color(pal().muted),
-                );
+                let how = if self.shortcuts_need_ctrl {
+                    t("Shortcuts are typed with Ctrl held (Cmd on a Mac): Ctrl, then W and A for Wall.")
+                } else {
+                    t("Shortcuts are typed as two plain letters, as in Revit: W, then A for Wall.")
+                };
+                ui.label(RichText::new(how).color(pal().muted));
                 ui.add_space(4.0);
 
                 // Controls toolbar: Search, Load File, Add Shortcut, Restore Defaults
