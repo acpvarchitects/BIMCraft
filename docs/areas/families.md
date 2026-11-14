@@ -1479,8 +1479,8 @@ across the target: after one changes in the project, every family of the project
 (`Family::replace_shared`). Within the family loaded, too: before it is reconciled, every copy of a shared family nested in
 it is made the first one met going down its nested families in order (`Family::unify_shared`: two branches P and Q each
 holding Leaf, defined otherwise, load with P's Leaf in both and in the project's), and what the target takes is read once
-the answers are applied, so no definition taken brings back a copy another replaced. A shared nested instance is built into its host as any other: its own element in the project
-(Tab-select, schedules, tags, IFC aggregated into its host) is T6b's. A nested family's type chosen by a family type parameter
+the answers are applied, so no definition taken brings back a copy another replaced. A shared nested instance is built into its host as any other, and is also an element of its own in the project (T6b,
+*Shared nested instances in a project*, below). A nested family's type chosen by a family type parameter
 is T24's. A door's leaf on a hinge (T26) is a nested instance on a pivoted line's face or on a pivoted plane, placed on its
 host's flexed frame, so it turns with the pivot (F7d, *Dimensions and constraints*): `family_pivot_tests` swings a nested leaf
 by an instance `Swing Angle` and finds it, and the door's IFC body, as drawn by hand at 45°. An instance's `angle` may also
@@ -1495,8 +1495,47 @@ their groups, each with Revit's "=" (`Field::Nested`, `NestedRows`). The Project
 and their types, with Edit Family and Delete on the right-click. Edit Family (also on the instance's contextual tab) opens the
 nested family's own document over the host's (`BimApp::family_hosts`): its Load into Project and Load into Project and Close load
 it back into the host, asking Family Already Exists in the family's words; Close Family goes back without loading. The project is
-untouched until the host is loaded. A nested instance is moved by its Properties; dragging it in a view is T6b's. FORMAT 18
-says an older build would leave both fields out of a file.
+untouched until the host is loaded. A nested instance is moved by its Properties, or dragged in a plan or an elevation as the
+family's other parts are (FE-7, in *The family's views*: its `at` and `offset` in its host's axes; a pin refuses it, and so
+does a number of its place that is a formula, the others keeping theirs; one step of the history); in {3D} a drag turns the
+view, as it does over a form. FORMAT 18 says an older build would leave both fields out of a file.
+
+### Shared nested instances in a project
+
+T6b (`nested_elements.rs`, `Family::shared_instances` in `family/nested.rs`). As in Revit, each component whose family places
+an instance of a shared nested family exposes that instance as an element of its own (`Element::Nested`, a `NestedElement`),
+and so does each shared instance placed inside a shared nested family, reached through shared ones only; an instance of a
+family that isn't shared stays part of its host and nothing more. It is derived from its host and never written to a file:
+`Model::sync_nested` (after every command, in the engine beside the library's sync, and when `Model::read` opens a file)
+makes one for each such instance, brings what it says of its host up to date (its family and type, the host's level, its
+family's axes in the model, left-handed under a mirrored host) and takes away those whose instance is gone, with the tags on
+them. It is named by `host` (the component's GUID) and `path` (the GUIDs of the nested instances from the host's family down
+to it); its GUID is worked out from those (`nested_elements::guid_of`), so a tag or anything else that holds it finds it
+after the file is saved and opened again, and FORMAT is unchanged; its id is given anew each time, as an element from
+another file's may be. Its geometry is its host's: each piece says which shared instance it is part of (`Piece::nested`),
+and `Model::nested_pieces` reads the host's pieces that are its own.
+
+- **Selection.** A plan draws it as part of its host, which owns the primitives; the drawing lists it beside them
+  (`render::NestedPick`, its outlines), and `Drawing::pick_all` puts it right after its host, so a click takes the host
+  and Tab, over it, reaches it, as Revit's Tab does. The canvas outlines it in the hover or the selection colour. A box
+  doesn't take it. Its Properties are read only: its family, its type and its host.
+- **Schedules and counts.** It is of the component category (`Element::category`), with its family and type (`Element::family`),
+  so a component schedule lists and counts it (Family, Type, Level, Count) and its rows pick it.
+- **Tags.** `Model::anchor` is its family's origin in plan, and a tag shows its fields as a component's.
+- **IFC.** `ifc.rs` writes it as an element of its own of its family's class, named `Family:Type`, placed with its host,
+  its body the pieces that are its own (taken out of its host's body), and aggregated into its host with the
+  `IfcRelAggregates` that reinforcing bars use; a part isn't in the storey's `IfcRelContainedInSpatialStructure`.
+- **Edits.** It goes with its host: a move, a rotation or a mirror of the host takes it along, and deleting the host deletes
+  it and its tags. Moved, turned, mirrored or deleted apart from its host, it is refused, saying it is part of it.
+
+Known: only plans pick it (sections, elevations and the 3D view draw it as part of its host, and pick the host); a nested
+family of symbols alone has no outline to pick it by; its phase and design option are its host's for drawing but not written
+on it, so a schedule's phase fields are empty for it.
+
+Tests: `family_shared_nested_tests.rs` (core: placement turned and mirrored, schedules and counts, a tag through save and
+read, IFC aggregation, a file from before, the plan's pick order, an instance not shared), and `tests/shared_nested.rs` (the
+window: Tab-select in a plan, and a nested instance dragged in its family's plan and elevation, pinned, by a formula, undone).
+`BIMCRAFT_T6B_DUMP` set to a folder saves its screenshots there.
 
 ## Reloading a family
 
