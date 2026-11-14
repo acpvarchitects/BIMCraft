@@ -1866,15 +1866,24 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
                     in_rooms.entry(room).or_default().push(ent);
                 }
                 products.insert(id, ent);
-                for (nid, path) in shared {
-                    let own: Vec<&Piece> = theirs.iter().filter(|p| p.nested == path).collect();
-                    let Some(Element::Nested(n)) = m.elements.get(nid) else { continue };
+                let mut written: BTreeMap<&[Guid], Id> = BTreeMap::new();
+                for (nid, path) in &shared {
+                    let own: Vec<&Piece> = theirs.iter().filter(|p| p.nested == *path).collect();
+                    let Some(Element::Nested(n)) = m.elements.get(*nid) else { continue };
                     if own.is_empty() {
                         continue;
                     }
-                    let part = w.nested_part(m, nid, n, &own, at);
-                    products.insert(nid, part);
-                    nested_parts.entry(id).or_default().push(part);
+                    let part = w.nested_part(m, *nid, n, &own, at);
+                    products.insert(*nid, part);
+                    written.insert(path, *nid);
+                }
+                // Each a part of the shared instance it is nested in, the nearest written, else of its host: one
+                // aggregation for each level (a knob of a handle of a cabinet).
+                for (path, nid) in &written {
+                    let whole = (1..path.len()).rev().find_map(|k| written.get(&path[..k]).copied()).unwrap_or(id);
+                    if let Some(part) = products.get(nid) {
+                        nested_parts.entry(whole).or_default().push(*part);
+                    }
                 }
                 let omniclass = f.omniclass.as_ref().map(|o| (o.number.clone(), o.title.clone()));
                 // Its type object, of the class it is written as, where IFC4 has one: with its family's kind's predefined type,

@@ -12,7 +12,7 @@ use bimcraft_core::family::DimKind;
 
 /// Revit's default keys for the family editor's commands, each to the name of its action in `shortcuts::ACTIONS`. A key the
 /// project has too means the same command here (`the_family_table_gives_no_project_key_another_meaning`); the others (DD, AN,
-/// WP, WW, FA, AA, PL, FG, CG, ZX, FE-3's ZR, ZZ, ZO, ZV, ZP, ZC, FE-8's RE, and FE-20's FF, PR, ID, SV, BF) are the family's
+/// WP, WW, FA, AA, PL, FG, CG, ZX, FE-3's ZR, ZZ, ZO, ZV, ZP, ZC, FE-8's RE, FE-20's FF, PR, ID, SV, BF, and FE-18's VR) are the family's
 /// alone. Trim/Extend Single and Multiple Elements have no key, as in Revit: Keyboard Shortcuts gives them one; nor has
 /// Drag Elements on Selection ([`FAMILY_KEYLESS`]).
 pub(crate) const FAMILY_SHORTCUTS: &[(&str, &str)] = &[
@@ -74,6 +74,15 @@ pub(crate) const FAMILY_SHORTCUTS: &[(&str, &str)] = &[
     // Measure and Create Similar, as the project's.
     ("ME", "Measure"),
     ("CS", "Create Similar"),
+    // FE-18: view graphics, each view's for the session (`view_graphics.rs`); VR the family's alone.
+    ("VV", "Visibility/Graphics"),
+    ("VG", "Visibility/Graphics"),
+    ("TL", "Thin Lines"),
+    ("WF", "Wireframe"),
+    ("HL", "Hidden Line"),
+    ("SD", "Shaded"),
+    ("GD", "Graphic Display Options"),
+    ("VR", "View Range"),
 ];
 
 /// The family document's commands Revit gives no key: Keyboard Shortcuts lists them, and a key made there works on a family
@@ -105,30 +114,27 @@ pub(crate) fn in_family(action: &str) -> bool {
 }
 
 impl BimApp {
-    /// The family document's shortcuts (`family_keys` calls it unless a field, a dialog or a menu has the keys), typed with
-    /// Ctrl held as the project's are (`crate::ctrl_letters`): two letters are what Keyboard Shortcuts made a key, if the family
-    /// has that command, else what [`FAMILY_SHORTCUTS`] gives it. If the two aren't a key, the first does its own job as a
-    /// Ctrl key ([`BimApp::family_ctrl_key`]) and the second waits in its place; a letter left waiting does its job once Ctrl
-    /// is let go, or after [`crate::CTRL_WAIT`]. Nothing while Keyboard Shortcuts is open over the document.
+    /// The family document's shortcuts (`family_keys` calls it unless a field, a dialog or a menu has the keys): two letters are
+    /// what Keyboard Shortcuts made a key, if the family has that command, else what [`FAMILY_SHORTCUTS`] gives it. Nothing while
+    /// Keyboard Shortcuts is open over the document. As the project's: plain letters by default, the last two typed, and
+    /// Ctrl+1, Ctrl+Z and Ctrl+Y at once ([`BimApp::family_ctrl_key`]); with Shortcuts need Ctrl, typed with Ctrl held
+    /// (`crate::ctrl_letters`), where if the two aren't a key the first does its own job as a Ctrl key and the second waits in
+    /// its place, and a letter left waiting does its job once Ctrl is let go, or after [`crate::CTRL_WAIT`].
     pub(super) fn family_typed(&mut self, ctx: &Context) {
         if self.show_shortcuts {
             return;
         }
-        for ch in crate::ctrl_letters(ctx) {
-            // V's press is heard here, so its V let go isn't a Paste of its own (`clipboard::key`).
-            if ch == 'V' {
-                self.paste_heard = true;
-            }
+        if !self.shortcuts_need_ctrl {
+            self.family_plain_letters(ctx);
+            return;
+        }
+        for ch in crate::ctrl_letters(ctx, &mut self.paste_heard) {
             self.typed.push(ch);
             self.typed_at = ctx.input(|i| i.time);
             if self.typed.len() < 2 {
                 continue;
             }
-            let custom = self.custom_shortcuts.get(&self.typed).map(String::as_str).filter(|a| in_family(a));
-            if let Some(action) = custom.or_else(|| FAMILY_SHORTCUTS.iter().find(|(k, _)| *k == self.typed).map(|(_, a)| *a)) {
-                let action = action.to_string();
-                self.typed.clear();
-                self.family_action(&action);
+            if self.family_key() {
                 continue;
             }
             // Not a shortcut: the first does its own job as a Ctrl key, and the second waits in its place.
@@ -145,6 +151,48 @@ impl BimApp {
                 self.family_ctrl_key(letter);
             }
         }
+    }
+
+    /// Shortcuts as plain letters (Shortcuts need Ctrl off): Ctrl+1, Ctrl+Z and Ctrl+Y act at once (Ctrl+Shift+Z is
+    /// `family_keys`' redo), and the letters typed are the shortcut, the last two of them. (Ctrl+C, Ctrl+X and Ctrl+V are
+    /// `clipboard::key`'s, Ctrl+S and Ctrl+K `family_keys`'.)
+    fn family_plain_letters(&mut self, ctx: &Context) {
+        let shift = ctx.input(|i| i.modifiers.shift);
+        for (key, letter) in [(egui::Key::Num1, '1'), (egui::Key::Y, 'Y'), (egui::Key::Z, 'Z')] {
+            if !(shift && key == egui::Key::Z) && ctx.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, key)) {
+                self.family_ctrl_key(letter);
+            }
+        }
+        let typed: String = ctx.input(|i| {
+            i.events
+                .iter()
+                .filter_map(|e| match e {
+                    egui::Event::Text(t) => Some(t.as_str()),
+                    _ => None,
+                })
+                .collect()
+        });
+        for ch in typed.chars().filter(char::is_ascii_alphanumeric) {
+            self.typed.push(ch.to_ascii_uppercase());
+            if self.typed.len() > 2 {
+                self.typed.remove(0);
+            }
+            if self.typed.len() == 2 {
+                self.family_key();
+            }
+        }
+    }
+
+    /// Whether the two letters in `typed` are a key of the family's, which is then done and `typed` cleared.
+    fn family_key(&mut self) -> bool {
+        let custom = self.custom_shortcuts.get(&self.typed).map(String::as_str).filter(|a| in_family(a));
+        let Some(action) = custom.or_else(|| FAMILY_SHORTCUTS.iter().find(|(k, _)| *k == self.typed).map(|(_, a)| *a)) else {
+            return false;
+        };
+        let action = action.to_string();
+        self.typed.clear();
+        self.family_action(&action);
+        true
     }
 
     /// What a letter typed with Ctrl does on its own in a family document: S saves it, K finds a command, Z undoes (a sketch's
@@ -210,6 +258,32 @@ impl BimApp {
                 if self.active_family().is_some_and(FamilyEditor::picks_by_face) {
                     self.drag_on_selection = !self.drag_on_selection;
                 }
+                return true;
+            }
+            // FE-18: the view's graphics, and the window's Thin Lines.
+            "Visibility/Graphics" => {
+                self.family_vg();
+                return true;
+            }
+            "Thin Lines" => {
+                self.thin = !self.thin;
+                return true;
+            }
+            "Wireframe" | "Hidden Line" | "Shaded" => {
+                let style = match action {
+                    "Wireframe" => bimcraft_core::graphics::VisualStyle::Wireframe,
+                    "Hidden Line" => bimcraft_core::graphics::VisualStyle::HiddenLine,
+                    _ => bimcraft_core::graphics::VisualStyle::Shaded,
+                };
+                self.family_style(style);
+                return true;
+            }
+            "Graphic Display Options" => {
+                self.family_display();
+                return true;
+            }
+            "View Range" => {
+                self.family_view_range();
                 return true;
             }
             "Temporary Hide Element" => Some(Asked::Hide { category: false }),

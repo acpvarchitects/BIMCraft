@@ -99,6 +99,7 @@ pub const ACTIONS: &[&str] = &[
     "Wireframe",
     "Hidden Line",
     "Shaded",
+    "Graphic Display Options",
     "Project Units",
     "Delete",
     "Pin",
@@ -162,6 +163,7 @@ pub const ACTIONS: &[&str] = &[
     msg!("Aligned to Selected Views"),
     msg!("Aligned to Selected Levels"),
     msg!("Aligned to Picked Level"),
+    msg!("View Range"),
 ];
 
 /// The actions of `ACTIONS` only a family document does (`editor::keys`): a key for one does nothing on a project's tab, and
@@ -192,6 +194,7 @@ pub(crate) const FAMILY_ONLY: &[&str] = &[
     "Aligned to Selected Views",
     "Aligned to Selected Levels",
     "Aligned to Picked Level",
+    "View Range",
 ];
 
 /// Whether `action` is a family document's alone.
@@ -451,6 +454,7 @@ impl BimApp {
             "Wireframe" => self.set_visual_style(bimcraft_core::graphics::VisualStyle::Wireframe),
             "Hidden Line" => self.set_visual_style(bimcraft_core::graphics::VisualStyle::HiddenLine),
             "Shaded" => self.set_visual_style(bimcraft_core::graphics::VisualStyle::Shaded),
+            "Graphic Display Options" => self.open_display(),
             "Project Units" => {
                 self.tab = Tab::Manage;
                 self.open_units = true;
@@ -512,9 +516,12 @@ impl BimApp {
         let r = Modal::new(UiId::new("shortcuts"), t("Keyboard Shortcuts")).width(580.0).show(ctx, |ui| {
             crate::popup::body(ui, |ui| {
                 ui.add_space(4.0);
-                ui.label(
-                    RichText::new(t("Shortcuts are typed with Ctrl held (Cmd on a Mac): Ctrl, then W and A for Wall.")).color(pal().muted),
-                );
+                let how = if self.shortcuts_need_ctrl {
+                    t("Shortcuts are typed with Ctrl held (Cmd on a Mac): Ctrl, then W and A for Wall.")
+                } else {
+                    t("Shortcuts are typed as two plain letters, as in Revit: W, then A for Wall.")
+                };
+                ui.label(RichText::new(how).color(pal().muted));
                 ui.add_space(4.0);
 
                 // Controls toolbar: Search, Load File, Add Shortcut, Restore Defaults

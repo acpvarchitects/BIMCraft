@@ -576,13 +576,20 @@ frame, since its first lays out every tool (`a_tool_with_choices_of_its_own_open
 
 Keyboard Shortcuts. Manage > Shortcuts (or KS) opens `shortcuts_window` (`shortcuts.rs`): every shortcut by what it does, from `shortcuts()`
 (`SHORTCUTS`, the fixtures' letters, the commands' aliases), with Add, Edit and Load File. A shortcut is two letters or digits, all that `typed` holds,
-typed with Ctrl held (Cmd on a Mac; `ctrl_letters` takes them out of the frame's events, in the project's `keys` and the family document's
-`family_typed` alike), and a custom one is tried before the defaults. Letters typed without Ctrl are no shortcut (digits and a unit still make a
-typed length). A letter that is a Ctrl key of its own (`ctrl_key`: S saves, O opens, N new, K Find, P prints to PDF, D the start page, Z undoes, Y
-redoes, 1 Properties) waits for a second letter (`CTRL_WAIT`, half a second): with one it is a shortcut (Ctrl held, S then A: Select All
+and a custom one is tried before the defaults; how they are typed is the user's choice, File > Settings > User Interface's Shortcuts need Ctrl
+(`shortcuts_need_ctrl`, kept in `settings.json`, off in a file that doesn't say), the same on the project's tab (`keys`) and a family's
+(`family_typed`), and the dialog says which. Off, the default on this fork: plain letters, as in Revit, the last two typed (`Event::Text`); while a
+tool picks its next point a digit starts a typed length and what follows is the length's, the letters before one a shortcut; Ctrl's own keys act
+at once (`ctrl_key`: S saves, O opens, N new, K Find, P prints to PDF, D the start page, Z undoes, Y redoes, 1 Properties; Ctrl+Shift+Z redoes).
+On, upstream's design (the user chose Ctrl, and the wait, on 2026-11-13): letters and digits typed with Ctrl held (Cmd on a Mac; `ctrl_letters`
+takes them out of the frame's events), and letters typed without Ctrl are no shortcut (digits and a unit still make a typed length). A letter that
+is a Ctrl key of its own waits for a second letter (`CTRL_WAIT`, half a second): with one it is a shortcut (Ctrl held, S then A: Select All
 Instances); if the two aren't one, the first does its own job and the second waits in its place, so Ctrl held and Z, Z, Z undoes three times; with
-none, or once Ctrl is let go, it does its own job. In a text field Ctrl's keys are the field's, but S, O, N, K, P and 1, which act there at once,
-and no shortcut is typed. The user chose Ctrl, and the wait, on 2026-11-13. Each name in `ACTIONS` is a tool or command the window runs (`execute_shortcut_action`), and a key never
+none, or once Ctrl is let go, it does its own job. A real window gets Ctrl+C, Ctrl+X and Ctrl+V as egui's `Copy`, `Cut` and `Paste` events, never
+keys (and Ctrl+V as nothing but its V let go when the system's clipboard holds no text), so `ctrl_letters` takes those as C, X and V too (CO,
+MV, TX, CS can be typed), and `paste_heard` keeps a V's press and its let-go one V; on their own they do their job once, as `family_ctrl_key`
+does in a family (`tests/shortcuts_ctrl.rs`). Either way, in a text field the keys are the field's, but S, O, N, K, P and 1, which act there at
+once, and no shortcut is typed. Each name in `ACTIONS` is a tool or command the window runs (`execute_shortcut_action`), and a key never
 carries Revit's name for a tool BIMCraft lacks (Sun Settings, Detail and Model Line, Split Face, Brace, Beam System, the duct tools): it waits
 for the tool. The family document's own commands are there too (`FAMILY_ONLY`; a family tab's keys are its own table's: [families](families.md#the-family-documents-keys-fe-13)).
 Load File reads JSON (`{"WA": "Wall"}`), Revit's export of its keyboard shortcuts (`<ShortcutItem CommandName=… CommandId=… Shortcuts="WA#W1" Paths=…/>`, its

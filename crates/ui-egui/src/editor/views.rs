@@ -39,6 +39,8 @@ pub(crate) struct Views {
     pub(crate) visibility: Option<super::visibility::Dialog>,
     /// The document's Detail Level, which every one of its views draws at (F8): the session's, Fine when a family opens.
     pub(crate) detail: bimcraft_core::graphics::Detail,
+    /// Each view's graphics for the session (FE-18): Visibility/Graphics, visual style, Graphic Display Options, View Range.
+    pub(crate) kept: super::view_graphics::Kept,
     /// The Reference Plane tool, on, with its first click once made.
     pub(crate) drawing: Option<Option<P2>>,
     /// What `drawing` draws: a reference line on the view's work plane (FE-11), else a reference plane.
@@ -388,7 +390,12 @@ impl FamilyEditor {
         let mut model = self.scratch(base, &shown)?;
         let mut ghost_id = None;
         // F8: what the view's Visibility Settings leave out, at the document's Detail Level, drawn halftone too.
-        let cut = model.levels().first().map_or(bimcraft_core::model::CUT_HEIGHT, |(_, l)| l.view_range.cut);
+        // A plan's cut plane is its View Range's (FE-18).
+        let cut = match which {
+            Which::Plan => self.views.kept.range_of(which).cut,
+            Which::Ceiling => model.levels().first().map_or(bimcraft_core::model::CUT_HEIGHT, |(_, l)| l.view_range.cut),
+            Which::Elevation(_) => model.levels().first().map_or(bimcraft_core::model::CUT_HEIGHT, |(_, l)| l.view_range.cut),
+        };
         let by_view = fv::hidden_in(&f, &values, Some(which), self.views.detail, cut);
         if !self.document.preview_visibility
             && let Some(g) = ghosts(&f, &values, hidden, &by_view)
@@ -416,11 +423,24 @@ impl FamilyEditor {
         // Its planes where the type's dimensions put them.
         let flexed = f.flexed(&values).map(std::borrow::Cow::into_owned).unwrap_or_else(|_| f.clone());
         let mut st = fv::stage(model, &flexed, &values, &|g| !self.plane_hidden(g));
-        let mut ids = vec![st.level];
-        ids.extend(Side::ALL.iter().filter_map(|s| st.elevation(*s)));
-        for id in ids {
+        // What the floor plan sees, once its View Range is set (FE-18).
+        if which == Which::Plan {
+            st.seen = self.views.kept.seen(which);
+        }
+        // Each view drawn of the scratch project: the plan (and the ceiling plan) of its level, and its four elevations.
+        // The level's own: its floor plan's, or its ceiling plan's while that is shown.
+        let level = if which == Which::Ceiling { Which::Ceiling } else { Which::Plan };
+        let mut ids = vec![(st.level, level)];
+        ids.extend(Side::ALL.iter().filter_map(|s| Some((st.elevation(*s)?, Which::Elevation(*s)))));
+        for (id, of) in ids {
             let graphics = match st.model.elements.get_mut(id) {
-                Some(Element::Level(l)) => &mut l.graphics,
+                Some(Element::Level(l)) => {
+                    // The floor plan's View Range (FE-18); a ceiling plan cuts where a project's does.
+                    if of == Which::Plan {
+                        l.view_range = self.views.kept.range_of(of);
+                    }
+                    &mut l.graphics
+                }
                 Some(Element::Elevation(s)) => &mut s.graphics,
                 _ => continue,
             };
@@ -431,6 +451,8 @@ impl FamilyEditor {
             if host_hidden {
                 graphics.categories.insert("wall".into(), Override { hidden: true, ..Default::default() });
             }
+            // The view's own Visibility/Graphics (FE-18), under what the document sets for now.
+            super::view_graphics::lay_over(graphics, &self.views.kept.graphics_of(Some(of)));
         }
         Ok(st)
     }
@@ -455,6 +477,8 @@ impl FamilyEditor {
                 crate::style::canvas_dark(),
             )
                 .hash(&mut h);
+            // The view's own graphics and range (FE-18).
+            self.views.kept.key(Some(which)).hash(&mut h);
             (base.materials.len(), base.images.len()).hash(&mut h);
             // The form being sketched again, which the view leaves out.
             self.sketch.as_ref().and_then(|s| s.index).hash(&mut h);
@@ -498,7 +522,7 @@ impl FamilyEditor {
 
     /// The plan or elevation shown, filling `pane`: its picture, what is selected over it, the work plane tinted while Show is
     /// on, the plane being drawn; and the clicks and drags in it.
-    pub(crate) fn view_2d(&mut self, ui: &mut Ui, base: &Model, which: Which, pane: Rect) -> Option<String> {
+    pub(crate) fn view_2d(&mut self, ui: &mut Ui, base: &Model, which: Which, pane: Rect, thin: bool) -> Option<String> {
         let size = [pane.width().clamp(64.0, 2400.0) as u32, pane.height().clamp(64.0, 1600.0) as u32];
         // A handle's drag begun in another view, or in this one before something else was shown, is given up (FE-5).
         let pass = ui.ctx().cumulative_pass_nr();
@@ -542,7 +566,7 @@ impl FamilyEditor {
             let at = Rect::from_min_size(pane.min, vec2(view.width as f32, view.height as f32));
             painter.image(t.id(), at, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
         }
-        crate::canvas::paint(&painter, crate::canvas::Place::at(pane.min), &c.drawing, &[], None, false, &[]);
+        crate::canvas::paint(&painter, crate::canvas::Place::at(pane.min), &c.drawing, &[], None, thin, &[]);
         let screen = |q: P2| {
             let (x, y) = view.px(q);
             pane.min + vec2(x, y)

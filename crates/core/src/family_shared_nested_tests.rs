@@ -23,6 +23,11 @@ fn handle(shared: bool) -> Value {
 /// A cabinet 600 wide whose handle (shared, or not) is placed at (100, 50), as wide as a tenth of the cabinet, and a
 /// component of it at (5000, 0), turned 90 degrees.
 fn cabinet(shared: bool) -> (Session, Id) {
+    cabinet_with(handle(shared))
+}
+
+/// [`cabinet`], its handle the family `definition` holds.
+fn cabinet_with(definition: Value) -> (Session, Id) {
     let mut s = Session::new();
     run(
         &mut s,
@@ -31,7 +36,7 @@ fn cabinet(shared: bool) -> (Session, Id) {
                "types": {"Small": {"Width": 600}},
                "forms": [{"profile": [[0, 0], ["Width", 0], ["Width", 400], [0, 400]], "to": 800}]}),
     );
-    run(&mut s, "family", json!({"name": "Cabinet", "nest": {"definition": handle(shared), "name": "Handle"}}));
+    run(&mut s, "family", json!({"name": "Cabinet", "nest": {"definition": definition, "name": "Handle"}}));
     run(
         &mut s,
         "family",
@@ -404,4 +409,188 @@ fn a_shared_nested_instance_is_drawn_in_elevations_and_in_3d() {
             .any(|t| t.iter().any(|p| (p[1] + 20.0).abs() < 1e-6 && (p[2] - 430.0).abs() < 1e-6));
         assert!(reaches, "shared {shared}: the handle is in the 3D scene");
     }
+}
+
+/// A knob 10 by 10 and 5 high, a shared family.
+fn knob() -> Value {
+    json!({"category": "generic", "shared": true, "types": {"K": {}}, "forms": [{"profile": [[0, 0], [10, 0], [10, 10], [0, 10]], "to": 5}]})
+}
+
+/// The shared handle with two shared knobs on its top, at (5, 5) and (30, 15) in its axes (the second standing 5 past its
+/// back edge), as a family file written by hand holds it: its instances name no GUIDs.
+fn handle_with_knobs() -> Value {
+    let mut h = handle(true);
+    h["nested"] = json!([{"name": "Knob", "family": knob()}]);
+    h["nested_instances"] = json!([
+        {"family": "Knob", "type": "K", "at": [5, 5], "offset": 30},
+        {"family": "Knob", "type": "K", "at": [30, 15], "offset": 30}
+    ]);
+    h
+}
+
+/// Three levels: a cabinet nesting the shared handle, which nests two shared knobs.
+fn three_levels() -> (Session, Id) {
+    cabinet_with(handle_with_knobs())
+}
+
+/// The nested elements of family `family`.
+fn of_family(m: &Model, family: &str) -> Vec<(Id, NestedElement)> {
+    nested(m).into_iter().filter(|(_, n)| n.family == family).collect()
+}
+
+/// Each instance inside a nested definition is given a GUID of its own where a file names none, so each knob of each cabinet
+/// is an element of its own: two knobs, two elements, each with the handle's GUID then its own on its path.
+#[test]
+fn three_levels_shared_nested_element_is_scheduled_and_counted() {
+    let (mut s, host) = three_levels();
+    let handles = of_family(&s.model, "Handle");
+    let knobs = of_family(&s.model, "Knob");
+    assert_eq!((handles.len(), knobs.len()), (1, 2), "{:?}", nested(&s.model));
+    let b = s.model.families["Cabinet"].nested_instances[0].guid;
+    let inner: Vec<crate::ids::Guid> =
+        s.model.families["Cabinet"].nested_family("Handle").unwrap().family.nested_instances.iter().map(|i| i.guid).collect();
+    assert!(inner.iter().all(|g| !g.is_nil()) && inner[0] != inner[1], "{inner:?}");
+    for (id, n) in &knobs {
+        assert_eq!(n.path.len(), 2);
+        assert_eq!(n.path[0], b);
+        assert!(inner.contains(&n.path[1]));
+        assert_eq!(s.model.guid(*id), crate::nested_elements::guid_of(s.model.guid(host), &n.path));
+        // Nested in the handle's element.
+        assert_eq!(s.model.nested_parent(n), Some(handles[0].0));
+    }
+    assert_eq!(s.model.nested_parent(&handles[0].1), None, "the handle is the cabinet's own");
+    // One definition of the shared handle: the project's, loaded with the cabinet, holds the same GUIDs.
+    let project: Vec<crate::ids::Guid> = s.model.families["Handle"].nested_instances.iter().map(|i| i.guid).collect();
+    assert_eq!(project, inner);
+    // Each knob's own solids: one each, the handle's not among them.
+    for (_, n) in &knobs {
+        assert_eq!(s.model.nested_pieces(n).len(), 1);
+    }
+    assert_eq!(s.model.nested_pieces(&handles[0].1).len(), 1, "the handle's own solid, not the knobs'");
+    run(&mut s, "component", json!({"family": "Cabinet", "type": "Small", "at": [0, 0]}));
+    let r = run(&mut s, "schedule", json!({"name": "By Family", "category": "component", "fields": ["Family", "Type", "Count"]}));
+    let rows = r["rows"].as_array().unwrap().clone();
+    let count = |family: &str| rows.iter().filter(|row| row[0] == json!(family)).map(|row| row[2].as_f64().unwrap()).sum::<f64>();
+    assert_eq!((count("Cabinet"), count("Handle"), count("Knob")), (2.0, 2.0, 4.0), "{rows:?}");
+}
+
+/// A tag on a knob holds the GUID its cabinet and path make, which a file saved and read again gives it back.
+#[test]
+fn three_levels_guid_is_stable_through_save_and_read() {
+    let (mut s, _) = three_levels();
+    let (id, _) = of_family(&s.model, "Knob")[0].clone();
+    let guid = s.model.guid(id);
+    let tag = run(&mut s, "tag", json!({"ids": [id]}))["ids"][0].as_u64().unwrap();
+    let text = s.model.to_json().unwrap();
+    let (back, left_out) = Model::read(&text).unwrap();
+    assert!(left_out.is_empty(), "{left_out:?}");
+    back.check().unwrap();
+    let again = back.elements.id(guid).expect("the knob, by the same GUID");
+    assert!(matches!(back.elements.get(again), Some(Element::Nested(n)) if n.family == "Knob"));
+    let Some(Element::Tag(t)) = back.elements.get(back.elements.id(s.model.guid(tag)).unwrap()) else { panic!("the tag") };
+    assert_eq!(t.host, guid);
+    // Read twice, the same: a file whose nested definitions name no GUIDs is given the same ones each time it is read.
+    let mut bare: Value = serde_json::from_str(&text).unwrap();
+    let list = bare["families"]["Cabinet"]["nested"].as_array_mut().unwrap();
+    let handle = list.iter_mut().find(|n| n["name"] == "Handle").unwrap();
+    for i in handle["family"]["nested_instances"].as_array_mut().unwrap() {
+        i.as_object_mut().unwrap().remove("guid");
+    }
+    let bare = bare.to_string();
+    let knobs = |m: &Model| -> Vec<crate::ids::Guid> {
+        let mut g: Vec<_> = of_family(m, "Knob").into_iter().map(|(id, _)| m.guid(id)).collect();
+        g.sort();
+        g
+    };
+    let (one, _) = Model::read(&bare).unwrap();
+    let (two, _) = Model::read(&bare).unwrap();
+    assert_eq!(knobs(&one).len(), 2, "both knobs, each its own");
+    assert_eq!(knobs(&one), knobs(&two));
+}
+
+/// Given twice over, an instance's GUID inside a nested definition is made one of its own for the second; a definition
+/// built by hand that still repeats one, or holds none, is refused, naming it.
+#[test]
+fn inner_nested_instances_get_guids_and_duplicates_are_refused() {
+    let mut h = handle_with_knobs();
+    let twice = "4a1d4c8e-3b1f-4c2a-9d5e-6f7a8b9c0d1e";
+    for i in h["nested_instances"].as_array_mut().unwrap() {
+        i["guid"] = json!(twice);
+    }
+    let (s, _) = cabinet_with(h);
+    let inner: Vec<crate::ids::Guid> =
+        s.model.families["Cabinet"].nested_family("Handle").unwrap().family.nested_instances.iter().map(|i| i.guid).collect();
+    assert_eq!(inner[0].to_string(), twice, "the first keeps its GUID");
+    assert!(!inner[1].is_nil() && inner[1] != inner[0], "{inner:?}");
+    assert_eq!(of_family(&s.model, "Knob").len(), 2);
+    // Built by hand: refused.
+    let mut f = s.model.families["Cabinet"].clone();
+    let at = f.nested.iter().position(|n| n.name == "Handle").unwrap();
+    let g = f.nested[at].family.nested_instances[0].guid;
+    f.nested[at].family.nested_instances[1].guid = g;
+    let e = f.check(&|_| true).unwrap_err();
+    assert!(e.contains("nested instance 2") && e.contains("GUID"), "{e}");
+    f.nested[at].family.nested_instances[1].guid = crate::ids::Guid::default();
+    let e = f.check(&|_| true).unwrap_err();
+    assert!(e.contains("nested instance 2") && e.contains("GUID"), "{e}");
+}
+
+/// IFC writes each knob as a part of the handle, and the handle as a part of the cabinet: one aggregation for each level.
+#[test]
+fn three_levels_ifc_aggregates_c_into_b_into_a() {
+    let (s, host) = three_levels();
+    let file = crate::ifc::export(&s.model);
+    let global = |id: Id| crate::ifc::compress(s.model.guid(id).as_u128());
+    let entity = |gid: &str| {
+        file.lines()
+            .find(|l| l.contains(&format!("'{gid}'")) && !l.contains("IFCREL"))
+            .and_then(|l| l.split('=').next())
+            .map(str::to_string)
+            .unwrap_or_else(|| panic!("an entity with GlobalId {gid}"))
+    };
+    let parts = |whole: &str| -> Vec<String> {
+        let line = file.lines().filter(|l| l.contains("IFCRELAGGREGATES")).find(|l| l.contains(&format!(",{whole},(")));
+        let Some(line) = line else { return Vec::new() };
+        let list = line.rsplit_once(",(").map(|(_, l)| l.trim_end_matches([')', ';'])).unwrap_or_default();
+        list.split(',').map(str::to_string).collect()
+    };
+    let cabinet = entity(&global(host));
+    let handle = entity(&global(of_family(&s.model, "Handle")[0].0));
+    let knobs: Vec<String> = of_family(&s.model, "Knob").into_iter().map(|(id, _)| entity(&global(id))).collect();
+    assert_eq!(parts(&cabinet), vec![handle.clone()], "the cabinet aggregates the handle alone:\n{file}");
+    let mut inside = parts(&handle);
+    inside.sort();
+    let mut want = knobs.clone();
+    want.sort();
+    assert_eq!(inside, want, "the handle aggregates the knobs:\n{file}");
+    // Each knob is in one aggregation only, and in no storey.
+    for k in &knobs {
+        let n = file
+            .lines()
+            .filter(|l| l.contains("IFCRELAGGREGATES") && (l.contains(&format!("{k},")) || l.contains(&format!("{k})"))))
+            .count();
+        assert_eq!(n, 1, "{k}");
+        let contained = file
+            .lines()
+            .filter(|l| l.contains("IFCRELCONTAINEDINSPATIALSTRUCTURE"))
+            .any(|l| l.contains(&format!("{k},")) || l.contains(&format!("{k})")));
+        assert!(!contained, "{k} is in its whole, not in the storey");
+    }
+    // Four bodies: the cabinet's, the handle's, and each knob's.
+    assert_eq!(file.lines().filter(|l| l.contains("IFCTRIANGULATEDFACESET")).count(), 4);
+}
+
+/// In the plan, over the knob standing past the handle's back edge (and within a pick of that edge): the cabinet first, then
+/// the handle, then the knob, outer to inner, as Tab steps them.
+#[test]
+fn a_plan_picks_the_host_then_b_then_c() {
+    let (s, host) = three_levels();
+    let handle = of_family(&s.model, "Handle")[0].0;
+    let knob = of_family(&s.model, "Knob").into_iter().find(|(_, n)| (n.origin[0] - 4935.0).abs() < 1e-6).expect("the back knob").0;
+    let level = of_family(&s.model, "Knob")[0].1.level;
+    let view = crate::render::View { scale: 0.5, cx: 4950.0, cy: 130.0, width: 800, height: 800, angle: 0.0 };
+    let d = crate::render::draw(&s.model, level, view);
+    // (35, 22) in the handle's axes, inside the knob, 2 past the handle: (135, 72) in the cabinet's, turned about (5000, 0).
+    let at = view.px(crate::geom::P2(4928.0, 135.0));
+    assert_eq!(d.pick_all(at, 3.0), vec![host, handle, knob]);
 }

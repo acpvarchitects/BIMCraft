@@ -113,6 +113,7 @@ impl FamilyEditor {
                     self.temporary(),
                     self.views.detail,
                     void,
+                    self.views.kept.key(None),
                 )
                     .hash(&mut h);
                 (base.materials.len(), base.images.len()).hash(&mut h);
@@ -195,6 +196,16 @@ impl FamilyEditor {
         if self.temp_hidden_host() {
             graphics.categories.insert("wall".into(), hidden);
         }
+        // {3D}'s own Visibility/Graphics and visual style (FE-18). A door's or a window's parts stand as generic families of their
+        // own, so its category's override is theirs.
+        let mut own = self.views.kept.graphics_of(None);
+        if hosted {
+            let of = if shown.category == Category::Door { "door" } else { "window" };
+            if let Some(o) = own.categories.get(of).cloned() {
+                own.categories.insert("generic".into(), o);
+            }
+        }
+        super::view_graphics::lay_over(&mut graphics, &own);
         m.insert(Element::View3D(View3D {
             name: "{3D}".into(),
             azimuth: AZIMUTH,
@@ -203,7 +214,7 @@ impl FamilyEditor {
             section_box: None,
             perspective: None,
             camera: None,
-            display: Default::default(),
+            display: self.views.kept.display,
             work_plane: None,
         }));
         Ok(FamilyScene { model: Arc::clone(&s.model), part, key })

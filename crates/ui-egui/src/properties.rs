@@ -3993,10 +3993,20 @@ fn nested_instance(ui: &mut Ui, model: &bimcraft_core::model::Model, n: &bimcraf
         Some(Element::Component(c)) => format!("{} : {}", c.family, c.type_name),
         _ => String::new(),
     };
+    // Three levels down and deeper: the shared instance it is part of (a knob, of its handle), by family and type.
+    let within = match model.nested_parent(n).and_then(|id| model.elements.get(id)) {
+        Some(Element::Nested(p)) => Some(format!("{} : {}", p.family, p.type_name)),
+        _ => None,
+    };
     egui::Grid::new("nested-instance").num_columns(2).striped(true).show(ui, |ui| {
         for (name, value) in [(t("Family"), n.family.as_str()), (t("Type"), n.type_name.as_str()), (t("Host"), host.as_str())] {
             ui.label(name);
             ui.label(value);
+            ui.end_row();
+        }
+        if let Some(within) = &within {
+            let l = ui.label(t("Nested in"));
+            ui.label(within).labelled_by(l.id);
             ui.end_row();
         }
     });

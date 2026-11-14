@@ -358,6 +358,28 @@ document's (`document::State::temp`), as Preview Visibility: not saved, no step 
 family closes. While it hides anything the view wears the project's cyan frame (`footer::FRAME`) and the bar says
 "Temporary Hide/Isolate (HR resets)"; Preview Visibility's orange frame is then drawn just inside it, so both show.
 
+### View graphics (FE-18)
+
+Each of the family document's views ({3D}, the two plans and the four elevations) keeps its own graphics
+(`editor/view_graphics.rs`, `Views::kept`), laid over the scratch project it is drawn of, so the project's drawing does what
+they say. They are the session's, as Temporary Hide/Isolate is: not saved, no step of the history, no unsaved change, gone
+when the family closes (saving them with the family would be a view-only field, later).
+
+- Visibility/Graphics (VV, VG, and the View tab's button): the project's dialog (`VgDialog::for_family`), with only its Model
+  and Annotation Categories tabs, listing what the family's views draw: the family's category (a door's or a window's as
+  Doors or Windows, with Walls for the wall it stands in) and Levels. OK and Apply hand the draft back to the view; no
+  command runs. In {3D} a door's or a window's parts stand as generic families of their own, so its category's override is
+  theirs there.
+- Thin Lines (TL, and the View tab's button): the window's own, shared with the project's tabs, as Revit's is the
+  application's; the family's plans and elevations draw every line one pixel wide.
+- Wireframe, Hidden Line and Shaded (WF, HL, SD) and Graphic Display Options (GD): {3D}'s alone, as in the project; the view
+  control bar's Visual Style menu in {3D} sets them too. In a plan or an elevation the status bar says they are {3D}'s.
+- View Range (VR, the family's key alone): the floor plan's, typed in the project's units as offsets from Ref. Level (Top
+  empty, unlimited) and checked as a project plan's is (`model::range_ok`). Until it is set the family's floor plan sees
+  every form whatever its height, as before, and OK on the range the dialog first shows sets none; set, a form wholly below
+  its view depth or above its top is left out (`Staged::seen`). The ceiling plan looks up from its own cut, as a project's
+  does, and has none. While one of these dialogs is open it has the keys: neither the document nor its views get them.
+
 ### Visibility Settings (F8)
 
 F8, part of FORMAT 18 (`family/visibility.rs`). Revit's Family Element Visibility Settings: a form's, a void's and a nested instance's
@@ -1568,15 +1590,29 @@ and `Model::nested_pieces` reads the host's pieces that are its own.
 - **Edits.** It goes with its host: a move, a rotation or a mirror of the host takes it along, and deleting the host deletes
   it and its tags. Moved, turned, mirrored or deleted apart from its host, it is refused, saying it is part of it.
 
+- **Three levels and deeper.** A shared family nested in a shared nested family (a knob on a cabinet's handle) is an
+  element too, its path the handle's instance's GUID then the knob's. So each instance inside a nested definition holds a
+  GUID of its own: where one holds none or repeats one before it in its definition (a definition written by hand, a file
+  from before), `Family::give_inner_guids` gives it one, made from the definition's name and the instance's place, so the
+  same each time and in every copy of one shared definition. The `family` command, `nested::nest_into` and `Model::read`
+  give them (the family's own instances are the library's to give, `Library::sync_parts`), and `Family::check` refuses a
+  shared nested definition whose instances don't each hold one, naming it. Tab reaches the shallower first (the handle, then
+  the knob: `NestedPick::depth`, in `Drawing::pick_all` and `render::nested_at`); Properties says what one is `Nested in`
+  (`Model::nested_parent`, by `guid_of` of its path less its last); IFC aggregates each into the shared instance it is
+  nested in, the nearest written, else into its host (cabinet, handle, knob: two `IfcRelAggregates`). A shared family
+  inside one that isn't shared stays part of it, as before. No FORMAT change: a file holds the GUIDs it held.
+
 Known: IFC writes it without a type object or a property set of its own. A component's plan marks now include those of
 its nested instances standing on its level planes even when it has no symbols of its own (before, a host without symbols
 dropped them).
 
 Tests: `family_shared_nested_tests.rs` (core: placement turned and mirrored, schedules and counts, a tag through save and
-read, IFC aggregation, a file from before, the plan's pick order, an instance not shared), and `tests/shared_nested.rs` (the
-window: Tab-select in a plan, and a nested instance dragged in its family's plan and elevation, pinned, by a formula, undone).
-`BIMCRAFT_T6B_DUMP` set to a folder saves its screenshots there (the plan at 1 : 20 with tags, a schedule with a phase
-column, Tab in an elevation and in {3D}).
+read, IFC aggregation, a file from before, the plan's pick order, an instance not shared; three levels: schedules and counts,
+the GUID through save and read, inner GUIDs given and repeats refused, the IFC chain, the pick order), and
+`tests/shared_nested.rs` (the window: Tab-select in a plan, three levels deep too with `Nested in`, and a nested instance
+dragged in its family's plan and elevation, pinned, by a formula, undone). `BIMCRAFT_T6B_DUMP` set to a folder saves its
+screenshots there (the plan at 1 : 20 with tags, a schedule with a phase column, Tab in an elevation and in {3D});
+`BIMCRAFT_T24_DUMP` the three levels' (Tab to the handle, then the knob, and the knob's Properties).
 
 ## Reloading a family
 
@@ -1676,9 +1712,12 @@ the type previewed puts it, as the view shows it; it takes the one shown now.
 ## The family document's keys (FE-13)
 
 A family tab has two-letter keys of its own (`editor/keys.rs`): `FAMILY_SHORTCUTS`, Revit's default keys for the family editor's
-commands, typed with Ctrl held as the project's are (`ctrl_letters`, [the desktop](desktop.md)): two that are no key leave the first
-to do its own job as a Ctrl key (`family_ctrl_key`: S saves, K finds, Z and Y undo and redo, 1 Properties, C, X and V the
-Clipboard panel's Copy, Cut and Paste) and the second waiting in its place. The project's keys stay blocked on a family tab (`BimApp::keys` returns for one), so no project action runs from it, and
+commands, typed as the project's are, by Shortcuts need Ctrl ([the desktop](desktop.md)). Off, the default: plain letters, the last
+two typed (`family_plain_letters`), with Ctrl+S, Ctrl+K, Ctrl+1, Ctrl+Z and Ctrl+Y doing their job at once and Ctrl+C, Ctrl+X and
+Ctrl+V the Clipboard panel's (`clipboard::key`). On: typed with Ctrl held (`ctrl_letters`, which takes the window's Copy, Cut and
+Paste events as C, X and V): two that are no key leave the first to do its own job as a Ctrl key (`family_ctrl_key`: S saves, K
+finds, Z and Y undo and redo, 1 Properties, C, X and V the Clipboard panel's Copy, Cut and Paste, once) and the second waiting in
+its place, so Ctrl+M then Ctrl+V is Move and pastes nothing. The project's keys stay blocked on a family tab (`BimApp::keys` returns for one), so no project action runs from it, and
 the family's table never reads the project's `SHORTCUTS` or the commands' aliases; a key both have means the same command in each
 (`the_family_table_gives_no_project_key_another_meaning`). Each key does what its ribbon button does in the family, where the button
 is enabled, and nothing where it is greyed or not on the ribbon: MD Modify (while sketching, the sketch's Modify), PP and VP
@@ -1793,6 +1832,8 @@ In `crates/ui-egui`, the Family Editor:
 - `editor/association.rs`: parameter associations. `editor/extrusion.rs`: a selected form's Properties.
 - `editor/exists.rs`: Family Already Exists. `editor/types_dialog.rs`: Family Types.
 - `editor/temp_hide.rs`: the document's Temporary Hide/Isolate. `editor/views.rs`: its plans and elevations.
+  `editor/view_graphics.rs`: each view's graphics for the session (FE-18): Visibility/Graphics, visual style, Graphic
+  Display Options, View Range.
 - `editor/keys.rs`: the document's two-letter keys (`FAMILY_SHORTCUTS`) and what each does (`BimApp::family_action`).
 - `editor/zoom.rs`: the zoom commands in the document's views and their Previous Pan/Zoom history, over the window's `zoom.rs`.
 - `editor/sketch.rs`: sketch mode. `editor/sketch_dims.rs`: the dimensions while a form is sketched (FE-12). `editor/shape_handles.rs`: a selected form's profile handles. `editor/dimensions.rs`: their dimensions and Align.

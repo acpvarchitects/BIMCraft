@@ -15076,6 +15076,8 @@ fn family(s: &mut Session, p: &Value) -> R {
         None => None,
     };
     let to = rename.clone().unwrap_or_else(|| name.clone());
+    // The instances inside what it nests, each by a GUID of its own, which the elements of shared ones are named by (T6b).
+    f.give_inner_guids();
     // Every error of what it comes to, each addressed to what has it, and every warning of it.
     let (errors, warnings) = f.problems(&|m| s.model.materials.contains_key(m));
     if !errors.is_empty() {
