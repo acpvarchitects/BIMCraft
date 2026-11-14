@@ -3675,10 +3675,7 @@ impl Model {
 
     /// Component `c`'s model lines (FE-15) placed in the model, every one, with its Visibility Settings and subcategory key:
     /// what a section, an elevation and a 3D view draw, asking the settings by the way they look.
-    pub fn component_model_line_parts(
-        &self,
-        c: &Component,
-    ) -> Vec<([[f64; 3]; 2], Option<crate::family::Visibility>, Option<&'static str>)> {
+    pub fn component_model_line_parts(&self, c: &Component) -> Vec<crate::family::ModelLinePart> {
         let Some(f) = self.families.get(&c.family) else { return Vec::new() };
         if f.model_lines.is_empty() {
             return Vec::new();

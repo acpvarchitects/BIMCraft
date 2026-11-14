@@ -43,6 +43,9 @@ pub use nested::{Keep, NestedFamily, NestedInstance};
 pub use options::{MAX_OMNICLASS, OPTION_KEYS, OmniClass};
 pub use visibility::Visibility;
 
+/// A model line (FE-15) as a view draws it: its ends, its Visibility Settings and the subcategory key it is drawn in.
+pub type ModelLinePart = ([[f64; 3]; 2], Option<Visibility>, Option<&'static str>);
+
 pub use planes::{
     CENTER_FRONT_BACK, CENTER_LEFT_RIGHT, DATUMS, Face, Frame, MAX_LINES, MAX_PLANES, ModelLine, PlaneRef, Planes, REF_LEVEL, RefLine,
     RefPlane, Reference, datums,
@@ -2552,7 +2555,7 @@ impl Family {
     /// Every one of its model lines for `values`, in its own axes where its constraints put what they are drawn on, with its
     /// Visibility Settings and the subcategory key it is drawn in: what a view that asks the settings itself draws from (a
     /// section's, an elevation's or a 3D view's picture).
-    pub fn model_line_parts(&self, values: &BTreeMap<String, Val>) -> Vec<([[f64; 3]; 2], Option<Visibility>, Option<&'static str>)> {
+    pub fn model_line_parts(&self, values: &BTreeMap<String, Val>) -> Vec<ModelLinePart> {
         if self.model_lines.is_empty() {
             return Vec::new();
         }

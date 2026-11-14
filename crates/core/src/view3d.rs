@@ -1673,9 +1673,12 @@ pub(crate) fn strokes_of(m: &Model) -> Vec<Stroke> {
     out
 }
 
+/// A point as a camera projects it: across, down and its depth.
+type Px = (f64, f64, f64);
+
 /// What of the projected line from `a` to `b` a section's `clip` keeps between its line and its far clip (depths toward the
 /// camera, a parallel view's straight along the line), if any.
-fn kept_in_depth((a, b): ((f64, f64, f64), (f64, f64, f64)), clip: &Clip) -> Option<((f64, f64, f64), (f64, f64, f64))> {
+fn kept_in_depth((a, b): (Px, Px), clip: &Clip) -> Option<(Px, Px)> {
     let (lo, hi) = (clip.far.map_or(f64::NEG_INFINITY, |f| clip.near - f), clip.near);
     let (mut t0, mut t1) = (0.0f64, 1.0f64);
     let d = b.2 - a.2;

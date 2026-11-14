@@ -200,3 +200,29 @@ fn a_sections_selection_repainted_paints_its_model_line_in_the_selections_colour
     assert!(img.retint_section(&[]));
     assert!(!drawn_near(&img, at, id, Some(red)) && drawn_near(&img, at, id, None), "back to its own colour");
 }
+
+#[test]
+fn the_cards_mesh_draws_and_picks_a_model_line_as_the_processors_picture_does() {
+    use crate::view3d::gpu::Mesh;
+    let mut s = Session::new();
+    let id = placed(&mut s, Value::Null);
+    let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
+    let mesh = Mesh::new(&scene, &look).unwrap();
+    assert_eq!(mesh.strokes_cut(&[], None), vec![([FROM, TO], crate::view3d::EDGE)], "its line, in the edges' colour");
+    let red = Rgb(255, 0, 0);
+    assert_eq!(mesh.strokes_cut(&[(id, red)], None)[0].1, red, "tinted when selected");
+    // A section box round its lower half keeps that half.
+    let half = mesh.strokes_cut(&[], Some(([-2000.0, -2000.0, -100.0], [2000.0, 2000.0, 450.0])));
+    assert!(half.len() == 1 && (half[0].0[1][2] - 450.0).abs() < 1e-6, "{half:?}");
+    // Picked where the processor's picture picks it.
+    let (x, y, _) = camera().project(MIDDLE);
+    let near = (-2..=2).flat_map(|dx| (-2..=2).map(move |dy| (x + f64::from(dx), y + f64::from(dy))));
+    let picked: Vec<(f64, f64)> = near.filter(|(x, y)| mesh.pick(&camera(), &[], *x, *y).is_some_and(|h| h.id == id)).collect();
+    assert!(!picked.is_empty(), "the card's mesh picks it");
+    let img = in_3d(&s, &[]);
+    assert!(picked.iter().all(|(x, y)| img.pick(*x, *y) == Some(id)), "where the processor's picture does");
+    // Hidden with its category, the card draws none.
+    run(&mut s, "graphics", json!({"view": "{3D}", "hide": ["generic"]}));
+    let look = Look::of_3d(&s.model);
+    assert!(Mesh::new(&Scene::new(&s.model), &look).unwrap().strokes_cut(&[], None).is_empty());
+}
