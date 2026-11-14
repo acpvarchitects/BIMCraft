@@ -452,6 +452,18 @@ impl Family {
         inst.params.iter().filter(|(k, _)| !words.contains(&k.as_str())).map(|(k, e)| (k.as_str(), e)).collect()
     }
 
+    /// Each nested instance inside its nested definitions, at every depth, given a GUID of its own where it holds none or
+    /// repeats one an instance before it in the same definition holds (a definition written by hand, or a file's from before):
+    /// what the element of a shared one three levels down is named by (`nested_elements::guid_of`). Its own instances are the
+    /// project's to give (`Library::sync_parts`). Whether any was given.
+    pub fn give_inner_guids(&mut self) -> bool {
+        let mut any = false;
+        for n in &mut self.nested {
+            any |= give_guids(&n.name, &mut n.family, MAX_NESTING + 1);
+        }
+        any
+    }
+
     /// Whether its nested families and instances are sound, `chain` the names of the families it is nested in (its own
     /// first, where known) and `total` the definitions counted so far in the tree: names unique and none of the chain's (no
     /// family is loaded into itself), within the caps, each definition sound in turn; each instance of a family it nests and
@@ -489,6 +501,19 @@ impl Family {
             *total += 1;
             if *total > MAX_NESTED_TOTAL {
                 return Err(format!("its tree holds more than {MAX_NESTED_TOTAL} nested families"));
+            }
+            // A shared family's instances name the elements a project makes of them (T6b): each by a GUID of its own.
+            if n.family.shared {
+                let mut seen = std::collections::BTreeSet::new();
+                for (j, inst) in n.family.nested_instances.iter().enumerate() {
+                    if !given(inst.guid) || !seen.insert(inst.guid) {
+                        return Err(format!(
+                            "{who}: nested instance {} has no GUID of its own ({}): load the family again, which gives it one",
+                            j + 1,
+                            inst.guid
+                        ));
+                    }
+                }
             }
             chain.push(n.name.clone());
             let checked = n.family.check_in(has_material, chain, total);
@@ -566,6 +591,42 @@ impl Family {
             .filter(move |(_, n)| n.host.guid() == guid)
             .map(|(i, _)| format!("nested instance {}", i + 1))
     }
+}
+
+/// Whether `g` is a GUID a part may hold: neither none nor an id waiting to be one.
+fn given(g: Guid) -> bool {
+    !g.is_nil() && g.pending().is_none()
+}
+
+/// Definition `family`'s nested instances (it nested as `name`), and those inside the families it nests, at most `depth`
+/// deep, each given a GUID of its own where it holds none or repeats one before it. The GUID given is made from `name` and
+/// the instance's place, so a file read twice, and each copy of one shared definition, give the same. Whether any was given.
+fn give_guids(name: &str, family: &mut Family, depth: usize) -> bool {
+    if depth == 0 {
+        return false;
+    }
+    let seed = name.bytes().fold(crate::model::mix(0x7432_3464_6e65_7374), |s, b| crate::model::mix(s ^ u64::from(b)));
+    let mut any = false;
+    let mut seen = std::collections::BTreeSet::new();
+    let held: std::collections::BTreeSet<Guid> = family.nested_instances.iter().map(|i| i.guid).collect();
+    for (i, inst) in family.nested_instances.iter_mut().enumerate() {
+        if given(inst.guid) && seen.insert(inst.guid) {
+            continue;
+        }
+        let mut n = i as u64;
+        let mut g = Guid::seeded(seed, n);
+        while !given(g) || held.contains(&g) || seen.contains(&g) {
+            n = n.wrapping_add(1 << 32);
+            g = Guid::seeded(seed, n);
+        }
+        seen.insert(g);
+        inst.guid = g;
+        any = true;
+    }
+    for n in &mut family.nested {
+        any |= give_guids(&n.name, &mut n.family, depth - 1);
+    }
+    any
 }
 
 /// Every shared family in `list` named `name`, at most `depth` deep, made `definition`; whether any was.
@@ -680,6 +741,8 @@ pub fn nest_into(
     if incoming.nests(name) {
         return Err(format!("`{name}` nests a family of its own name: a family can't be loaded into itself"));
     }
+    // Its instances, and those of what it nests, each by a GUID of its own: what a project names their elements by (T6b).
+    give_guids(name, &mut incoming, MAX_NESTING + 1);
     let mut report = Nesting::default();
     let at = list.iter().position(|n| n.name == name);
     if let Some(i) = at

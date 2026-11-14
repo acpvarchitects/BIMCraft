@@ -299,3 +299,86 @@ fn shared_nested_screenshots() {
     release(&mut h, at);
     save(&mut h, "family-dropped");
 }
+
+/// Three levels (T24's first part): the cabinet's shared handle nests two shared knobs, at (5, 5) and (30, 15) on its top in its
+/// axes, the second standing 5 past its back edge.
+const KNOBBED: &str = r#"family {"name": "Cabinet", "category": "furniture", "parameters": [{"name": "Width", "value": 600}], "types": {"Small": {"Width": 600}}, "forms": [{"profile": [[0, 0], ["Width", 0], ["Width", 400], [0, 400]], "to": 800}]}
+family {"name": "Cabinet", "nest": {"name": "Handle", "definition": {"category": "generic", "shared": true, "parameters": [{"name": "W", "value": 40}], "types": {"Lever": {}}, "forms": [{"profile": [[0, 0], ["W", 0], ["W", 20], [0, 20]], "to": 30}], "nested": [{"name": "Knob", "family": {"category": "generic", "shared": true, "types": {"K": {}}, "forms": [{"profile": [[0, 0], [10, 0], [10, 10], [0, 10]], "to": 5}]}}], "nested_instances": [{"family": "Knob", "type": "K", "at": [5, 5], "offset": 30}, {"family": "Knob", "type": "K", "at": [30, 15], "offset": 30}]}}}
+family {"name": "Cabinet", "nested_instance": {"family": "Handle", "type": "Lever", "at": [100, 50], "params": {"W": "Width / 10"}}}
+component {"family": "Cabinet", "type": "Small", "at": [5000, 0], "angle": 90}"#;
+
+/// Inside the back knob, 2 past the handle's back edge: (35, 22) in the handle's axes, turned with the cabinet.
+const BACK_KNOB: P2 = P2(4928.0, 135.0);
+
+/// The plan in close on the handle, the pointer over the back knob.
+fn knobbed() -> Harness<'static, BimApp> {
+    let mut h = app(KNOBBED);
+    h.set_size(vec2(1600.0, 1000.0));
+    h.run();
+    let level = match h.state().sheet {
+        Sheet::Plan(level) => level,
+        _ => panic!("a plan"),
+    };
+    h.state_mut().canvas.set_view(level, 4880.0, 150.0, 1.5);
+    h.run();
+    h
+}
+
+/// The nested element of family `family` whose origin's x is `x` (any, where `x` is none).
+fn nested_of(h: &Harness<BimApp>, family: &str, x: Option<f64>) -> Id {
+    let m = &h.state().session.model;
+    m.elements
+        .iter()
+        .find(|(_, e)| matches!(e, Element::Nested(n) if n.family == family && x.is_none_or(|x| (n.origin[0] - x).abs() < 1e-6)))
+        .map(|(id, _)| *id)
+        .unwrap_or_else(|| panic!("a nested {family}"))
+}
+
+#[test]
+fn tab_steps_host_then_b_then_c() {
+    let mut h = knobbed();
+    let cabinet = find(&h, |e| matches!(e, Element::Component(_)));
+    click(&mut h, BACK_KNOB);
+    assert_eq!(h.state().selection, [cabinet], "a click takes the cabinet");
+    // Each from the pointer coming to it afresh, so Tab counts from the cabinet.
+    for (tabs, family) in [(1, "Handle"), (2, "Knob")] {
+        h = knobbed();
+        let want = nested_of(&h, family, if family == "Knob" { Some(4935.0) } else { None });
+        h.hover_at(h.state().screen(BACK_KNOB));
+        h.run();
+        for _ in 0..tabs {
+            key(&mut h, Key::Tab);
+        }
+        click(&mut h, BACK_KNOB);
+        assert_eq!(h.state().selection, [want], "{tabs} Tab: the handle, then the knob on it");
+    }
+    // The knob's Properties say what it is nested in; the handle's don't.
+    assert!(h.query_by_label("Nested in").is_some(), "the knob is nested in the handle");
+    assert!(h.query_by_label("Handle : Lever").is_some(), "the handle by family and type");
+    h.state_mut().selection = vec![nested_of(&h, "Handle", None)];
+    h.run();
+    assert!(h.query_by_label("Nested in").is_none(), "the handle is the cabinet's own");
+}
+
+/// The screenshots T24's three levels are looked at by, saved where `BIMCRAFT_T24_DUMP` says (only then): Tab over the back
+/// knob reaching the handle, then the knob, and the knob selected with its Properties.
+#[test]
+fn three_levels_screenshots() {
+    let Ok(folder) = std::env::var("BIMCRAFT_T24_DUMP") else { return };
+    std::fs::create_dir_all(&folder).unwrap();
+    let save = |h: &mut Harness<BimApp>, name: &str| {
+        h.run();
+        h.run();
+        h.render().unwrap().save(std::path::Path::new(&folder).join(format!("t24-{name}.png"))).unwrap();
+    };
+    let mut h = knobbed();
+    h.hover_at(h.state().screen(BACK_KNOB));
+    h.run();
+    save(&mut h, "hover-a");
+    key(&mut h, Key::Tab);
+    save(&mut h, "tab-b");
+    key(&mut h, Key::Tab);
+    save(&mut h, "tab-c");
+    click(&mut h, BACK_KNOB);
+    save(&mut h, "c-selected-nested-in");
+}

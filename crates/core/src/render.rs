@@ -289,6 +289,9 @@ pub struct Drawing {
 pub struct NestedPick {
     pub id: Id,
     pub host: Id,
+    /// How deep it is nested: 1 for an instance its host's family places, 2 for one inside that, and so on. Tab reaches the
+    /// shallower first.
+    pub depth: usize,
     pub rings: Vec<Vec<(f32, f32)>>,
     /// Its plan symbols' lines, open, for a family of symbols alone.
     pub lines: Vec<Vec<(f32, f32)>>,
@@ -666,10 +669,11 @@ impl Drawing {
         let top = |id: &Id| !self.on_top.contains(id);
         found.sort_by(|a, b| top(&a.0).cmp(&top(&b.0)).then(a.1.0.total_cmp(&b.1.0)).then(b.1.1.cmp(&a.1.1)));
         let mut out: Vec<Id> = found.into_iter().map(|(id, _)| id).collect();
-        // A shared nested instance under it comes right after its host, nearest first: a click takes the host, Tab reaches it.
+        // A shared nested instance under it comes right after its host, the shallower first (a handle before the knob on it),
+        // then the nearest: a click takes the host, Tab reaches it.
         let mut inside: Vec<(f64, &NestedPick)> =
             self.nested.iter().map(|n| (n.distance(p), n)).filter(|(d, _)| *d <= f64::from(tol)).collect();
-        inside.sort_by(|a, b| a.0.total_cmp(&b.0));
+        inside.sort_by(|a, b| a.1.depth.cmp(&b.1.depth).then(a.0.total_cmp(&b.0)));
         for (_, n) in inside {
             if out.contains(&n.id) {
                 continue;
@@ -3871,7 +3875,7 @@ fn nested_picks(d: &mut Drawing, m: &Model, (host, c): (Id, &crate::model::Compo
             _ => Vec::new(),
         };
         if !rings.is_empty() || !lines.is_empty() {
-            d.nested.push(NestedPick { id, host, rings, lines });
+            d.nested.push(NestedPick { id, host, depth: path.len(), rings, lines });
         }
     }
 }
@@ -3884,12 +3888,14 @@ pub fn section_px(m: &Model, id: Id, view: View, p: [f64; 3]) -> Option<(f32, f3
     Some(view.px(P2((P2(p[0], p[1]) - v.start).dot(u), p[2])))
 }
 
-/// Of `seen`, the shared nested instances within `tol` px of `at`, nearest first: what Tab reaches after their host.
+/// Of `seen`, the shared nested instances within `tol` px of `at`, the shallower first, then the nearest: what Tab reaches
+/// after their host.
 pub fn nested_at(seen: &[NestedPick], at: (f32, f32), tol: f32) -> Vec<Id> {
     let p = P2(f64::from(at.0), f64::from(at.1));
-    let mut hits: Vec<(f64, Id)> = seen.iter().map(|n| (n.distance(p), n.id)).filter(|(d, _)| *d <= f64::from(tol)).collect();
-    hits.sort_by(|a, b| a.0.total_cmp(&b.0));
-    hits.into_iter().map(|(_, id)| id).collect()
+    let mut hits: Vec<(usize, f64, Id)> =
+        seen.iter().map(|n| (n.depth, n.distance(p), n.id)).filter(|(_, d, _)| *d <= f64::from(tol)).collect();
+    hits.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.total_cmp(&b.1)));
+    hits.into_iter().map(|(_, _, id)| id).collect()
 }
 
 /// The outlines of the holes shafts cut in a floor's or a ceiling's slabs.

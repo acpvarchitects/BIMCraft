@@ -214,7 +214,7 @@ impl Model {
                         (hull.len() > 2).then(|| hull.iter().map(|q| (q.0 as f32, q.1 as f32)).collect())
                     })
                     .collect();
-                (!rings.is_empty()).then_some(crate::render::NestedPick { id, host, rings, lines: Vec::new() })
+                (!rings.is_empty()).then_some(crate::render::NestedPick { id, host, depth: path.len(), rings, lines: Vec::new() })
             })
             .collect()
     }
@@ -224,6 +224,17 @@ impl Model {
     pub fn nested_pieces(&self, n: &NestedElement) -> Vec<Piece> {
         let Some(Element::Component(c)) = self.elements.get(n.host) else { return Vec::new() };
         self.component_pieces(c).into_iter().filter(|p| p.nested == n.path).collect()
+    }
+
+    /// The element of the shared nested instance nested element `n` is nested in, where it is nested in one (three levels
+    /// down and deeper): the one its host and its path less its last make. None for one its host's family places itself.
+    pub fn nested_parent(&self, n: &NestedElement) -> Option<Id> {
+        let (_, up) = n.path.split_last()?;
+        if up.is_empty() {
+            return None;
+        }
+        let id = self.elements.id(guid_of(n.host, up))?;
+        matches!(self.elements.get(id), Some(Element::Nested(_))).then_some(id)
     }
 
     /// Nested element `n`'s host component, where it is one.
