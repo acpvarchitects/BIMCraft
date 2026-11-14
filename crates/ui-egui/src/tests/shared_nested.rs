@@ -6,6 +6,7 @@ use super::*;
 use crate::editor::select_box::Picked;
 use bimcraft_core::family::Expr;
 use bimcraft_core::family::views::{Side, Which};
+use egui_kittest::kittest::NodeT;
 
 /// A cabinet 600 by 400 whose handle, a shared family, is placed at (100, 50), as wide as a tenth of the cabinet; a
 /// component of it at (5000, 0), turned 90 degrees.
@@ -39,6 +40,84 @@ fn a_click_on_a_shared_nested_instance_takes_its_host_and_tab_reaches_it() {
     key(&mut h, Key::Delete);
     assert!(h.state().session.model.elements.get(handle).is_some());
     assert!(h.state().status.text.contains("part of component"), "{}", h.state().status.text);
+}
+
+/// The cabinet at (5000, 0), not turned, its handle (a shared family) standing proud of its front at (250, -20), 400 up, a
+/// quarter of its width wide and 100 high; an elevation looking north at it from 2 m south.
+const FRONT: &str = r#"family {"name": "Cabinet", "category": "furniture", "parameters": [{"name": "Width", "value": 600}], "types": {"Small": {"Width": 600}}, "forms": [{"profile": [[0, 0], ["Width", 0], ["Width", 400], [0, 400]], "to": 800}]}
+family {"name": "Cabinet", "nest": {"name": "Handle", "definition": {"category": "generic", "shared": true, "parameters": [{"name": "W", "value": 40}], "types": {"Lever": {}}, "forms": [{"profile": [[0, 0], ["W", 0], ["W", 20], [0, 20]], "to": 100}]}}}
+family {"name": "Cabinet", "nested_instance": {"family": "Handle", "type": "Lever", "at": [250, -20], "offset": 400, "params": {"W": "Width / 4"}}}
+component {"family": "Cabinet", "type": "Small", "at": [5000, 0]}
+elevation {"start": [4000, -2000], "end": [7000, -2000], "name": "Front"}"#;
+
+/// The handle's middle on its front face, in the model.
+const FRONT_HANDLE: [f64; 3] = [5325.0, -20.0, 450.0];
+
+#[test]
+fn in_an_elevation_tab_reaches_a_shared_nested_instance_after_its_host() {
+    let mut h = app(FRONT);
+    let cabinet = find(&h, |e| matches!(e, Element::Component(_)));
+    let handle = handle(&h);
+    let front = find(&h, |e| matches!(e, Element::Elevation(_)));
+    h.state_mut().open_sheet(Sheet::Section(front));
+    h.run();
+    h.run();
+    // Along its line from its start, and up.
+    let at = P2(FRONT_HANDLE[0] - 4000.0, FRONT_HANDLE[2]);
+    click(&mut h, at);
+    assert_eq!(h.state().selection, [cabinet], "a click takes the cabinet");
+    h.hover_at(h.state().screen(at));
+    h.run();
+    key(&mut h, Key::Tab);
+    click(&mut h, at);
+    assert_eq!(h.state().selection, [handle], "Tab, then a click, takes the handle");
+}
+
+#[test]
+fn in_3d_tab_reaches_a_shared_nested_instance_after_its_host() {
+    let mut h = app(FRONT);
+    let cabinet = find(&h, |e| matches!(e, Element::Component(_)));
+    let handle = handle(&h);
+    press(&mut h, "Default 3D View");
+    h.run();
+    let at = h.state().screen3(FRONT_HANDLE);
+    click_at(&mut h, at);
+    assert_eq!(h.state().selection, [cabinet], "a click takes the cabinet");
+    h.hover_at(at);
+    h.run();
+    key(&mut h, Key::Tab);
+    click_at(&mut h, at);
+    assert_eq!(h.state().selection, [handle], "Tab, then a click, takes the handle");
+    // Its host as people read it.
+    assert!(h.query_by_label("Cabinet : Small").is_some(), "its host by family and type");
+}
+
+#[test]
+fn edit_family_opens_a_shared_nested_family_the_project_has_and_is_greyed_for_one_it_hasnt() {
+    // In the plan, the handle's middle: Tab past the cabinet, and a click.
+    let take_handle = |h: &mut Harness<BimApp>| {
+        let at = P2(5325.0, -10.0);
+        h.hover_at(h.state().screen(at));
+        h.run();
+        key(h, Key::Tab);
+        click(h, at);
+        assert_eq!(h.state().selection, [handle(h)]);
+    };
+    // Loading the cabinet loaded its shared Handle into the project too: Edit Family opens it.
+    let mut h = app(FRONT);
+    assert!(h.state().session.model.families.contains_key("Handle"));
+    take_handle(&mut h);
+    assert!(!h.get_by_label("Edit Family").accesskit_node().is_disabled());
+    press(&mut h, "Edit Family");
+    assert!(matches!(h.state().sheet, Sheet::Family(..)), "{:?}", h.state().sheet);
+    let opened = editor(&h).draft_family().unwrap();
+    assert!(opened.types.contains_key("Lever"), "the Handle family");
+    // A project that hasn't it on its own (a file from elsewhere): greyed, saying why.
+    let mut h = app(FRONT);
+    std::sync::Arc::make_mut(&mut h.state_mut().session.model).families.remove("Handle");
+    h.run();
+    take_handle(&mut h);
+    assert!(h.get_by_label("Edit Family").accesskit_node().is_disabled());
 }
 
 /// A family whose nested Leg is placed at (1500, -500), as `at` and `extra` (more fields of the instance) say.
@@ -122,31 +201,63 @@ fn shared_nested_screenshots() {
         h.run();
         h.render().unwrap().save(std::path::Path::new(&folder).join(format!("t6b-{name}.png"))).unwrap();
     };
-    let mut h = app(CABINET);
+    // The cabinet in Existing, its plan at 1 : 20, as furniture is drawn.
+    let script = format!(
+        "{FRONT}\nscale {{\"view\": \"Level 1\", \"scale\": 20}}\nmodify {{\"id\": 100002, \"params\": {{\"Phase Created\": \"Existing\"}}}}"
+    );
+    let mut h = app(&script);
     h.set_size(vec2(1600.0, 1000.0));
     h.run();
+    let cabinet = find(&h, |e| matches!(e, Element::Component(_)));
     let handle = handle(&h);
-    // In close on the cabinet, so its handle shows.
     let level = match h.state().sheet {
         Sheet::Plan(level) => level,
         _ => panic!("a plan"),
     };
-    h.state_mut().canvas.look_at(level, P2(5300.0, 400.0), 0.35);
+    h.state_mut().canvas.look_at(level, P2(5150.0, 150.0), 0.6);
     h.run();
-    h.hover_at(h.state().screen(HANDLE));
+    let at = P2(5325.0, -10.0);
+    h.hover_at(h.state().screen(at));
     h.run();
     key(&mut h, Key::Tab);
     save(&mut h, "tab-hover");
-    click(&mut h, HANDLE);
+    click(&mut h, at);
     save(&mut h, "tab-selected");
-    h.state_mut().run("tag", json!({"ids": [handle], "offset": [700, 250], "leader": true}));
+    // A tag on the cabinet and one on its handle: the same size.
+    h.state_mut().run("tag", json!({"ids": [cabinet], "offset": [-500, 450], "leader": true}));
+    h.state_mut().run("tag", json!({"ids": [handle], "offset": [500, -350], "leader": true}));
     save(&mut h, "tag");
-    let id = h
-        .state_mut()
-        .run("schedule", json!({"name": "Furniture and Parts", "category": "component", "fields": ["Family", "Type", "Level", "Count"]}));
+    let id = h.state_mut().run(
+        "schedule",
+        json!({"name": "Furniture and Parts", "category": "component", "fields": ["Family", "Type", "Level", "Phase Created", "Count"]}),
+    );
     let id = id.and_then(|v| v["id"].as_u64()).unwrap();
     h.state_mut().open_sheet(Sheet::Table(id));
     save(&mut h, "schedule");
+    // The elevation looking north at it: Tab over the cabinet reaches the handle.
+    let front = find(&h, |e| matches!(e, Element::Elevation(_)));
+    h.state_mut().open_sheet(Sheet::Section(front));
+    h.run();
+    h.run();
+    h.state_mut().canvas.look_at(front, P2(1300.0, 450.0), 0.6);
+    h.run();
+    let at = P2(FRONT_HANDLE[0] - 4000.0, FRONT_HANDLE[2]);
+    h.hover_at(h.state().screen(at));
+    h.run();
+    key(&mut h, Key::Tab);
+    save(&mut h, "elevation-tab");
+    click(&mut h, at);
+    save(&mut h, "elevation-selected");
+    // The default 3D view.
+    press(&mut h, "Default 3D View");
+    h.run();
+    let at = h.state().screen3(FRONT_HANDLE);
+    h.hover_at(at);
+    h.run();
+    key(&mut h, Key::Tab);
+    save(&mut h, "3d-tab");
+    click_at(&mut h, at);
+    save(&mut h, "3d-selected");
     // In the family: the leg dragged, mid-drag.
     let mut h = app(&legged("[1500, -500]", ""));
     h.set_size(vec2(1600.0, 1000.0));

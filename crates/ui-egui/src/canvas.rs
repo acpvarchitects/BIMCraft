@@ -1894,6 +1894,9 @@ impl BimApp {
                 for ring in &n.rings {
                     p.add(Shape::closed_line(ring.iter().map(|q| d.place.pos(*q)).collect(), Stroke::new(2.0, accent)));
                 }
+                for line in &n.lines {
+                    p.add(Shape::line(line.iter().map(|q| d.place.pos(*q)).collect(), Stroke::new(2.0, accent)));
+                }
             }
         }
         match (self.canvas.drag, local) {

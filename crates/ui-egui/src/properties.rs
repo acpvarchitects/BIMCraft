@@ -3620,7 +3620,10 @@ impl BimApp {
 fn nested_instance(ui: &mut Ui, model: &bimcraft_core::model::Model, n: &bimcraft_core::nested_elements::NestedElement) {
     ui.label(egui::RichText::new(t("Shared Nested Instance")).strong());
     ui.add_space(4.0);
-    let host = model.elements.id(n.host).map(|id| id.to_string()).unwrap_or_default();
+    let host = match model.elements.get(n.host) {
+        Some(Element::Component(c)) => format!("{} : {}", c.family, c.type_name),
+        _ => String::new(),
+    };
     egui::Grid::new("nested-instance").num_columns(2).striped(true).show(ui, |ui| {
         for (name, value) in [(t("Family"), n.family.as_str()), (t("Type"), n.type_name.as_str()), (t("Host"), host.as_str())] {
             ui.label(name);

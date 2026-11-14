@@ -1506,6 +1506,21 @@ impl BimApp {
             .filter(|_| lit_dim.is_none())
             .and_then(|at| pick(&o.picker, at))
             .map(|h| h.id);
+        // Tab over a component reaches its shared nested instances after it (T6b), as in a plan: seen through the camera, in
+        // the view's points from its corner.
+        let tab = ui.input(|i| i.key_pressed(egui::Key::Tab)) && hover.is_some();
+        let tabbed = std::mem::take(&mut self.tab_cycle) || tab;
+        let project = |p: [f64; 3]| {
+            let (x, y, _) = cam.project(p);
+            (x.is_finite() && y.is_finite()).then_some((x as f32 / ppp, y as f32 / ppp))
+        };
+        let nested = crate::nested_tab::seen(&model, hovered, &selection, &project);
+        let hovered = if modify {
+            let at = hover.map(|h| (h.x - rect.min.x, h.y - rect.min.y));
+            self.nested_tab.step(hovered, &nested, at, tabbed)
+        } else {
+            hovered
+        };
         // The floor or roof being shaped is drawn as it is, not in the selection's colour: edit mode's marks are what's lit.
         let tints: Vec<(Id, Rgb)> = selection
             .iter()
@@ -1550,6 +1565,7 @@ impl BimApp {
                 ));
             }
         };
+        crate::nested_tab::outline(&p, &nested, hovered, &selection, &|(x, y)| rect.min + vec2(x, y));
         draw_marks(&marks, &|owner, c| {
             if selection.contains(&owner) {
                 canvas_pal().accent
@@ -1816,9 +1832,12 @@ impl BimApp {
         // While sketching here a click is the sketch's, with what's under it for Pick Walls and Pick Lines.
         let under = click.filter(|_| sketch_z.is_some()).and_then(|at| pick(&o.picker, at)).map(|h| h.id);
         // A dimension's lines are picked before what the picture shows under them.
-        let clicked = click
-            .filter(|_| sketch_z.is_none() && !picking)
-            .map(|at| dim_at(at).filter(|_| modify).or_else(|| pick(&o.picker, at).map(|h| h.id)));
+        let clicked = click.filter(|_| sketch_z.is_none() && !picking).map(|at| {
+            dim_at(at).filter(|_| modify).or_else(|| {
+                // Where the cursor is, what Tab has reached there.
+                if modify && Some(at) == hover && hovered.is_some() { hovered } else { pick(&o.picker, at).map(|h| h.id) }
+            })
+        });
         let dim_click = click.filter(|_| dimming).map(|at| (px(at), dim_pick(at)));
         // The face of what's clicked, as paint names the faces of an element.
         let face = click.and_then(|at| pick(&o.picker, at).map(|h| h.face).filter(|f| !f.is_empty()));

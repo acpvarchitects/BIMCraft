@@ -46,6 +46,7 @@ mod links;
 mod mep;
 mod mesh;
 mod minimap;
+mod nested_tab;
 mod notes;
 mod objectstyles;
 mod orbit;
@@ -753,6 +754,8 @@ pub struct BimApp {
     measured: Option<(P2, P2)>,
     /// Tab pressed over the plan, taken from egui's focus keys: cycle what's under the cursor.
     tab_cycle: bool,
+    /// What Tab steps through over a component in a section or the 3D view: it, then its shared nested instances (T6b).
+    nested_tab: nested_tab::Cycle,
     /// What a window handed over that `pace` kept back for the frames after the one it came in.
     held: Vec<Event>,
     /// The Keyboard Shortcuts dialog is open (KS); the Manage tab drops its Project Units menu open
@@ -1472,6 +1475,7 @@ impl BimApp {
             cad_dialog: None,
             cad_box: None,
             tab_cycle: false,
+            nested_tab: nested_tab::Cycle::default(),
             held: Vec::new(),
             show_shortcuts: false,
             custom_shortcuts: BTreeMap::new(),
