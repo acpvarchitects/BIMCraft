@@ -1594,6 +1594,8 @@ impl BimApp {
             std::mem::swap(&mut self.typed_length, &mut self.drawing.other);
             self.drawing.field = 1 - self.drawing.field.min(1);
         }
+        // Cut Geometry's second pick goes by the voids' outlines and places, not by what the plan draws of the components.
+        let cut_candidates = self.cut_candidates().to_vec();
         let c = &mut self.canvas;
         // How near the cursor a dimension's reference line must be, mm.
         let near = 2.0 * f64::from(PICK) / view.scale;
@@ -1617,6 +1619,11 @@ impl BimApp {
             }
             Tool::Split => {
                 d.pick_all(q, PICK).into_iter().find(|id| matches!(model.elements.get(id), Some(Element::Wall(_) | Element::DetailLine(_))))
+            }
+            // Cut Geometry: the wall first, then the component whose voids cut it.
+            Tool::CutGeometry { wall: None, .. } => d.pick_all(q, PICK).into_iter().find(|id| model.wall(*id).is_some()),
+            Tool::CutGeometry { wall: Some(_), .. } => {
+                bimcraft_core::project_geometry::pick(&cut_candidates, view.mm(q), f64::from(PICK) / view.scale)
             }
             Tool::Trim(_) | Tool::Offset => {
                 d.pick_all(q, PICK).into_iter().find(|id| matches!(model.elements.get(id), Some(Element::Wall(_) | Element::DetailLine(_))))
@@ -1807,7 +1814,9 @@ impl BimApp {
         // The floor or roof being shaped is drawn as it is, not in the selection's colour: edit mode's marks are what's lit.
         let shaped = self.shaping();
         let mut marked: Vec<Id> = self.selection.iter().copied().filter(|id| Some(*id) != shaped).collect();
-        if let Tool::Trim(Some((first, _))) | Tool::TrimTo { boundary: Some(first), .. } = self.tool {
+        if let Tool::Trim(Some((first, _))) | Tool::TrimTo { boundary: Some(first), .. } | Tool::CutGeometry { wall: Some(first), .. } =
+            self.tool
+        {
             marked.push(first);
         }
         let pictures = self.canvas.drawing.pictures(ui.ctx(), &d.drawing);
@@ -1919,6 +1928,20 @@ impl BimApp {
             tag(&p, pa + (pb - pa) / 2.0 + n * 20.0, Align2::CENTER_CENTER, text);
             for q in [pa, pb] {
                 p.rect_stroke(Rect::from_center_size(q, vec2(8.0, 8.0)), 0.0, Stroke::new(2.0, pal().accent), StrokeKind::Middle);
+            }
+        }
+        // Cut Geometry's second pick: what it can take, drawn whether or not the plan shows the component (a family that is only
+        // a void shows nothing): each void's outline and a cross where the component stands, the one under the cursor bolder.
+        if matches!(self.tool, Tool::CutGeometry { wall: Some(_), .. }) {
+            let scene = Scene { p: &p, m: &model, d: &d, place: d.place, level, key, v: &view };
+            for cand in &cut_candidates {
+                let stroke = Stroke::new(if hovered == Some(cand.id) { 2.5 } else { 1.25 }, pal().accent);
+                for [a, b] in &cand.edges {
+                    p.line_segment([scene.screen(*a), scene.screen(*b)], stroke);
+                }
+                let q = scene.screen(cand.anchor);
+                p.line_segment([q - vec2(5.0, 5.0), q + vec2(5.0, 5.0)], stroke);
+                p.line_segment([q + vec2(-5.0, 5.0), q + vec2(5.0, -5.0)], stroke);
             }
         }
         self.grip_overlay(ui, &model, &view, rect, level, &d, d.place);
@@ -2318,6 +2341,21 @@ impl BimApp {
                 (Some((a, keep)), Some(b)) if b != a => {
                     self.run("corner", json!({"ids": [a, b], "keep": [point(keep), point(v.mm(at))]}));
                     self.tool = Tool::Trim(None);
+                }
+                _ => {}
+            },
+            &Tool::CutGeometry { uncut, wall } => match (wall, hovered) {
+                (None, Some(w)) => self.tool = Tool::CutGeometry { uncut, wall: Some(w) },
+                (Some(w), Some(c)) => {
+                    let (g, by) = (m.guid(w), m.guid(c));
+                    let family = match m.elements.get(c) {
+                        Some(Element::Component(x)) => x.family.clone(),
+                        _ => String::new(),
+                    };
+                    if self.run(if uncut { "uncut_geometry" } else { "cut_geometry" }, json!({"target": g, "cutter": by})).is_none() {
+                        self.status.text = cut_refusal(&self.status.text, &family);
+                    }
+                    self.tool = Tool::CutGeometry { uncut, wall: None };
                 }
                 _ => {}
             },
@@ -4968,5 +5006,25 @@ pub(crate) fn snap_mark(p: &Painter, at: Pos2, from: Option<Pos2>, kind: Kind, n
     }
     if !matches!(kind, Kind::Free | Kind::Angle) {
         tag(p, at + vec2(12.0, 14.0), Align2::LEFT_TOP, name);
+    }
+}
+
+/// What Cut Geometry's or Uncut Geometry's refusal `error` (the core's, written for agents) says to someone at the window: what
+/// to do there, of family `family`; any other error as it is.
+fn cut_refusal(error: &str, family: &str) -> String {
+    if error.contains("isn't set to Cut with Voids When Loaded") {
+        tf("{} isn't set to Cut with Voids When Loaded. Turn it on in the family's Family Category and Parameters, then cut.", &[family])
+    } else if error.contains("has no void to cut with") {
+        tf("{} has no void that cuts a host. Give it one in the Family Editor (a void that cuts the host, or both), then cut.", &[family])
+    } else if error.contains("don't pass into") {
+        t("The component's voids don't reach the wall. Move it so they pass into the wall, then cut.").to_string()
+    } else if error.contains("already cuts it as its host") {
+        t("The component stands on a face of this wall and cuts it already.").to_string()
+    } else if error.contains("already cuts") {
+        t("The component cuts this wall already.").to_string()
+    } else if error.contains("nothing to uncut") {
+        t("The component doesn't cut this wall: there is nothing to uncut.").to_string()
+    } else {
+        error.to_string()
     }
 }
