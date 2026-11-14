@@ -104,7 +104,7 @@ mod tests {
 
     #[test]
     fn a_region_fills_the_picture_as_far_as_it_can_about_its_middle() {
-        let view = View { scale: 2.0, cx: 0.0, cy: 0.0, width: 400, height: 200 };
+        let view = View { scale: 2.0, cx: 0.0, cy: 0.0, width: 400, height: 200, angle: 0.0 };
         // 100 by 100 pixels at the picture's top left quarter: its height fills the picture's, twice as close.
         let (scale, middle) = region_2d(&view, (50.0, 0.0), (150.0, 100.0)).unwrap();
         assert!((scale - 4.0).abs() < 1e-9);

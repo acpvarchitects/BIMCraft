@@ -53,7 +53,7 @@ fn solid_at(s: &mut Session, w: Id, x: f64) -> bool {
 
 /// The colour of the level's plan at (x, y), at a scale that shows the wall's poché.
 fn plan_pixel(s: &Session, x: f64, y: f64) -> render::Rgb {
-    let view = View { scale: 0.5, cx: 3000.0, cy: 0.0, width: 1200, height: 1200 };
+    let view = View { scale: 0.5, cx: 3000.0, cy: 0.0, width: 1200, height: 1200, angle: 0.0 };
     let pm = tiny_skia::Pixmap::decode_png(&render::png(&render::draw(&s.model, LEVEL, view)).unwrap()).unwrap();
     let (u, v) = view.px(P2(x, y));
     let c = pm.pixel(u as u32, v as u32).unwrap();

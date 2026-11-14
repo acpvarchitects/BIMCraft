@@ -26,7 +26,16 @@ mod commands;
 mod component_geometry;
 pub mod conduit;
 mod constraints;
+pub mod coordinates;
+#[cfg(test)]
+mod coordinates_io_tests;
+#[cfg(test)]
+mod coordinates_tests;
+pub mod cowork;
+#[cfg(test)]
+mod cowork_tests;
 pub mod crosscheck;
+pub mod crs;
 mod csg;
 pub mod curves;
 pub mod demand;
@@ -48,6 +57,9 @@ pub mod electrical;
 mod electrical_tests;
 pub mod elevation;
 pub mod engine;
+pub mod export;
+#[cfg(test)]
+mod export_tests;
 #[cfg(test)]
 mod face_host_tests;
 #[cfg(test)]
@@ -110,6 +122,7 @@ pub mod glue;
 mod glue_tests;
 pub mod graphics;
 pub mod groups;
+pub mod handles;
 #[cfg(test)]
 mod host_void_tests;
 pub mod hosting;
@@ -134,6 +147,7 @@ pub mod lines;
 pub mod link;
 pub mod loads;
 pub mod massing;
+pub mod memory;
 pub mod mesh_in;
 #[cfg(test)]
 mod mesh_in_tests;
@@ -141,6 +155,7 @@ pub mod model;
 pub mod nbr5410;
 pub mod nested_elements;
 pub mod network;
+pub mod ods;
 #[cfg(test)]
 mod opening_subcategory_tests;
 #[cfg(test)]
@@ -149,15 +164,26 @@ mod openings_past_top_tests;
 mod oracle_tests;
 pub mod paint;
 pub mod panel_schedule;
+#[cfg(test)]
+mod parameter_tests;
+pub mod parameters;
 pub mod pat;
 pub mod pdf;
 pub mod pen;
 pub mod phasing;
+pub mod places;
 pub mod plumbing;
+pub mod printset;
+pub mod project_info;
+#[cfg(test)]
+mod project_info_tests;
 #[cfg(test)]
 mod project_void_tests;
 #[cfg(test)]
 mod pset_tests;
+pub mod publish;
+#[cfg(test)]
+mod publish_tests;
 #[cfg(test)]
 mod raised_wall_room_tests;
 #[cfg(test)]
@@ -176,6 +202,8 @@ mod roof_slopes_tests;
 mod room_area_tests;
 #[cfg(test)]
 mod room_bounds_tests;
+#[cfg(test)]
+mod room_finish_tests;
 #[cfg(test)]
 mod room_freeze_tests;
 #[cfg(test)]
@@ -202,6 +230,9 @@ pub mod site;
 pub mod skeleton;
 pub mod sketch;
 pub mod snap;
+#[cfg(test)]
+mod spot_coordinate_tests;
+pub mod spots;
 pub mod stairs;
 pub mod standards;
 pub mod step;
@@ -229,6 +260,7 @@ mod work_plane_tests;
 pub mod workplane;
 #[cfg(test)]
 mod workplane_tests;
+pub mod world;
 pub mod xlsx;
 
 pub use commands::{

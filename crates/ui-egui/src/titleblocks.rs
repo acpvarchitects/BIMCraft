@@ -704,7 +704,7 @@ impl BimApp {
             } else {
                 name
             };
-            match self.session.execute("title_block", &json!({"name": name})) {
+            match self.exec("title_block", &json!({"name": name})) {
                 Ok(_) => d = TitleBlocksDialog::new(&self.session.model, Some(&name)),
                 Err(e) => d.error = Some(e),
             }
@@ -717,13 +717,13 @@ impl BimApp {
             if let Some(o) = p.as_object_mut() {
                 o.remove("rename");
             }
-            match self.session.execute("title_block", &p) {
+            match self.exec("title_block", &p) {
                 Ok(_) => d = TitleBlocksDialog::new(&self.session.model, Some(&name)),
                 Err(e) => d.error = Some(e),
             }
         }
         if delete {
-            match self.session.execute("title_block", &json!({"name": d.name, "delete": true})) {
+            match self.exec("title_block", &json!({"name": d.name, "delete": true})) {
                 Ok(_) => d = TitleBlocksDialog::new(&self.session.model, None),
                 Err(e) => d.error = Some(e),
             }
@@ -749,18 +749,18 @@ mod tests {
     fn the_dialog_gives_the_command_its_title_block_and_only_the_values_that_changed() {
         let mut m = Model::new("P");
         m.title_blocks.insert("T".into(), TitleBlock::default());
-        m.title_values.insert("CLIENT".into(), "A".into());
+        m.title_values.insert("ARCHITECT".into(), "A".into());
         let mut d = TitleBlocksDialog::new(&m, None);
         assert_eq!(d.name, "T");
-        d.tb.fields.push(Field { key: "client".into(), label: String::new(), scope: Scope::Project, default: String::new() });
+        d.tb.fields.push(Field { key: "architect".into(), label: String::new(), scope: Scope::Project, default: String::new() });
         d.tb.fields.push(Field { key: "ART".into(), label: String::new(), scope: Scope::Project, default: String::new() });
         d.values.insert("ART".into(), "123".into());
         let p = d.params();
         assert_eq!(p["name"], "T");
         assert!(p.get("rename").is_none());
         assert_eq!(d.value_params(&m), json!({"values": {"ART": "123"}}));
-        d.values.insert("CLIENT".into(), String::new());
-        assert_eq!(d.value_params(&m), json!({"values": {"ART": "123", "CLIENT": null}}));
+        d.values.insert("ARCHITECT".into(), String::new());
+        assert_eq!(d.value_params(&m), json!({"values": {"ART": "123", "ARCHITECT": null}}));
         d.rename = "U".into();
         assert_eq!(d.params()["rename"], "U");
     }
