@@ -425,31 +425,35 @@ fn a_box_leaves_a_hidden_form_out_and_so_does_the_copy() {
 
 #[test]
 fn ctrl_v_is_heard_whatever_the_systems_clipboard_holds_and_a_copy_never_writes_it() {
-    let mut h = plan();
-    pick(&mut h, &[Picked::Form(0)]);
-    // Ctrl+C as the window gets it: Copy. Nothing goes to the system's clipboard.
-    h.event(Event::Copy);
-    h.run();
-    assert!(h.state().clipboard.is_some(), "{}", status(&h));
-    let wrote = h.output().platform_output.commands.iter().any(|c| matches!(c, egui::OutputCommand::CopyText(_)));
-    assert!(!wrote, "the system's clipboard is the user's");
-    // The system's clipboard empty (or not text): no Paste comes, only V let go with Ctrl held.
-    let up = |h: &mut Harness<BimApp>| {
-        h.event(Event::Key { key: Key::V, physical_key: None, pressed: false, repeat: false, modifiers: Modifiers::COMMAND });
+    for ctrl in [false, true] {
+        let mut h = plan();
+        // Shortcuts as plain letters, and needing Ctrl (where the window's Copy and Paste are letters, done on their own).
+        h.state_mut().shortcuts_need_ctrl = ctrl;
+        pick(&mut h, &[Picked::Form(0)]);
+        // Ctrl+C as the window gets it: Copy. Nothing goes to the system's clipboard.
+        h.event(Event::Copy);
         h.run();
-    };
-    up(&mut h);
-    assert!(editor(&h).pasting(), "{}", status(&h));
-    key(&mut h, Key::Escape);
-    // Text on it: Paste comes with the press, then V let go: one paste, the elements, whatever the text.
-    h.event(Event::Paste("some text of the user's".into()));
-    h.run();
-    assert!(editor(&h).pasting());
-    click3(&mut h, [1300.0, 1100.0, 0.0]);
-    assert_eq!(family(&h).forms.len(), 3, "{}", status(&h));
-    up(&mut h);
-    assert!(!editor(&h).pasting(), "the V let go of the Ctrl+V that came as Paste begins no second paste");
-    // The next Ctrl+V, with nothing on the system's clipboard, is heard again.
-    up(&mut h);
-    assert!(editor(&h).pasting());
+        assert!(h.state().clipboard.is_some(), "{}", status(&h));
+        let wrote = h.output().platform_output.commands.iter().any(|c| matches!(c, egui::OutputCommand::CopyText(_)));
+        assert!(!wrote, "the system's clipboard is the user's");
+        // The system's clipboard empty (or not text): no Paste comes, only V let go with Ctrl held.
+        let up = |h: &mut Harness<BimApp>| {
+            h.event(Event::Key { key: Key::V, physical_key: None, pressed: false, repeat: false, modifiers: Modifiers::COMMAND });
+            h.run();
+        };
+        up(&mut h);
+        assert!(editor(&h).pasting(), "{}", status(&h));
+        key(&mut h, Key::Escape);
+        // Text on it: Paste comes with the press, then V let go: one paste, the elements, whatever the text.
+        h.event(Event::Paste("some text of the user's".into()));
+        h.run();
+        assert!(editor(&h).pasting());
+        click3(&mut h, [1300.0, 1100.0, 0.0]);
+        assert_eq!(family(&h).forms.len(), 3, "{}", status(&h));
+        up(&mut h);
+        assert!(!editor(&h).pasting(), "the V let go of the Ctrl+V that came as Paste begins no second paste");
+        // The next Ctrl+V, with nothing on the system's clipboard, is heard again.
+        up(&mut h);
+        assert!(editor(&h).pasting());
+    }
 }

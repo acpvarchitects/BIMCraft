@@ -4,7 +4,7 @@
 //! What it keeps: the theme and whether the drawing stays light in a dark one, the user's own accent, panel, canvas and text colours,
 //! the profile, the layout, interface language, ribbon, palettes, the
 //! window's size, the background autosave interval, the colour High Contrast Point Clouds draws scans in, whether plans show the
-//! origin marker and their view's name in the corner, the shortcuts the user made, and the control port
+//! origin marker and their view's name in the corner, the shortcuts the user made and whether they need Ctrl, and the control port
 //! for agents (whether the window opens it, on which port, and whether agents may edit the project or only read it), and the
 //! assistant's provider, model and, only if the user asks, key (scrambled, or encrypted under a passphrase: never as typed).
 //! The pages for what is still to come (performance and graphics) show what they will hold, greyed out.
@@ -132,6 +132,8 @@ pub struct Settings {
     pub view_name: bool,
     /// The shortcuts the user made (Keyboard Shortcuts): two-character key to the English name of an action.
     pub shortcuts: BTreeMap<String, String>,
+    /// Shortcuts are typed with Ctrl held (Cmd on a Mac), not as plain letters. Off in a file that doesn't say.
+    pub shortcuts_need_ctrl: bool,
     /// The system's title bar rather than the window's own, where the window can draw its own.
     pub system_title_bar: bool,
     /// Agents: the window opens the control port (on `agents_port`, 0 for any free one), and they may edit or only read.
@@ -193,6 +195,7 @@ impl Settings {
             "origin_marker": self.origin_marker,
             "view_name": self.view_name,
             "shortcuts": self.shortcuts,
+            "shortcuts_need_ctrl": self.shortcuts_need_ctrl,
             "system_title_bar": self.system_title_bar,
             "agents": {"listen": self.agents_listen, "port": self.agents_port, "edit": self.agents_edit},
             // The key, only when the user asked for it to be kept, and then only sealed.
@@ -244,6 +247,7 @@ impl Settings {
             origin_marker: v["origin_marker"].as_bool().unwrap_or(base.origin_marker),
             view_name: v["view_name"].as_bool().unwrap_or(base.view_name),
             shortcuts: shortcuts_from(&v["shortcuts"], base.shortcuts),
+            shortcuts_need_ctrl: v["shortcuts_need_ctrl"].as_bool().unwrap_or(base.shortcuts_need_ctrl),
             system_title_bar: v["system_title_bar"].as_bool().unwrap_or(base.system_title_bar),
             agents_listen: v["agents"]["listen"].as_bool().unwrap_or(base.agents_listen),
             agents_port: v["agents"]["port"].as_u64().and_then(|p| u16::try_from(p).ok()).unwrap_or(base.agents_port),
@@ -384,6 +388,7 @@ impl BimApp {
         self.select_pinned = kept.select_pinned;
         (self.show_origin, self.show_view_name) = (kept.origin_marker, kept.view_name);
         self.custom_shortcuts = kept.shortcuts.clone();
+        self.shortcuts_need_ctrl = kept.shortcuts_need_ctrl;
         self.system_title_bar = kept.system_title_bar;
         (self.agents.listen, self.agents.port, self.agents.edit) = (kept.agents_listen, kept.agents_port, kept.agents_edit);
         self.cowork_prefs = kept.cowork.clone();
@@ -439,6 +444,7 @@ impl BimApp {
             origin_marker: self.show_origin,
             view_name: self.show_view_name,
             shortcuts: self.custom_shortcuts.clone(),
+            shortcuts_need_ctrl: self.shortcuts_need_ctrl,
             system_title_bar: self.system_title_bar,
             agents_listen: self.agents.listen,
             agents_port: self.agents.port,
@@ -658,6 +664,15 @@ impl BimApp {
         }
         heading(ui, msg!("Palettes"));
         self.palette_switches(ui);
+        heading(ui, msg!("Keyboard Shortcuts"));
+        if ui.checkbox(&mut self.shortcuts_need_ctrl, t("Shortcuts need Ctrl")).changed() {
+            // A letter waiting from the other way of typing them is no half of a shortcut now.
+            self.typed.clear();
+        }
+        let hint = t(
+            "Off, two plain letters are a shortcut, as in Revit. On, they are typed with Ctrl held (Cmd on a Mac), which keeps letters free for typing.",
+        );
+        ui.label(RichText::new(hint).color(pal().muted));
         heading(ui, msg!("Plans"));
         ui.checkbox(&mut self.show_view_name, t("Show the view's name in the corner of plans")).on_hover_text(t(
             "The name of the floor plan or ceiling plan in its bottom left corner. It is drawn on the screen only, and the view's tab \

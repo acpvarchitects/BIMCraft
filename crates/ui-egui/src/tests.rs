@@ -315,9 +315,14 @@ fn key(h: &mut Harness<BimApp>, k: Key) {
     h.run();
 }
 
-/// Letters typed over the view: a two-letter shortcut.
-/// `letters` typed with Ctrl held, as BIMCraft's shortcuts are, all in one go.
+/// `letters` typed over the view, a two-letter shortcut, as the window's setting has them typed: plain letters (the default,
+/// as Revit's), or with Ctrl held when Shortcuts need Ctrl is on, all in one go.
 fn shortcut(h: &mut Harness<BimApp>, letters: &str) {
+    if !h.state().shortcuts_need_ctrl {
+        h.event(Event::Text(letters.into()));
+        h.run();
+        return;
+    }
     let keys: Vec<Key> = letters.chars().filter_map(|c| Key::from_name(&c.to_ascii_uppercase().to_string())).collect();
     assert_eq!(keys.len(), letters.chars().count(), "every letter of {letters} is a key");
     h.key_combination_modifiers(Modifiers::COMMAND, &keys);
@@ -867,6 +872,7 @@ fn the_selection_stays_as_views_change_and_a_schedule_shows_and_picks_it() {
 #[test]
 fn a_ctrl_key_of_its_own_waits_for_a_second_letter_and_does_its_job_when_none_comes() {
     let mut h = app("");
+    h.state_mut().shortcuts_need_ctrl = true;
     for y in [0, 3000, 6000] {
         h.state_mut().session.execute("wall", &json!({"points": [[0, y], [4000, y]]})).unwrap();
     }
@@ -895,6 +901,8 @@ fn a_ctrl_key_of_its_own_waits_for_a_second_letter_and_does_its_job_when_none_co
 #[test]
 fn typed_shortcuts_pick_tools_like_revit() {
     let mut h = app(SAMPLE);
+    // Shortcuts need Ctrl (plain letters are tested in `shortcuts_ctrl`).
+    h.state_mut().shortcuts_need_ctrl = true;
     // Letters typed without Ctrl are no shortcut.
     h.event(Event::Text("WA".into()));
     h.run();
@@ -6323,6 +6331,7 @@ mod section_box;
 mod shape3d;
 mod shared_nested;
 mod sheets;
+mod shortcuts_ctrl;
 mod shortcuts_kept;
 mod sketch;
 mod sketch3d;
