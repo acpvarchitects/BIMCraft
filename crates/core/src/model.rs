@@ -4181,6 +4181,11 @@ impl Model {
                 }
             }
         }
+        // The instances inside a family's nested definitions, each by a GUID of its own (a file written by hand, or by a build
+        // before they were given): what the elements of shared ones three levels down are named by (T6b).
+        for f in m.families.values_mut() {
+            f.give_inner_guids();
+        }
         // A pin of an element this build left out (a newer one's kind) is dropped, and the rest of the file opens.
         m.pinned.retain(|g| m.elements.id(*g).is_some());
         // Each component's shared nested instances as elements of their own, which no file holds (T6b).

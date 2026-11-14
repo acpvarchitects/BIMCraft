@@ -1568,15 +1568,29 @@ and `Model::nested_pieces` reads the host's pieces that are its own.
 - **Edits.** It goes with its host: a move, a rotation or a mirror of the host takes it along, and deleting the host deletes
   it and its tags. Moved, turned, mirrored or deleted apart from its host, it is refused, saying it is part of it.
 
+- **Three levels and deeper.** A shared family nested in a shared nested family (a knob on a cabinet's handle) is an
+  element too, its path the handle's instance's GUID then the knob's. So each instance inside a nested definition holds a
+  GUID of its own: where one holds none or repeats one before it in its definition (a definition written by hand, a file
+  from before), `Family::give_inner_guids` gives it one, made from the definition's name and the instance's place, so the
+  same each time and in every copy of one shared definition. The `family` command, `nested::nest_into` and `Model::read`
+  give them (the family's own instances are the library's to give, `Library::sync_parts`), and `Family::check` refuses a
+  shared nested definition whose instances don't each hold one, naming it. Tab reaches the shallower first (the handle, then
+  the knob: `NestedPick::depth`, in `Drawing::pick_all` and `render::nested_at`); Properties says what one is `Nested in`
+  (`Model::nested_parent`, by `guid_of` of its path less its last); IFC aggregates each into the shared instance it is
+  nested in, the nearest written, else into its host (cabinet, handle, knob: two `IfcRelAggregates`). A shared family
+  inside one that isn't shared stays part of it, as before. No FORMAT change: a file holds the GUIDs it held.
+
 Known: IFC writes it without a type object or a property set of its own. A component's plan marks now include those of
 its nested instances standing on its level planes even when it has no symbols of its own (before, a host without symbols
 dropped them).
 
 Tests: `family_shared_nested_tests.rs` (core: placement turned and mirrored, schedules and counts, a tag through save and
-read, IFC aggregation, a file from before, the plan's pick order, an instance not shared), and `tests/shared_nested.rs` (the
-window: Tab-select in a plan, and a nested instance dragged in its family's plan and elevation, pinned, by a formula, undone).
-`BIMCRAFT_T6B_DUMP` set to a folder saves its screenshots there (the plan at 1 : 20 with tags, a schedule with a phase
-column, Tab in an elevation and in {3D}).
+read, IFC aggregation, a file from before, the plan's pick order, an instance not shared; three levels: schedules and counts,
+the GUID through save and read, inner GUIDs given and repeats refused, the IFC chain, the pick order), and
+`tests/shared_nested.rs` (the window: Tab-select in a plan, three levels deep too with `Nested in`, and a nested instance
+dragged in its family's plan and elevation, pinned, by a formula, undone). `BIMCRAFT_T6B_DUMP` set to a folder saves its
+screenshots there (the plan at 1 : 20 with tags, a schedule with a phase column, Tab in an elevation and in {3D});
+`BIMCRAFT_T24_DUMP` the three levels' (Tab to the handle, then the knob, and the knob's Properties).
 
 ## Reloading a family
 
