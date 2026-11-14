@@ -47,6 +47,13 @@ pub struct NestedElement {
     pub level: Guid,
     pub origin: P3,
     pub axes: [P3; 3],
+    /// Its host's phases and design option (`Phase Created`, `Phase Demolished`, `Design Option`), as its own.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub params: BTreeMap<String, serde_json::Value>,
+    /// Its family's plan marks in the model, where its host stands upright and it on a level plane: what a plan picks it by
+    /// when its family is of symbols alone.
+    #[serde(skip)]
+    pub marks: Vec<crate::family::Mark>,
 }
 
 /// The GUID of the element shared nested instance `path` of component `host` is: the same for the same two, whatever
@@ -72,16 +79,28 @@ impl Model {
         let flip = |p: P3| [p[0], if c.mirrored { -p[1] } else { p[1] }, p[2]];
         let [a, b, z] = placed.axes;
         let turn = |p: P3| -> P3 { std::array::from_fn(|i| p[0] * a[i] + p[1] * b[i] + p[2] * z[i]) };
+        let plan = |q: crate::geom::P2| {
+            let w = placed.place(flip([q.0, q.1, 0.0]));
+            crate::geom::P2(w[0], w[1])
+        };
+        let params: BTreeMap<String, serde_json::Value> = c
+            .params
+            .iter()
+            .filter(|(k, _)| matches!(k.as_str(), crate::phasing::CREATED | crate::phasing::DEMOLISHED | crate::phasing::OPTION))
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
         f.shared_instances(&values)
             .into_iter()
             .map(|s| NestedElement {
                 host,
                 origin: placed.place(flip(s.origin)),
                 axes: s.axes.map(|v| turn(flip(v))),
+                marks: if placed.upright { s.marks.iter().map(|m| m.map(plan)).collect() } else { Vec::new() },
                 path: s.path,
                 family: s.family,
                 type_name: s.type_name,
                 level: c.level,
+                params: params.clone(),
             })
             .collect()
     }
@@ -160,6 +179,42 @@ impl Model {
             .filter_map(|id| match self.elements.get(id) {
                 Some(Element::Nested(n)) if n.host == host => Some((id, n.path.as_slice())),
                 _ => None,
+            })
+            .collect()
+    }
+
+    /// Each of component `host`'s shared nested instances as a view through `project` (a model point to its pixel there, none
+    /// where it can't be seen) sees it: the outline round each of its own solids' corners. What a section, an elevation and
+    /// the 3D view pick it by after its host, and outline it with, as a plan does by `render::NestedPick`.
+    pub fn nested_seen(&self, host: Id, project: &dyn Fn(P3) -> Option<(f32, f32)>) -> Vec<crate::render::NestedPick> {
+        let Some(guid) = self.elements.guid(host) else { return Vec::new() };
+        let Some(Element::Component(c)) = self.elements.get(host) else { return Vec::new() };
+        if !self.families.get(&c.family).is_some_and(|f| f.nested.iter().any(|n| n.family.shared)) {
+            return Vec::new();
+        }
+        let shared = self.nested_in(guid);
+        if shared.is_empty() {
+            return Vec::new();
+        }
+        let pieces = self.component_pieces(c);
+        shared
+            .into_iter()
+            .filter_map(|(id, path)| {
+                let rings: Vec<Vec<(f32, f32)>> = pieces
+                    .iter()
+                    .filter(|p| p.nested == path)
+                    .filter_map(|p| {
+                        let seen: Option<Vec<crate::geom::P2>> = p
+                            .tris
+                            .iter()
+                            .flatten()
+                            .map(|q| project(*q).map(|(x, y)| crate::geom::P2(f64::from(x), f64::from(y))))
+                            .collect();
+                        let hull = crate::geom::hull(seen?);
+                        (hull.len() > 2).then(|| hull.iter().map(|q| (q.0 as f32, q.1 as f32)).collect())
+                    })
+                    .collect();
+                (!rings.is_empty()).then_some(crate::render::NestedPick { id, host, rings, lines: Vec::new() })
             })
             .collect()
     }

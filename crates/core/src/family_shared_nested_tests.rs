@@ -221,3 +221,151 @@ fn a_plan_picks_the_host_first_and_its_shared_nested_instance_next() {
     let off = view.px(crate::geom::P2(4700.0, 500.0));
     assert!(!d.pick_all(off, 3.0).contains(&id));
 }
+
+/// A tag's prims in a drawing: the box round them, their width and height in pixels.
+fn tag_size(d: &crate::render::Drawing, tag: Id) -> (f32, f32) {
+    let (mut lo, mut hi) = ([f32::INFINITY; 2], [f32::NEG_INFINITY; 2]);
+    for (prim, owner) in d.prims.iter().zip(&d.owners) {
+        if *owner != Some(tag) {
+            continue;
+        }
+        let pts: Vec<(f32, f32)> = match prim {
+            crate::render::Prim::Fill { rings, .. } => rings.iter().flatten().copied().collect(),
+            crate::render::Prim::Line { pts, .. } => pts.clone(),
+            crate::render::Prim::Image { .. } => Vec::new(),
+        };
+        for (x, y) in pts {
+            (lo[0], lo[1], hi[0], hi[1]) = (lo[0].min(x), lo[1].min(y), hi[0].max(x), hi[1].max(y));
+        }
+    }
+    (hi[0] - lo[0], hi[1] - lo[1])
+}
+
+/// A tag on the handle is drawn as a tag on the cabinet is, at the same scale: the same height, its words its own.
+#[test]
+fn a_tag_on_a_shared_nested_element_is_drawn_as_one_on_a_component() {
+    let (mut s, host) = cabinet(true);
+    let (id, n) = nested(&s.model)[0].clone();
+    let on_cabinet = run(&mut s, "tag", json!({"ids": [host], "offset": [0, 1500]}))["ids"][0].as_u64().unwrap();
+    let on_handle = run(&mut s, "tag", json!({"ids": [id], "offset": [0, -1500]}))["ids"][0].as_u64().unwrap();
+    for scale in [0.05, 0.35] {
+        let view = crate::render::View { scale, cx: 5000.0, cy: 0.0, width: 1600, height: 1600 };
+        let d = crate::render::draw(&s.model, n.level, view);
+        let (a, b) = (tag_size(&d, on_cabinet), tag_size(&d, on_handle));
+        assert!(a.1 > 0.0 && (a.1 - b.1).abs() < 0.01, "at {scale} px a mm: the cabinet's {a:?}, the handle's {b:?}");
+    }
+    let text = |tag: Id| match s.model.elements.get(tag) {
+        Some(Element::Tag(t)) => s.model.tag_text(t),
+        _ => String::new(),
+    };
+    assert_eq!((text(on_cabinet), text(on_handle)), ("Small".to_string(), "Lever".to_string()));
+}
+
+/// The handle is in the cabinet's phases and design option: a schedule's phase fields say them, as the cabinet's do.
+#[test]
+fn a_shared_nested_element_is_in_its_hosts_phases() {
+    let (mut s, host) = cabinet(true);
+    run(&mut s, "modify", json!({"id": host, "params": {"Phase Created": "Existing", "Phase Demolished": "New Construction"}}));
+    let (id, _) = nested(&s.model)[0].clone();
+    let params = s.model.elements.get(id).and_then(Element::params).cloned().unwrap_or_default();
+    assert_eq!(params.get("Phase Created"), Some(&json!("Existing")));
+    let r = run(
+        &mut s,
+        "schedule",
+        json!({"name": "Phased", "category": "component", "fields": ["Family", "Phase Created", "Phase Demolished"]}),
+    );
+    let rows = r["rows"].as_array().unwrap();
+    assert!(
+        rows.iter().all(|row| row[1] == json!("Existing") && row[2] == json!("New Construction")),
+        "the cabinet's and the handle's: {rows:?}"
+    );
+    // Its phase is its host's: set on it, it is refused, or changes nothing.
+    let _ = s.execute("modify", &json!({"id": id, "params": {"Phase Created": "New Construction"}}));
+    let params = s.model.elements.get(id).and_then(Element::params).cloned().unwrap_or_default();
+    assert_eq!(params.get("Phase Created"), Some(&json!("Existing")));
+}
+
+/// A project inserted into itself: the cabinet comes in as a copy with a GUID of its own, and so does its handle, which
+/// the copied tag follows.
+#[test]
+fn insert_from_file_brings_a_tag_on_a_shared_nested_element_onto_the_copys() {
+    let (mut s, _) = cabinet(true);
+    let (id, _) = nested(&s.model)[0].clone();
+    run(&mut s, "tag", json!({"ids": [id]}));
+    let path = std::env::temp_dir().join(format!("bimcraft-t6b-insert-{}.bimcraft", std::process::id()));
+    let path = path.to_string_lossy().into_owned();
+    run(&mut s, "save", json!({"path": path}));
+    run(&mut s, "insert", json!({"path": path}));
+    let _ = std::fs::remove_file(&path);
+    let handles = nested(&s.model);
+    assert_eq!(handles.len(), 2, "a handle for each cabinet");
+    let tags: Vec<crate::ids::Guid> = s
+        .model
+        .elements
+        .values()
+        .filter_map(|e| match e {
+            Element::Tag(t) => Some(t.host),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(tags.len(), 2, "both tags kept");
+    for (h, _) in &handles {
+        assert!(tags.contains(&s.model.guid(*h)), "a tag on each handle");
+    }
+    assert_eq!(s.model.check(), Ok(()));
+}
+
+/// A linked project's cabinet, moved where the link puts it, takes its handle along.
+#[test]
+fn a_linked_cabinets_handle_stands_where_the_link_puts_it() {
+    let (mut s, _) = cabinet(true);
+    let path = std::env::temp_dir().join(format!("bimcraft-t6b-link-{}.bimcraft", std::process::id()));
+    let path = path.to_string_lossy().into_owned();
+    run(&mut s, "save", json!({"path": path}));
+    let mut host = Session::new();
+    run(&mut host, "link", json!({"path": path, "at": [1000, 2000]}));
+    let _ = std::fs::remove_file(&path);
+    let seen = crate::link::seen(&host.model);
+    let found = nested(&seen);
+    assert_eq!(found.len(), 1);
+    assert!(near(found[0].1.origin, [5950.0, 2100.0, 0.0]), "{:?}", found[0].1.origin);
+}
+
+/// A shared nested family of plan symbols alone: a plan picks it by its lines, after its host.
+#[test]
+fn a_shared_nested_family_of_symbols_alone_is_picked_by_its_lines() {
+    let mut s = Session::new();
+    run(
+        &mut s,
+        "family",
+        json!({"name": "Desk", "category": "furniture", "types": {"D": {}},
+               "forms": [{"profile": [[0, 0], [1200, 0], [1200, 600], [0, 600]], "to": 750}]}),
+    );
+    let mark = json!({"category": "generic", "shared": true, "types": {"X": {}}, "symbols": [{"line": [[0, 0], [300, 0]]}]});
+    run(&mut s, "family", json!({"name": "Desk", "nest": {"definition": mark, "name": "Mark"}}));
+    run(&mut s, "family", json!({"name": "Desk", "nested_instance": {"family": "Mark", "type": "X", "at": [100, 300]}}));
+    let host = run(&mut s, "component", json!({"family": "Desk", "type": "D", "at": [0, 0]}))["id"].as_u64().unwrap();
+    let (id, n) = nested(&s.model)[0].clone();
+    let view = crate::render::View { scale: 0.5, cx: 600.0, cy: 300.0, width: 800, height: 800 };
+    let d = crate::render::draw(&s.model, n.level, view);
+    let at = view.px(crate::geom::P2(250.0, 300.0));
+    assert_eq!(d.pick_all(at, 3.0), vec![host, id]);
+}
+
+/// A cabinet whose handle, shared, stands proud of its front, 400 up: seen in an elevation looking north at it, the handle is
+/// where it is drawn, after the cabinet.
+#[test]
+fn an_elevation_sees_a_shared_nested_instance_where_it_draws_it() {
+    let (mut s, host) = cabinet(true);
+    let g = s.model.families["Cabinet"].nested_instances[0].guid;
+    run(&mut s, "family", json!({"name": "Cabinet", "nested_instance": {"guid": g, "at": [250, -20], "offset": 400}}));
+    run(&mut s, "rotate", json!({"ids": [host], "about": [5000, 0], "angle": -90}));
+    let id = run(&mut s, "elevation", json!({"start": [4000, -2000], "end": [7000, -2000]}))["id"].as_u64().unwrap();
+    let view = crate::render::View { scale: 0.5, cx: 1500.0, cy: 400.0, width: 800, height: 800 };
+    let seen = s.model.nested_seen(host, &|p| crate::render::section_px(&s.model, id, view, p));
+    assert_eq!(seen.len(), 1);
+    // The handle, 60 wide (x 5250 to 5310), 400 to 430 up: 1280 along the line, 415 up.
+    let at = view.px(crate::geom::P2(1280.0, 415.0));
+    assert_eq!(crate::render::nested_at(&seen, at, 3.0), vec![seen[0].id]);
+    assert!(crate::render::nested_at(&seen, view.px(crate::geom::P2(1100.0, 700.0)), 3.0).is_empty());
+}

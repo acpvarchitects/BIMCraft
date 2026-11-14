@@ -2351,6 +2351,8 @@ impl Element {
             | Element::Stair(Stair { params, .. })
             | Element::Ramp(Ramp { params, .. })
             | Element::Railing(Railing { params, .. }) => Some(params),
+            // A shared nested instance's are its host's phases and design option, worked out from it: never changed on it.
+            Element::Nested(crate::nested_elements::NestedElement { params, .. }) => Some(params),
             _ => None,
         }
     }
@@ -3632,7 +3634,8 @@ impl Model {
 
     fn component_marks_at(&self, c: &Component, detail: Option<crate::graphics::Detail>) -> Vec<crate::family::Mark> {
         let Some(f) = self.families.get(&c.family) else { return Vec::new() };
-        if f.symbols.is_empty() {
+        // Its own symbols, and those of the nested instances standing upright on its level planes.
+        if f.symbols.is_empty() && f.nested_instances.is_empty() {
             return Vec::new();
         }
         // Tilted with its plane, it has no plan of its own to draw its symbols in.

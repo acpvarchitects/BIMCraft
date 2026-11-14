@@ -151,6 +151,9 @@ pub struct SharedInstance {
     pub type_name: String,
     pub origin: P3,
     pub axes: [P3; 3],
+    /// Its family's plan marks, in the host's axes, where it stands upright on a level plane (and those inside it): what a
+    /// plan picks one of symbols alone by.
+    pub marks: Vec<Mark>,
 }
 
 /// The nested family named `name` in `list`.
@@ -307,12 +310,19 @@ impl Family {
             if !nested.shared || meter.spend().is_err() {
                 continue;
             }
+            let to = |p: P2| {
+                let q = placed.point([p.0, p.1, 0.0]);
+                P2(q[0], q[1])
+            };
+            let level = placed.level();
+            let marks = if level { nested.marks(&own).unwrap_or_default().iter().map(|m| m.map(to)).collect() } else { Vec::new() };
             out.push(SharedInstance {
                 path: vec![inst.guid],
                 family: inst.family.clone(),
                 type_name: inst.type_name.clone(),
                 origin: placed.origin,
                 axes: [placed.x, placed.y, placed.z],
+                marks,
             });
             let mut inner = Vec::new();
             nested.shared_into(&own, &mut inner, meter, depth - 1);
@@ -320,6 +330,7 @@ impl Family {
                 path: std::iter::once(inst.guid).chain(s.path).collect(),
                 origin: placed.point(s.origin),
                 axes: s.axes.map(|a| placed.dir(a)),
+                marks: if level { s.marks.iter().map(|m| m.map(to)).collect() } else { Vec::new() },
                 ..s
             }));
         }

@@ -77,6 +77,17 @@ pub(crate) fn insert_as(to: &mut Model, from: &Model, ids: &[Id], linked: bool) 
             instead.insert(g, fresh);
         }
     }
+    // A shared nested instance's element is named by its host's GUID and its path (T6b): one whose host comes in as a copy
+    // is the copy's, so what holds it (a tag) follows it there.
+    for &id in &take {
+        if let (Some(Element::Nested(n)), Some(g)) = (from.elements.get(id), from.elements.guid(id)) {
+            let host = instead.get(&n.host).copied().unwrap_or(n.host);
+            let derived = crate::nested_elements::guid_of(host, &n.path);
+            if derived != g {
+                instead.insert(g, derived);
+            }
+        }
+    }
     let renames = bring_library(to, from, &take, &mut out)?;
     let mut names = Names::of(to);
     for &id in &take {
