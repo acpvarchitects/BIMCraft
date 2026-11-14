@@ -1676,9 +1676,12 @@ the type previewed puts it, as the view shows it; it takes the one shown now.
 ## The family document's keys (FE-13)
 
 A family tab has two-letter keys of its own (`editor/keys.rs`): `FAMILY_SHORTCUTS`, Revit's default keys for the family editor's
-commands, typed with Ctrl held as the project's are (`ctrl_letters`, [the desktop](desktop.md)): two that are no key leave the first
-to do its own job as a Ctrl key (`family_ctrl_key`: S saves, K finds, Z and Y undo and redo, 1 Properties, C, X and V the
-Clipboard panel's Copy, Cut and Paste) and the second waiting in its place. The project's keys stay blocked on a family tab (`BimApp::keys` returns for one), so no project action runs from it, and
+commands, typed as the project's are, by Shortcuts need Ctrl ([the desktop](desktop.md)). Off, the default: plain letters, the last
+two typed (`family_plain_letters`), with Ctrl+S, Ctrl+K, Ctrl+1, Ctrl+Z and Ctrl+Y doing their job at once and Ctrl+C, Ctrl+X and
+Ctrl+V the Clipboard panel's (`clipboard::key`). On: typed with Ctrl held (`ctrl_letters`, which takes the window's Copy, Cut and
+Paste events as C, X and V): two that are no key leave the first to do its own job as a Ctrl key (`family_ctrl_key`: S saves, K
+finds, Z and Y undo and redo, 1 Properties, C, X and V the Clipboard panel's Copy, Cut and Paste, once) and the second waiting in
+its place, so Ctrl+M then Ctrl+V is Move and pastes nothing. The project's keys stay blocked on a family tab (`BimApp::keys` returns for one), so no project action runs from it, and
 the family's table never reads the project's `SHORTCUTS` or the commands' aliases; a key both have means the same command in each
 (`the_family_table_gives_no_project_key_another_meaning`). Each key does what its ribbon button does in the family, where the button
 is enabled, and nothing where it is greyed or not on the ribbon: MD Modify (while sketching, the sketch's Modify), PP and VP
