@@ -157,3 +157,111 @@ fn family_model_line_screenshots() {
     key(&mut h, Key::Escape);
     save(&mut h, "front");
 }
+
+/// The grip shown nearest model point `p` in the view, within 3 px.
+fn grip_at(h: &Harness<BimApp>, p: [f64; 3]) -> Option<egui::Pos2> {
+    let want = editor(h).views.screen_of(p)?;
+    editor(h).views.grips_shown.iter().map(|(_, at)| *at).find(|at| at.distance(want) < 3.0)
+}
+
+#[test]
+fn a_selected_model_lines_end_grip_stretches_it_on_its_host_as_one_step() {
+    let (mut h, _) = open(BOX, "Box");
+    view(&mut h, Some(Which::Plan));
+    draw(&mut h, [-1000.0, -800.0, 0.0], [1000.0, -800.0, 0.0]);
+    let was = editor(&h).model_lines[0].clone();
+    assert!(grip_at(&h, was.start).is_some() && grip_at(&h, was.end).is_some(), "a grip at each end: {:?}", editor(&h).views.grips_shown);
+    let steps = editor(&h).steps();
+    let grip = grip_at(&h, was.end).unwrap();
+    drag_screen(&mut h, grip, grip + vec2(40.0, -30.0), PointerButton::Primary);
+    let now = editor(&h).model_lines[0].clone();
+    assert_eq!(now.start, was.start, "its start stays");
+    assert!(now.end[0] > was.end[0] + 20.0 && now.end[1] > was.end[1] + 20.0, "its end follows the grip: {now:?}");
+    assert!(now.end[2].abs() < 1e-6, "still on Ref. Level: {now:?}");
+    assert_eq!(editor(&h).steps(), steps + 1, "one step");
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Z);
+    h.run();
+    assert_eq!(editor(&h).model_lines[0].end, was.end, "Undo puts it back");
+}
+
+#[test]
+fn a_model_lines_end_grip_in_an_elevation_keeps_it_on_its_plane() {
+    let (mut h, _) = open(BOX, "Box");
+    view(&mut h, Some(Which::Elevation(Side::Front)));
+    draw(&mut h, [-300.0, 0.0, 200.0], [300.0, 0.0, 900.0]);
+    let was = editor(&h).model_lines[0].clone();
+    let grip = grip_at(&h, was.start).expect("its start's grip");
+    drag_screen(&mut h, grip, grip + vec2(-30.0, 30.0), PointerButton::Primary);
+    let now = editor(&h).model_lines[0].clone();
+    assert_eq!(now.end, was.end, "its end stays");
+    assert!(now.start[0] < was.start[0] - 20.0 && now.start[2] < was.start[2] - 20.0, "{now:?}");
+    assert!(now.start[1].abs() < 1e-6, "still on Center (Front/Back): {now:?}");
+}
+
+#[test]
+fn a_pinned_model_line_shows_no_grips() {
+    let (mut h, _) = open(BOX, "Box");
+    view(&mut h, Some(Which::Plan));
+    draw(&mut h, [-1000.0, -800.0, 0.0], [1000.0, -800.0, 0.0]);
+    let l = editor(&h).model_lines[0].clone();
+    press(&mut h, "Pin");
+    assert!(editor(&h).model_lines[0].pinned, "pinned");
+    assert!(grip_at(&h, l.start).is_none() && grip_at(&h, l.end).is_none(), "no grips: {:?}", editor(&h).views.grips_shown);
+}
+
+/// A project with a component whose family has two model lines (one slanting up on its Center (Front/Back) plane, one round
+/// its foot on Ref. Level), shown in the 3D view, selected there, and in a section looking north at it; and the family's plan
+/// with a model line selected, its end grips shown: saved where `BIMCRAFT_FE15_DUMP` says (only then).
+#[test]
+fn family_model_line_views_and_grips_screenshots() {
+    let Ok(folder) = std::env::var("BIMCRAFT_FE15_DUMP") else { return };
+    std::fs::create_dir_all(&folder).unwrap();
+    let save = |h: &mut Harness<BimApp>, name: &str| {
+        for _ in 0..4 {
+            h.run();
+        }
+        h.render().unwrap().save(std::path::Path::new(&folder).join(format!("fe15b-{name}.png"))).unwrap();
+    };
+    let script = format!(
+        "{}\n{}\n{}",
+        r#"family {"name": "Post", "category": "generic", "types": {"T": {}}, "forms": [{"profile": [[-100, -100], [100, -100], [100, 100], [-100, 100]], "to": 1500}], "model_lines": [{"start": [-1200, 0, 0], "end": [-200, 0, 1800], "host": {"plane": "CFB"}}, {"start": [-600, -600, 0], "end": [600, -600, 0]}, {"start": [600, -600, 0], "end": [600, 600, 0]}]}"#
+            .replace("CFB", &CENTER_FRONT_BACK.to_string()),
+        r#"component {"family": "Post", "at": [0, 0]}"#,
+        r#"section {"start": [-3000, -2500], "end": [3000, -2500], "name": "Model Lines"}"#,
+    );
+    let mut h = app(&script);
+    h.set_size(egui::vec2(1600.0, 1000.0));
+    h.state_mut().open_sheet(crate::Sheet::View3D);
+    save(&mut h, "3d");
+    let id = h
+        .state()
+        .session
+        .model
+        .elements
+        .iter()
+        .find(|(_, e)| matches!(e, bimcraft_core::model::Element::Component(_)))
+        .map(|(id, _)| *id)
+        .unwrap();
+    h.state_mut().selection = vec![id];
+    save(&mut h, "3d-selected");
+    h.state_mut().selection.clear();
+    let sec = h
+        .state()
+        .session
+        .model
+        .elements
+        .iter()
+        .find(|(_, e)| matches!(e, bimcraft_core::model::Element::Section(_)))
+        .map(|(id, _)| *id)
+        .unwrap();
+    h.state_mut().open_sheet(crate::Sheet::Section(sec));
+    save(&mut h, "section");
+    // The family's plan, a model line selected with its grips.
+    let mut h = app(BOX);
+    h.set_size(egui::vec2(1600.0, 1000.0));
+    h.state_mut().edit_family("Box");
+    h.run();
+    view(&mut h, Some(Which::Plan));
+    draw(&mut h, [-1000.0, -800.0, 0.0], [1000.0, -800.0, 0.0]);
+    save(&mut h, "grips");
+}

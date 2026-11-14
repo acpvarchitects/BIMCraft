@@ -1632,6 +1632,8 @@ pub struct Scene {
     levels: Vec<(Id, String, [P3; 4])>,
     /// The scans point clouds place, drawn as dots over the surfaces.
     scans: Vec<Scan>,
+    /// The components' model lines (FE-15), drawn over the surfaces where nothing nearer hides them.
+    strokes: Vec<Stroke>,
     /// The components whose triangles are a shape of [`Scene::shapes`] placed, exactly: where in `tris` the copy starts, and
     /// how it is placed. A card draws each shape once and places it for each copy.
     placements: Vec<(usize, crate::component_geometry::ComponentInstance)>,
@@ -1643,6 +1645,54 @@ pub struct Scene {
     spans: Vec<Span>,
     /// What numbered the planes, so an edit numbers its triangles' among them.
     table: PlaneTable,
+}
+
+/// A family's model line (FE-15) where a component places it: its component, its ends, its Visibility Settings packed with the
+/// component's x axis as a form's are ([`crate::family::visibility::packed`]) and the subcategory key it is drawn in.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct Stroke {
+    pub owner: Id,
+    pub ends: [P3; 2],
+    pub vis: u32,
+    pub sub: Option<&'static str>,
+}
+
+/// Every component's model lines, in the elements' order.
+pub(crate) fn strokes_of(m: &Model) -> Vec<Stroke> {
+    let mut out = Vec::new();
+    for (&owner, e) in m.elements.iter() {
+        let Element::Component(c) = e else { continue };
+        if m.families.get(&c.family).is_none_or(|f| f.model_lines.is_empty()) {
+            continue;
+        }
+        let x = m.component_placement(c).axes[0];
+        for (ends, vis, sub) in m.component_model_line_parts(c) {
+            out.push(Stroke { owner, ends, vis: crate::family::visibility::packed(vis, P2(x[0], x[1])), sub });
+        }
+    }
+    out
+}
+
+/// A point as a camera projects it: across, down and its depth.
+type Px = (f64, f64, f64);
+
+/// What of the projected line from `a` to `b` a section's `clip` keeps between its line and its far clip (depths toward the
+/// camera, a parallel view's straight along the line), if any.
+fn kept_in_depth((a, b): (Px, Px), clip: &Clip) -> Option<(Px, Px)> {
+    let (lo, hi) = (clip.far.map_or(f64::NEG_INFINITY, |f| clip.near - f), clip.near);
+    let (mut t0, mut t1) = (0.0f64, 1.0f64);
+    let d = b.2 - a.2;
+    if d.abs() < 1e-12 {
+        if a.2 < lo || a.2 > hi {
+            return None;
+        }
+    } else {
+        let (p, q) = ((lo - a.2) / d, (hi - a.2) / d);
+        t0 = t0.max(p.min(q));
+        t1 = t1.min(p.max(q));
+    }
+    let at = |t: f64| (a.0 + (b.0 - a.0) * t, a.1 + (b.1 - a.1) * t, a.2 + (b.2 - a.2) * t);
+    (t0 <= t1).then(|| (at(t0), at(t1)))
 }
 
 /// An element's triangles in a scene: where they are in its `tris`, and the box round them.
@@ -1828,6 +1878,7 @@ impl Scene {
             masses: BTreeSet::new(),
             levels: Vec::new(),
             scans: Vec::new(),
+            strokes: Vec::new(),
             edges: OnceLock::new(),
             placements: Vec::new(),
             shapes: Vec::new(),
@@ -1891,6 +1942,7 @@ impl Scene {
             masses,
             levels,
             scans,
+            strokes: strokes_of(m),
             edges: OnceLock::new(),
             placements,
             shapes,
@@ -2046,7 +2098,7 @@ impl Scene {
         if cancelled() {
             return None;
         }
-        Some(Scene { planes, faces: Arc::new(faces), scans: scans_of(m), ..Scene::bare(tris) })
+        Some(Scene { planes, faces: Arc::new(faces), scans: scans_of(m), strokes: strokes_of(m), ..Scene::bare(tris) })
     }
 
     /// A scene of `tris` alone: no planes, faces, textures, smooth normals, levels or scans.
@@ -2060,6 +2112,7 @@ impl Scene {
             masses: BTreeSet::new(),
             levels: Vec::new(),
             scans: Vec::new(),
+            strokes: Vec::new(),
             edges: OnceLock::new(),
             placements: Vec::new(),
             shapes: Vec::new(),
@@ -2866,13 +2919,44 @@ impl Scene {
                 }
             }
         }
+        // The components' model lines (FE-15) as the edges are, each picking its component within two pixels, after the
+        // edges (the selected last), as the card's mesh picks them (`Mesh::pick_wire`).
+        let mut owners: Vec<Id> = self.tris.iter().map(|t| t.owner).collect();
+        for tinted in [false, true] {
+            for st in self.strokes.iter().filter(|st| tints.contains_key(&st.owner) == tinted) {
+                if !(look.shows(st.owner) && look.forms_show(st.vis, false)) {
+                    continue;
+                }
+                let Some(base) = look.line_edge(st.owner, st.sub, EDGE) else { continue };
+                let Rgb(r, g, bl) = tints.get(&st.owner).copied().unwrap_or(base);
+                let Some((p, q)) = wire_line(cam, look.section_box(), st.ends, (w, h)) else { continue };
+                let slot = owners.len() as u32;
+                owners.push(st.owner);
+                for (x, y) in wire_pixels(p, q) {
+                    for (dx, dy) in (-2..=2).flat_map(|dx| (-2..=2).map(move |dy| (dx, dy))) {
+                        let (px, py) = (x + dx, y + dy);
+                        if (0..w as i64).contains(&px) && (0..h as i64).contains(&py) {
+                            let at = py as usize * w + px as usize;
+                            if let Some(t) = hit.get_mut(at) {
+                                *t = slot;
+                            }
+                            if (dx, dy) == (0, 0)
+                                && let Some(px) = rgba.get_mut(4 * at..4 * at + 3)
+                            {
+                                px.copy_from_slice(&[r, g, bl]);
+                            }
+                        }
+                    }
+                }
+            }
+        }
         Image {
             width: w as u32,
             height: h as u32,
             rgba,
             hit: Arc::new(hit),
             depth: Arc::new(Vec::new()),
-            owners: Arc::new(self.tris.iter().map(|t| t.owner).collect()),
+            owners: Arc::new(owners),
             faces: Arc::clone(&self.faces),
             section_paint: None,
         }
@@ -3126,6 +3210,45 @@ impl Scene {
             hit = hit.iter().zip(&seen).map(|(h, s)| if *s == u32::MAX { *h } else { *s }).collect();
         }
         let mut owners: Vec<Id> = self.tris.iter().map(|t| t.owner).chain(self.scans.iter().map(|s| s.owner)).collect();
+        // Over it, the components' model lines (FE-15) where nothing nearer hides them: those their Visibility Settings show in
+        // a view that looks this way, kept to a section's clip or a 3D view's section box, each picking its component and in
+        // the selection's colour while it is selected (a section's kept paint too, so that a hover repaints them so).
+        let mut section_paint = section_paint;
+        for st in &self.strokes {
+            if !((plain || look.shows(st.owner)) && look.forms_show(st.vis, false)) {
+                continue;
+            }
+            let Some(base) = look.line_edge(st.owner, st.sub, EDGE) else { continue };
+            let Some([a, b]) = cut.map_or(Some(st.ends), |k| within(st.ends[0], st.ends[1], (k.lo, k.hi))) else { continue };
+            let Some([a, b]) = cam.in_front(a, b) else { continue };
+            let (a, b) = (cam.project(a), cam.project(b));
+            if ![a.0, a.1, a.2, b.0, b.1, b.2].iter().all(|v| v.is_finite()) {
+                continue;
+            }
+            let Some((a, b)) = clip.map_or(Some((a, b)), |k| kept_in_depth((a, b), k)) else { continue };
+            let color = tints.get(&st.owner).copied().unwrap_or(base);
+            let slot = owners.len() as u32;
+            owners.push(st.owner);
+            let paint = |k: usize| {
+                let (x, y) = ((k % w) as f64 + 0.5, (k / w) as f64 + 0.5);
+                if clip.is_some_and(|c| x < c.x.0 || x > c.x.1 || y < c.y.0 || y > c.y.1) {
+                    return;
+                }
+                if let (Some(px), Some(t)) = (rgba.get_mut(4 * k..4 * k + 3), hit.get_mut(k)) {
+                    px.copy_from_slice(&[color.0, color.1, color.2]);
+                    *t = slot;
+                }
+                if let Some(p) = section_paint.as_mut() {
+                    if let Some(px) = p.base.get_mut(4 * k..4 * k + 3) {
+                        px.copy_from_slice(&[base.0, base.1, base.2]);
+                    }
+                    if let Some(e) = p.edges.get_mut(k) {
+                        *e = true;
+                    }
+                }
+            };
+            outline((a, b), (w, h), 1, &|z| cam.slack(1.5, z), &depth, paint);
+        }
         // Over it, each level's plane outlined where nothing nearer hides it (not in a section's picture,
         // which draws its own), picked as the level.
         // Unselected, the two edges nearer the camera are left out, as in Revit; selected, all four.

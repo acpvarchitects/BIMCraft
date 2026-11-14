@@ -1107,7 +1107,7 @@ impl FamilyEditor {
         };
         super::pivot::paint(&painter, &pivots, &on_screen, chosen, turning);
         let ends: Vec<(super::pivot::Grip, egui::Pos2)> =
-            grips.iter().filter(|(g, _)| matches!(g, super::pivot::Grip::End(..))).copied().collect();
+            grips.iter().filter(|(g, _)| matches!(g, super::pivot::Grip::End(..) | super::pivot::Grip::ModelEnd(..))).copied().collect();
         super::pivot::paint_ends(&painter, &ends);
         self.views.grips_shown = grips.clone();
         // Pivot, on: the point the click would pin it to, ringed.
@@ -1256,6 +1256,9 @@ impl FamilyEditor {
                 super::pivot::Grip::Rotate(g) => super::pivot::GripMove::Rotate(g, c.staged.from_view(which, now)),
                 super::pivot::Grip::End(g, spot) => {
                     super::pivot::GripMove::End(g, spot, c.staged.vector(which, P2(now.0 - last.0, now.1 - last.1)))
+                }
+                super::pivot::Grip::ModelEnd(g, spot) => {
+                    super::pivot::GripMove::ModelEnd(g, spot, c.staged.vector(which, P2(now.0 - last.0, now.1 - last.1)))
                 }
             });
             self.views.grip = Some((grip, now));

@@ -1277,6 +1277,13 @@ impl Gpu {
                 count += 1;
             }
         }
+        // The components' model lines (FE-15), as thin as a mark's thin lines.
+        for ([a, b], c) in mesh.strokes_cut(tints, cut) {
+            let rel = |p: &[f64; 3]| std::array::from_fn::<f32, 3, _>(|i| (p[i] - mesh.origin[i]) as f32);
+            let (a, b, c) = (rel(&a), rel(&b), rgb(c));
+            put(&mut lines, &[a[0], a[1], a[2], 1.0, b[0], b[1], b[2], 0.0, c[0], c[1], c[2], 0.0]);
+            count += 1;
+        }
         if lines.len() as u64 > self.segments.1 {
             self.segments = (Gpu::storage(device, lines.len() as u64), lines.len() as u64);
             up.bind = None;

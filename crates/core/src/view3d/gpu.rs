@@ -374,6 +374,9 @@ pub struct Mesh {
     pub wires: Vec<Wire>,
     levels: Vec<(Id, String, [P3; 4])>,
     level_colors: BTreeMap<Id, Rgb>,
+    /// The components' model lines (FE-15) the view shows, each with its component and its colour: drawn over the surfaces as
+    /// the marks' lines are.
+    strokes: Vec<(Id, [P3; 2], Rgb)>,
     tris: Vec<Tri>,
     bvh: OnceLock<Bvh>,
 }
@@ -561,11 +564,19 @@ impl Mesh {
         let clear_from = shown.iter().filter(|&&i| !clear(i) && !is_taken(i)).count() * 3;
         let drawn = shown.iter().filter(|&&i| !is_taken(i)).count();
         let levels: Vec<_> = scene.levels.iter().filter(|(id, ..)| !wireframe && (plain || look.shows(*id))).cloned().collect();
-        // The box round what is shown (the box round its elements' boxes) and the levels.
+        // The model lines those Visibility Settings show in a 3D view, in their colours.
+        let strokes: Vec<(Id, [P3; 2], Rgb)> = scene
+            .strokes
+            .iter()
+            .filter(|st| (plain || look.shows(st.owner)) && look.forms_show(st.vis, false))
+            .filter_map(|st| Some((st.owner, st.ends, look.line_edge(st.owner, st.sub, EDGE)?)))
+            .collect();
+        // The box round what is shown (the box round its elements' boxes), the levels and the model lines.
         let corners = levels.iter().flat_map(|(.., c)| c.iter());
         let reached = reach.iter().flat_map(|(lo, hi)| [lo, hi]);
         let scanned = scans.iter().flat_map(|s| s.corners.iter());
-        let (lo, hi) = bounds(reached.chain(corners).chain(scanned)).unwrap_or(([0.0; 3], [0.0; 3]));
+        let stroked = strokes.iter().flat_map(|(_, e, _)| e.iter());
+        let (lo, hi) = bounds(reached.chain(corners).chain(scanned).chain(stroked)).unwrap_or(([0.0; 3], [0.0; 3]));
         let origin = mul(add(lo, hi), 0.5);
         let radius = dot(sub(hi, lo), sub(hi, lo)).sqrt() * 0.5;
         let mut mesh = Mesh {
@@ -598,6 +609,7 @@ impl Mesh {
             dot_bvh: OnceLock::new(),
             level_colors: levels.iter().map(|(id, ..)| (*id, look.edge(*id, DATUM))).collect(),
             levels,
+            strokes,
             tris: Vec::new(),
             bvh: OnceLock::new(),
         };
@@ -1096,6 +1108,18 @@ impl Mesh {
         self.marks_cut(cam, tints, self.section_box)
     }
 
+    /// The components' model lines (FE-15) the view shows, cut to section box `cut` as the processor's picture cuts them: each
+    /// line's ends and colour, `tints`' for those selected.
+    pub fn strokes_cut(&self, tints: &[(Id, Rgb)], cut: Option<(P3, P3)>) -> Vec<([P3; 2], Rgb)> {
+        self.strokes
+            .iter()
+            .filter_map(|(id, [a, b], c)| {
+                let ends = cut.map_or(Some([*a, *b]), |k| super::within(*a, *b, k))?;
+                Some((ends, tints.iter().find(|(t, _)| t == id).map_or(*c, |(_, t)| *t)))
+            })
+            .collect()
+    }
+
     /// [`marks`](Self::marks), cut to section box `cut`, as the processor's picture cuts them.
     pub fn marks_cut(&self, cam: &Camera, tints: &[(Id, Rgb)], cut: Option<(P3, P3)>) -> Vec<LevelMarks> {
         let color = |id: Id| {
@@ -1205,6 +1229,15 @@ impl Mesh {
         // A surface seen through shows where it is nearer than anything opaque.
         let seen = clear.filter(|(z, ..)| opaque.is_none_or(|(d, ..)| *z > d)).or(opaque);
         let mut hit = seen.map(|(_, hit, tri)| (hit, tri));
+        // A model line (FE-15) is hidden by what is opaque only, and drawn before the marks, as the processor's are.
+        for (id, [a, b], _) in &self.strokes {
+            let Some([a, b]) = cut.map_or(Some([*a, *b]), |k| super::within(*a, *b, k)) else { continue };
+            let Some([a, b]) = cam.in_front(a, b) else { continue };
+            let on_line = covers((cam.project(a), cam.project(b)), 1, centre);
+            if on_line.is_some_and(|z| behind <= z + cam.slack(1.5, z)) {
+                hit = Some((Hit { id: *id, face: "" }, None));
+            }
+        }
         for marks in self.marks_cut(cam, tints, cut) {
             let at = P2(centre.0, centre.1);
             let on_line = marks.lines.iter().find_map(|([a, b], wide)| covers((cam.project(*a), cam.project(*b)), *wide, centre));
@@ -1229,6 +1262,17 @@ impl Mesh {
         let misses = |b: (P3, P3)| outside(&project, b, centre, 3.0);
         let owner = |w: &Wire| self.owners.get(w.owner.checked_sub(1)? as usize);
         let tinted = |id: Id| tints.iter().any(|(t, _)| *t == id);
+        // A model line (FE-15) is drawn after every edge, the selected last, and picks within two pixels as an edge does: the
+        // last drawn of those that reach the pixel is what it picks.
+        let reaches = |ends: [P3; 2]| {
+            super::wire_line(cam, cut, ends, size)
+                .is_some_and(|(p, q)| super::wire_pixels(p, q).any(|(px, py)| (px - at.0).abs() <= 2 && (py - at.1).abs() <= 2))
+        };
+        for selected in [true, false] {
+            if let Some((id, ..)) = self.strokes.iter().rev().filter(|(id, ..)| tinted(*id) == selected).find(|(_, e, _)| reaches(*e)) {
+                return Some(Hit { id: *id, face: "" });
+            }
+        }
         let mut best: Option<(bool, usize)> = None;
         self.bvh().walk(&|n| (n.lo, n.hi), &misses, &mut |i| {
             let Some(wire) = self.wires.get(i) else { return };

@@ -248,3 +248,25 @@ fn a_family_file_with_model_lines_loads_them_and_reloads_them_over_the_projects(
     assert_eq!(p.model_lines.len(), 1, "reloaded over the project's");
     assert_eq!(s.model.check(), Ok(()));
 }
+
+#[test]
+fn a_model_lines_end_dragged_moves_on_its_host_and_a_pinned_or_pointless_one_is_refused() {
+    use crate::family::constraints::Spot;
+    let mut s = Session::new();
+    family(&mut s, json!([{"start": [0, -300, 0], "end": [400, -300, 0]}]));
+    let f = s.model.families["P"].clone();
+    let values = f.values("A", &Default::default()).unwrap();
+    let g = f.model_lines[0].guid;
+    // Dragged up and along: only the part along Ref. Level counts.
+    let [a, b] = f.model_line_end_dragged(&values, g, Spot::End, [100.0, 50.0, 70.0]).unwrap();
+    assert_eq!(a, [0.0, -300.0, 0.0], "its start stays");
+    assert_eq!(b, [500.0, -250.0, 0.0], "its end moved along its host");
+    let [a, _] = f.model_line_end_dragged(&values, g, Spot::Start, [-10.0, 0.0, 0.0]).unwrap();
+    assert_eq!(a, [-10.0, -300.0, 0.0]);
+    let e = f.model_line_end_dragged(&values, g, Spot::End, [-400.0, 0.0, 0.0]).unwrap_err();
+    assert!(e.contains("length"), "{e}");
+    let mut pinned = f.clone();
+    pinned.model_lines[0].pinned = true;
+    let e = pinned.model_line_end_dragged(&values, g, Spot::End, [100.0, 0.0, 0.0]).unwrap_err();
+    assert!(e.contains("pinned"), "{e}");
+}

@@ -528,6 +528,38 @@ impl Family {
         forms.chain(lines).chain(points).chain(self.nested_on(guid)).collect()
     }
 
+    /// Model line `g`'s ends (as the family holds them) once its `spot` end is dragged `by` (the family's axes) where it stands
+    /// for `values`: along its host only, the part across it left out. Refused while it is pinned (FE-17), or where it would
+    /// lose its length or go out of reach.
+    pub fn model_line_end_dragged(
+        &self,
+        values: &BTreeMap<String, Val>,
+        g: Guid,
+        spot: constraints::Spot,
+        by: P3,
+    ) -> Result<[P3; 2], String> {
+        let i = self.model_lines.iter().position(|l| l.guid == g).ok_or_else(|| format!("model line {g} isn't one of its model lines"))?;
+        let l = &self.model_lines[i];
+        if l.pinned {
+            return Err("the model line is pinned: unpin it to move its ends".into());
+        }
+        // The way the drag runs along its host where it stands, laid along its host as the family holds it.
+        let flexed = self.flexed(values).map_err(|e| e.message)?;
+        let seen = flexed.model_lines.get(i).ok_or_else(|| format!("model line {g} isn't one of its model lines"))?;
+        let (h, own) = (flexed.frame(&seen.host)?, self.frame(&l.host)?);
+        let (u, v) = (dot(by, h.x), dot(by, h.y));
+        if !(u.is_finite() && v.is_finite()) {
+            return Err("the end can't go there".into());
+        }
+        let moved = |p: P3| std::array::from_fn(|k| p[k] + own.x[k] * u + own.y[k] * v);
+        let (a, b) = if spot == constraints::Spot::End { (l.start, moved(l.end)) } else { (moved(l.start), l.end) };
+        let d = sub(b, a);
+        if dot(d, d).sqrt() < 1.0 || a.iter().chain(&b).any(|c| !c.is_finite() || c.abs() > MAX_COORD) {
+            return Err("a model line keeps a length within reach".into());
+        }
+        Ok([a, b])
+    }
+
     /// What is drawn on a plane or a line given another GUID (`planes` and `lines`: from, to) drawn on it still.
     pub fn rehost(&mut self, planes: &[(Guid, Guid)], lines: &[(Guid, Guid)]) {
         if planes.is_empty() && lines.is_empty() {
