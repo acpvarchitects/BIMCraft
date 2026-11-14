@@ -18,10 +18,20 @@ const B: [f64; 3] = [1750.0, 300.0, 0.0];
 const A_FRONT: [f64; 3] = [1000.0, 0.0, 1000.0];
 const EDGE: [f64; 3] = [-400.0, 800.0, 0.0];
 
-/// Whether the family document is as it was opened: no step of its history, no unsaved change.
-fn untouched(h: &Harness<BimApp>) -> bool {
+/// The family drafted and the project, written out, the family document's steps of history and whether it has an unsaved change.
+fn snapshot(h: &Harness<BimApp>) -> (String, String, usize, bool) {
     let ed = editor(h);
-    ed.steps() == 0 && !ed.unsaved()
+    let family = serde_json::to_string(&ed.draft_family().ok()).unwrap_or_default();
+    (family, serde_json::to_string(&*h.state().session.model).unwrap_or_default(), ed.steps(), ed.unsaved())
+}
+
+/// Whether the family document and the project are as `before` has them: the family and the project unchanged, no step of
+/// history and no unsaved change more.
+fn untouched(h: &Harness<BimApp>, before: &(String, String, usize, bool)) -> bool {
+    let now = snapshot(h);
+    assert_eq!(now.2, before.2, "steps");
+    assert_eq!(now.3, before.3, "unsaved");
+    now == *before
 }
 
 /// Magenta, Reveal Hidden Elements' colour.
@@ -41,6 +51,7 @@ fn edge_shown(h: &Harness<BimApp>, pictures: &super::preview_visibility::Picture
 #[test]
 fn hide_element_hides_a_form_in_the_view_alone_and_reveal_hidden_unhides_it() {
     let (mut h, pictures) = open(BOXES, "Boxes");
+    let before = snapshot(&h);
     view(&mut h, Some(Which::Plan));
     select_form(&mut h, 1);
     shortcut(&mut h, "EH");
@@ -56,7 +67,7 @@ fn hide_element_hides_a_form_in_the_view_alone_and_reveal_hidden_unhides_it() {
     view(&mut h, Some(Which::Elevation(Side::Front)));
     assert!(darkest(&around(&h, &pictures, A_FRONT, 2)) < 300, "Front still draws box A");
     view(&mut h, Some(Which::Plan));
-    assert!(untouched(&h));
+    assert!(untouched(&h, &before));
     // Reveal Hidden Elements: box A in magenta, picked by a click and unhidden by EU.
     shortcut(&mut h, "RH");
     assert!(editor(&h).views.kept.revealing(Some(Which::Plan)));
@@ -69,12 +80,13 @@ fn hide_element_hides_a_form_in_the_view_alone_and_reveal_hidden_unhides_it() {
     shortcut(&mut h, "RH");
     assert!(!editor(&h).views.kept.revealing(Some(Which::Plan)));
     assert!(darkest(&around(&h, &pictures, A, 2)) < 200, "box A drawn again");
-    assert!(untouched(&h));
+    assert!(untouched(&h, &before));
 }
 
 #[test]
 fn hide_category_hides_every_form_and_unhide_category_brings_them_back() {
     let (mut h, pictures) = open(BOXES, "Boxes");
+    let before = snapshot(&h);
     view(&mut h, Some(Which::Plan));
     select_form(&mut h, 2);
     shortcut(&mut h, "VH");
@@ -93,12 +105,13 @@ fn hide_category_hides_every_form_and_unhide_category_brings_them_back() {
     shortcut(&mut h, "VU");
     shortcut(&mut h, "RH");
     assert!(darkest(&around(&h, &pictures, A, 2)) < 200 && darkest(&around(&h, &pictures, B, 2)) < 200, "both back");
-    assert!(untouched(&h));
+    assert!(untouched(&h, &before));
 }
 
 #[test]
 fn hide_element_hides_a_reference_plane_in_the_view() {
     let (mut h, pictures) = open(BOXES, "Boxes");
+    let before = snapshot(&h);
     view(&mut h, Some(Which::Plan));
     assert!(edge_shown(&h, &pictures));
     click_family(&mut h, [-400.0, -1000.0, 0.0]);
@@ -109,7 +122,7 @@ fn hide_element_hides_a_reference_plane_in_the_view() {
     assert!(editor(&h).selected_plane().is_none(), "hidden, it can't be picked");
     // Revealed, it is picked and unhidden.
     shortcut(&mut h, "RH");
-    assert!(edge_shown(&h, &pictures) || around(&h, &pictures, EDGE, 30).iter().any(magenta), "revealed");
+    assert!(around(&h, &pictures, EDGE, 4).iter().any(magenta), "revealed in magenta, as a form is");
     click_family(&mut h, [-400.0, -1000.0, 0.0]);
     shortcut(&mut h, "EU");
     shortcut(&mut h, "RH");
@@ -119,11 +132,13 @@ fn hide_element_hides_a_reference_plane_in_the_view() {
     shortcut(&mut h, "VH");
     assert!(h.state().status.error, "{}", h.state().status.text);
     assert!(edge_shown(&h, &pictures));
+    assert!(untouched(&h, &before));
 }
 
 #[test]
 fn override_graphics_draws_a_form_otherwise_in_the_view_alone() {
     let (mut h, pictures) = open(BOXES, "Boxes");
+    let before = snapshot(&h);
     view(&mut h, Some(Which::Plan));
     let ink = darkest(&around(&h, &pictures, A, 2));
     select_form(&mut h, 1);
@@ -145,7 +160,7 @@ fn override_graphics_draws_a_form_otherwise_in_the_view_alone() {
     // The plan's alone.
     view(&mut h, Some(Which::Elevation(Side::Front)));
     assert!(darkest(&around(&h, &pictures, A_FRONT, 2)) < 300, "Front draws box A as it was");
-    assert!(untouched(&h));
+    assert!(untouched(&h, &before));
     // Nothing selected: EO says so.
     view(&mut h, Some(Which::Plan));
     key(&mut h, Key::Escape);
@@ -157,6 +172,7 @@ fn override_graphics_draws_a_form_otherwise_in_the_view_alone() {
 #[test]
 fn apply_hide_isolate_to_view_keeps_what_is_hidden_for_now_for_good() {
     let (mut h, pictures) = open(BOXES, "Boxes");
+    let before = snapshot(&h);
     view(&mut h, Some(Which::Plan));
     select_form(&mut h, 1);
     shortcut(&mut h, "HH");
@@ -167,7 +183,7 @@ fn apply_hide_isolate_to_view_keeps_what_is_hidden_for_now_for_good() {
     let guid = editor(&h).form_guid(0).unwrap();
     assert!(editor(&h).views.kept.graphics_of(Some(Which::Plan)).elements.get(&guid).is_some_and(|o| o.hidden), "hidden for good");
     assert!(darkest(&around(&h, &pictures, A, 2)) > 740);
-    assert!(untouched(&h));
+    assert!(untouched(&h, &before));
 }
 
 #[test]
@@ -185,6 +201,7 @@ fn the_view_control_bar_has_reveal_hidden_elements() {
 fn hide_and_override_work_in_3d_too() {
     use super::preview_visibility::{differ, preview};
     let (mut h, pictures) = open(BOXES, "Boxes");
+    let before = snapshot(&h);
     view(&mut h, None);
     let shown = preview(&h, &pictures);
     select_form(&mut h, 1);
@@ -203,8 +220,10 @@ fn hide_and_override_work_in_3d_too() {
     assert!(drawn(&gone) + 300 < drawn(&half), "box A gone: {} drawn against {}", drawn(&gone), drawn(&half));
     shortcut(&mut h, "RH");
     let revealed = preview(&h, &pictures);
-    assert!(revealed.pixels.iter().any(magenta), "box A in magenta");
-    assert!(untouched(&h));
+    assert!(!half.pixels.iter().any(magenta), "nothing magenta before");
+    let m = revealed.pixels.iter().filter(|c| magenta(c)).count();
+    assert!(m > 300, "box A in magenta: {m} pixels");
+    assert!(untouched(&h, &before));
 }
 
 /// Box A hidden and revealed in the plan, and View-Specific Element Graphics, in the three looks, when `BIMCRAFT_FE18_DUMP`
@@ -242,6 +261,7 @@ fn family_hide_and_override_in_three_looks() {
 #[test]
 fn keys_are_the_override_dialogs_while_it_is_open() {
     let (mut h, _) = open(BOXES, "Boxes");
+    let before = snapshot(&h);
     view(&mut h, Some(Which::Plan));
     select_form(&mut h, 1);
     shortcut(&mut h, "EO");
@@ -251,5 +271,181 @@ fn keys_are_the_override_dialogs_while_it_is_open() {
     assert_eq!(editor(&h).draft_family().map(|f| f.forms.len()).unwrap_or(0), 2, "Delete under the dialog deletes nothing");
     assert!(editor(&h).views.kept.graphics_of(Some(Which::Plan)).elements.is_empty(), "nor does EH hide");
     press(&mut h, "Cancel");
-    assert!(untouched(&h));
+    assert!(untouched(&h, &before));
+}
+
+/// Two overlapping boxes, A [0,1000]x[0,600] and B [800,1800]x[0,600], from Ref. Level to 2 m, and a void [600,1200]x[200,400]
+/// through both.
+const VOIDED: &str = r#"family {"name": "Voided", "category": "generic", "types": {"T": {}}, "forms": [{"profile": [[0, 0], [1000, 0], [1000, 600], [0, 600]], "to": 2000}, {"profile": [[800, 0], [1800, 0], [1800, 600], [800, 600]], "to": 2000}, {"profile": [[600, 200], [1200, 200], [1200, 400], [600, 400]], "from": -10, "to": 2010, "void": true}]}"#;
+
+/// Red, cut and seen.
+fn red() -> bimcraft_core::graphics::Override {
+    let s = bimcraft_core::graphics::Style { color: Some([230, 0, 0]), ..Default::default() };
+    bimcraft_core::graphics::Override { projection: s.clone(), cut: s, ..Default::default() }
+}
+
+/// View `which`'s override of form `i` set to `o`, as EO's OK sets it.
+fn set_override(h: &mut Harness<BimApp>, which: Option<Which>, i: usize, o: bimcraft_core::graphics::Override) {
+    let ed = h.state_mut().active_family_mut().unwrap();
+    let g = ed.form_guid(i).unwrap();
+    let mut graphics = ed.views.kept.graphics_of(which);
+    graphics.elements.insert(g, o);
+    ed.views.kept.set_graphics(which, graphics);
+    h.run();
+    h.run();
+}
+
+/// A click at `p` with Ctrl held: what is there added to the selection.
+fn ctrl_click_family(h: &mut Harness<BimApp>, p: [f64; 3]) {
+    h.event(Event::ModifiersChanged(Modifiers::COMMAND));
+    super::family_box_select::click_with_mods(h, p, Modifiers::COMMAND);
+    h.event(Event::ModifiersChanged(Modifiers::NONE));
+    h.run();
+}
+
+#[test]
+fn a_void_still_cuts_a_form_drawn_apart_in_plan_and_elevation() {
+    let (mut h, pictures) = open(VOIDED, "Voided");
+    // The hole's west and south edges in plan, inside A alone, and its west edge in the Front elevation, cut through A.
+    let (west, south) = ([600.0, 300.0, 0.0], [700.0, 200.0, 0.0]);
+    view(&mut h, Some(Which::Plan));
+    assert!(darkest(&around(&h, &pictures, west, 2)) < 600 && darkest(&around(&h, &pictures, south, 2)) < 600, "the hole");
+    set_override(&mut h, Some(Which::Plan), 0, red());
+    assert!(darkest(&around(&h, &pictures, west, 2)) < 600, "the void still cuts A drawn apart, west");
+    assert!(darkest(&around(&h, &pictures, south, 2)) < 600, "the void still cuts A drawn apart, south");
+    // Revealed, A hidden: drawn apart in magenta, the hole still in it.
+    let ed = h.state_mut().active_family_mut().unwrap();
+    let g = ed.form_guid(0).unwrap();
+    ed.views.kept.set_graphics(Some(Which::Plan), Default::default());
+    ed.views.kept.hide(Some(Which::Plan), &[g]);
+    shortcut(&mut h, "RH");
+    assert!(around(&h, &pictures, south, 2).iter().any(magenta), "the hole's edge in A, revealed");
+    // The Front elevation: the void's edges cross A's face, drawn apart.
+    view(&mut h, Some(Which::Elevation(Side::Front)));
+    let edge = [600.0, 0.0, 1000.0];
+    let base = darkest(&around(&h, &pictures, edge, 2));
+    set_override(&mut h, Some(Which::Elevation(Side::Front)), 0, red());
+    let over = darkest(&around(&h, &pictures, edge, 2));
+    assert!((base < 740) == (over < 740), "the elevation draws the void's edge as it did: {base} then {over}");
+}
+
+#[test]
+fn override_graphics_on_several_forms_changes_only_what_was_edited() {
+    let (mut h, _) = open(BOXES, "Boxes");
+    view(&mut h, Some(Which::Plan));
+    let (ga, gb) = (editor(&h).form_guid(0).unwrap(), editor(&h).form_guid(1).unwrap());
+    select_form(&mut h, 1);
+    shortcut(&mut h, "EO");
+    pick(&mut h, Role::CheckBox, "Halftone");
+    press(&mut h, "OK");
+    let elements = |h: &Harness<BimApp>| editor(h).views.kept.graphics_of(Some(Which::Plan)).elements;
+    // B, then A: the dialog opens on B's (none), and an OK unedited leaves A halftone.
+    click_family(&mut h, B);
+    ctrl_click_family(&mut h, A);
+    shortcut(&mut h, "EO");
+    assert!(h.query_by_label("View-Specific Element Graphics").is_some());
+    press(&mut h, "OK");
+    assert!(elements(&h).get(&ga).is_some_and(|o| o.halftone), "A keeps its halftone");
+    assert!(!elements(&h).contains_key(&gb), "B has nothing");
+    // A, then B: opens on A's halftone, and an OK unedited gives B nothing.
+    click_family(&mut h, A);
+    ctrl_click_family(&mut h, B);
+    shortcut(&mut h, "EO");
+    press(&mut h, "OK");
+    assert!(!elements(&h).contains_key(&gb), "B got A's halftone");
+    // B red; A and B, Halftone ticked off: both lose it, B stays red.
+    set_override(&mut h, Some(Which::Plan), 1, red());
+    click_family(&mut h, A);
+    ctrl_click_family(&mut h, B);
+    shortcut(&mut h, "EO");
+    pick(&mut h, Role::CheckBox, "Halftone");
+    press(&mut h, "OK");
+    assert!(!elements(&h).contains_key(&ga), "A's halftone off: nothing left");
+    assert_eq!(elements(&h).get(&gb), Some(&red()), "B keeps its red, the field nobody edited");
+}
+
+#[test]
+fn hide_category_hides_a_door_form_with_an_override_too() {
+    let door = super::family_visibility::door("");
+    let (mut h, pictures) = open(&door, "Test Door");
+    view(&mut h, Some(Which::Plan));
+    let leaf = [0.0, 0.0, 0.0];
+    assert!(darkest(&around(&h, &pictures, leaf, 3)) < 600, "the leaf");
+    select_form(&mut h, 4);
+    shortcut(&mut h, "EO");
+    pick(&mut h, Role::CheckBox, "Halftone");
+    press(&mut h, "OK");
+    select_form(&mut h, 1);
+    shortcut(&mut h, "VH");
+    assert!(darkest(&around(&h, &pictures, leaf, 3)) > 740, "the leaf goes with its category, its override and all");
+    shortcut(&mut h, "RH");
+    assert!(around(&h, &pictures, leaf, 3).iter().any(magenta), "revealed in magenta");
+}
+
+#[test]
+fn dimension_and_align_pick_no_hidden_form() {
+    let (mut h, _) = open(BOXES, "Boxes");
+    view(&mut h, Some(Which::Plan));
+    select_form(&mut h, 1);
+    shortcut(&mut h, "EH");
+    // Box A's west edge.
+    let edge = [500.0, 450.0, 0.0];
+    h.state_mut().active_family_mut().unwrap().views.dimensioning = Some(Vec::new());
+    h.run();
+    click_family(&mut h, edge);
+    assert_eq!(editor(&h).views.dimensioning, Some(Vec::new()), "a dimension picked the hidden form's edge");
+    let ed = h.state_mut().active_family_mut().unwrap();
+    ed.views.dimensioning = None;
+    ed.views.aligning = Some(None);
+    h.run();
+    click_family(&mut h, edge);
+    assert!(matches!(editor(&h).views.aligning, Some(None)), "Align picked the hidden form's edge");
+    // Hidden for now (HH), the same.
+    let ed = h.state_mut().active_family_mut().unwrap();
+    ed.views.aligning = None;
+    ed.views.kept.set_graphics(Some(Which::Plan), Default::default());
+    h.run();
+    select_form(&mut h, 1);
+    shortcut(&mut h, "HH");
+    h.state_mut().active_family_mut().unwrap().views.dimensioning = Some(Vec::new());
+    h.run();
+    click_family(&mut h, edge);
+    assert_eq!(editor(&h).views.dimensioning, Some(Vec::new()), "a dimension picked the form hidden for now");
+}
+
+#[test]
+fn apply_hide_isolate_to_view_is_off_in_an_adaptive_family() {
+    let (mut h, _points, form) = super::family_temporary_hide::adaptive();
+    if let Some(ed) = h.state_mut().active_family_mut() {
+        ed.modeller.selection = vec![form];
+    }
+    h.run();
+    shortcut(&mut h, "HC");
+    press(&mut h, "Temporary Hide/Isolate");
+    let apply = h.query_by_label("Apply Hide/Isolate to View").map(|n| n.accesskit_node().is_disabled());
+    assert_eq!(apply, Some(true), "an adaptive family's views hide for now only");
+}
+
+#[test]
+fn keys_are_the_override_dialogs_while_it_is_open_with_shortcuts_needing_ctrl() {
+    let (mut h, _) = open(BOXES, "Boxes");
+    let before = snapshot(&h);
+    h.state_mut().shortcuts_need_ctrl = true;
+    view(&mut h, Some(Which::Plan));
+    select_form(&mut h, 1);
+    shortcut(&mut h, "EO");
+    assert!(h.query_by_label("View-Specific Element Graphics").is_some(), "EO opens with Ctrl");
+    key(&mut h, Key::Delete);
+    for k in ["EH", "RH", "VV", "HH"] {
+        shortcut(&mut h, k);
+    }
+    h.key_combination_modifiers(Modifiers::COMMAND, &[Key::Z]);
+    h.run();
+    let ed = editor(&h);
+    assert_eq!(ed.draft_family().unwrap().forms.len(), 2);
+    assert!(!ed.views.kept.revealing(Some(Which::Plan)));
+    assert!(ed.views.kept.graphics_of(Some(Which::Plan)).elements.is_empty());
+    assert!(!ed.temporary().hides());
+    assert!(h.state().vg_dialog.is_none());
+    assert!(untouched(&h, &before));
 }
