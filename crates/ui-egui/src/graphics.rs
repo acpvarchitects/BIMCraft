@@ -430,7 +430,11 @@ impl BimApp {
             });
         cell_window(ctx, &mut d, &model);
         if styles {
-            self.object_styles_dialog = Some(crate::objectstyles::ObjectStylesDialog::new(&model));
+            // From a family document's view, FE-19's: the family's category first, and the note that it changes the project.
+            self.object_styles_dialog = Some(match d.family.as_ref().and_then(|f| f.model.first()) {
+                Some(cat) => crate::objectstyles::ObjectStylesDialog::for_family(&model, cat),
+                None => crate::objectstyles::ObjectStylesDialog::new(&model),
+            });
         }
         // What's different from the project's, as one command; a refusal keeps the dialog open to fix it.
         let mut failed = false;

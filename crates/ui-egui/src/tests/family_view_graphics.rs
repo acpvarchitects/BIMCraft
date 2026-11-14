@@ -244,8 +244,13 @@ fn the_keys_work_with_ctrl_held_when_shortcuts_need_it() {
 fn family_view_graphics_in_three_looks() {
     let Ok(folder) = std::env::var("BIMCRAFT_FE18_DUMP") else { return };
     std::fs::create_dir_all(&folder).unwrap();
-    for (name, dark, light_canvas) in [("light", false, false), ("dark", true, false), ("dark-ui-light-canvas", true, true)] {
-        let mut h = app(BOX);
+    for (name, dark, light_canvas, own) in [
+        ("light", false, false, false),
+        ("dark", true, false, false),
+        ("dark-ui-light-canvas", true, true, false),
+        ("bimcraft-profile", false, false, true),
+    ] {
+        let mut h = if own { bimcraft(BOX) } else { app(BOX) };
         h.set_size(egui::vec2(1600.0, 1000.0));
         h.state_mut().edit_family("Box");
         h.run();
@@ -268,6 +273,17 @@ fn family_view_graphics_in_three_looks() {
         shortcut(&mut h, "TL");
         save(&mut h, "thin-lines");
         shortcut(&mut h, "TL");
+        // The plan with Generic Components hidden, then shown again with a View Range above the box.
+        shortcut(&mut h, "VV");
+        pick(&mut h, Role::CheckBox, "Generic Components");
+        press(&mut h, "OK");
+        save(&mut h, "plan-vv-hidden");
+        shortcut(&mut h, "VV");
+        pick(&mut h, Role::CheckBox, "Generic Components");
+        press(&mut h, "OK");
+        shortcut(&mut h, "VR");
+        view_range(&mut h, "3500", "3000", "2500", "2500");
+        save(&mut h, "plan-vr-above");
         view(&mut h, None);
         shortcut(&mut h, "WF");
         save(&mut h, "3d-wireframe");
@@ -275,4 +291,112 @@ fn family_view_graphics_in_three_looks() {
         save(&mut h, "gd");
         press(&mut h, "Cancel");
     }
+}
+
+/// How many forms the draft has.
+fn forms(h: &Harness<BimApp>) -> usize {
+    editor(h).draft_family().map(|f| f.forms.len()).unwrap_or(0)
+}
+
+#[test]
+fn keys_are_the_dialogs_not_the_familys_while_one_is_open() {
+    let (mut h, _) = open(BOX, "Box");
+    view(&mut h, Some(Which::Plan));
+    // Delete under Visibility/Graphics deletes nothing.
+    super::family_views::select_form(&mut h, 1);
+    shortcut(&mut h, "VV");
+    assert!(vg_open(&h));
+    key(&mut h, Key::Delete);
+    assert_eq!(forms(&h), 1, "the form stays under the dialog");
+    press(&mut h, "Cancel");
+    // TL under View Range, WF under Graphic Display Options: neither reaches the window or the view.
+    shortcut(&mut h, "VR");
+    shortcut(&mut h, "TL");
+    assert!(!h.state().thin, "TL under View Range");
+    press(&mut h, "Cancel");
+    view(&mut h, None);
+    shortcut(&mut h, "GD");
+    shortcut(&mut h, "WF");
+    assert_eq!(editor(&h).views.kept.graphics_of(None).style, VisualStyle::Shaded, "WF under Graphic Display Options");
+    press(&mut h, "Cancel");
+    assert!(untouched(&h));
+}
+
+/// A footing under Ref. Level, from 800 below it to 200 below, and the box over it.
+const FOOTING: &str = r#"family {"name": "Footing", "category": "generic", "types": {"T": {}}, "forms": [{"profile": [[500, 300], [1000, 300], [1000, 600], [500, 600]], "from": -800, "to": -200}]}"#;
+
+#[test]
+fn view_range_ok_with_nothing_typed_leaves_the_plan_as_it_was() {
+    let (mut h, pictures) = open(FOOTING, "Footing");
+    view(&mut h, Some(Which::Plan));
+    assert!(darkest(&around(&h, &pictures, IN_PLAN, 2)) < 300, "the footing under Ref. Level, seen");
+    shortcut(&mut h, "VR");
+    assert_eq!(h.get_by_label("Top").accesskit_node().value().unwrap_or_default(), "", "Top unlimited");
+    press(&mut h, "OK");
+    assert_eq!(editor(&h).views.kept.seen(Which::Plan), None, "nothing set");
+    assert!(darkest(&around(&h, &pictures, IN_PLAN, 2)) < 300, "still seen");
+}
+
+#[test]
+fn view_range_is_the_floor_plans() {
+    let (mut h, _) = open(BOX, "Box");
+    view(&mut h, Some(Which::Ceiling));
+    shortcut(&mut h, "VR");
+    assert!(h.query_by_label("Cut Plane").is_none(), "no View Range on the ceiling plan");
+    assert!(h.state().status.error && h.state().status.text.contains("floor plan"), "{}", h.state().status.text);
+}
+
+#[test]
+fn object_styles_from_the_familys_visibility_graphics_is_the_familys() {
+    let (mut h, _) = open(BOX, "Box");
+    view(&mut h, Some(Which::Plan));
+    shortcut(&mut h, "VV");
+    press(&mut h, "Object Styles…");
+    assert!(h.query_by_label_contains("This changes the project's object styles now").is_some(), "FE-19's note: it changes the project");
+}
+
+#[test]
+fn the_family_views_graphics_never_touch_the_project() {
+    let (mut h, _) = open(BOX, "Box");
+    let model = serde_json::to_string(&*h.state().session.model).unwrap();
+    let dirty = h.state().dirty();
+    view(&mut h, Some(Which::Plan));
+    shortcut(&mut h, "VV");
+    pick(&mut h, Role::CheckBox, "Generic Components");
+    press(&mut h, "OK");
+    shortcut(&mut h, "VR");
+    view_range(&mut h, "3500", "3000", "2500", "2500");
+    view(&mut h, None);
+    shortcut(&mut h, "GD");
+    pick(&mut h, Role::CheckBox, "Show Ambient Shadows");
+    press(&mut h, "OK");
+    shortcut(&mut h, "HL");
+    assert_eq!(serde_json::to_string(&*h.state().session.model).unwrap(), model, "the project as it was");
+    assert_eq!(h.state().dirty(), dirty);
+}
+
+#[test]
+fn hidden_line_draws_3d_otherwise_than_shaded_and_wireframe() {
+    let (mut h, pictures) = open(BOX, "Box");
+    view(&mut h, None);
+    let shaded = preview(&h, &pictures);
+    shortcut(&mut h, "WF");
+    let wire = preview(&h, &pictures);
+    shortcut(&mut h, "HL");
+    let hidden = preview(&h, &pictures);
+    assert!(differ(&shaded, &hidden).len() > 300, "Hidden Line isn't Shaded");
+    assert!(differ(&wire, &hidden).len() > 50, "nor Wireframe: its far edges hidden");
+}
+
+#[test]
+fn thin_lines_draws_an_elevation_one_pixel_wide_too() {
+    let (mut h, _) = open(BOX, "Box");
+    view(&mut h, Some(Which::Elevation(Side::Front)));
+    h.run();
+    let wide = painted_widths(&h);
+    assert!(wide.iter().any(|w| *w > 1.5), "the elevation's pens: {wide:?}");
+    shortcut(&mut h, "TL");
+    h.run();
+    let thin = painted_widths(&h);
+    assert!(thin.iter().all(|w| *w <= 1.5), "{thin:?}");
 }

@@ -1502,8 +1502,10 @@ impl BimApp {
                         }
                         ui.separator();
                         if ui.button(t("Graphic Display Options...")).clicked() {
-                            let options = ed.views.kept.display;
-                            self.display_dialog = Some(crate::display::DisplayDialog::for_family(options, self.active_doc()));
+                            if let Some(doc) = self.active_doc() {
+                                let options = ed.views.kept.display;
+                                self.display_dialog = Some(crate::display::DisplayDialog::for_family(options, doc));
+                            }
                         }
                     });
                 }
@@ -1850,10 +1852,11 @@ impl BimApp {
     /// a project's tab.
     pub(crate) fn family_keys(&mut self, ctx: &Context) {
         let Some(ed) = self.active_family() else { return };
-        if ed.modal() {
+        // A dialog of the document's, of its views' (FE-18), or of the window's has the keys.
+        if ed.modal() || ed.views.kept.dialog_open() || self.keys_taken(ctx) {
             return;
         }
-        if !self.keys_taken(ctx) {
+        {
             let pressed = |m: egui::Modifiers, k: egui::Key| ctx.input_mut(|i| i.consume_key(m, k));
             if pressed(egui::Modifiers::COMMAND | egui::Modifiers::SHIFT, egui::Key::S) {
                 self.family_save(true);

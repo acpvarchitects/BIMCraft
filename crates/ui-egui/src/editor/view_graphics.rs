@@ -70,16 +70,16 @@ impl Kept {
         }
     }
 
+    /// Whether a dialog of the views' is open, which has the keys.
+    pub(crate) fn dialog_open(&self) -> bool {
+        self.range_dialog.is_some()
+    }
+
     /// What each view keeps that changes how it is drawn, for the caches' keys.
     pub(crate) fn key(&self, which: Option<Which>) -> String {
         let range = which.and_then(|w| self.ranges.get(&w));
         format!("{}{:?}{:?}", serde_json::to_string(&self.graphics_of(which)).unwrap_or_default(), range, self.display)
     }
-}
-
-/// Whether `which` is a plan, which has a View Range.
-fn plan(which: Option<Which>) -> Option<Which> {
-    which.filter(|w| matches!(w, Which::Plan | Which::Ceiling))
 }
 
 /// The view a family document's view is drawn of has `own` laid over it: its categories' and elements' overrides and its
@@ -150,7 +150,8 @@ impl BimApp {
             return;
         }
         let options = ed.views.kept.display;
-        self.display_dialog = Some(crate::display::DisplayDialog::for_family(options, self.active_doc()));
+        let Some(doc) = self.active_doc() else { return };
+        self.display_dialog = Some(crate::display::DisplayDialog::for_family(options, doc));
     }
 
     /// The Graphic Display Options dialog's OK or Apply on a family document's {3D}.
@@ -160,12 +161,13 @@ impl BimApp {
         }
     }
 
-    /// View Range (VR) for the plan shown; in an elevation or {3D}, says it is a plan's.
+    /// View Range (VR) for the floor plan; in another view, says it is the floor plan's. A ceiling plan looks up from its own
+    /// cut, as a project's does, and keeps none.
     pub(crate) fn family_view_range(&mut self) {
         let units = self.session.model.units;
         let Some(ed) = self.active_family_mut() else { return };
-        let Some(which) = plan(ed.views.shown) else {
-            self.status = Status { text: t("a view range is a plan's: open a floor or ceiling plan").into(), error: true };
+        let Some(which) = ed.views.shown.filter(|w| *w == Which::Plan) else {
+            self.status = Status { text: t("a view range is the floor plan's: open Floor Plans > Ref. Level").into(), error: true };
             return;
         };
         let r = ed.views.kept.range_of(which);
@@ -183,9 +185,8 @@ impl BimApp {
         let r = crate::popup::Modal::new(UiId::new("family-view-range"), t("View Range")).width(340.0).show(ctx, |ui| {
             crate::popup::body(ui, |ui| {
                 Grid::new("family-view-range-fields").num_columns(2).spacing(vec2(12.0, 6.0)).show(ui, |ui| {
-                    for (i, (label, hint)) in [(t("Top"), t("Level Above")), (t("Cut Plane"), ""), (t("Bottom"), ""), (t("View Depth"), "")]
-                        .into_iter()
-                        .enumerate()
+                    for (i, (label, hint)) in
+                        [(t("Top"), t("Unlimited")), (t("Cut Plane"), ""), (t("Bottom"), ""), (t("View Depth"), "")].into_iter().enumerate()
                     {
                         let l = ui.label(label);
                         ui.add_sized([160.0, ui.spacing().interact_size.y], TextEdit::singleline(&mut d.fields[i]).hint_text(hint))
@@ -215,6 +216,8 @@ impl BimApp {
                     // As the project checks a plan's: within reach, and top ≥ cut plane ≥ bottom ≥ view depth.
                     let range = ViewRange { top, cut, bottom, depth };
                     match bimcraft_core::model::range_ok(t("Ref. Level"), &range) {
+                        // OK on what the dialog showed of a plan that had none sets none: it still sees every form.
+                        Ok(()) if range == ViewRange::default() && !ed.views.kept.ranges.contains_key(&d.which) => {}
                         Ok(()) => {
                             ed.views.kept.ranges.insert(d.which, range);
                         }
