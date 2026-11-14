@@ -251,7 +251,7 @@ fn family_view_graphics_in_three_looks() {
         h.run();
         h.ctx.set_theme(if dark { egui::ThemePreference::Dark } else { egui::ThemePreference::Light });
         h.state_mut().light_canvas = light_canvas;
-        let mut save = |h: &mut Harness<BimApp>, what: &str| {
+        let save = |h: &mut Harness<BimApp>, what: &str| {
             for _ in 0..4 {
                 h.run();
             }
