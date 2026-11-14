@@ -194,7 +194,7 @@ msgstr "Matériau, isolant et température de service d'un conducteur, et couran
 msgid "A copy is drawn on a reference plane or a reference line the family no longer has: it can't be pasted."
 msgstr ""
 
-#: crates/ui-egui/src/editor/views.rs:1045
+#: crates/ui-egui/src/editor/views.rs:1061
 msgid "A datum stays where it is: offset a reference plane of the family's own."
 msgstr ""
 
@@ -246,7 +246,7 @@ msgstr "Un filtre se crée dans Vue > Filtres"
 msgid "A folder. One that isn't absolute is beside the project's file."
 msgstr ""
 
-#: crates/ui-egui/src/editor/views.rs:1424
+#: crates/ui-egui/src/editor/views.rs:1440
 msgid "A form made of a mesh has no faces Align can take: pick a reference plane, an extrusion's end or a line of a form."
 msgstr ""
 
@@ -782,7 +782,7 @@ msgstr ""
 msgid "Align lines up with what a plan shows: in the 3D view, drag a line's end or draw it again."
 msgstr "L'alignement des lignes se fait sur ce que montre un plan: dans la vue 3D, faire glisser l'extrémité d'une ligne ou la redessiner."
 
-#: crates/ui-egui/src/editor/views.rs:1426
+#: crates/ui-egui/src/editor/views.rs:1442
 msgid "Align takes a form's straight edge, a side the view sees edge on, or its end: click on its outline."
 msgstr ""
 
@@ -1153,7 +1153,7 @@ msgstr "S'applique à toutes les vues; s'accroche à la grille principale ou à 
 msgid "Apply"
 msgstr "Appliquer"
 
-#: crates/ui-egui/src/editor/temp_hide.rs:257
+#: crates/ui-egui/src/editor/temp_hide.rs:260
 #: crates/ui-egui/src/footer.rs:432
 msgid "Apply Hide/Isolate to View"
 msgstr "Appliquer Masquer/Isoler à la vue"
@@ -1667,7 +1667,7 @@ msgstr "Gras (Ctrl+B)"
 msgid "Border Line Weight"
 msgstr "Épaisseur de ligne de bordure"
 
-#: crates/ui-egui/src/editor/view_graphics.rs:322
+#: crates/ui-egui/src/editor/view_graphics.rs:341
 #: crates/ui-egui/src/export/mod.rs:979
 #: crates/ui-egui/src/properties.rs:443
 #: crates/ui-egui/src/reinforce.rs:182
@@ -1866,8 +1866,8 @@ msgstr "Caméra: cliquer à l'endroit de son œil, puis sur ce qu'elle regarde: 
 #: crates/ui-egui/src/editor/selection.rs:303
 #: crates/ui-egui/src/editor/types_dialog.rs:491
 #: crates/ui-egui/src/editor/types_dialog.rs:639
-#: crates/ui-egui/src/editor/view_graphics.rs:338
-#: crates/ui-egui/src/editor/view_graphics.rs:492
+#: crates/ui-egui/src/editor/view_graphics.rs:357
+#: crates/ui-egui/src/editor/view_graphics.rs:511
 #: crates/ui-egui/src/editor/visibility.rs:108
 #: crates/ui-egui/src/editor/work_plane.rs:237
 #: crates/ui-egui/src/editor/work_plane.rs:287
@@ -2028,7 +2028,7 @@ msgstr "Luminaire de plafond"
 msgid "Ceiling Plan"
 msgstr "Plan de plafond"
 
-#: crates/ui-egui/src/editor/view_graphics.rs:522
+#: crates/ui-egui/src/editor/view_graphics.rs:579
 msgid "Ceiling Plan:"
 msgstr ""
 
@@ -3778,7 +3778,7 @@ msgstr "Motifs de coupe"
 msgid "Cut Pen"
 msgstr "Plume de coupe"
 
-#: crates/ui-egui/src/editor/view_graphics.rs:322
+#: crates/ui-egui/src/editor/view_graphics.rs:341
 #: crates/ui-egui/src/properties.rs:442
 #: crates/ui-egui/src/templates.rs:744
 msgid "Cut Plane"
@@ -4680,7 +4680,7 @@ msgstr "EQ"
 msgid "Each face of the box shows what it cuts in its cut pattern. Off, the faces are left hollow and moving the box is faster"
 msgstr ""
 
-#: crates/ui-egui/src/editor/view_graphics.rs:364
+#: crates/ui-egui/src/editor/view_graphics.rs:383
 #: crates/ui-egui/src/templates.rs:777
 msgid "Each is a length, and Top may be left empty for the level above."
 msgstr "Chaque valeur est une longueur, et Haut peut rester vide pour le niveau au-dessus."
@@ -5023,7 +5023,7 @@ msgstr "Élévation à partir du niveau"
 msgid "Elevation/Section"
 msgstr "Élévation/Coupe"
 
-#: crates/ui-egui/src/editor/view_graphics.rs:523
+#: crates/ui-egui/src/editor/view_graphics.rs:580
 #: crates/ui-egui/src/lib.rs:5580
 #: crates/ui-egui/src/lib.rs:5586
 msgid "Elevation:"
@@ -5751,7 +5751,7 @@ msgstr ""
 msgid "Floor Plan"
 msgstr "Plan d'étage"
 
-#: crates/ui-egui/src/editor/view_graphics.rs:521
+#: crates/ui-egui/src/editor/view_graphics.rs:578
 msgid "Floor Plan:"
 msgstr ""
 
@@ -6249,7 +6249,7 @@ msgstr "Lignes cachées"
 msgid "Hide Category"
 msgstr "Masquer la catégorie"
 
-#: crates/ui-egui/src/editor/temp_hide.rs:247
+#: crates/ui-egui/src/editor/temp_hide.rs:250
 #: crates/ui-egui/src/footer.rs:420
 msgid "Hide Category (HC)"
 msgstr "Masquer la catégorie (HC)"
@@ -6266,7 +6266,7 @@ msgstr "Masquer l'élément"
 msgid "Hide Element (EH): leave the selected elements out of this view"
 msgstr "Masquer l'élément (EH): exclure de cette vue les éléments sélectionnés"
 
-#: crates/ui-egui/src/editor/temp_hide.rs:246
+#: crates/ui-egui/src/editor/temp_hide.rs:249
 #: crates/ui-egui/src/footer.rs:419
 msgid "Hide Element (HH)"
 msgstr "Masquer l'élément (HH)"
@@ -6706,12 +6706,12 @@ msgstr "Cotes non valides"
 msgid "Invert"
 msgstr "Inverser"
 
-#: crates/ui-egui/src/editor/temp_hide.rs:249
+#: crates/ui-egui/src/editor/temp_hide.rs:252
 #: crates/ui-egui/src/footer.rs:422
 msgid "Isolate Category (IC)"
 msgstr "Isoler la catégorie (IC)"
 
-#: crates/ui-egui/src/editor/temp_hide.rs:248
+#: crates/ui-egui/src/editor/temp_hide.rs:251
 #: crates/ui-egui/src/footer.rs:421
 msgid "Isolate Element (HI)"
 msgstr "Isoler l'élément (HI)"
@@ -8981,8 +8981,8 @@ msgstr ""
 #: crates/ui-egui/src/editor/selection.rs:304
 #: crates/ui-egui/src/editor/types_dialog.rs:492
 #: crates/ui-egui/src/editor/types_dialog.rs:640
-#: crates/ui-egui/src/editor/view_graphics.rs:339
-#: crates/ui-egui/src/editor/view_graphics.rs:493
+#: crates/ui-egui/src/editor/view_graphics.rs:358
+#: crates/ui-egui/src/editor/view_graphics.rs:512
 #: crates/ui-egui/src/editor/visibility.rs:109
 #: crates/ui-egui/src/editor/work_plane.rs:238
 #: crates/ui-egui/src/editor.rs:1393
@@ -9089,7 +9089,7 @@ msgstr "Décalage par rapport à l'hôte"
 msgid "Offset from Surface:"
 msgstr "Décalage par rapport à la surface:"
 
-#: crates/ui-egui/src/editor/views.rs:1050
+#: crates/ui-egui/src/editor/views.rs:1066
 msgid "Offset takes reference planes and reference lines: edit a form's sketch to offset its lines."
 msgstr ""
 
@@ -9125,7 +9125,7 @@ msgstr ""
 msgid "OffsetZ (mm)"
 msgstr ""
 
-#: crates/ui-egui/src/editor/view_graphics.rs:330
+#: crates/ui-egui/src/editor/view_graphics.rs:349
 msgid "Offsets from Ref. Level."
 msgstr ""
 
@@ -9903,7 +9903,7 @@ msgstr "Sélectionner un plan de référence, une ligne de référence ou une ar
 msgid "Pick a reference plane, a reference line or a line, then a line of the sketch."
 msgstr "Sélectionner un plan de référence, une ligne de référence ou une ligne, puis une ligne de l'esquisse."
 
-#: crates/ui-egui/src/editor/views.rs:1427
+#: crates/ui-egui/src/editor/views.rs:1443
 msgid "Pick a reference plane, an extrusion's end or a line of a form."
 msgstr "Sélectionner un plan de référence, une extrémité d'une extrusion ou une ligne d'une forme."
 
@@ -10084,7 +10084,7 @@ msgid "Pick three points: after OK, click three points on the model, each snappi
 msgstr "Choisir trois points: après OK, cliquer sur trois points du modèle, chacun s'accrochant à un coin proche du pointeur"
 
 #: crates/ui-egui/src/editor/dimensions.rs:1382
-#: crates/ui-egui/src/editor/views.rs:1406
+#: crates/ui-egui/src/editor/views.rs:1422
 msgid "Pick two references or more, then click where the dimension goes."
 msgstr "Sélectionner deux références ou plus, puis cliquer à l'emplacement de la cote."
 
@@ -11090,9 +11090,9 @@ msgid "Ref Plane"
 msgstr "Plan réf."
 
 #: crates/ui-egui/src/adaptive_editor.rs:274
-#: crates/ui-egui/src/editor/view_graphics.rs:351
-#: crates/ui-egui/src/editor/view_graphics.rs:521
-#: crates/ui-egui/src/editor/view_graphics.rs:522
+#: crates/ui-egui/src/editor/view_graphics.rs:370
+#: crates/ui-egui/src/editor/view_graphics.rs:578
+#: crates/ui-egui/src/editor/view_graphics.rs:579
 #: crates/ui-egui/src/editor/views.rs:181
 #: crates/ui-egui/src/editor/views.rs:182
 msgid "Ref. Level"
@@ -11444,7 +11444,7 @@ msgstr "Réinitialiser la forme: retirer les points et les lignes de séparation
 msgid "Reset Temporary Hide/Isolate"
 msgstr "Réinitialiser masquage/isolement temporaire"
 
-#: crates/ui-egui/src/editor/temp_hide.rs:260
+#: crates/ui-egui/src/editor/temp_hide.rs:263
 #: crates/ui-egui/src/footer.rs:435
 msgid "Reset Temporary Hide/Isolate (HR)"
 msgstr "Réinitialiser masquage/isolement temporaire (HR)"
@@ -13551,13 +13551,13 @@ msgstr "Masquer temporairement la catégorie"
 msgid "Temporary Hide Element"
 msgstr "Masquer temporairement l'élément"
 
-#: crates/ui-egui/src/editor/temp_hide.rs:240
-#: crates/ui-egui/src/editor/temp_hide.rs:271
+#: crates/ui-egui/src/editor/temp_hide.rs:243
+#: crates/ui-egui/src/editor/temp_hide.rs:274
 #: crates/ui-egui/src/footer.rs:414
 msgid "Temporary Hide/Isolate"
 msgstr "Masquage/isolement temporaire"
 
-#: crates/ui-egui/src/editor/temp_hide.rs:239
+#: crates/ui-egui/src/editor/temp_hide.rs:242
 #: crates/ui-egui/src/footer.rs:412
 msgid "Temporary Hide/Isolate: hide or isolate what is selected, or its categories, in this view until you reset it"
 msgstr "Masquage/isolement temporaire: masquer ou isoler la sélection, ou ses catégories, dans cette vue jusqu'à réinitialisation"
@@ -13686,7 +13686,7 @@ msgstr "C'est le nombre maximal de préréglages conservés: en supprimer un d'a
 msgid "That is no IP address: 0.0.0.0 listens on all of this machine's"
 msgstr "Ce n'est pas une adresse IP: 0.0.0.0 écoute sur toutes les adresses de cette machine"
 
-#: crates/ui-egui/src/editor/views.rs:1417
+#: crates/ui-egui/src/editor/views.rs:1433
 msgid "That is the reference: pick what moves onto it."
 msgstr ""
 
@@ -14143,7 +14143,7 @@ msgstr "La vue est dans l'axe de la cote: la tourner pour placer sa ligne."
 msgid "The view sees it end-on: offset it in a view that sees its trace."
 msgstr ""
 
-#: crates/ui-egui/src/editor/views.rs:1373
+#: crates/ui-egui/src/editor/views.rs:1389
 msgid "The view sees its work plane edge on: set a work plane it sees flat (Work Plane > Set)."
 msgstr ""
 
@@ -14455,7 +14455,7 @@ msgstr "Trop dense pour l'aperçu à cette taille."
 msgid "Tools"
 msgstr "Outils"
 
-#: crates/ui-egui/src/editor/view_graphics.rs:322
+#: crates/ui-egui/src/editor/view_graphics.rs:341
 #: crates/ui-egui/src/export/mod.rs:973
 #: crates/ui-egui/src/lib.rs:5691
 #: crates/ui-egui/src/reinforce.rs:182
@@ -14900,7 +14900,7 @@ msgstr "Unités"
 msgid "Units Format"
 msgstr "Format des unités"
 
-#: crates/ui-egui/src/editor/view_graphics.rs:322
+#: crates/ui-egui/src/editor/view_graphics.rs:341
 msgid "Unlimited"
 msgstr ""
 
@@ -15069,7 +15069,7 @@ msgstr "Vertical"
 msgid "View"
 msgstr "Vue"
 
-#: crates/ui-egui/src/editor/view_graphics.rs:322
+#: crates/ui-egui/src/editor/view_graphics.rs:341
 #: crates/ui-egui/src/properties.rs:444
 #: crates/ui-egui/src/templates.rs:744
 msgid "View Depth"
@@ -15088,7 +15088,7 @@ msgstr "Nom de la vue"
 msgid "View Properties"
 msgstr "Propriétés de la vue"
 
-#: crates/ui-egui/src/editor/view_graphics.rs:318
+#: crates/ui-egui/src/editor/view_graphics.rs:337
 #: crates/ui-egui/src/graphics.rs:122
 #: crates/ui-egui/src/shortcuts.rs:166
 #: crates/ui-egui/src/templates.rs:700
@@ -15131,7 +15131,7 @@ msgstr "Modèles de vue (VT): les réglages d'une vue sous un nom, à faire suiv
 msgid "View template {}"
 msgstr "Modèle de vue {}"
 
-#: crates/ui-egui/src/editor/view_graphics.rs:483
+#: crates/ui-egui/src/editor/view_graphics.rs:502
 msgid "View-Specific Element Graphics"
 msgstr ""
 
@@ -15946,7 +15946,7 @@ msgstr "un point se compose de trois longueurs, `x, y, z`"
 msgid "a size in mm"
 msgstr "une taille en mm"
 
-#: crates/ui-egui/src/editor/view_graphics.rs:303
+#: crates/ui-egui/src/editor/view_graphics.rs:322
 msgid "a view range is the floor plan's: open Floor Plans > Ref. Level"
 msgstr ""
 
@@ -15974,7 +15974,7 @@ msgstr "le long de sa normale: vers le haut depuis un niveau, vers l'extérieur 
 msgid "aluminium"
 msgstr "aluminium"
 
-#: crates/ui-egui/src/editor/view_graphics.rs:395
+#: crates/ui-egui/src/editor/view_graphics.rs:414
 msgid "an adaptive family's views hide for now only: use Temporary Hide/Isolate"
 msgstr ""
 
@@ -16138,7 +16138,7 @@ msgstr "spline ajustée"
 msgid "graphic display options are for the 3D view: open it from the Project Browser"
 msgstr "les options d'affichage graphique concernent la vue 3D: l'ouvrir depuis le navigateur de projet"
 
-#: crates/ui-egui/src/editor/view_graphics.rs:281
+#: crates/ui-egui/src/editor/view_graphics.rs:300
 msgid "graphic display options are for {3D}: open it from the Project Browser"
 msgstr ""
 
@@ -16279,7 +16279,7 @@ msgstr "rampe: `{}` n'est pas une largeur"
 msgid "ramp: {}"
 msgstr "rampe: {}"
 
-#: crates/ui-egui/src/editor/view_graphics.rs:404
+#: crates/ui-egui/src/editor/view_graphics.rs:423
 msgid "reference planes have no category to hide in a family's view: Hide Element (EH) hides each"
 msgstr ""
 
@@ -16308,11 +16308,11 @@ msgstr ""
 msgid "select a detail group to ungroup"
 msgstr "sélectionner un groupe de détails à dissocier"
 
-#: crates/ui-egui/src/editor/view_graphics.rs:422
+#: crates/ui-egui/src/editor/view_graphics.rs:441
 msgid "select a form the view hides with its category first: Reveal Hidden Elements (RH) shows them"
 msgstr ""
 
-#: crates/ui-egui/src/editor/view_graphics.rs:447
+#: crates/ui-egui/src/editor/view_graphics.rs:466
 msgid "select a form to override its graphics in the view first"
 msgstr ""
 
@@ -16344,11 +16344,11 @@ msgstr "sélectionner d'abord le sol à incliner"
 msgid "select the walls or columns to attach first"
 msgstr ""
 
-#: crates/ui-egui/src/editor/view_graphics.rs:428
+#: crates/ui-egui/src/editor/view_graphics.rs:447
 msgid "select what the view hides first: Reveal Hidden Elements (RH) shows it"
 msgstr ""
 
-#: crates/ui-egui/src/editor/view_graphics.rs:400
+#: crates/ui-egui/src/editor/view_graphics.rs:419
 msgid "select what to hide in the view first"
 msgstr ""
 
@@ -16505,7 +16505,7 @@ msgstr "modèle de vue"
 msgid "visual styles are for the 3D view: open it from the Project Browser"
 msgstr "les styles visuels s'appliquent à la vue 3D: l'ouvrir depuis le navigateur de projet"
 
-#: crates/ui-egui/src/editor/view_graphics.rs:269
+#: crates/ui-egui/src/editor/view_graphics.rs:288
 msgid "visual styles are for {3D}: open it from the Project Browser"
 msgstr ""
 
@@ -16549,7 +16549,7 @@ msgstr "{}\n\nLes détails se trouvent dans {}."
 msgid "{} (CAD drawing)"
 msgstr ""
 
-#: crates/ui-egui/src/editor/temp_hide.rs:271
+#: crates/ui-egui/src/editor/temp_hide.rs:274
 #: crates/ui-egui/src/footer.rs:502
 msgid "{} (HR resets)"
 msgstr "{} (HR réinitialise)"

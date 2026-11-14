@@ -193,7 +193,7 @@ msgstr "Materiál vodiče, izolace a provozní teplota a proudová zatížitelno
 msgid "A copy is drawn on a reference plane or a reference line the family no longer has: it can't be pasted."
 msgstr ""
 
-#: crates/ui-egui/src/editor/views.rs:1045
+#: crates/ui-egui/src/editor/views.rs:1061
 msgid "A datum stays where it is: offset a reference plane of the family's own."
 msgstr ""
 
@@ -245,7 +245,7 @@ msgstr "Filtr se vytváří v nabídce Pohled > Filtry"
 msgid "A folder. One that isn't absolute is beside the project's file."
 msgstr ""
 
-#: crates/ui-egui/src/editor/views.rs:1424
+#: crates/ui-egui/src/editor/views.rs:1440
 msgid "A form made of a mesh has no faces Align can take: pick a reference plane, an extrusion's end or a line of a form."
 msgstr ""
 
@@ -781,7 +781,7 @@ msgstr ""
 msgid "Align lines up with what a plan shows: in the 3D view, drag a line's end or draw it again."
 msgstr "Zarovnání čar probíhá podle toho, co ukazuje půdorys: ve 3D pohledu přetáhněte konec čáry nebo ji nakreslete znovu."
 
-#: crates/ui-egui/src/editor/views.rs:1426
+#: crates/ui-egui/src/editor/views.rs:1442
 msgid "Align takes a form's straight edge, a side the view sees edge on, or its end: click on its outline."
 msgstr ""
 
@@ -1152,7 +1152,7 @@ msgstr "Platí pro všechny pohledy; přichytává se k zapnuté hlavní mříž
 msgid "Apply"
 msgstr "Použít"
 
-#: crates/ui-egui/src/editor/temp_hide.rs:257
+#: crates/ui-egui/src/editor/temp_hide.rs:260
 #: crates/ui-egui/src/footer.rs:432
 msgid "Apply Hide/Isolate to View"
 msgstr "Použít skrytí/izolování na pohled"
@@ -1666,7 +1666,7 @@ msgstr "Tučné (Ctrl+B)"
 msgid "Border Line Weight"
 msgstr "Tloušťka čáry ohraničení"
 
-#: crates/ui-egui/src/editor/view_graphics.rs:322
+#: crates/ui-egui/src/editor/view_graphics.rs:341
 #: crates/ui-egui/src/export/mod.rs:979
 #: crates/ui-egui/src/properties.rs:443
 #: crates/ui-egui/src/reinforce.rs:182
@@ -1865,8 +1865,8 @@ msgstr "Kamera: klikněte na místo, kde stojí její oko, a potom na to, na co 
 #: crates/ui-egui/src/editor/selection.rs:303
 #: crates/ui-egui/src/editor/types_dialog.rs:491
 #: crates/ui-egui/src/editor/types_dialog.rs:639
-#: crates/ui-egui/src/editor/view_graphics.rs:338
-#: crates/ui-egui/src/editor/view_graphics.rs:492
+#: crates/ui-egui/src/editor/view_graphics.rs:357
+#: crates/ui-egui/src/editor/view_graphics.rs:511
 #: crates/ui-egui/src/editor/visibility.rs:108
 #: crates/ui-egui/src/editor/work_plane.rs:237
 #: crates/ui-egui/src/editor/work_plane.rs:287
@@ -2027,7 +2027,7 @@ msgstr "Stropní svítidlo"
 msgid "Ceiling Plan"
 msgstr "Půdorys podhledu"
 
-#: crates/ui-egui/src/editor/view_graphics.rs:522
+#: crates/ui-egui/src/editor/view_graphics.rs:579
 msgid "Ceiling Plan:"
 msgstr ""
 
@@ -3777,7 +3777,7 @@ msgstr "Vzory řezu"
 msgid "Cut Pen"
 msgstr "Pero řezu"
 
-#: crates/ui-egui/src/editor/view_graphics.rs:322
+#: crates/ui-egui/src/editor/view_graphics.rs:341
 #: crates/ui-egui/src/properties.rs:442
 #: crates/ui-egui/src/templates.rs:744
 msgid "Cut Plane"
@@ -4679,7 +4679,7 @@ msgstr "EQ"
 msgid "Each face of the box shows what it cuts in its cut pattern. Off, the faces are left hollow and moving the box is faster"
 msgstr ""
 
-#: crates/ui-egui/src/editor/view_graphics.rs:364
+#: crates/ui-egui/src/editor/view_graphics.rs:383
 #: crates/ui-egui/src/templates.rs:777
 msgid "Each is a length, and Top may be left empty for the level above."
 msgstr "Každá hodnota je délka a Horní lze nechat prázdné pro podlaží výše."
@@ -5022,7 +5022,7 @@ msgstr "Výška od podlaží"
 msgid "Elevation/Section"
 msgstr "Pohled/Řez"
 
-#: crates/ui-egui/src/editor/view_graphics.rs:523
+#: crates/ui-egui/src/editor/view_graphics.rs:580
 #: crates/ui-egui/src/lib.rs:5580
 #: crates/ui-egui/src/lib.rs:5586
 msgid "Elevation:"
@@ -5750,7 +5750,7 @@ msgstr ""
 msgid "Floor Plan"
 msgstr "Půdorys"
 
-#: crates/ui-egui/src/editor/view_graphics.rs:521
+#: crates/ui-egui/src/editor/view_graphics.rs:578
 msgid "Floor Plan:"
 msgstr ""
 
@@ -6248,7 +6248,7 @@ msgstr "Skryté čáry"
 msgid "Hide Category"
 msgstr "Skrýt kategorii"
 
-#: crates/ui-egui/src/editor/temp_hide.rs:247
+#: crates/ui-egui/src/editor/temp_hide.rs:250
 #: crates/ui-egui/src/footer.rs:420
 msgid "Hide Category (HC)"
 msgstr "Skrýt kategorii (HC)"
@@ -6265,7 +6265,7 @@ msgstr "Skrýt prvek"
 msgid "Hide Element (EH): leave the selected elements out of this view"
 msgstr "Skrýt prvek (EH): vynechá vybrané prvky z tohoto pohledu"
 
-#: crates/ui-egui/src/editor/temp_hide.rs:246
+#: crates/ui-egui/src/editor/temp_hide.rs:249
 #: crates/ui-egui/src/footer.rs:419
 msgid "Hide Element (HH)"
 msgstr "Skrýt prvek (HH)"
@@ -6705,12 +6705,12 @@ msgstr "Neplatné kóty"
 msgid "Invert"
 msgstr "Invertovat"
 
-#: crates/ui-egui/src/editor/temp_hide.rs:249
+#: crates/ui-egui/src/editor/temp_hide.rs:252
 #: crates/ui-egui/src/footer.rs:422
 msgid "Isolate Category (IC)"
 msgstr "Izolovat kategorii (IC)"
 
-#: crates/ui-egui/src/editor/temp_hide.rs:248
+#: crates/ui-egui/src/editor/temp_hide.rs:251
 #: crates/ui-egui/src/footer.rs:421
 msgid "Isolate Element (HI)"
 msgstr "Izolovat prvek (HI)"
@@ -8980,8 +8980,8 @@ msgstr ""
 #: crates/ui-egui/src/editor/selection.rs:304
 #: crates/ui-egui/src/editor/types_dialog.rs:492
 #: crates/ui-egui/src/editor/types_dialog.rs:640
-#: crates/ui-egui/src/editor/view_graphics.rs:339
-#: crates/ui-egui/src/editor/view_graphics.rs:493
+#: crates/ui-egui/src/editor/view_graphics.rs:358
+#: crates/ui-egui/src/editor/view_graphics.rs:512
 #: crates/ui-egui/src/editor/visibility.rs:109
 #: crates/ui-egui/src/editor/work_plane.rs:238
 #: crates/ui-egui/src/editor.rs:1393
@@ -9088,7 +9088,7 @@ msgstr "Odsazení od hostitele"
 msgid "Offset from Surface:"
 msgstr "Odsazení od povrchu:"
 
-#: crates/ui-egui/src/editor/views.rs:1050
+#: crates/ui-egui/src/editor/views.rs:1066
 msgid "Offset takes reference planes and reference lines: edit a form's sketch to offset its lines."
 msgstr ""
 
@@ -9124,7 +9124,7 @@ msgstr ""
 msgid "OffsetZ (mm)"
 msgstr ""
 
-#: crates/ui-egui/src/editor/view_graphics.rs:330
+#: crates/ui-egui/src/editor/view_graphics.rs:349
 msgid "Offsets from Ref. Level."
 msgstr ""
 
@@ -9902,7 +9902,7 @@ msgstr "Vyberte v pohledu referenční rovinu, referenční čáru nebo hranu tv
 msgid "Pick a reference plane, a reference line or a line, then a line of the sketch."
 msgstr "Vyberte referenční rovinu, referenční čáru nebo čáru a potom čáru skici."
 
-#: crates/ui-egui/src/editor/views.rs:1427
+#: crates/ui-egui/src/editor/views.rs:1443
 msgid "Pick a reference plane, an extrusion's end or a line of a form."
 msgstr "Vyberte referenční rovinu, konec vysunutí nebo čáru tvaru."
 
@@ -10083,7 +10083,7 @@ msgid "Pick three points: after OK, click three points on the model, each snappi
 msgstr "Vybrat tři body: po OK klikněte na tři body modelu, každý se přichytí k rohu poblíž ukazatele"
 
 #: crates/ui-egui/src/editor/dimensions.rs:1382
-#: crates/ui-egui/src/editor/views.rs:1406
+#: crates/ui-egui/src/editor/views.rs:1422
 msgid "Pick two references or more, then click where the dimension goes."
 msgstr "Vyberte dvě nebo více referencí a potom klikněte na místo kóty."
 
@@ -11089,9 +11089,9 @@ msgid "Ref Plane"
 msgstr "Ref. rovina"
 
 #: crates/ui-egui/src/adaptive_editor.rs:274
-#: crates/ui-egui/src/editor/view_graphics.rs:351
-#: crates/ui-egui/src/editor/view_graphics.rs:521
-#: crates/ui-egui/src/editor/view_graphics.rs:522
+#: crates/ui-egui/src/editor/view_graphics.rs:370
+#: crates/ui-egui/src/editor/view_graphics.rs:578
+#: crates/ui-egui/src/editor/view_graphics.rs:579
 #: crates/ui-egui/src/editor/views.rs:181
 #: crates/ui-egui/src/editor/views.rs:182
 msgid "Ref. Level"
@@ -11443,7 +11443,7 @@ msgstr "Obnovit tvar: odstraní body a dělicí čáry, horní líc je opět rov
 msgid "Reset Temporary Hide/Isolate"
 msgstr "Obnovit dočasné skrytí/izolování"
 
-#: crates/ui-egui/src/editor/temp_hide.rs:260
+#: crates/ui-egui/src/editor/temp_hide.rs:263
 #: crates/ui-egui/src/footer.rs:435
 msgid "Reset Temporary Hide/Isolate (HR)"
 msgstr "Obnovit dočasné skrytí/izolování (HR)"
@@ -13550,13 +13550,13 @@ msgstr "Dočasně skrýt kategorii"
 msgid "Temporary Hide Element"
 msgstr "Dočasně skrýt prvek"
 
-#: crates/ui-egui/src/editor/temp_hide.rs:240
-#: crates/ui-egui/src/editor/temp_hide.rs:271
+#: crates/ui-egui/src/editor/temp_hide.rs:243
+#: crates/ui-egui/src/editor/temp_hide.rs:274
 #: crates/ui-egui/src/footer.rs:414
 msgid "Temporary Hide/Isolate"
 msgstr "Dočasně skrýt/izolovat"
 
-#: crates/ui-egui/src/editor/temp_hide.rs:239
+#: crates/ui-egui/src/editor/temp_hide.rs:242
 #: crates/ui-egui/src/footer.rs:412
 msgid "Temporary Hide/Isolate: hide or isolate what is selected, or its categories, in this view until you reset it"
 msgstr "Dočasně skrýt/izolovat: skryje nebo izoluje vybrané prvky nebo jejich kategorie v tomto pohledu, dokud nastavení neobnovíte"
@@ -13685,7 +13685,7 @@ msgstr "Je uložen největší možný počet předvoleb: nejprve jednu odstraň
 msgid "That is no IP address: 0.0.0.0 listens on all of this machine's"
 msgstr "To není IP adresa: 0.0.0.0 naslouchá na všech adresách tohoto počítače"
 
-#: crates/ui-egui/src/editor/views.rs:1417
+#: crates/ui-egui/src/editor/views.rs:1433
 msgid "That is the reference: pick what moves onto it."
 msgstr ""
 
@@ -14142,7 +14142,7 @@ msgstr "Pohled směřuje podél kóty: otočte jej, abyste mohli umístit její 
 msgid "The view sees it end-on: offset it in a view that sees its trace."
 msgstr ""
 
-#: crates/ui-egui/src/editor/views.rs:1373
+#: crates/ui-egui/src/editor/views.rs:1389
 msgid "The view sees its work plane edge on: set a work plane it sees flat (Work Plane > Set)."
 msgstr ""
 
@@ -14454,7 +14454,7 @@ msgstr "V této velikosti je příliš hustý na náhled."
 msgid "Tools"
 msgstr "Nástroje"
 
-#: crates/ui-egui/src/editor/view_graphics.rs:322
+#: crates/ui-egui/src/editor/view_graphics.rs:341
 #: crates/ui-egui/src/export/mod.rs:973
 #: crates/ui-egui/src/lib.rs:5691
 #: crates/ui-egui/src/reinforce.rs:182
@@ -14899,7 +14899,7 @@ msgstr "Jednotky"
 msgid "Units Format"
 msgstr "Formát jednotek"
 
-#: crates/ui-egui/src/editor/view_graphics.rs:322
+#: crates/ui-egui/src/editor/view_graphics.rs:341
 msgid "Unlimited"
 msgstr ""
 
@@ -15068,7 +15068,7 @@ msgstr "Svislá"
 msgid "View"
 msgstr "Pohled"
 
-#: crates/ui-egui/src/editor/view_graphics.rs:322
+#: crates/ui-egui/src/editor/view_graphics.rs:341
 #: crates/ui-egui/src/properties.rs:444
 #: crates/ui-egui/src/templates.rs:744
 msgid "View Depth"
@@ -15087,7 +15087,7 @@ msgstr "Název pohledu"
 msgid "View Properties"
 msgstr "Vlastnosti pohledu"
 
-#: crates/ui-egui/src/editor/view_graphics.rs:318
+#: crates/ui-egui/src/editor/view_graphics.rs:337
 #: crates/ui-egui/src/graphics.rs:122
 #: crates/ui-egui/src/shortcuts.rs:166
 #: crates/ui-egui/src/templates.rs:700
@@ -15130,7 +15130,7 @@ msgstr "Šablony pohledů (VT): pojmenované nastavení pohledu, které mohou p�
 msgid "View template {}"
 msgstr "Šablona pohledu {}"
 
-#: crates/ui-egui/src/editor/view_graphics.rs:483
+#: crates/ui-egui/src/editor/view_graphics.rs:502
 msgid "View-Specific Element Graphics"
 msgstr ""
 
@@ -15945,7 +15945,7 @@ msgstr "bod tvoří tři délky, `x, y, z`"
 msgid "a size in mm"
 msgstr "rozměr v mm"
 
-#: crates/ui-egui/src/editor/view_graphics.rs:303
+#: crates/ui-egui/src/editor/view_graphics.rs:322
 msgid "a view range is the floor plan's: open Floor Plans > Ref. Level"
 msgstr ""
 
@@ -15973,7 +15973,7 @@ msgstr "ve směru její normály: nahoru od podlaží, ven od povrchu"
 msgid "aluminium"
 msgstr "hliník"
 
-#: crates/ui-egui/src/editor/view_graphics.rs:395
+#: crates/ui-egui/src/editor/view_graphics.rs:414
 msgid "an adaptive family's views hide for now only: use Temporary Hide/Isolate"
 msgstr ""
 
@@ -16137,7 +16137,7 @@ msgstr "proložená křivka spline"
 msgid "graphic display options are for the 3D view: open it from the Project Browser"
 msgstr "možnosti grafického zobrazení jsou určeny pro 3D pohled: otevřete jej z Prohlížeče projektu"
 
-#: crates/ui-egui/src/editor/view_graphics.rs:281
+#: crates/ui-egui/src/editor/view_graphics.rs:300
 msgid "graphic display options are for {3D}: open it from the Project Browser"
 msgstr ""
 
@@ -16278,7 +16278,7 @@ msgstr "rampa: `{}` není platná šířka"
 msgid "ramp: {}"
 msgstr "rampa: {}"
 
-#: crates/ui-egui/src/editor/view_graphics.rs:404
+#: crates/ui-egui/src/editor/view_graphics.rs:423
 msgid "reference planes have no category to hide in a family's view: Hide Element (EH) hides each"
 msgstr ""
 
@@ -16307,11 +16307,11 @@ msgstr ""
 msgid "select a detail group to ungroup"
 msgstr "nejprve vyberte skupinu detailů k oddělení"
 
-#: crates/ui-egui/src/editor/view_graphics.rs:422
+#: crates/ui-egui/src/editor/view_graphics.rs:441
 msgid "select a form the view hides with its category first: Reveal Hidden Elements (RH) shows them"
 msgstr ""
 
-#: crates/ui-egui/src/editor/view_graphics.rs:447
+#: crates/ui-egui/src/editor/view_graphics.rs:466
 msgid "select a form to override its graphics in the view first"
 msgstr ""
 
@@ -16343,11 +16343,11 @@ msgstr "nejprve vyberte podlahu pro vytvoření sklonu"
 msgid "select the walls or columns to attach first"
 msgstr ""
 
-#: crates/ui-egui/src/editor/view_graphics.rs:428
+#: crates/ui-egui/src/editor/view_graphics.rs:447
 msgid "select what the view hides first: Reveal Hidden Elements (RH) shows it"
 msgstr ""
 
-#: crates/ui-egui/src/editor/view_graphics.rs:400
+#: crates/ui-egui/src/editor/view_graphics.rs:419
 msgid "select what to hide in the view first"
 msgstr ""
 
@@ -16504,7 +16504,7 @@ msgstr "šablona pohledu"
 msgid "visual styles are for the 3D view: open it from the Project Browser"
 msgstr "vizuální styly jsou určeny pro 3D pohled: otevřete jej z Prohlížeče projektu"
 
-#: crates/ui-egui/src/editor/view_graphics.rs:269
+#: crates/ui-egui/src/editor/view_graphics.rs:288
 msgid "visual styles are for {3D}: open it from the Project Browser"
 msgstr ""
 
@@ -16548,7 +16548,7 @@ msgstr "{}\n\nPodrobnosti naleznete v {}."
 msgid "{} (CAD drawing)"
 msgstr ""
 
-#: crates/ui-egui/src/editor/temp_hide.rs:271
+#: crates/ui-egui/src/editor/temp_hide.rs:274
 #: crates/ui-egui/src/footer.rs:502
 msgid "{} (HR resets)"
 msgstr "{} (HR obnoví)"
