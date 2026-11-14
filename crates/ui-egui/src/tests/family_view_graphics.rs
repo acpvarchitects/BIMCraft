@@ -143,12 +143,21 @@ fn visual_styles_are_3ds_own_and_said_to_be_so_in_a_plan() {
     shortcut(&mut h, "SD");
     assert_eq!(editor(&h).views.kept.graphics_of(None).style, VisualStyle::Shaded);
     assert_eq!(differ(&shaded, &preview(&h, &pictures)), Vec::<usize>::new(), "Shaded again, as it was");
+    // The view control bar's Visual Style menu, as the project's 3D view has it, names the style and sets it.
+    press(&mut h, "Visual Style");
+    press(&mut h, "Hidden Line");
+    assert_eq!(editor(&h).views.kept.graphics_of(None).style, VisualStyle::HiddenLine);
+    press(&mut h, "Visual Style");
+    press(&mut h, "Graphic Display Options...");
+    assert!(h.query_by_label("Show Edges").is_some(), "its Graphic Display Options");
+    press(&mut h, "Cancel");
     assert!(untouched(&h));
     // A plan has no visual style to set: the status bar says so, and nothing changes.
     view(&mut h, Some(Which::Plan));
     shortcut(&mut h, "WF");
     assert!(h.state().status.error && h.state().status.text.contains("{3D}"), "{}", h.state().status.text);
     assert_eq!(editor(&h).views.kept.graphics_of(Some(Which::Plan)).style, VisualStyle::default());
+    assert!(h.query_by_label("Visual Style").is_none(), "a plan's bar has no Visual Style");
 }
 
 #[test]
@@ -227,4 +236,43 @@ fn the_keys_work_with_ctrl_held_when_shortcuts_need_it() {
     press(&mut h, "Cancel");
     shortcut(&mut h, "TL");
     assert!(h.state().thin);
+}
+
+/// The family's Visibility/Graphics on its plan, {3D} in Wireframe, the plan's View Range and the plan in Thin Lines, in the
+/// three looks, when `BIMCRAFT_FE18_DUMP` names a folder.
+#[test]
+fn family_view_graphics_in_three_looks() {
+    let Ok(folder) = std::env::var("BIMCRAFT_FE18_DUMP") else { return };
+    std::fs::create_dir_all(&folder).unwrap();
+    for (name, dark, light_canvas) in [("light", false, false), ("dark", true, false), ("dark-ui-light-canvas", true, true)] {
+        let mut h = app(BOX);
+        h.set_size(egui::vec2(1600.0, 1000.0));
+        h.state_mut().edit_family("Box");
+        h.run();
+        h.ctx.set_theme(if dark { egui::ThemePreference::Dark } else { egui::ThemePreference::Light });
+        h.state_mut().light_canvas = light_canvas;
+        let mut save = |h: &mut Harness<BimApp>, what: &str| {
+            for _ in 0..4 {
+                h.run();
+            }
+            h.render().unwrap().save(std::path::Path::new(&folder).join(format!("fe18-{what}-{name}.png"))).unwrap();
+        };
+        view(&mut h, Some(Which::Plan));
+        h.state_mut().active_family_mut().unwrap().doc_tab = crate::editor::DocTab::View;
+        shortcut(&mut h, "VV");
+        save(&mut h, "vg");
+        press(&mut h, "Cancel");
+        shortcut(&mut h, "VR");
+        save(&mut h, "view-range");
+        press(&mut h, "Cancel");
+        shortcut(&mut h, "TL");
+        save(&mut h, "thin-lines");
+        shortcut(&mut h, "TL");
+        view(&mut h, None);
+        shortcut(&mut h, "WF");
+        save(&mut h, "3d-wireframe");
+        shortcut(&mut h, "GD");
+        save(&mut h, "gd");
+        press(&mut h, "Cancel");
+    }
 }

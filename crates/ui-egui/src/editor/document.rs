@@ -1487,7 +1487,26 @@ impl BimApp {
                         }
                     });
                 }
-                ui.label(RichText::new(t("Shaded")).color(pal().muted));
+                // FE-18: {3D}'s Visual Style, as the project's 3D view has it, with its Graphic Display Options.
+                if ed.views.shown.is_none() {
+                    let now = ed.views.kept.graphics_of(None).style;
+                    let tip = msg!("Visual Style: how {3D} draws surfaces: Shaded, Hidden Line (WF, HL and SD set them) or Wireframe");
+                    let r = crate::footer::menu_button(ui, "Visual Style", now.name(), tip, None);
+                    egui::Popup::menu(&r).show(|ui| {
+                        for v in bimcraft_core::graphics::VisualStyle::ALL {
+                            if ui.selectable_label(now == v, t(v.name())).clicked() {
+                                let mut g = ed.views.kept.graphics_of(None);
+                                g.style = v;
+                                ed.views.kept.set_graphics(None, g);
+                            }
+                        }
+                        ui.separator();
+                        if ui.button(t("Graphic Display Options...")).clicked() {
+                            let options = ed.views.kept.display;
+                            self.display_dialog = Some(crate::display::DisplayDialog::for_family(options, self.active_doc()));
+                        }
+                    });
+                }
                 if icon_button(ui, Icon::Fit, "Zoom to Fit").clicked() {
                     ed.zoom_to_fit();
                 }
