@@ -4,7 +4,7 @@
 //! cuts which and `unjoin_geometry` takes the join off. The cut element names its cutter in `joined_by`: saved, undone and
 //! redone, followed by copies and by Insert from File where both come along, gone with either element. Two that only
 //! touch join (a shared face); two that don't meet are refused, and two an edit parts stay joined, cutting nothing, with a
-//! warning.
+//! warning. A join or a switch that would close a loop of joins is refused.
 
 use serde_json::{Value, json};
 
@@ -79,17 +79,16 @@ fn the_first_cuts_the_second_in_section_and_in_3d_and_switch_and_unjoin_take_it_
 }
 
 #[test]
-fn a_join_is_saved_undone_and_redone_and_the_file_is_of_format_33() {
+fn a_join_is_saved_undone_and_redone_and_the_file_is_of_format_21() {
     let (mut s, w, f) = crossing();
     join(&mut s, w, f).unwrap();
     let path = std::env::temp_dir().join(format!("bimcraft-join-{}.bimc", std::process::id()));
     run(&mut s, "save", json!({"path": path}));
     let text = std::fs::read_to_string(&path).unwrap();
     let file: Value = serde_json::from_str(&text).unwrap();
-    // FORMAT 33 (21 to 32 were the Family Editor's unreleased builds'): a reader of 20 refuses the file (it would open the
-    // floor whole, the join left out), as it refuses any newer.
-    assert_eq!(FORMAT, 33);
-    assert_eq!(file["format"], json!(33));
+    // FORMAT 21: a reader of 20 refuses the file (it would open the floor whole, the join left out), as it refuses any newer.
+    assert_eq!(FORMAT, 21);
+    assert_eq!(file["format"], json!(21));
     let mut older = file.clone();
     older["format"] = json!(20);
     assert!(crate::model::Model::read(&older.to_string()).is_ok(), "a file of 20 needs no step");
@@ -149,17 +148,29 @@ fn join_refuses_itself_what_isnt_a_wall_floor_roof_or_ceiling_and_the_same_pair_
 }
 
 #[test]
-fn joins_may_go_round_in_a_cycle() {
-    // The wall cuts the floor, the floor a wall across it, and that wall the first: each cut by the other's own solids.
+fn a_join_or_a_switch_that_would_close_a_loop_is_refused_and_what_three_share_stays() {
+    // The wall cuts the floor, and the floor a wall across both. The one across cutting the first wall would close a loop:
+    // each cut by the others' own solids, the 200 cube all three share at the crossing would be taken out of all three.
     let (mut s, w, f) = crossing();
     let across = run(&mut s, "wall", json!({"points": [[3000, 0], [3000, 4000]], "height": 3000}))["ids"][0].as_u64().unwrap();
     join(&mut s, w, f).unwrap();
     join(&mut s, f, across).unwrap();
-    join(&mut s, across, w).unwrap();
-    assert_eq!((joined(&s, f), joined(&s, across), joined(&s, w)), (vec![w], vec![f], vec![across]));
-    assert!(!solid(&mut s, f, 2000.0, 2000.0, 200.0));
-    assert!(!solid(&mut s, w, 2000.0, 3000.0, 1200.0), "the first wall is cut by the one across it");
-    assert!(solid(&mut s, w, 2000.0, 1000.0, 1200.0));
+    let e = join(&mut s, across, w).unwrap_err();
+    assert!(e.contains("loop"), "{e}");
+    let names = [w, f, across, w].map(|id| s.model.shown(id)).join(" cuts ");
+    assert!(e.contains(&names), "{e}");
+    assert!(joined(&s, w).is_empty());
+    // The shared cube is still there, the first wall's: a plumb line through the crossing meets its foot and its top.
+    assert_eq!(plumb(&s, w, 3000.0, 2000.0), vec![0.0, 3000.0]);
+    // Joined the other way round, there is no loop: the first wall cuts the one across too.
+    join(&mut s, w, across).unwrap();
+    // Switched, the one across would cut the first wall, which cuts the floor, which cuts the one across: a loop again.
+    let e = s.execute("switch_join_order", &json!({"first": w, "second": across})).unwrap_err();
+    assert!(e.contains("loop"), "{e}");
+    assert_eq!(joined(&s, across), vec![f, w]);
+    // Switching the floor and the one across makes none: both walls cut the floor.
+    run(&mut s, "switch_join_order", json!({"first": f, "second": across}));
+    assert_eq!((joined(&s, f), joined(&s, across)), (vec![w, across], vec![w]));
 }
 
 #[test]
@@ -278,4 +289,48 @@ fn a_file_naming_too_many_joins_is_refused() {
     let e = t.execute("open", &json!({"path": path})).unwrap_err();
     let _ = std::fs::remove_file(&path);
     assert!(e.contains("joined_by") && e.contains(&crate::model::MAX_JOINS.to_string()), "{e}");
+}
+
+#[test]
+fn join_and_switch_refuse_an_element_cut_by_max_joins_already() {
+    let (mut s, w, f) = crossing();
+    // Floors far off, each cutting the wall as the file would say: as many as one may be cut by.
+    let others: Vec<Id> = (0..crate::model::MAX_JOINS)
+        .map(|i| {
+            let x = 20000.0 + i as f64 * 2000.0;
+            id_of(&run(&mut s, "floor", json!({"boundary": [[x, 0], [x + 1000.0, 0], [x + 1000.0, 1000.0], [x, 1000.0]]})))
+        })
+        .collect();
+    let guids: Vec<_> = others.iter().map(|id| s.model.guid(*id)).collect();
+    if let Some(list) = s.model_mut().elements.get_mut(w).and_then(crate::model::Element::joined_by_mut) {
+        *list = guids;
+    }
+    s.model.check().unwrap();
+    // The floor cuts the wall: refused, the wall is full.
+    let e = join(&mut s, f, w).unwrap_err();
+    assert!(e.contains("cut by 100 joined elements already"), "{e}");
+    // The wall cuts the floor; switched, the wall would be cut by one more: refused before anything changes.
+    join(&mut s, w, f).unwrap();
+    let e = s.execute("switch_join_order", &json!({"first": w, "second": f})).unwrap_err();
+    assert!(e.contains("cut by 100 joined elements already"), "{e}");
+    assert_eq!(joined(&s, f), vec![w]);
+    assert_eq!(joined(&s, w).len(), crate::model::MAX_JOINS);
+}
+
+#[test]
+fn a_long_list_on_a_later_element_is_refused_by_its_own_cap_not_read_through() {
+    // The wall (the lower id) names the floor; the floor names the wall more times than may be. The wall's check reads the
+    // floor's list only within the cap, so the floor's own check refuses it, for its length.
+    let (mut s, w, f) = crossing();
+    let (gw, gf) = (s.model.guid(w), s.model.guid(f));
+    assert!(w < f);
+    let m = s.model_mut();
+    if let Some(list) = m.elements.get_mut(w).and_then(crate::model::Element::joined_by_mut) {
+        *list = vec![gf];
+    }
+    if let Some(list) = m.elements.get_mut(f).and_then(crate::model::Element::joined_by_mut) {
+        *list = vec![gw; 50 * crate::model::MAX_JOINS];
+    }
+    let e = s.model.check().unwrap_err();
+    assert!(e.contains(&format!("floor {f}")) && e.contains("no more than 100"), "{e}");
 }

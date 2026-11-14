@@ -2436,8 +2436,6 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
             ));
         }
     }
-    // Each element's values of the project's parameters: in the set its parameter names for its category, else a property set
-    // of its own, `Project Parameters`; lengths in the file's millimetres. A classification's codes go as references, below.
     // Join Geometry (T23): each pair said to be joined, the element that cuts relating, the one it cuts related. Neither body
     // is clipped: each goes out whole, for IfcRelConnectsElements connects two elements and changes neither's shape.
     for (&id, e) in &m.elements {
@@ -2448,6 +2446,8 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
             w.add(format!("IFCRELCONNECTSELEMENTS({},$,$,$,$,#{cutter},#{cut})", w.guid(JOINS, key)));
         }
     }
+    // Each element's values of the project's parameters: in the set its parameter names for its category, else a property set
+    // of its own, `Project Parameters`; lengths in the file's millimetres. A classification's codes go as references, below.
     let mut classified: BTreeMap<(&str, &str), Vec<u64>> = BTreeMap::new();
     for (&id, &ent) in &products {
         let Some(e) = m.elements.get(id) else { continue };

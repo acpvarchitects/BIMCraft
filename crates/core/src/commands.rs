@@ -300,8 +300,8 @@ other_files(
         "{first, second} (each a wall, floor, roof or ceiling, by id or GUID) Join Geometry: `first` cuts `second` from now on, \
          which loses what `first`'s own solids take of it, in section and in 3D (plans are as they were). They must meet: overlap, \
          or share a face. `second` lists `first` in its `joined_by`; the join is kept while both stand, cutting nothing after an \
-         edit parts them (`warnings` says so), and goes with either's deletion. Joins may go round in a cycle; a pair is joined \
-         one way at a time (`switch_join_order` flips it). IFC: IfcRelConnectsElements, both bodies whole. Returns {first, second}",
+         edit parts them (`warnings` says so), and goes with either's deletion. A pair is joined one way at a time \
+         (`switch_join_order` flips it), and a join that would close a loop of joins is refused, naming it. IFC: IfcRelConnectsElements, both bodies whole. Returns {first, second}",
         join_geometry::join_geometry,
     ),
     edit(

@@ -175,7 +175,7 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// (`library`), and what names a library entry holds its GUID. 1: elements have GUIDs, ids six digits, and what points at
 /// an element holds its GUID. None (0): a file from before.
 /// 20 (0.12's, which every change since 19 shares; the Family Editor's unreleased builds wrote 20 to 32 too, and a file of
-/// theirs stamped 20 opens as one of 0.12's, 21 and up as newer): rooms have types (`types.room`), which may name a floor type and a ceiling type, and a room holds the floor and the
+/// theirs stamped 20 opens as one of 0.12's; none stamped 21 to 32 is kept, so 21 is the next step's and 22 up are newer): rooms have types (`types.room`), which may name a floor type and a ceiling type, and a room holds the floor and the
 /// ceiling made for it (`floor`, `ceiling`); a build that reads up to 19 would lose the links and leave the finishes behind. And
 /// project parameters may be of kinds 19 doesn't know (`integer`, `area`, `volume`, `angle`), a type's (`scope`, `type_values`),
 /// from a `.bimparams` dictionary (`dictionaries`), grouped under a heading of the project's own, and the project's information
@@ -188,15 +188,11 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// `leader`, `shoulder` and `end`) and a level's `elevation_base` as spot elevations from the Project Base Point. A file of 19
 /// needs no step: its georeference is the active site, both points at the internal origin.
 ///
-/// 33 (after 20: the unreleased builds of the Family Editor wrote 21 to 32, and those numbers are refused as theirs,
-/// [`UNRELEASED`]): what cuts what in the project (T23). A wall names the components Cut Geometry ties to it (`void_cuts`), and a wall, a
-/// floor, a roof or a ceiling the elements Join Geometry cuts it with (`joined_by`); a build that reads up to 20 would leave
-/// both out of a file and open the walls and slabs whole, not "saved by a newer BIMCraft". A file of 20 holds neither, so it
-/// needs no step.
-pub const FORMAT: u32 = 33;
-/// The formats only the Family Editor's unreleased builds wrote, between 0.12's 20 and [`FORMAT`] 33: a file of one is
-/// refused, as it was by 0.12, for it may hold what those builds wrote another way.
-pub const UNRELEASED: std::ops::RangeInclusive<u64> = 21..=32;
+/// 21: what cuts what in the project (T23). A wall names the components Cut Geometry ties to it (`void_cuts`), and a wall, a
+/// floor, a roof or a ceiling the elements Join Geometry cuts it with (`joined_by`); a build that reads up to 20 (0.12) would
+/// leave both out of a file and open the walls and slabs whole, not "saved by a newer BIMCraft". A file of 20 needs no step:
+/// 0.12's hold neither, and one the unreleased Family Editor saved at 18 to 20 with `void_cuts` reads them as written.
+pub const FORMAT: u32 = 21;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -4171,12 +4167,6 @@ impl Model {
                 "it was saved by a newer BIMCraft (file format {format}; this one reads up to {FORMAT}): update BIMCraft to open it"
             ));
         }
-        if UNRELEASED.contains(&format) {
-            return Err(format!(
-                "it was saved by an unreleased build of the Family Editor (file format {format}), which no release reads: open it \
-                 in that build and save what you need into a project of 0.12 or later"
-            ));
-        }
         if format < 4 {
             pens_from_pixels(&mut v);
         }
@@ -4415,8 +4405,8 @@ impl Model {
                 }
             }
         }
-        // 20 to 33 (Cut Geometry's `void_cuts` and Join Geometry's `joined_by`) has no step: a file of 20 holds neither, and
-        // its walls and slabs cut nothing they didn't.
+        // 20 to 21 (Cut Geometry's `void_cuts` and Join Geometry's `joined_by`) has no step: 0.12's files of 20 hold neither,
+        // and a file of 20 with `void_cuts` (the Family Editor's, before this step) reads them as written.
         self.format = FORMAT;
     }
 
@@ -7248,11 +7238,12 @@ impl Model {
                  face, or put it on another work plane with `edit_work_plane`"
             )
         }));
-        // A pair Join Geometry joined that an edit has parted (T23): kept, cutting nothing.
+        // A pair Join Geometry joined that an edit has parted (T23): kept, cutting nothing. Walls found through one index.
+        let index = self.elements.values().any(|e| !e.joined_by().is_empty()).then(|| crate::walls::Index::new(self));
         for (id, e) in self.elements.iter() {
             for g in e.joined_by() {
                 let Some(by) = self.elements.id(*g) else { continue };
-                if !crate::view3d::meets(self, by, *id) {
+                if !crate::view3d::meets(self, by, *id, index.as_ref()) {
                     out.push(format!(
                         "{} and {} are joined but no longer meet, so the join cuts nothing: move them back together, or take the \
                          join off with `unjoin_geometry`",
@@ -7814,7 +7805,9 @@ impl Model {
                 if joins[..i].contains(g) {
                     return Err(format!("{who}: joined_by names {} twice", self.shown(*g)));
                 }
-                if me.is_some_and(|me| other.joined_by().contains(&me)) {
+                // The other's list is read only when it's within the cap (its own check refuses it otherwise), so a file's
+                // long lists cost no more than MAX_JOINS² for each element.
+                if other.joined_by().len() <= MAX_JOINS && me.is_some_and(|me| other.joined_by().contains(&me)) {
                     return Err(format!(
                         "{who} and {} are joined both ways round, each cutting the other: unjoin_geometry, then join them again",
                         self.shown(*g)

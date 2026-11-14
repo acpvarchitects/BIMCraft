@@ -6533,32 +6533,35 @@ fn a_file_from_before_guids_opens_with_guids_and_six_digit_ids() {
 }
 
 #[test]
-fn a_file_of_the_family_editors_unreleased_formats_21_to_32_is_refused_as_theirs() {
+fn a_file_of_the_family_editors_unreleased_formats_22_to_32_is_refused_as_newer() {
     // The Family Editor took the format from 17 to 32 a step at a time before it was released, and none of that was. 0.12's
-    // format is 20, which every change since 0.11 shares, so a file of those builds stamped 20 opens as one of 0.12's; 21
-    // to 32 are refused, and the next format after 20 is 33, so no file of theirs opens as one of ours.
-    use crate::model::{FORMAT, Model, UNRELEASED};
-    assert_eq!(FORMAT, 33);
-    assert_eq!(UNRELEASED, 21..=32);
+    // format is 20, which every change since 0.11 shares, so a file of those builds stamped 20 opens as one of 0.12's. No
+    // file of theirs stamped 21 to 32 is kept, so 21 is the step after 20 (what cuts what, T23), and 22 to 32 are refused as
+    // any newer file is.
+    use crate::model::{FORMAT, Model};
+    assert_eq!(FORMAT, 21);
     let mut s = Session::new();
     house(&mut s);
     let v = serde_json::to_value(&*s.model).unwrap();
-    for old in 21..=32 {
+    for old in 22..=32 {
         let mut was = v.clone();
         was["format"] = json!(old);
         let e = Model::read(&was.to_string()).unwrap_err();
-        assert!(e.contains("unreleased build of the Family Editor") && e.contains(&format!("file format {old}")), "{old}: {e}");
+        assert!(
+            e.contains("saved by a newer BIMCraft") && e.contains(&format!("file format {old}")) && e.contains("reads up to 21"),
+            "{old}: {e}"
+        );
     }
 }
 
 #[test]
 fn a_project_is_saved_in_the_current_format_and_one_of_format_4_up_opens_as_it_is_and_a_newer_one_is_refused() {
-    use crate::model::{FORMAT, Model, UNRELEASED};
+    use crate::model::{FORMAT, Model};
     // 5 added the scans a project holds and the point clouds that place them; 6 added detailing (lines, regions, groups,
     // repeating details, line and fill styles); 7 its CAD drawings and the imports that place them; 8 text types; 9 graphic line patterns; 10 dimensions to points and linear ones; 11 and 12 the project languages Swedish, Czech and French, and Dutch;
     // 13 floors' and flat roofs' shapes; 14 the categories of family components, which the starter view templates name; 15 a roof's slope for each
     // edge and a wall's top offset; 16 dimensions in 3D views and the locks Align leaves; 17 multi-category schedules and Italian projects; 18 a wall or a run
-    // that refuses to join, circuits and panel schedules; 19 a sheet list; 20 rooms' types; 33 what cuts what (T23). Nothing in a file of 4
+    // that refuses to join, circuits and panel schedules; 19 a sheet list; 20 rooms' types; 21 what cuts what (T23). Nothing in a file of 4
     // to 7 that holds no notes changes.
     let mut s = Session::new();
     let empty = serde_json::to_value(&*s.model).unwrap();
@@ -6567,8 +6570,7 @@ fn a_project_is_saved_in_the_current_format_and_one_of_format_4_up_opens_as_it_i
     let full = serde_json::to_value(&*s.model).unwrap();
     for v in [&empty, &full] {
         assert_eq!(v["format"], FORMAT, "a project is saved as the current format");
-        // 21 to 32 were only the Family Editor's unreleased builds': refused as theirs.
-        for old in (4..u64::from(FORMAT)).filter(|f| !UNRELEASED.contains(f)) {
+        for old in 4..FORMAT {
             let mut was = v.clone();
             was["format"] = json!(old);
             let (m, left_out) = Model::read(&was.to_string()).unwrap();
