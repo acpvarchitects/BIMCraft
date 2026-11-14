@@ -1501,11 +1501,11 @@ impl BimApp {
                             }
                         }
                         ui.separator();
-                        if ui.button(t("Graphic Display Options...")).clicked() {
-                            if let Some(doc) = self.active_doc() {
-                                let options = ed.views.kept.display;
-                                self.display_dialog = Some(crate::display::DisplayDialog::for_family(options, doc));
-                            }
+                        if ui.button(t("Graphic Display Options...")).clicked()
+                            && let Some(doc) = self.active_doc()
+                        {
+                            let options = ed.views.kept.display;
+                            self.display_dialog = Some(crate::display::DisplayDialog::for_family(options, doc));
                         }
                     });
                 }
