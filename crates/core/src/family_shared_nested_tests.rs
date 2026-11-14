@@ -203,3 +203,21 @@ fn a_file_from_before_opens_unchanged() {
     assert_eq!(again["elements"], old["elements"], "written back as it was");
     assert_eq!(again["families"], old["families"]);
 }
+
+/// In the plan, a click on the handle takes the cabinet; the handle comes next, for Tab to reach.
+#[test]
+fn a_plan_picks_the_host_first_and_its_shared_nested_instance_next() {
+    let (s, host) = cabinet(true);
+    let (id, n) = nested(&s.model)[0].clone();
+    let view = crate::render::View { scale: 0.5, cx: 5000.0, cy: 300.0, width: 800, height: 800 };
+    let d = crate::render::draw(&s.model, n.level, view);
+    assert_eq!(d.nested.len(), 1);
+    assert_eq!((d.nested[0].id, d.nested[0].host), (id, host));
+    // The handle's middle: (100 + 30, 50 + 10) in the cabinet's axes, turned 90 degrees about (5000, 0).
+    let at = view.px(crate::geom::P2(4940.0, 130.0));
+    assert_eq!(d.pick_all(at, 3.0), vec![host, id]);
+    assert_eq!(d.pick(at, 3.0), Some(host));
+    // Away from it, only the cabinet.
+    let off = view.px(crate::geom::P2(4700.0, 500.0));
+    assert!(!d.pick_all(off, 3.0).contains(&id));
+}

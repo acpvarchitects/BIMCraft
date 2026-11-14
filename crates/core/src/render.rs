@@ -230,6 +230,9 @@ pub struct Drawing {
     regions: regions::Layers,
     /// What it could not draw as asked, in English (a fill pattern too dense, or unsupported lettering): for a front end to say.
     pub notes: Vec<String>,
+    /// The shared nested instances (T6b) drawn as part of their hosts' primitives: what Tab reaches inside a host, and what
+    /// a front end outlines where one is selected or under the cursor.
+    pub nested: Vec<NestedPick>,
     /// What the pens draw in this view, mm on paper: the project's line weights at its scale.
     pub(crate) weights: Weights,
     /// The element being drawn now, and the part of it.
@@ -246,6 +249,32 @@ pub struct Drawing {
     pattern_styles: std::collections::BTreeMap<Id, [crate::graphics::Style; 2]>,
 }
 
+/// A shared nested instance's element (`id`, T6b) as a plan draws it inside its host component (`host`), which owns the
+/// primitives: the outlines of its solids, in pixels.
+#[derive(Clone, Debug, PartialEq)]
+pub struct NestedPick {
+    pub id: Id,
+    pub host: Id,
+    pub rings: Vec<Vec<(f32, f32)>>,
+}
+
+impl NestedPick {
+    /// How far pixel `p` is from it: less than nothing inside an outline.
+    fn distance(&self, p: P2) -> f64 {
+        let mut best = f64::INFINITY;
+        for r in &self.rings {
+            let ring: Vec<P2> = r.iter().map(|&(x, y)| P2(f64::from(x), f64::from(y))).collect();
+            if geom::contains(&ring, p) {
+                return -1.0;
+            }
+            for (a, b) in geom::ring_edges(&ring) {
+                best = best.min(geom::dist_to_segment(p, a, b));
+            }
+        }
+        best
+    }
+}
+
 impl Drawing {
     /// Nothing yet, through `view`.
     pub fn new(view: View) -> Drawing {
@@ -258,6 +287,7 @@ impl Drawing {
             subs: Vec::new(),
             regions: regions::Layers::default(),
             notes: Vec::new(),
+            nested: Vec::new(),
             weights: Weights::default(),
             owner: None,
             part: Part::Projection,
@@ -542,7 +572,23 @@ impl Drawing {
         }
         let mut found: Vec<(Id, (f64, usize))> = near.into_iter().collect();
         found.sort_by(|a, b| a.1.0.total_cmp(&b.1.0).then(b.1.1.cmp(&a.1.1)));
-        found.into_iter().map(|(id, _)| id).collect()
+        let mut out: Vec<Id> = found.into_iter().map(|(id, _)| id).collect();
+        // A shared nested instance under it comes right after its host, nearest first: a click takes the host, Tab reaches it.
+        let mut inside: Vec<(f64, &NestedPick)> =
+            self.nested.iter().map(|n| (n.distance(p), n)).filter(|(d, _)| *d <= f64::from(tol)).collect();
+        inside.sort_by(|a, b| a.0.total_cmp(&b.0));
+        for (_, n) in inside {
+            if out.contains(&n.id) {
+                continue;
+            }
+            let after = out.iter().rposition(|id| *id == n.host || self.nested.iter().any(|m| m.id == *id && m.host == n.host));
+            match after {
+                Some(i) => out.insert(i + 1, n.id),
+                // Inside its outline, away from every line: its host still comes first.
+                None => out.extend([n.host, n.id]),
+            }
+        }
+        out
     }
 
     /// The elements drawn wholly inside the box between pixels `a` and `b`: Revit's window
@@ -2137,6 +2183,7 @@ impl SectionOverlay {
             subs: b.subs.clone(),
             regions: regions::Layers::new(b.regions.end(), Some(self.id)),
             notes: b.notes.clone(),
+            nested: b.nested.clone(),
             weights: b.weights,
             owner: None,
             part: b.part,
@@ -3129,6 +3176,7 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
                 // Its forms the plan's Visibility Settings leave out (F8) aren't drawn, nor hide what is under them.
                 pieces.retain(|p| plan_draws(p, d.detail, range.cut));
                 component(&mut d, m, &pieces);
+                nested_picks(&mut d, m, id, &pieces);
             }
         }
         // Its model lines (FE-15) the plan sees between its cut plane and its view depth, in projection, as Revit draws them.
@@ -3625,6 +3673,21 @@ fn component(d: &mut Drawing, m: &Model, pieces: &[crate::family::Piece]) {
             if at < len {
                 d.line(&[a + u * at, b], BY_CATEGORY, INK, false);
             }
+        }
+    }
+}
+
+/// The shared nested instances of component `host` among `pieces`, the ones a plan draws of it, each made pickable by the
+/// outlines of its own (T6b).
+fn nested_picks(d: &mut Drawing, m: &Model, host: Id, pieces: &[crate::family::Piece]) {
+    if pieces.iter().all(|p| p.nested.is_empty()) {
+        return;
+    }
+    for (id, path) in m.nested_in(m.guid(host)) {
+        let rings: Vec<Vec<(f32, f32)>> =
+            pieces.iter().filter(|p| p.nested == path).map(|p| p.outline.iter().map(|q| d.view.px(*q)).collect()).collect();
+        if !rings.is_empty() {
+            d.nested.push(NestedPick { id, host, rings });
         }
     }
 }
