@@ -9075,7 +9075,7 @@ fn camera_ok(who: &str, cam: &ViewCamera) -> Result<(), String> {
 
 /// Whether `r` is a view range that makes sense: usable numbers running top ≥ cut plane ≥ bottom ≥
 /// view depth.
-pub(crate) fn range_ok(who: &str, r: &ViewRange) -> Result<(), String> {
+pub fn range_ok(who: &str, r: &ViewRange) -> Result<(), String> {
     for (what, v) in [("cut", r.cut), ("bottom", r.bottom), ("depth", r.depth)].into_iter().chain(r.top.map(|t| ("top", t))) {
         coord(&format!("{who} view range {what}"), v)?;
     }

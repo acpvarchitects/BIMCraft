@@ -99,6 +99,7 @@ pub const ACTIONS: &[&str] = &[
     "Wireframe",
     "Hidden Line",
     "Shaded",
+    "Graphic Display Options",
     "Project Units",
     "Delete",
     "Pin",
@@ -162,6 +163,7 @@ pub const ACTIONS: &[&str] = &[
     msg!("Aligned to Selected Views"),
     msg!("Aligned to Selected Levels"),
     msg!("Aligned to Picked Level"),
+    msg!("View Range"),
 ];
 
 /// The actions of `ACTIONS` only a family document does (`editor::keys`): a key for one does nothing on a project's tab, and
@@ -192,6 +194,7 @@ pub(crate) const FAMILY_ONLY: &[&str] = &[
     "Aligned to Selected Views",
     "Aligned to Selected Levels",
     "Aligned to Picked Level",
+    "View Range",
 ];
 
 /// Whether `action` is a family document's alone.
@@ -451,6 +454,7 @@ impl BimApp {
             "Wireframe" => self.set_visual_style(bimcraft_core::graphics::VisualStyle::Wireframe),
             "Hidden Line" => self.set_visual_style(bimcraft_core::graphics::VisualStyle::HiddenLine),
             "Shaded" => self.set_visual_style(bimcraft_core::graphics::VisualStyle::Shaded),
+            "Graphic Display Options" => self.open_display(),
             "Project Units" => {
                 self.tab = Tab::Manage;
                 self.open_units = true;

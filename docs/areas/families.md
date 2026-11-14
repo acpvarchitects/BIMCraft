@@ -358,6 +358,28 @@ document's (`document::State::temp`), as Preview Visibility: not saved, no step 
 family closes. While it hides anything the view wears the project's cyan frame (`footer::FRAME`) and the bar says
 "Temporary Hide/Isolate (HR resets)"; Preview Visibility's orange frame is then drawn just inside it, so both show.
 
+### View graphics (FE-18)
+
+Each of the family document's views ({3D}, the two plans and the four elevations) keeps its own graphics
+(`editor/view_graphics.rs`, `Views::kept`), laid over the scratch project it is drawn of, so the project's drawing does what
+they say. They are the session's, as Temporary Hide/Isolate is: not saved, no step of the history, no unsaved change, gone
+when the family closes (saving them with the family would be a view-only field, later).
+
+- Visibility/Graphics (VV, VG, and the View tab's button): the project's dialog (`VgDialog::for_family`), with only its Model
+  and Annotation Categories tabs, listing what the family's views draw: the family's category (a door's or a window's as
+  Doors or Windows, with Walls for the wall it stands in) and Levels. OK and Apply hand the draft back to the view; no
+  command runs. In {3D} a door's or a window's parts stand as generic families of their own, so its category's override is
+  theirs there.
+- Thin Lines (TL, and the View tab's button): the window's own, shared with the project's tabs, as Revit's is the
+  application's; the family's plans and elevations draw every line one pixel wide.
+- Wireframe, Hidden Line and Shaded (WF, HL, SD) and Graphic Display Options (GD): {3D}'s alone, as in the project; the view
+  control bar's Visual Style menu in {3D} sets them too. In a plan or an elevation the status bar says they are {3D}'s.
+- View Range (VR, the family's key alone): the floor plan's, typed in the project's units as offsets from Ref. Level (Top
+  empty, unlimited) and checked as a project plan's is (`model::range_ok`). Until it is set the family's floor plan sees
+  every form whatever its height, as before, and OK on the range the dialog first shows sets none; set, a form wholly below
+  its view depth or above its top is left out (`Staged::seen`). The ceiling plan looks up from its own cut, as a project's
+  does, and has none. While one of these dialogs is open it has the keys: neither the document nor its views get them.
+
 ### Visibility Settings (F8)
 
 F8, part of FORMAT 18 (`family/visibility.rs`). Revit's Family Element Visibility Settings: a form's, a void's and a nested instance's
@@ -1810,6 +1832,8 @@ In `crates/ui-egui`, the Family Editor:
 - `editor/association.rs`: parameter associations. `editor/extrusion.rs`: a selected form's Properties.
 - `editor/exists.rs`: Family Already Exists. `editor/types_dialog.rs`: Family Types.
 - `editor/temp_hide.rs`: the document's Temporary Hide/Isolate. `editor/views.rs`: its plans and elevations.
+  `editor/view_graphics.rs`: each view's graphics for the session (FE-18): Visibility/Graphics, visual style, Graphic
+  Display Options, View Range.
 - `editor/keys.rs`: the document's two-letter keys (`FAMILY_SHORTCUTS`) and what each does (`BimApp::family_action`).
 - `editor/zoom.rs`: the zoom commands in the document's views and their Previous Pan/Zoom history, over the window's `zoom.rs`.
 - `editor/sketch.rs`: sketch mode. `editor/sketch_dims.rs`: the dimensions while a form is sketched (FE-12). `editor/shape_handles.rs`: a selected form's profile handles. `editor/dimensions.rs`: their dimensions and Align.

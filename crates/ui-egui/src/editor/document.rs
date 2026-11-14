@@ -697,9 +697,19 @@ impl BimApp {
                 });
             }
             DocTab::View => {
+                // FE-18: the view shown's Visibility/Graphics, and the window's Thin Lines.
                 ribbon::panel(ui, msg!("Graphics"), |ui| {
-                    later(ui, Icon::Visibility, msg!("Visibility/Graphics"));
-                    later(ui, Icon::ThinLines, msg!("Thin Lines"));
+                    let tip = msg!("Visibility/Graphics (VV): what the view shown draws of each category, for the session");
+                    if big_button(ui, Icon::Visibility, msg!("Visibility/Graphics"), self.vg_dialog.is_some(), tip).clicked()
+                        && let Some(doc) = self.active_doc()
+                    {
+                        self.vg_dialog = Some(super::view_graphics::vg_for(doc, ed));
+                    }
+                    if big_button(ui, Icon::ThinLines, msg!("Thin Lines"), self.thin, "Thin Lines (TL): every line one pixel wide")
+                        .clicked()
+                    {
+                        self.thin = !self.thin;
+                    }
                 });
                 ribbon::panel(ui, msg!("Windows"), |ui| {
                     later(ui, Icon::CloseInactive, msg!("Close Inactive Views"));
@@ -1429,7 +1439,7 @@ impl BimApp {
         if let Some(which) = ed.views.shown {
             // A plan or an elevation (F4): the project's own drawing of the family in a scratch model.
             let base = Arc::clone(&self.session.model);
-            if let Some(e) = ed.view_2d(ui, &base, which, pane) {
+            if let Some(e) = ed.view_2d(ui, &base, which, pane, self.thin) {
                 self.status = Status { text: e, error: true };
             }
             if let Some(text) = ed.views.said.take() {
@@ -1477,7 +1487,28 @@ impl BimApp {
                         }
                     });
                 }
-                ui.label(RichText::new(t("Shaded")).color(pal().muted));
+                // FE-18: {3D}'s Visual Style, as the project's 3D view has it, with its Graphic Display Options.
+                if ed.views.shown.is_none() {
+                    let now = ed.views.kept.graphics_of(None).style;
+                    let tip = msg!("Visual Style: how {3D} draws surfaces: Shaded, Hidden Line (WF, HL and SD set them) or Wireframe");
+                    let r = crate::footer::menu_button(ui, "Visual Style", now.name(), tip, None);
+                    egui::Popup::menu(&r).show(|ui| {
+                        for v in bimcraft_core::graphics::VisualStyle::ALL {
+                            if ui.selectable_label(now == v, t(v.name())).clicked() {
+                                let mut g = ed.views.kept.graphics_of(None);
+                                g.style = v;
+                                ed.views.kept.set_graphics(None, g);
+                            }
+                        }
+                        ui.separator();
+                        if ui.button(t("Graphic Display Options...")).clicked()
+                            && let Some(doc) = self.active_doc()
+                        {
+                            let options = ed.views.kept.display;
+                            self.display_dialog = Some(crate::display::DisplayDialog::for_family(options, doc));
+                        }
+                    });
+                }
                 if icon_button(ui, Icon::Fit, "Zoom to Fit").clicked() {
                     ed.zoom_to_fit();
                 }
@@ -1821,10 +1852,11 @@ impl BimApp {
     /// a project's tab.
     pub(crate) fn family_keys(&mut self, ctx: &Context) {
         let Some(ed) = self.active_family() else { return };
-        if ed.modal() {
+        // A dialog of the document's, of its views' (FE-18), or of the window's has the keys.
+        if ed.modal() || ed.views.kept.dialog_open() || self.keys_taken(ctx) {
             return;
         }
-        if !self.keys_taken(ctx) {
+        {
             let pressed = |m: egui::Modifiers, k: egui::Key| ctx.input_mut(|i| i.consume_key(m, k));
             if pressed(egui::Modifiers::COMMAND | egui::Modifiers::SHIFT, egui::Key::S) {
                 self.family_save(true);

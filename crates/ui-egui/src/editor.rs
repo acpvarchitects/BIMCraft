@@ -28,6 +28,7 @@ mod sketch_dims;
 pub(crate) mod tabs;
 mod temp_hide;
 mod types_dialog;
+pub(crate) mod view_graphics;
 pub(crate) mod views;
 pub(crate) mod visibility;
 pub(crate) mod work_plane;
