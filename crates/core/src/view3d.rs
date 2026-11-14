@@ -2919,7 +2919,8 @@ impl Scene {
                 }
             }
         }
-        // The components' model lines (FE-15) as the edges are, each picking its component.
+        // The components' model lines (FE-15) as the edges are, each picking its component within two pixels, after the
+        // edges (the selected last), as the card's mesh picks them (`Mesh::pick_wire`).
         let mut owners: Vec<Id> = self.tris.iter().map(|t| t.owner).collect();
         for tinted in [false, true] {
             for st in self.strokes.iter().filter(|st| tints.contains_key(&st.owner) == tinted) {
@@ -2932,13 +2933,18 @@ impl Scene {
                 let slot = owners.len() as u32;
                 owners.push(st.owner);
                 for (x, y) in wire_pixels(p, q) {
-                    if (0..w as i64).contains(&x) && (0..h as i64).contains(&y) {
-                        let at = y as usize * w + x as usize;
-                        if let Some(t) = hit.get_mut(at) {
-                            *t = slot;
-                        }
-                        if let Some(px) = rgba.get_mut(4 * at..4 * at + 3) {
-                            px.copy_from_slice(&[r, g, bl]);
+                    for (dx, dy) in (-2..=2).flat_map(|dx| (-2..=2).map(move |dy| (dx, dy))) {
+                        let (px, py) = (x + dx, y + dy);
+                        if (0..w as i64).contains(&px) && (0..h as i64).contains(&py) {
+                            let at = py as usize * w + px as usize;
+                            if let Some(t) = hit.get_mut(at) {
+                                *t = slot;
+                            }
+                            if (dx, dy) == (0, 0)
+                                && let Some(px) = rgba.get_mut(4 * at..4 * at + 3)
+                            {
+                                px.copy_from_slice(&[r, g, bl]);
+                            }
                         }
                     }
                 }

@@ -1262,6 +1262,17 @@ impl Mesh {
         let misses = |b: (P3, P3)| outside(&project, b, centre, 3.0);
         let owner = |w: &Wire| self.owners.get(w.owner.checked_sub(1)? as usize);
         let tinted = |id: Id| tints.iter().any(|(t, _)| *t == id);
+        // A model line (FE-15) is drawn after every edge, the selected last, and picks within two pixels as an edge does: the
+        // last drawn of those that reach the pixel is what it picks.
+        let reaches = |ends: [P3; 2]| {
+            super::wire_line(cam, cut, ends, size)
+                .is_some_and(|(p, q)| super::wire_pixels(p, q).any(|(px, py)| (px - at.0).abs() <= 2 && (py - at.1).abs() <= 2))
+        };
+        for selected in [true, false] {
+            if let Some((id, ..)) = self.strokes.iter().rev().filter(|(id, ..)| tinted(*id) == selected).find(|(_, e, _)| reaches(*e)) {
+                return Some(Hit { id: *id, face: "" });
+            }
+        }
         let mut best: Option<(bool, usize)> = None;
         self.bvh().walk(&|n| (n.lo, n.hi), &misses, &mut |i| {
             let Some(wire) = self.wires.get(i) else { return };

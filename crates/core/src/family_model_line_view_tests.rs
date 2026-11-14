@@ -226,3 +226,31 @@ fn the_cards_mesh_draws_and_picks_a_model_line_as_the_processors_picture_does() 
     let look = Look::of_3d(&s.model);
     assert!(Mesh::new(&Scene::new(&s.model), &look).unwrap().strokes_cut(&[], None).is_empty());
 }
+
+#[test]
+fn in_wireframe_the_cards_mesh_picks_a_model_line_where_the_processors_picture_does() {
+    use crate::view3d::gpu::Mesh;
+    let mut s = Session::new();
+    let id = placed(&mut s, Value::Null);
+    run(&mut s, "visual_style", json!({"style": "wireframe"}));
+    let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
+    let mesh = Mesh::new(&scene, &look).unwrap();
+    let img = in_3d(&s, &[]);
+    // At the line's middle and two pixels either side of it, as a wireframe's edges are picked.
+    let (x, y, _) = camera().project(MIDDLE);
+    for (dx, dy) in [(0.0, 0.0), (2.0, 0.0), (-2.0, 0.0), (0.0, 2.0), (0.0, -2.0)] {
+        let (px, py) = (x.floor() + 0.5 + dx, y.floor() + 0.5 + dy);
+        assert_eq!(img.pick(px, py), Some(id), "the processor's picture at ({dx}, {dy})");
+        assert_eq!(mesh.pick(&camera(), &[], px, py).map(|h| h.id), Some(id), "the card's mesh at ({dx}, {dy})");
+    }
+    // Every pixel round it picks alike, selected or not.
+    for tints in [vec![], vec![(id, Rgb(255, 0, 0))]] {
+        let img = in_3d(&s, &tints);
+        for py in (y as i64 - 8)..(y as i64 + 8) {
+            for px in (x as i64 - 8)..(x as i64 + 8) {
+                let (fx, fy) = (px as f64 + 0.5, py as f64 + 0.5);
+                assert_eq!(mesh.pick(&camera(), &tints, fx, fy).map(|h| h.id), img.pick(fx, fy), "pixel ({px}, {py})");
+            }
+        }
+    }
+}
