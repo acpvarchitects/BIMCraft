@@ -93,6 +93,8 @@ fn bring(to: &mut Model, l: &crate::model::Link, from: &Model) -> Result<(), Str
         let e = transformed("link", &other, *id, &motion, &all)?;
         other.elements.insert(*id, e);
     }
+    // Its shared nested instances' elements stand where their hosts now do (T6b).
+    other.sync_nested();
     // A level that stands where one of this project's does is that one; another is the link's own.
     let mut matched = BTreeSet::new();
     for id in &all {

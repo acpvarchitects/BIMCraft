@@ -1410,8 +1410,26 @@ impl BimApp {
     /// The family the selection is of, else the one the Component tool places.
     pub(crate) fn family_in_hand(&self) -> Option<String> {
         let m = &self.session.model;
-        let selected = self.selection.iter().find_map(|id| m.elements.get(id)?.family().map(|(f, _)| f.to_string()));
+        // A shared nested instance's family is opened as the project has it loaded; one it hasn't on its own isn't offered.
+        let selected = self.selection.iter().find_map(|id| {
+            let e = m.elements.get(id)?;
+            let (f, _) = e.family()?;
+            if matches!(e, bimcraft_core::model::Element::Nested(_)) && !m.families.contains_key(f) {
+                return None;
+            }
+            Some(f.to_string())
+        });
         selected.or_else(|| if matches!(self.tool, Tool::Component | Tool::Fixture(_)) { self.placing().map(|(f, _)| f) } else { None })
+    }
+
+    /// Whether the selection is shared nested instances whose family the project hasn't loaded on its own (T6b): Edit
+    /// Family has nothing to open for them.
+    pub(crate) fn nested_family_unloaded(&self) -> bool {
+        let m = &self.session.model;
+        !self.selection.is_empty()
+            && self.selection.iter().all(
+                |id| matches!(m.elements.get(id), Some(bimcraft_core::model::Element::Nested(n)) if !m.families.contains_key(&n.family)),
+            )
     }
 
     /// The selected adaptive instances' points, as `adaptive_capture` takes them, in each instance's number order.

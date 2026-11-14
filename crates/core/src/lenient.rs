@@ -40,7 +40,7 @@ pub fn element(category: &str, v: &Value) -> Vec<String> {
         "section" => Section, "elevation" => Section, "sheet" => Sheet, "viewport" => Viewport, "column" => Column,
         "structuralcolumn" => Column, "footing" => Column, "beam" => Run, "stripfooting" => Run, "pipe" => Run, "duct" => Run,
         "conduit" => Run, "cabletray" => Run, "wire" => Run, "downconductor" => Run, "groundconductor" => Run,
-        "cable" => Run, "rebar" => Rebar, "component" => Component, "stair" => Stair, "ramp" => Ramp, "railing" => Railing, "roof" => Roof,
+        "cable" => Run, "rebar" => Rebar, "component" => Component, "nested" => crate::nested_elements::NestedElement, "stair" => Stair, "ramp" => Ramp, "railing" => Railing, "roof" => Roof,
         "text" => Note, "line" => DetailLine, "region" => FilledRegion, "detailgroup" => DetailGroup, "repeatingdetail" => RepeatingDetail, "spot" => Spot, "schedule" => Schedule, "view3d" => View3D,
         "planview" => PlanView, "link" => Link, "pointcloud" => PointCloud, "cadimport" => CadImport,
         "circuit" => crate::electrical::Circuit,

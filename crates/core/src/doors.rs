@@ -36,7 +36,18 @@ pub(crate) fn pieces(operation: Operation, width: f64, height: f64, face: f64, m
         .map(|((a, b), (c, d), (bottom, top))| {
             let outline = vec![P2(a, c), P2(b, c), P2(b, d), P2(a, d)];
             let (tris, caps) = sweep(&[Region { outer: outline.clone(), holes: Vec::new() }], bottom, top, &Frame::LEVEL)?;
-            Ok(Piece { tris, caps, outline, holes: Vec::new(), bottom, top, material: material.into(), round: false, vis: None })
+            Ok(Piece {
+                tris,
+                caps,
+                outline,
+                holes: Vec::new(),
+                bottom,
+                top,
+                material: material.into(),
+                round: false,
+                vis: None,
+                nested: Vec::new(),
+            })
         })
         .collect()
 }

@@ -6264,6 +6264,7 @@ mod revit;
 mod rooms;
 mod section_box;
 mod shape3d;
+mod shared_nested;
 mod sheets;
 mod shortcuts_kept;
 mod sketch;

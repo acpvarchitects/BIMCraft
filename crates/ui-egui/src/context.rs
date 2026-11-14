@@ -203,7 +203,7 @@ impl BimApp {
                 let family = self.selection.iter().any(|id| m.elements.get(id).is_some_and(|e| e.family().is_some()));
                 let mut edits = Vec::new();
                 if family {
-                    edits.push(Item::new(Action::EditFamily, true));
+                    edits.push(Item::new(Action::EditFamily, self.family_in_hand().is_some()));
                 }
                 edits.extend([
                     Item::new(Action::EditType, self.type_subject().is_some()),

@@ -1057,6 +1057,13 @@ impl BimApp {
             Subject::Element(id) => matches!(model.elements.get(id), Some(Element::View3D(v)) if v.camera.is_some()),
             _ => false,
         };
+        // A shared nested instance (T6b): what it is and what it is part of, read only, as it is worked out from its host.
+        if let Subject::Element(id) = subject
+            && let Some(Element::Nested(n)) = model.elements.get(id)
+        {
+            nested_instance(ui, &model, n);
+            return;
+        }
         let active_3d = self.active_3d();
         self.type_selector(ui, &model, subject);
         let (filter, ids, rows) = match subject {
@@ -3613,4 +3620,23 @@ impl BimApp {
             self.schedule_dialog = Some(d);
         }
     }
+}
+
+/// A shared nested instance's Properties (T6b): its family, its type and the component it is part of, which it goes with.
+fn nested_instance(ui: &mut Ui, model: &bimcraft_core::model::Model, n: &bimcraft_core::nested_elements::NestedElement) {
+    ui.label(egui::RichText::new(t("Shared Nested Instance")).strong());
+    ui.add_space(4.0);
+    let host = match model.elements.get(n.host) {
+        Some(Element::Component(c)) => format!("{} : {}", c.family, c.type_name),
+        _ => String::new(),
+    };
+    egui::Grid::new("nested-instance").num_columns(2).striped(true).show(ui, |ui| {
+        for (name, value) in [(t("Family"), n.family.as_str()), (t("Type"), n.type_name.as_str()), (t("Host"), host.as_str())] {
+            ui.label(name);
+            ui.label(value);
+            ui.end_row();
+        }
+    });
+    ui.add_space(4.0);
+    ui.label(egui::RichText::new(t("It goes with its host: move the host, or change the instance in its family.")).weak());
 }

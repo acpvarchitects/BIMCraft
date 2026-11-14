@@ -3166,6 +3166,13 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
             extra.insert("values".into(), json!(m.dimension_values(d).into_iter().map(hundredth).collect::<Vec<_>>()));
             extra.insert("labels".into(), json!(m.dimension_labels(d)));
         }
+        // A shared nested instance (T6b): what it is part of, and its family's values for its type.
+        Element::Nested(n) => {
+            extra.insert("host_component".into(), json!(m.elements.id(n.host)));
+            if let Some(v) = m.families.get(&n.family).and_then(|f| f.values(&n.type_name, &BTreeMap::new()).ok()) {
+                extra.insert("values".into(), values_json(v));
+            }
+        }
         // Every parameter's value, worked out, and how high it reaches over its base.
         Element::Component(cp) => {
             if let Some(v) = m.families.get(&cp.family).and_then(|f| f.values(&cp.type_name, &cp.params).ok()) {
@@ -14828,6 +14835,15 @@ pub(crate) fn transform(c: &str, m: &Model, mut e: Element, id: Id, mo: &Motion,
         Element::Column(col) | Element::StructuralColumn(col) | Element::Footing(col) => (col.at, col.angle) = turned(f, col.at, col.angle),
         // A run keeps its heights at its ends; its section is the same either way round.
         crate::model::run_arm!(r) => (r.start, r.end) = (f(r.start), f(r.end)),
+        // A shared nested instance goes with its host, worked out again from it; never on its own.
+        Element::Nested(n) => {
+            if !within(n.host) {
+                return Err(bad(
+                    c,
+                    format!("element {id} is part of component {}: move its host, or the instance in its family", m.shown(n.host)),
+                ));
+            }
+        }
         // A mirror image is the family's, flipped.
         Element::Component(cp) => {
             (cp.at, cp.angle) = turned(f, cp.at, cp.angle);
@@ -16864,9 +16880,23 @@ fn delete(s: &mut Session, p: &Value) -> R {
     result
 }
 
+/// Refused where `ids` names a shared nested instance's element (T6b), which is part of its host and goes only with it.
+fn apart_from_host(c: &str, m: &Model, ids: &[Id]) -> Result<(), String> {
+    match ids.iter().find_map(|id| match m.elements.get(*id) {
+        Some(Element::Nested(n)) => Some((*id, n.host)),
+        _ => None,
+    }) {
+        Some((id, host)) => {
+            Err(bad(c, format!("element {id} is part of component {}: delete its host, or the instance in its family", m.shown(host))))
+        }
+        None => Ok(()),
+    }
+}
+
 fn delete_indexed(s: &mut Session, p: &Value) -> R {
     let m = &s.model;
     let ids = ids_param("delete", m, p)?;
+    apart_from_host("delete", m, &ids)?;
     let lookup = m.lookup();
     let mut gone: BTreeSet<Guid> = ids.iter().map(|id| m.guid(*id)).collect();
     let mut frontier = gone.clone();
@@ -16884,6 +16914,8 @@ fn delete_indexed(s: &mut Session, p: &Value) -> R {
                 Some(Element::Railing(r)) => r.host.is_some_and(|h| gone.contains(&h)),
                 Some(Element::Rebar(rb)) => rb.host.is_some_and(|h| gone.contains(&h)),
                 Some(Element::Component(cp)) => cp.host.is_some_and(|h| gone.contains(&h.host.guid())),
+                // A shared nested instance's element goes with its host.
+                Some(Element::Nested(n)) => gone.contains(&n.host),
                 Some(Element::PlanView(v)) => gone.contains(&v.level) || v.parent.is_some_and(|p| gone.contains(&p)),
                 Some(Element::Tag(t)) => gone.contains(&t.host) || t.view.is_some_and(|v| gone.contains(&v)),
                 Some(Element::Dimension(d)) => d.view.is_some_and(|v| gone.contains(&v)),
@@ -17017,6 +17049,7 @@ fn delete_from_scratch(s: &mut Session, p: &Value) -> R {
     let c = "delete";
     let m = &s.model;
     let ids = ids_param(c, m, p)?;
+    apart_from_host(c, m, &ids)?;
     let mut gone: BTreeSet<Guid> = ids.iter().map(|id| m.guid(*id)).collect();
     // What hangs on what goes, goes: a wall's doors and windows, and their tags.
     loop {
@@ -17030,6 +17063,7 @@ fn delete_from_scratch(s: &mut Session, p: &Value) -> R {
                         Element::Railing(r) => r.host.is_some_and(|h| gone.contains(&h)),
                         Element::Rebar(rb) => rb.host.is_some_and(|h| gone.contains(&h)),
                         Element::Component(cp) => cp.host.is_some_and(|h| gone.contains(&h.host.guid())),
+                        Element::Nested(n) => gone.contains(&n.host),
                         // A circuit hangs on its board.
                         Element::Circuit(x) => gone.contains(&x.panel),
                         // A panel schedule hangs on its board, as its viewports hang on it.

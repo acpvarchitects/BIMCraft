@@ -59,6 +59,8 @@ fn element_lines(m: &Model, e: &Element) -> Vec<Line> {
             out.extend(axes(c.at, c.angle, 100.0));
             out
         }
+        // A shared nested instance (T6b): the outlines of its own solids.
+        Element::Nested(n) => m.nested_pieces(n).into_iter().filter(|p| !p.round).flat_map(|p| path(&p.outline, true)).collect(),
         // An upright one, its line; one that isn't upright has no line in plan.
         Element::RefPlane(p) if p.upright() => vec![(P2(p.start[0], p.start[1]), P2(p.end[0], p.end[1]))],
         Element::RefPlane(_) => Vec::new(),

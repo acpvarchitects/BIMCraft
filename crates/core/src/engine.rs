@@ -477,6 +477,10 @@ impl Session {
                 if cmd.undoable {
                     crate::constraints::keep(self, &before)?;
                 }
+                // Each component's shared nested instances as the elements they are now (T6b).
+                if let Some(c) = self.model.nested_changes() {
+                    self.model_mut().apply_nested(c);
+                }
                 // What was made or changed must be as a sketch of it solves too (an outline that is simple), which a file
                 // from before may break; Insert from File brings in what it finds.
                 // (Before the check, which would name a bow tie of no area by that, not by what to redraw.)
@@ -541,6 +545,9 @@ impl Session {
                 }
                 self.model_mut().resolve();
                 self.model_mut().sync_library();
+                if let Some(c) = self.model.nested_changes() {
+                    self.model_mut().apply_nested(c);
+                }
                 self.model.check().map(|()| v)
             });
         match result {

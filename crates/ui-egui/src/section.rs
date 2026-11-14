@@ -301,6 +301,12 @@ impl BimApp {
                 .or_else(|| cut.image.as_ref().filter(|_| displaying)?.pick(f64::from(x) * source_ppp[0], f64::from(y) * source_ppp[1]))
         };
         let hovered = local.filter(|_| matches!(self.tool, Tool::Modify | Tool::Demolish)).and_then(|q| pick(&self.cut, &d, q));
+        // Tab over a component reaches its shared nested instances after it (T6b), as in a plan.
+        let tab = ui.input(|i| i.key_pressed(egui::Key::Tab)) && local.is_some();
+        let tabbed = std::mem::take(&mut self.tab_cycle) || tab;
+        let nested = crate::nested_tab::seen(&model, hovered, &self.selection, &|p| render::section_px(&model, id, source, p));
+        let hovered =
+            if matches!(self.tool, Tool::Modify) { self.nested_tab.step(hovered, &nested, local.map(unproject), tabbed) } else { hovered };
         let tints: Vec<(Id, Rgb)> = self
             .selection
             .iter()
@@ -346,6 +352,7 @@ impl BimApp {
             p.image(t.id(), image_rect, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
         }
         paint(&p, place, &d, &self.selection, hovered, self.thin, &[]);
+        crate::nested_tab::outline(&p, &nested, hovered, &self.selection, &|q| place.pos(q));
         // While a note is written here, the pointer is its editor's.
         if self.writing_in(id) {
             p.extend(crop);
@@ -392,7 +399,8 @@ impl BimApp {
         }
         match (clicked, &self.tool) {
             (Some(q), Tool::Modify) => {
-                let found = pick(&self.cut, &d, q);
+                // Where the cursor is, what Tab has reached there.
+                let found = if Some(q) == local { hovered } else { pick(&self.cut, &d, q) };
                 self.pick_up(found.into_iter().collect(), click_modifiers(ui));
             }
             (Some(q), Tool::Demolish) => {

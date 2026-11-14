@@ -786,7 +786,9 @@ impl BimApp {
         // Family (Modify | <Category>).
         let placing = !sketching && matches!(self.tool, Tool::Component | Tool::Fixture(_));
         let family = if !sketching && (placing || self.tool == Tool::Modify) { self.family_in_hand() } else { None };
-        if !sketching && !boundary && !placing && family.is_none() {
+        // A shared nested instance selected whose family the project hasn't loaded on its own: Edit Family greyed, saying why.
+        let unloaded = !sketching && self.tool == Tool::Modify && family.is_none() && self.nested_family_unloaded();
+        if !sketching && !boundary && !placing && family.is_none() && !unloaded {
             return;
         }
         // Pushed to the right end by the room the rest leaves: its width as it was last drawn.
@@ -815,6 +817,12 @@ impl BimApp {
                         // A family the project has otherwise asks first: Family Already Exists.
                         self.ask_file(ui.ctx(), dialog, false, |app, path| app.load_family_file(&path));
                     }
+                }
+                if unloaded {
+                    let tip = msg!(
+                        "Edit Family: this shared nested family isn't loaded in the project on its own; edit it from its host's family"
+                    );
+                    ui.add_enabled_ui(false, |ui| big_button(ui, Icon::FamilyEditor, "Edit Family", false, tip));
                 }
                 if placing || family.is_some() {
                     let tip = msg!("Edit Family: the family of what is selected, or of the component being placed");

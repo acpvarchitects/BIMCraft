@@ -16,7 +16,7 @@ pub mod classes;
 use std::collections::BTreeMap;
 use std::fmt::Write;
 
-use crate::family::ConnectorKind;
+use crate::family::{ConnectorKind, Piece};
 use crate::geom::{self, P2};
 use serde_json::Value;
 
@@ -377,6 +377,41 @@ impl Step {
             Some(g) => s(&guid(self.uid, role, fold(*g))),
             None => s(&guid(self.uid, role, id)),
         }
+    }
+
+    /// Shared nested instance `n` (element `id`, T6b) of a component placed at `#host_at`: an element of its own of its
+    /// family's class, named by its family and type, placed with its host, its body `pieces` (in the host's axes) styled in
+    /// their materials. Its whole aggregates it.
+    fn nested_part(&mut self, m: &Model, id: Id, n: &crate::nested_elements::NestedElement, pieces: &[&Piece], host_at: u64) -> u64 {
+        let at = self.place(Some(host_at), (0.0, 0.0, 0.0), None);
+        let mut items = Vec::new();
+        let mut made_of: Vec<u64> = Vec::new();
+        for piece in pieces {
+            let set = self.faceset(&piece.tris);
+            if !piece.material.trim().is_empty() {
+                let (material, style) = self.material_style(m, piece.material.trim());
+                if let Some(style) = style {
+                    self.add(format!("IFCSTYLEDITEM(#{set},(#{style}),$)"));
+                }
+                if !made_of.contains(&material) {
+                    made_of.push(material);
+                }
+            }
+            items.push(set);
+        }
+        let shape = self.tessellated(&items);
+        let (entity, kind, object_type) = match m.families.get(&n.family) {
+            Some(f) => f.ifc(),
+            None => ("IFCBUILDINGELEMENTPROXY".into(), ".NOTDEFINED.".into(), None),
+        };
+        let name = s(&format!("{}:{}", n.family, n.type_name));
+        let object = object_type.map_or_else(|| name.clone(), |o| s(&o));
+        let tail = classes::class(&entity).map_or_else(|| format!(",{kind}"), |c| classes::fill(c.1, &kind));
+        let ent = self.add(format!("{entity}({},$,{name},$,{object},#{at},#{shape},'{id}'{tail})", self.guid(ELEMENT, id)));
+        if let [one] = made_of.as_slice() {
+            self.add(format!("IFCRELASSOCIATESMATERIAL({},$,$,$,(#{ent}),#{one})", self.guid(COMPONENT_MATERIALS, id)));
+        }
+        ent
     }
 
     /// Part `i` of element `id`, for its GlobalId.
@@ -1107,6 +1142,8 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool) -> String {
     let mut wholes: BTreeMap<Id, (u64, u64, f64, Vec<u64>)> = BTreeMap::new();
     // Reinforcing bars as (level, host, entity): aggregated to their host, else in their level.
     let mut bars: Vec<(Guid, Option<Id>, u64)> = Vec::new();
+    // Each component's shared nested instances (T6b), written as elements of their own: its parts, aggregated into it.
+    let mut nested_parts: BTreeMap<Id, Vec<u64>> = BTreeMap::new();
     // The runs in each system, by its name, for the IfcSystem they are assigned to.
     let mut systems: BTreeMap<&str, Vec<u64>> = BTreeMap::new();
     // The boards on each distribution system, by its name, for the IfcDistributionSystem they are assigned to.
@@ -1443,10 +1480,20 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool) -> String {
             // each form a closed face set styled in its material's colour.
             Element::Component(cp) => {
                 let (Some(&(_, storey)), Some(f)) = (storeys.get(&cp.level), m.families.get(&cp.family)) else { continue };
-                let pieces = m.component_local_pieces(cp);
+                let mut pieces = m.component_local_pieces(cp);
                 if pieces.is_empty() {
                     continue;
                 }
+                // Its shared nested instances' solids are theirs, written below as elements of their own (T6b).
+                let host_guid = m.guid(id);
+                let shared = m.nested_in(host_guid);
+                let theirs: Vec<Piece> = if shared.is_empty() {
+                    Vec::new()
+                } else {
+                    let (theirs, own): (Vec<Piece>, Vec<Piece>) = pieces.into_iter().partition(|p| !p.nested.is_empty());
+                    pieces = own;
+                    theirs
+                };
                 // Upright, turned about z; tilted with its work plane, its own axes.
                 let placed = m.component_placement(cp);
                 let at = if placed.upright {
@@ -1485,6 +1532,16 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool) -> String {
                     in_rooms.entry(room).or_default().push(ent);
                 }
                 products.insert(id, ent);
+                for (nid, path) in shared {
+                    let own: Vec<&Piece> = theirs.iter().filter(|p| p.nested == path).collect();
+                    let Some(Element::Nested(n)) = m.elements.get(nid) else { continue };
+                    if own.is_empty() {
+                        continue;
+                    }
+                    let part = w.nested_part(m, nid, n, &own, at);
+                    products.insert(nid, part);
+                    nested_parts.entry(id).or_default().push(part);
+                }
                 let omniclass = f.omniclass.as_ref().map(|o| (o.number.clone(), o.title.clone()));
                 // Its type object, of the class it is written as, where IFC4 has one: with its family's kind's predefined type,
                 // or the one it remembers but `USERDEFINED` (which a type object would have to say), else none defined.
@@ -1724,7 +1781,7 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool) -> String {
         w.add(format!("IFCRELAGGREGATES({},$,$,$,#{ent},({}))", w.guid(PARTS, *id), refs(parts)));
     }
     // A bar is a part of the element it reinforces; one with none, or whose host isn't written, is in its level.
-    let mut reinforced: BTreeMap<Id, Vec<u64>> = BTreeMap::new();
+    let mut reinforced: BTreeMap<Id, Vec<u64>> = nested_parts;
     for (level, host, ent) in bars {
         match host.filter(|h| products.contains_key(h)) {
             Some(h) => reinforced.entry(h).or_default().push(ent),

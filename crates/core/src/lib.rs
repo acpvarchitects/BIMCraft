@@ -81,6 +81,8 @@ mod family_purge_tests;
 #[cfg(test)]
 mod family_section_tests;
 #[cfg(test)]
+mod family_shared_nested_tests;
+#[cfg(test)]
 mod family_sketch_lock_tests;
 #[cfg(test)]
 mod family_sketch_tests;
@@ -135,6 +137,7 @@ pub mod mesh_in;
 mod mesh_in_tests;
 pub mod model;
 pub mod nbr5410;
+pub mod nested_elements;
 pub mod network;
 #[cfg(test)]
 mod opening_subcategory_tests;

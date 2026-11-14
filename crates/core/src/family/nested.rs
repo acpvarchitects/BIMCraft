@@ -7,8 +7,9 @@
 //!
 //! A nested family's own `shared` option makes it shared: loading the host into a project (or into another family) loads its
 //! shared nested families there too, asking about the ones the target has defined otherwise ("Shared Family Already Loaded"),
-//! and one definition of a shared family is kept across the target. The instances are built into the host either way: a
-//! shared instance as an element of its own in the project (scheduled, tagged, selected apart) is T6b's.
+//! and one definition of a shared family is kept across the target. The instances are built into the host either way; a
+//! shared instance's pieces say which it is (`Piece::nested`), and [`Family::shared_instances`] where each stands, which a
+//! project makes an element of its own of for each component of the host (T6b, `crate::nested_elements`).
 use super::*;
 use crate::ids::{Guid, Id};
 use crate::view3d::{dot, sub};
@@ -121,6 +122,11 @@ impl Placed {
         std::array::from_fn(|k| self.origin[k] + self.x[k] * p[0] + self.y[k] * p[1] + self.z[k] * p[2])
     }
 
+    /// Direction `v` of its axes in the host's.
+    fn dir(&self, v: P3) -> P3 {
+        std::array::from_fn(|k| self.x[k] * v[0] + self.y[k] * v[1] + self.z[k] * v[2])
+    }
+
     fn right_handed(&self) -> bool {
         dot(cross(self.x, self.y), self.z) > 0.0
     }
@@ -133,6 +139,22 @@ impl Placed {
 
 /// A nested instance worked out: its family, that family's values, and where it stands.
 type Instanced<'a> = (&'a Family, BTreeMap<String, Val>, Placed);
+
+/// A shared nested instance where its host places it (T6b): what a project makes an element of its own of, for each
+/// component of the host. `path` names it by the GUIDs of the nested instances from the host's down to it (one for an
+/// instance the host places; more for one placed in a shared family the host nests); `family` and `type_name` are its
+/// family's name and type; `origin` and `axes` its family's axes in the host's (mirrored where `axes` are left-handed).
+#[derive(Clone, Debug, PartialEq)]
+pub struct SharedInstance {
+    pub path: Vec<Guid>,
+    pub family: String,
+    pub type_name: String,
+    pub origin: P3,
+    pub axes: [P3; 3],
+    /// Its family's plan marks, in the host's axes, where it stands upright on a level plane (and those inside it): what a
+    /// plan picks one of symbols alone by.
+    pub marks: Vec<Mark>,
+}
 
 /// The nested family named `name` in `list`.
 pub fn find<'a>(list: &'a [NestedFamily], name: &str) -> Option<&'a NestedFamily> {
@@ -249,9 +271,69 @@ impl Family {
                 (crate::geom::hull(tris.iter().flatten().map(|p| P2(p[0], p[1])).collect()), Vec::new())
             };
             let vis = super::Visibility::both(piece.vis, self.nested_instances[i].visibility);
-            out.push(Piece { tris, caps: piece.caps, outline, holes, bottom, top, material: piece.material, round: piece.round, vis });
+            // Part of this instance where its family is shared (T6b), and of what is shared inside it; else absorbed.
+            let nested =
+                if nested.shared { std::iter::once(self.nested_instances[i].guid).chain(piece.nested).collect() } else { Vec::new() };
+            out.push(Piece {
+                tris,
+                caps: piece.caps,
+                outline,
+                holes,
+                bottom,
+                top,
+                material: piece.material,
+                round: piece.round,
+                vis,
+                nested,
+            });
         }
         Ok(out)
+    }
+
+    /// Its shared nested instances, sized by `values` (the host's), where each stands in it flexed for them: those its own
+    /// nested instances are where their family is shared, and those inside each of them, reached through shared ones only (a
+    /// family that isn't shared keeps what it nests to itself), as Revit makes elements of them in a project. One whose
+    /// `visible` leaves it out, or that doesn't work out, isn't there.
+    pub fn shared_instances(&self, values: &BTreeMap<String, Val>) -> Vec<SharedInstance> {
+        let mut out = Vec::new();
+        self.shared_into(values, &mut out, &mut Meter::default(), MAX_NESTING + 1);
+        out
+    }
+
+    fn shared_into(&self, values: &BTreeMap<String, Val>, out: &mut Vec<SharedInstance>, meter: &mut Meter, depth: usize) {
+        if depth == 0 || self.nested_instances.is_empty() {
+            return;
+        }
+        let Ok(flexed) = self.flexed(values) else { return };
+        for (i, inst) in flexed.nested_instances.iter().enumerate() {
+            let Ok(Some((nested, own, placed))) = flexed.placed_instance(i, values) else { continue };
+            if !nested.shared || meter.spend().is_err() {
+                continue;
+            }
+            let to = |p: P2| {
+                let q = placed.point([p.0, p.1, 0.0]);
+                P2(q[0], q[1])
+            };
+            let level = placed.level();
+            let marks = if level { nested.marks(&own).unwrap_or_default().iter().map(|m| m.map(to)).collect() } else { Vec::new() };
+            out.push(SharedInstance {
+                path: vec![inst.guid],
+                family: inst.family.clone(),
+                type_name: inst.type_name.clone(),
+                origin: placed.origin,
+                axes: [placed.x, placed.y, placed.z],
+                marks,
+            });
+            let mut inner = Vec::new();
+            nested.shared_into(&own, &mut inner, meter, depth - 1);
+            out.extend(inner.into_iter().map(|s| SharedInstance {
+                path: std::iter::once(inst.guid).chain(s.path).collect(),
+                origin: placed.point(s.origin),
+                axes: s.axes.map(|a| placed.dir(a)),
+                marks: if level { s.marks.iter().map(|m| m.map(to)).collect() } else { Vec::new() },
+                ..s
+            }));
+        }
     }
 
     /// Its nested instances' plan marks, sized by `values`, for those that stand upright on a level plane.
