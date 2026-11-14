@@ -511,9 +511,19 @@ or a reload), and stays on its host when a type's dimensions move it (`flexed`).
 it as they take a reference line (`Copying`, `Transforming`), refusing what would take it off a host that stays. The project's
 plans draw a component's model lines where its placement puts them (`Model::component_model_lines`) between the cut plane and
 the view depth, and a door's or window's with its marks (`Model::opening_model_lines`), each in its subcategory, which a view
-hides and restyles as it does a symbol's; sections, elevations and 3D views don't yet. Create > Model > Model Line draws one as Reference Line does, on
-the view's work plane; a click picks it, Delete takes it away, a drag slides it along its host and a plane moved takes the lines
-on it along; Properties sets its subcategory. It has no key yet (`tests/family_model_line.rs`, `family_model_line_tests.rs`).
+hides and restyles as it does a symbol's. Sections, elevations and 3D views draw them too: the scene keeps each component's
+(`view3d::strokes_of`, from `Model::component_model_line_parts`) with its Visibility Settings packed as a form's, so a view
+asks them as it asks a form's (Front/Back or Left/Right by the way it looks, its detail level, never in projection when only
+shown when cut). The processor's picture draws them over the surfaces where nothing nearer hides them, kept to a section's
+clip or a 3D view's section box, in their subcategory's colour (`Look::line_edge`), tinted when selected, picking their
+component; a section's kept paint holds them, so a hover repaints them. The card's mesh keeps the same lines
+(`Mesh::strokes_cut`), drawn with the level marks' lines and picked as the processor's picture picks them
+(`family_model_line_view_tests.rs`). A door's or a window's model lines are still drawn in plans only. Create > Model > Model
+Line draws one as Reference Line does, on the view's work plane; a click picks it, Delete takes it away, a drag slides it along
+its host and a plane moved takes the lines on it along; selected and unpinned, a grip at each end stretches it along its host
+(`Family::model_line_end_dragged`), as one step; Properties sets its subcategory. Dimensions and Align don't keep a model line
+as a reference yet: that needs a reference of a new shape, which waits for a format step. It has no key yet
+(`tests/family_model_line.rs`, `family_model_line_tests.rs`).
 
 An adaptive family's work planes are these planes too: a reference point is drawn on a datum, a named plane of the family's own
 or a reference line's face, and keeps it as its Work Plane by `PlaneRef`; the three datums an adaptive definition had of its own

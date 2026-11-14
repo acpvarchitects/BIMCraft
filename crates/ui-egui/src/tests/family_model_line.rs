@@ -208,3 +208,60 @@ fn a_pinned_model_line_shows_no_grips() {
     assert!(editor(&h).model_lines[0].pinned, "pinned");
     assert!(grip_at(&h, l.start).is_none() && grip_at(&h, l.end).is_none(), "no grips: {:?}", editor(&h).views.grips_shown);
 }
+
+/// A project with a component whose family has two model lines (one slanting up on its Center (Front/Back) plane, one round
+/// its foot on Ref. Level), shown in the 3D view, selected there, and in a section looking north at it; and the family's plan
+/// with a model line selected, its end grips shown: saved where `BIMCRAFT_FE15_DUMP` says (only then).
+#[test]
+fn family_model_line_views_and_grips_screenshots() {
+    let Ok(folder) = std::env::var("BIMCRAFT_FE15_DUMP") else { return };
+    std::fs::create_dir_all(&folder).unwrap();
+    let save = |h: &mut Harness<BimApp>, name: &str| {
+        for _ in 0..4 {
+            h.run();
+        }
+        h.render().unwrap().save(std::path::Path::new(&folder).join(format!("fe15b-{name}.png"))).unwrap();
+    };
+    let script = format!(
+        "{}\n{}\n{}",
+        r#"family {"name": "Post", "category": "generic", "types": {"T": {}}, "forms": [{"profile": [[-100, -100], [100, -100], [100, 100], [-100, 100]], "to": 1500}], "model_lines": [{"start": [-1200, 0, 0], "end": [-200, 0, 1800], "host": {"plane": "CFB"}}, {"start": [-600, -600, 0], "end": [600, -600, 0]}, {"start": [600, -600, 0], "end": [600, 600, 0]}]}"#
+            .replace("CFB", &CENTER_FRONT_BACK.to_string()),
+        r#"component {"family": "Post", "at": [0, 0]}"#,
+        r#"section {"start": [-3000, -2500], "end": [3000, -2500], "name": "Model Lines"}"#,
+    );
+    let mut h = app(&script);
+    h.set_size(egui::vec2(1600.0, 1000.0));
+    h.state_mut().open_sheet(crate::Sheet::View3D);
+    save(&mut h, "3d");
+    let id = h
+        .state()
+        .session
+        .model
+        .elements
+        .iter()
+        .find(|(_, e)| matches!(e, bimcraft_core::model::Element::Component(_)))
+        .map(|(id, _)| *id)
+        .unwrap();
+    h.state_mut().selection = vec![id];
+    save(&mut h, "3d-selected");
+    h.state_mut().selection.clear();
+    let sec = h
+        .state()
+        .session
+        .model
+        .elements
+        .iter()
+        .find(|(_, e)| matches!(e, bimcraft_core::model::Element::Section(_)))
+        .map(|(id, _)| *id)
+        .unwrap();
+    h.state_mut().open_sheet(crate::Sheet::Section(sec));
+    save(&mut h, "section");
+    // The family's plan, a model line selected with its grips.
+    let mut h = app(BOX);
+    h.set_size(egui::vec2(1600.0, 1000.0));
+    h.state_mut().edit_family("Box");
+    h.run();
+    view(&mut h, Some(Which::Plan));
+    draw(&mut h, [-1000.0, -800.0, 0.0], [1000.0, -800.0, 0.0]);
+    save(&mut h, "grips");
+}
