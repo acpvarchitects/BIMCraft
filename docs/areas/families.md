@@ -375,9 +375,11 @@ when the family closes (saving them with the family would be a view-only field, 
   application's; the family's plans and elevations draw every line one pixel wide.
 - Wireframe, Hidden Line and Shaded (WF, HL, SD) and Graphic Display Options (GD): {3D}'s alone, as in the project; the view
   control bar's Visual Style menu in {3D} sets them too. In a plan or an elevation the status bar says they are {3D}'s.
-- View Range (VR, the family's key alone): a floor or ceiling plan's, typed in the project's units as offsets from Ref.
-  Level and checked as a project plan's is (`model::range_ok`). Until it is set the family's floor plan sees every form
-  whatever its height, as before; set, a form wholly below its view depth or above its top is left out (`Staged::seen`).
+- View Range (VR, the family's key alone): the floor plan's, typed in the project's units as offsets from Ref. Level (Top
+  empty, unlimited) and checked as a project plan's is (`model::range_ok`). Until it is set the family's floor plan sees
+  every form whatever its height, as before, and OK on the range the dialog first shows sets none; set, a form wholly below
+  its view depth or above its top is left out (`Staged::seen`). The ceiling plan looks up from its own cut, as a project's
+  does, and has none. While one of these dialogs is open it has the keys: neither the document nor its views get them.
 - Hide in View (EH, VH): EH hides the forms and reference planes selected in the view shown, by their GUIDs
   (`Graphics::elements` of the view's own, `hidden`); VH hides the forms' category, Visibility/Graphics' row, which VV then
   shows unticked. VH on a plane alone says it has no category to hide. A hidden form or plane is neither drawn nor picked

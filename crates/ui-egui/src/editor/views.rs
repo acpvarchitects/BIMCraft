@@ -388,8 +388,9 @@ impl FamilyEditor {
         // F8: what the view's Visibility Settings leave out, at the document's Detail Level, drawn halftone too. A plan's cut plane
         // is its View Range's (FE-18).
         let cut = match which {
-            Which::Plan | Which::Ceiling => self.views.kept.range_of(which).cut,
-            Which::Elevation(_) => bimcraft_core::model::CUT_HEIGHT,
+            Which::Plan => self.views.kept.range_of(which).cut,
+            // The ceiling plan and the elevations cut where the scratch project's level does.
+            Which::Ceiling | Which::Elevation(_) => bimcraft_core::model::CUT_HEIGHT,
         };
         let by_view = fv::hidden_in(&f, &values, Some(which), self.views.detail, cut);
         // FE-18: the forms the view draws apart, each a component of its own with graphics of its own (an override, or Reveal
@@ -442,13 +443,15 @@ impl FamilyEditor {
             st.seen = self.views.kept.seen(which);
         }
         // Each view drawn of the scratch project: the plan (and the ceiling plan) of its level, and its four elevations.
-        let mut ids = vec![(st.level, which)];
+        // The level's own: its floor plan's, or its ceiling plan's while that is shown.
+        let level = if which == Which::Ceiling { Which::Ceiling } else { Which::Plan };
+        let mut ids = vec![(st.level, level)];
         ids.extend(Side::ALL.iter().filter_map(|s| Some((st.elevation(*s)?, Which::Elevation(*s)))));
         for (id, of) in ids {
             let graphics = match st.model.elements.get_mut(id) {
                 Some(Element::Level(l)) => {
-                    // The plan's View Range (FE-18).
-                    if matches!(of, Which::Plan | Which::Ceiling) {
+                    // The floor plan's View Range (FE-18); a ceiling plan cuts where a project's does.
+                    if of == Which::Plan {
                         l.view_range = self.views.kept.range_of(of);
                     }
                     &mut l.graphics

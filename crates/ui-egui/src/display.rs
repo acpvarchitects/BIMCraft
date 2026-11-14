@@ -24,8 +24,8 @@ pub(crate) struct DisplayDialog {
 
 impl DisplayDialog {
     /// The dialog on family document `doc`'s {3D}, its options `options`.
-    pub(crate) fn for_family(options: DisplayOptions, doc: Option<crate::editor::tabs::DocId>) -> DisplayDialog {
-        DisplayDialog { options, error: None, family: doc }
+    pub(crate) fn for_family(options: DisplayOptions, doc: crate::editor::tabs::DocId) -> DisplayDialog {
+        DisplayDialog { options, error: None, family: Some(doc) }
     }
 }
 
