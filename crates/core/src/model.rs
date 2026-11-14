@@ -2199,6 +2199,10 @@ macro_rules! visit_refs {
                 f(& $($m)? v.view);
             }
             run_arm!(r) => f(& $($m)? r.level),
+            Element::Nested(n) => {
+                f(& $($m)? n.host);
+                f(& $($m)? n.level);
+            }
             Element::Component(c) => {
                 f(& $($m)? c.level);
                 if let Some(Hosted { host: HostRef::Plane(g) | HostRef::Face { element: g, .. }, .. }) = & $($m)? c.host { f(g) }
@@ -2292,6 +2296,9 @@ pub enum Element {
     /// A reinforcing bar in a concrete element, bent along its points.
     Rebar(Rebar),
     Component(Component),
+    /// A shared nested instance of a component's family, an element of its own (T6b): worked out from its host after every
+    /// command, never written to a file (`crate::nested_elements`).
+    Nested(crate::nested_elements::NestedElement),
     Stair(Stair),
     Ramp(Ramp),
     Railing(Railing),
@@ -2418,6 +2425,7 @@ impl Element {
     pub fn family(&self) -> Option<(&str, &str)> {
         match self {
             Element::Component(c) => Some((&c.family, &c.type_name)),
+            Element::Nested(n) => Some((&n.family, &n.type_name)),
             Element::Door(o) | Element::Window(o) => o.family.as_deref().map(|f| (f, o.type_name.as_str())),
             _ => None,
         }
@@ -2540,7 +2548,8 @@ impl Element {
             Element::DownConductor(_) => "downconductor",
             Element::GroundConductor(_) => "groundconductor",
             Element::Cable(_) => "cable",
-            Element::Component(_) => "component",
+            // Scheduled, counted and tagged as the components are.
+            Element::Component(_) | Element::Nested(_) => "component",
             Element::Stair(_) => "stair",
             Element::Ramp(_) => "ramp",
             Element::Railing(_) => "railing",
@@ -3839,6 +3848,8 @@ impl Model {
         }
         // A pin of an element this build left out (a newer one's kind) is dropped, and the rest of the file opens.
         m.pinned.retain(|g| m.elements.id(*g).is_some());
+        // Each component's shared nested instances as elements of their own, which no file holds (T6b).
+        m.sync_nested();
         Ok((m, left_out))
     }
 
@@ -4818,6 +4829,7 @@ impl Model {
             Element::Column(c) | Element::StructuralColumn(c) | Element::Footing(c) => Some(c.level),
             run_arm!(r) => Some(r.level),
             Element::Component(c) => Some(c.level),
+            Element::Nested(n) => Some(n.level),
             Element::Stair(st) => Some(st.level),
             Element::Ramp(r) => Some(r.level),
             // On a stair or a ramp, its host's.
@@ -5727,6 +5739,7 @@ impl Model {
             }
             Element::Column(c) | Element::StructuralColumn(c) | Element::Footing(c) => Some(c.at),
             Element::Component(c) => Some(c.at),
+            Element::Nested(n) => Some(P2(n.origin[0], n.origin[1])),
             Element::Room(r) => Some(r.point),
             Element::PropertyLine(pl) => Some(geom::centroid(&pl.points)),
             run_arm!(r) => middle(r.start, r.end),
@@ -7780,6 +7793,21 @@ impl Model {
                 v.graphics.check(self).map_err(|e| format!("{who}: {e}"))?;
                 if !view_names.insert(v.name.as_str()) {
                     return Err(format!("{who}: another view is already named `{}`", v.name));
+                }
+            }
+            // Worked out from its host after every command: one that isn't as its host makes it is refused.
+            Element::Nested(n) => {
+                if !matches!(self.elements.get(n.host), Some(Element::Component(_))) {
+                    return Err(format!("{who}: its host {} isn't a component", self.shown(n.host)));
+                }
+                if n.path.is_empty() || n.path.len() > crate::family::nested::MAX_NESTING + 1 {
+                    return Err(format!(
+                        "{who}: a shared nested instance is named by 1 to {} nested instances",
+                        crate::family::nested::MAX_NESTING + 1
+                    ));
+                }
+                if self.elements.guid(id) != Some(crate::nested_elements::guid_of(n.host, &n.path)) {
+                    return Err(format!("{who}: a shared nested instance's element is made by its host, not by a command"));
                 }
             }
             Element::Component(c) => {

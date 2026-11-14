@@ -648,7 +648,10 @@ impl Serialize for Elements {
             #[serde(flatten)]
             e: &'a Element,
         }
-        s.collect_map(self.with_guids().map(|(id, guid, e)| (id.to_string(), With { guid, e })))
+        // A shared nested instance's element is worked out from its host, never written (`crate::nested_elements`).
+        s.collect_map(
+            self.with_guids().filter(|(_, _, e)| !matches!(e, Element::Nested(_))).map(|(id, guid, e)| (id.to_string(), With { guid, e })),
+        )
     }
 }
 

@@ -1153,6 +1153,10 @@ pub struct Piece {
     pub round: bool,
     /// Its form's Visibility Settings (and a nested instance's over them): where views draw it. None, as a file of 17 drew it.
     pub vis: Option<Visibility>,
+    /// The shared nested instance it is part of (T6b), as the GUIDs of the nested instances from the family's down to it: an
+    /// element of its own in a project ([`crate::nested_elements`]). Empty for the family's own forms and what a nested
+    /// instance that isn't shared absorbs.
+    pub nested: Vec<crate::ids::Guid>,
 }
 
 /// Where one form lies before any void cuts it: its box in the family's own axes (x along a
@@ -2681,6 +2685,7 @@ impl Family {
                         holes: std::mem::take(&mut piece.holes),
                         material: std::mem::take(&mut piece.material),
                         vis: piece.vis,
+                        nested: std::mem::take(&mut piece.nested),
                     };
                 }
             }
@@ -2717,7 +2722,7 @@ impl Family {
             // Seen from above: a sweep on a level plane, the band it covers; else the hull of what it builds.
             let (outline, holes) =
                 plan.unwrap_or_else(|| (crate::geom::hull(tris.iter().flatten().map(|p| P2(p[0], p[1])).collect()), Vec::new()));
-            Piece { caps: tris.len(), tris, outline, holes, bottom, top, material, round: false, vis: None }
+            Piece { caps: tris.len(), tris, outline, holes, bottom, top, material, round: false, vis: None, nested: Vec::new() }
         } else {
             let regions = form.loops(&mut num)?;
             let (from, to) = (num(&form.from)?, num(&form.to)?);
@@ -2734,7 +2739,18 @@ impl Family {
                     let axis = [P2(num(&p[0])?, num(&p[1])?), P2(num(&q[0])?, num(&q[1])?)];
                     let (tris, outline) = revolve(&regions, axis, (from, to), &frame)?;
                     let (bottom, top) = heights(&tris);
-                    Piece { caps: tris.len(), tris, outline, holes: Vec::new(), bottom, top, material, round: false, vis: None }
+                    Piece {
+                        caps: tris.len(),
+                        tris,
+                        outline,
+                        holes: Vec::new(),
+                        bottom,
+                        top,
+                        material,
+                        round: false,
+                        vis: None,
+                        nested: Vec::new(),
+                    }
                 }
                 None => {
                     let (tris, caps) = sweep(&regions, from, to, &frame)?;
@@ -2750,7 +2766,18 @@ impl Family {
                         }
                         _ => crate::geom::hull(tris.iter().flatten().map(|p| P2(p[0], p[1])).collect()),
                     };
-                    Piece { tris, caps, outline, holes: Vec::new(), bottom, top, material, round: form.circle().is_some(), vis: None }
+                    Piece {
+                        tris,
+                        caps,
+                        outline,
+                        holes: Vec::new(),
+                        bottom,
+                        top,
+                        material,
+                        round: form.circle().is_some(),
+                        vis: None,
+                        nested: Vec::new(),
+                    }
                 }
             }
         };
@@ -3178,7 +3205,18 @@ fn mesh(tris: &[[P3; 3]], material: String) -> Result<Piece, String> {
     let (bottom, top) = tris.iter().flatten().fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), p| (lo.min(p[2]), hi.max(p[2])));
     // ponytail: the convex hull stands for its outline; trace its silhouette if hulls mislead.
     let outline = crate::geom::hull(tris.iter().flatten().map(|p| P2(p[0], p[1])).collect());
-    Ok(Piece { tris: tris.to_vec(), caps: tris.len(), outline, holes: Vec::new(), bottom, top, material, round: false, vis: None })
+    Ok(Piece {
+        tris: tris.to_vec(),
+        caps: tris.len(),
+        outline,
+        holes: Vec::new(),
+        bottom,
+        top,
+        material,
+        round: false,
+        vis: None,
+        nested: Vec::new(),
+    })
 }
 
 /// The families a new project starts with, BIMCraft's own: tables, chairs, beds, sofas, desks,
