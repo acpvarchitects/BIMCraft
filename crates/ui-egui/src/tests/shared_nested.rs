@@ -242,6 +242,11 @@ fn shared_nested_screenshots() {
     h.state_mut().canvas.look_at(front, P2(1300.0, 450.0), 0.6);
     h.run();
     let at = P2(FRONT_HANDLE[0] - 4000.0, FRONT_HANDLE[2]);
+    // Nothing selected and the pointer away: the handle as the elevation draws it.
+    h.state_mut().selection.clear();
+    h.hover_at(h.state().screen(P2(500.0, 1500.0)));
+    h.run();
+    save(&mut h, "elevation-plain");
     h.hover_at(h.state().screen(at));
     h.run();
     key(&mut h, Key::Tab);
@@ -251,6 +256,22 @@ fn shared_nested_screenshots() {
     // The default 3D view.
     press(&mut h, "Default 3D View");
     h.run();
+    // In close on the cabinet, nothing selected and the pointer away: the handle as the 3D view draws it.
+    h.state_mut().selection.clear();
+    h.hover_at(h.state().screen3([5300.0, 200.0, 400.0]));
+    h.run();
+    for _ in 0..4 {
+        h.event(Event::MouseWheel {
+            unit: MouseWheelUnit::Point,
+            delta: vec2(0.0, 120.0),
+            phase: TouchPhase::Move,
+            modifiers: Modifiers::NONE,
+        });
+        h.run();
+    }
+    h.hover_at(h.state().orbit.rect.min + vec2(10.0, 10.0));
+    h.run();
+    save(&mut h, "3d-plain");
     let at = h.state().screen3(FRONT_HANDLE);
     h.hover_at(at);
     h.run();
@@ -258,6 +279,14 @@ fn shared_nested_screenshots() {
     save(&mut h, "3d-tab");
     click_at(&mut h, at);
     save(&mut h, "3d-selected");
+    // The same project with the handle not shared: the 3D view's work plane patch (the small square by the model's
+    // south-west corner) is there just the same; it is no part of the handle.
+    let mut h = app(&FRONT.replace(r#""shared": true"#, r#""shared": false"#));
+    h.set_size(vec2(1600.0, 1000.0));
+    press(&mut h, "Default 3D View");
+    h.run();
+    h.hover_at(h.state().orbit.rect.min + vec2(10.0, 10.0));
+    save(&mut h, "3d-not-shared");
     // In the family: the leg dragged, mid-drag.
     let mut h = app(&legged("[1500, -500]", ""));
     h.set_size(vec2(1600.0, 1000.0));

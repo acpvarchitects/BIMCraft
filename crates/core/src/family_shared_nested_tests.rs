@@ -369,3 +369,39 @@ fn an_elevation_sees_a_shared_nested_instance_where_it_draws_it() {
     assert_eq!(crate::render::nested_at(&seen, at, 3.0), vec![seen[0].id]);
     assert!(crate::render::nested_at(&seen, view.px(crate::geom::P2(1100.0, 700.0)), 3.0).is_empty());
 }
+
+/// The handle stands proud of the cabinet's front, 400 up; the cabinet at (5000, 0), not turned. With `shared` or not.
+fn front(shared: bool) -> (Session, Id) {
+    let (mut s, host) = cabinet(shared);
+    let g = s.model.families["Cabinet"].nested_instances[0].guid;
+    run(&mut s, "family", json!({"name": "Cabinet", "nested_instance": {"guid": g, "at": [250, -20], "offset": 400}}));
+    run(&mut s, "rotate", json!({"ids": [host], "about": [5000, 0], "angle": -90}));
+    (s, host)
+}
+
+/// A shared nested instance is still drawn as part of its host, as one that isn't shared is: its lines in an elevation, its
+/// triangles in the 3D scene. Only IFC writes it apart.
+#[test]
+fn a_shared_nested_instance_is_drawn_in_elevations_and_in_3d() {
+    for shared in [true, false] {
+        let (mut s, host) = front(shared);
+        let id = run(&mut s, "elevation", json!({"start": [4000, -2000], "end": [7000, -2000]}))["id"].as_u64().unwrap();
+        let view = crate::render::View { scale: 1.0, cx: 1300.0, cy: 450.0, width: 600, height: 600 };
+        let pm = tiny_skia::Pixmap::decode_png(&crate::render::section_png(&s.model, id, view).unwrap()).unwrap();
+        // Along the handle's top edge, 430 up from 1250 to 1310 along the line (60 wide): ink, not paper.
+        let dark = (1255..1305)
+            .filter(|x| {
+                let (u, v) = view.px(crate::geom::P2(f64::from(*x), 430.0));
+                (-1..=1).any(|dv| pm.pixel(u as u32, (v as i32 + dv) as u32).is_some_and(|c| c.red() < 128))
+            })
+            .count();
+        assert!(dark > 40, "shared {shared}: the handle's top edge is drawn in the elevation ({dark} of 50)");
+        // In 3D, the cabinet's triangles reach the handle's front, 20 in front of its own.
+        let reaches = crate::view3d::solids(&s.model)
+            .iter()
+            .filter(|x| x.owner() == host)
+            .flat_map(|x| x.triangles())
+            .any(|t| t.iter().any(|p| (p[1] + 20.0).abs() < 1e-6 && (p[2] - 430.0).abs() < 1e-6));
+        assert!(reaches, "shared {shared}: the handle is in the 3D scene");
+    }
+}
