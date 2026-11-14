@@ -1516,26 +1516,42 @@ another file's may be. Its geometry is its host's: each piece says which shared 
 and `Model::nested_pieces` reads the host's pieces that are its own.
 
 - **Selection.** A plan draws it as part of its host, which owns the primitives; the drawing lists it beside them
-  (`render::NestedPick`, its outlines), and `Drawing::pick_all` puts it right after its host, so a click takes the host
-  and Tab, over it, reaches it, as Revit's Tab does. The canvas outlines it in the hover or the selection colour. A box
-  doesn't take it. Its Properties are read only: its family, its type and its host.
+  (`render::NestedPick`: the outlines of its solids, and the lines of its plan symbols, so a family of symbols alone is
+  picked by them as a component of symbols alone is), and `Drawing::pick_all` puts it right after its host, so a click takes
+  the host and Tab, over it, reaches it, as Revit's Tab does. Sections, elevations and the 3D view do the same
+  (`nested_tab.rs` in the window): the core works out what such a view sees of a host's shared instances
+  (`Model::nested_seen`, through `render::section_px` or the 3D camera; the outline round each solid's corners), and Tab over
+  the host steps to the one under the cursor (`render::nested_at`), which a click then takes. Each view outlines it in the
+  hover or the selection colour. A box doesn't take it. Its Properties are read only: its family, its type and its host
+  (by family and type). Edit Family opens its family as the project has it loaded (loading the host loads its shared
+  families too); where the project hasn't it on its own (a file from elsewhere), the button is greyed, saying to edit it from
+  its host's family.
 - **Schedules and counts.** It is of the component category (`Element::category`), with its family and type (`Element::family`),
   so a component schedule lists and counts it (Family, Type, Level, Count) and its rows pick it.
-- **Tags.** `Model::anchor` is its family's origin in plan, and a tag shows its fields as a component's.
+- **Tags.** `Model::anchor` is its family's origin in plan, and a tag shows its fields as a component's, drawn the same
+  size as a tag on a component at the view's scale (annotation is sized by the view's scale, so at 1 : 100 a tag is large
+  beside a small piece of furniture; furniture plans are usually drawn at 1 : 20 or 1 : 50).
+- **Phases and design options.** It reports its host's `Phase Created`, `Phase Demolished` and `Design Option` as its own
+  parameters (`NestedElement::params`, worked out from the host and never set on it), so schedules, phase filters and
+  visibility read them as they read the host's.
+- **Insert from File and links.** Its GUID is made from its host's, so where Insert from File gives the host a GUID of its
+  own (a copy), its element takes the copy's (`insert.rs`), and a tag on it follows; a link's elements are worked out again
+  where the link puts their hosts (`link::bring`).
 - **IFC.** `ifc.rs` writes it as an element of its own of its family's class, named `Family:Type`, placed with its host,
   its body the pieces that are its own (taken out of its host's body), and aggregated into its host with the
   `IfcRelAggregates` that reinforcing bars use; a part isn't in the storey's `IfcRelContainedInSpatialStructure`.
 - **Edits.** It goes with its host: a move, a rotation or a mirror of the host takes it along, and deleting the host deletes
   it and its tags. Moved, turned, mirrored or deleted apart from its host, it is refused, saying it is part of it.
 
-Known: only plans pick it (sections, elevations and the 3D view draw it as part of its host, and pick the host); a nested
-family of symbols alone has no outline to pick it by; its phase and design option are its host's for drawing but not written
-on it, so a schedule's phase fields are empty for it.
+Known: IFC writes it without a type object or a property set of its own. A component's plan marks now include those of
+its nested instances standing on its level planes even when it has no symbols of its own (before, a host without symbols
+dropped them).
 
 Tests: `family_shared_nested_tests.rs` (core: placement turned and mirrored, schedules and counts, a tag through save and
 read, IFC aggregation, a file from before, the plan's pick order, an instance not shared), and `tests/shared_nested.rs` (the
 window: Tab-select in a plan, and a nested instance dragged in its family's plan and elevation, pinned, by a formula, undone).
-`BIMCRAFT_T6B_DUMP` set to a folder saves its screenshots there.
+`BIMCRAFT_T6B_DUMP` set to a folder saves its screenshots there (the plan at 1 : 20 with tags, a schedule with a phase
+column, Tab in an elevation and in {3D}).
 
 ## Reloading a family
 
