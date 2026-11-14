@@ -63,7 +63,7 @@ parameter on a layer, and not a copy of its host:
 
 A part holds *what it is of*, never geometry:
 - `host`: its element, by GUID;
-- `source`: a layer of the host's type, by the layer's GUID (which layers already have, `HasPart`), or the whole element. HP-3 adds the division (2.5).
+- `source`: a layer of the host's type, by the layer's GUID (which layers already have, `HasPart`), or the whole element. A divided part keeps its source; the division is a field of its own (2.5).
 - `parent`: the part it was divided from.
 
 Its solid, thickness, material, net area and net volume are worked out from the host as it stands, every time they are
