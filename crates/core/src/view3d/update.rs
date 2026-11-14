@@ -192,6 +192,7 @@ impl Scene {
             masses,
             levels,
             scans,
+            strokes: super::strokes_of(after),
             placements: out.placements,
             shapes,
             shape_keys: keys,
@@ -436,6 +437,7 @@ mod tests {
         assert!(a.smooth == b.smooth, "{what}: smooth normals");
         assert_eq!(a.spans, b.spans, "{what}: spans");
         assert_eq!((&a.masses, &a.levels), (&b.masses, &b.levels), "{what}: masses and levels");
+        assert_eq!(a.strokes, b.strokes, "{what}: model lines");
         let (mut there, mut back) = (HashMap::new(), HashMap::new());
         for (k, (p, q)) in a.planes.iter().zip(&b.planes).enumerate() {
             assert_eq!(*there.entry(*p).or_insert(*q), *q, "{what}: triangle {k}'s plane is another's");

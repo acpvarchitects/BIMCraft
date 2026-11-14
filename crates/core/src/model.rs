@@ -3673,6 +3673,25 @@ impl Model {
             .collect()
     }
 
+    /// Component `c`'s model lines (FE-15) placed in the model, every one, with its Visibility Settings and subcategory key:
+    /// what a section, an elevation and a 3D view draw, asking the settings by the way they look.
+    pub fn component_model_line_parts(
+        &self,
+        c: &Component,
+    ) -> Vec<([[f64; 3]; 2], Option<crate::family::Visibility>, Option<&'static str>)> {
+        let Some(f) = self.families.get(&c.family) else { return Vec::new() };
+        if f.model_lines.is_empty() {
+            return Vec::new();
+        }
+        let Ok(values) = f.values(&c.type_name, &c.params) else { return Vec::new() };
+        let placed = self.component_placement(c);
+        let flip = |p: [f64; 3]| [p[0], if c.mirrored { -p[1] } else { p[1] }, p[2]];
+        f.model_line_parts(&values)
+            .into_iter()
+            .map(|([a, b], vis, sub)| ([placed.place(flip(a)), placed.place(flip(b))], vis, sub))
+            .collect()
+    }
+
     /// Where component `c`'s room is found from: its family's room calculation point for its values, mirrored, turned and
     /// moved with it to where it stands (x, y and the height over the project's origin); its insertion point where its family
     /// has none, or the point doesn't work out.

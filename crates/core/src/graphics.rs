@@ -1266,6 +1266,18 @@ impl Look {
         if o.halftone { halftone(c) } else { c }
     }
 
+    /// The colour element `id`'s line in subcategory `sub` is drawn in, in a 3D view or past a section's line (a family's
+    /// model line): its subcategory's row's projection colour where the view gives one, else as [`Look::edge`] says, `base`
+    /// unless something does; none where that row hides it.
+    pub fn line_edge(&self, id: Id, sub: Option<&'static str>, base: Rgb) -> Option<Rgb> {
+        let Some(o) = sub.and_then(|k| self.sub_paint.get(&(id, k))) else { return Some(self.edge(id, base)) };
+        if o.hidden {
+            return None;
+        }
+        let c = o.projection.color.map_or(base, |[r, g, b]| Rgb(r, g, b));
+        Some(if o.halftone { halftone(c) } else { c })
+    }
+
     /// How much of element `id`'s surface a 3D view sees through, percent.
     pub fn transparency(&self, id: Id) -> u8 {
         self.paint.get(&id).map_or(0, |o| o.transparency)

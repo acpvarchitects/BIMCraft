@@ -2538,6 +2538,21 @@ impl Family {
         detail: Option<crate::graphics::Detail>,
         plan: bool,
     ) -> Vec<([[f64; 3]; 2], Option<&'static str>)> {
+        self.model_line_parts(values)
+            .into_iter()
+            .filter(|(_, vis, _)| match (vis, detail) {
+                (Some(v), Some(d)) => v.at(d) && (!plan || v.plan) && !v.only_when_cut,
+                (Some(v), None) => !plan || v.plan,
+                (None, _) => true,
+            })
+            .map(|(ends, _, sub)| (ends, sub))
+            .collect()
+    }
+
+    /// Every one of its model lines for `values`, in its own axes where its constraints put what they are drawn on, with its
+    /// Visibility Settings and the subcategory key it is drawn in: what a view that asks the settings itself draws from (a
+    /// section's, an elevation's or a 3D view's picture).
+    pub fn model_line_parts(&self, values: &BTreeMap<String, Val>) -> Vec<([[f64; 3]; 2], Option<Visibility>, Option<&'static str>)> {
         if self.model_lines.is_empty() {
             return Vec::new();
         }
@@ -2545,12 +2560,7 @@ impl Family {
         flexed
             .model_lines
             .iter()
-            .filter(|l| match (l.visibility, detail) {
-                (Some(v), Some(d)) => v.at(d) && (!plan || v.plan) && !v.only_when_cut,
-                (Some(v), None) => !plan || v.plan,
-                (None, _) => true,
-            })
-            .map(|l| ([l.start, l.end], l.subcategory.as_deref().and_then(|n| self.subcategory_key(n))))
+            .map(|l| ([l.start, l.end], l.visibility, l.subcategory.as_deref().and_then(|n| self.subcategory_key(n))))
             .collect()
     }
 
