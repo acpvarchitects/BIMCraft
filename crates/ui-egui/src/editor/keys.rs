@@ -12,7 +12,7 @@ use bimcraft_core::family::DimKind;
 
 /// Revit's default keys for the family editor's commands, each to the name of its action in `shortcuts::ACTIONS`. A key the
 /// project has too means the same command here (`the_family_table_gives_no_project_key_another_meaning`); the others (DD, AN,
-/// WP, WW, FA, AA, PL, FG, CG, ZX, FE-3's ZR, ZZ, ZO, ZV, ZP, ZC, FE-8's RE, and FE-20's FF, PR, ID, SV, BF) are the family's
+/// WP, WW, FA, AA, PL, FG, CG, ZX, FE-3's ZR, ZZ, ZO, ZV, ZP, ZC, FE-8's RE, FE-20's FF, PR, ID, SV, BF, and FE-18's VR) are the family's
 /// alone. Trim/Extend Single and Multiple Elements have no key, as in Revit: Keyboard Shortcuts gives them one; nor has
 /// Drag Elements on Selection ([`FAMILY_KEYLESS`]).
 pub(crate) const FAMILY_SHORTCUTS: &[(&str, &str)] = &[
@@ -74,6 +74,15 @@ pub(crate) const FAMILY_SHORTCUTS: &[(&str, &str)] = &[
     // Measure and Create Similar, as the project's.
     ("ME", "Measure"),
     ("CS", "Create Similar"),
+    // FE-18: view graphics, each view's for the session (`view_graphics.rs`); VR the family's alone.
+    ("VV", "Visibility/Graphics"),
+    ("VG", "Visibility/Graphics"),
+    ("TL", "Thin Lines"),
+    ("WF", "Wireframe"),
+    ("HL", "Hidden Line"),
+    ("SD", "Shaded"),
+    ("GD", "Graphic Display Options"),
+    ("VR", "View Range"),
 ];
 
 /// The family document's commands Revit gives no key: Keyboard Shortcuts lists them, and a key made there works on a family
@@ -249,6 +258,32 @@ impl BimApp {
                 if self.active_family().is_some_and(FamilyEditor::picks_by_face) {
                     self.drag_on_selection = !self.drag_on_selection;
                 }
+                return true;
+            }
+            // FE-18: the view's graphics, and the window's Thin Lines.
+            "Visibility/Graphics" => {
+                self.family_vg();
+                return true;
+            }
+            "Thin Lines" => {
+                self.thin = !self.thin;
+                return true;
+            }
+            "Wireframe" | "Hidden Line" | "Shaded" => {
+                let style = match action {
+                    "Wireframe" => bimcraft_core::graphics::VisualStyle::Wireframe,
+                    "Hidden Line" => bimcraft_core::graphics::VisualStyle::HiddenLine,
+                    _ => bimcraft_core::graphics::VisualStyle::Shaded,
+                };
+                self.family_style(style);
+                return true;
+            }
+            "Graphic Display Options" => {
+                self.family_display();
+                return true;
+            }
+            "View Range" => {
+                self.family_view_range();
                 return true;
             }
             "Temporary Hide Element" => Some(Asked::Hide { category: false }),

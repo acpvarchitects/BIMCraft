@@ -697,9 +697,19 @@ impl BimApp {
                 });
             }
             DocTab::View => {
+                // FE-18: the view shown's Visibility/Graphics, and the window's Thin Lines.
                 ribbon::panel(ui, msg!("Graphics"), |ui| {
-                    later(ui, Icon::Visibility, msg!("Visibility/Graphics"));
-                    later(ui, Icon::ThinLines, msg!("Thin Lines"));
+                    let tip = msg!("Visibility/Graphics (VV): what the view shown draws of each category, for the session");
+                    if big_button(ui, Icon::Visibility, msg!("Visibility/Graphics"), self.vg_dialog.is_some(), tip).clicked()
+                        && let Some(doc) = self.active_doc()
+                    {
+                        self.vg_dialog = Some(super::view_graphics::vg_for(doc, ed));
+                    }
+                    if big_button(ui, Icon::ThinLines, msg!("Thin Lines"), self.thin, "Thin Lines (TL): every line one pixel wide")
+                        .clicked()
+                    {
+                        self.thin = !self.thin;
+                    }
                 });
                 ribbon::panel(ui, msg!("Windows"), |ui| {
                     later(ui, Icon::CloseInactive, msg!("Close Inactive Views"));
@@ -1429,7 +1439,7 @@ impl BimApp {
         if let Some(which) = ed.views.shown {
             // A plan or an elevation (F4): the project's own drawing of the family in a scratch model.
             let base = Arc::clone(&self.session.model);
-            if let Some(e) = ed.view_2d(ui, &base, which, pane) {
+            if let Some(e) = ed.view_2d(ui, &base, which, pane, self.thin) {
                 self.status = Status { text: e, error: true };
             }
             if let Some(text) = ed.views.said.take() {
