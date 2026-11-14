@@ -405,6 +405,12 @@ impl Canvas {
         })
     }
 
+    /// View `level` looking at `centre`, `scale` px a mm: what a test that looks at the result zooms in by.
+    #[cfg(test)]
+    pub(crate) fn look_at(&mut self, level: Id, centre: P2, scale: f64) {
+        self.cams.insert(level, Camera { scale, cx: centre.0, cy: centre.1 });
+    }
+
     /// Where model point `p` shows on screen.
     pub fn screen(&self, p: P2) -> Pos2 {
         match self.level.and_then(|l| self.view(l)) {
@@ -1878,6 +1884,15 @@ impl BimApp {
                 } else {
                     ring.extend(ring.first().copied());
                     p.extend(Shape::dashed_line(&ring, Stroke::new(2.0, accent), 6.0, 4.0));
+                }
+            }
+        }
+        // A shared nested instance (T6b), selected or under the cursor: its outlines, which its host's lines draw.
+        for (i, id) in lit.iter().enumerate() {
+            for n in d.nested.iter().filter(|n| n.id == *id) {
+                let accent = if i < hover_lit { canvas_pal().hover } else { canvas_pal().accent };
+                for ring in &n.rings {
+                    p.add(Shape::closed_line(ring.iter().map(|q| d.place.pos(*q)).collect(), Stroke::new(2.0, accent)));
                 }
             }
         }
