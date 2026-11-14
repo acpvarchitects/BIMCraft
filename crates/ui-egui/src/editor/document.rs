@@ -1528,11 +1528,19 @@ impl BimApp {
                     }
                 }
                 self.family_temp_menu(ui, &mut ed);
+                // FE-18: Reveal Hidden Elements, as the project's bar has it: what the view hides in magenta, to unhide.
+                if ed.adaptive.is_none() {
+                    let on = ed.views.kept.revealing(ed.views.shown);
+                    let tip = msg!("Reveal Hidden Elements (RH): what the view hides drawn in magenta, so it can be picked and unhidden");
+                    if crate::small_button(ui, Icon::Reveal, "Reveal Hidden Elements", on, tip).clicked() {
+                        ed.toggle_reveal();
+                    }
+                }
             });
         });
         self.work = pane.with_min_y(pane.top().max(self.tabs_foot));
         // While it hides anything for now, the project's cyan frame round the view, as Revit draws.
-        let hiding = ed.temporary().hides();
+        let hiding = ed.temporary().hides() || ed.views.kept.revealing(ed.views.shown);
         if hiding {
             ui.painter().rect_stroke(pane.shrink(1.5), 0.0, Stroke::new(3.0, crate::footer::FRAME), StrokeKind::Inside);
         }

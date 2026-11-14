@@ -385,39 +385,54 @@ impl FamilyEditor {
         let values = self.values();
         // The form being sketched again is left out: its sketch stands for it, as Revit's sketch mode hides the form (FE-12).
         let editing = self.sketch.as_ref().and_then(|s| s.index);
-        let hidden = |i: usize| self.temp_hidden_form(i) || editing == Some(i);
-        let shown = temp_hide::without(&f, hidden).unwrap_or_else(|| f.clone());
-        let mut model = self.scratch(base, &shown)?;
-        let mut ghost_id = None;
-        // F8: what the view's Visibility Settings leave out, at the document's Detail Level, drawn halftone too.
-        // A plan's cut plane is its View Range's (FE-18).
+        // F8: what the view's Visibility Settings leave out, at the document's Detail Level, drawn halftone too. A plan's cut plane
+        // is its View Range's (FE-18).
         let cut = match which {
             Which::Plan | Which::Ceiling => self.views.kept.range_of(which).cut,
-            Which::Elevation(_) => model.levels().first().map_or(bimcraft_core::model::CUT_HEIGHT, |(_, l)| l.view_range.cut),
+            Which::Elevation(_) => bimcraft_core::model::CUT_HEIGHT,
         };
         let by_view = fv::hidden_in(&f, &values, Some(which), self.views.detail, cut);
+        // FE-18: the forms the view draws apart, each a component of its own with graphics of its own (an override, or Reveal
+        // Hidden Elements' magenta), left out of the family's own component.
+        let apart = self.apart_forms(Some(which), &f, &values, &by_view);
+        let hidden = |i: usize| self.temp_hidden_form(i) || editing == Some(i) || apart.iter().any(|(k, _)| *k == i);
+        let shown = temp_hide::without(&f, hidden).unwrap_or_else(|| f.clone());
+        let mut model = self.scratch(base, &shown)?;
+        let mut extra: Vec<(String, Family, Override)> = Vec::new();
         if !self.document.preview_visibility
             && let Some(g) = ghosts(&f, &values, hidden, &by_view)
         {
+            extra.push((format!("{} {GHOST}", self.name.trim()), g, Override { halftone: true, ..Default::default() }));
+        }
+        for (i, o) in &apart {
+            if let Some(g) = apart_family(&f, &values, |k, _| k == *i) {
+                extra.push((format!("{} (form {})", self.name.trim(), i + 1), g, o.clone()));
+            }
+        }
+        // Each placed beside the family, with its override; a door's or a window's where its family's axes are in the wall: its
+        // opening's frame.
+        let mut overrides: Vec<(bimcraft_core::ids::Guid, Override)> = Vec::new();
+        if !extra.is_empty() {
             let mut s = Session::new();
             s.model = Arc::new(model);
-            let name = format!("{} {GHOST}", self.name.trim());
             let type_name = self.types.get(self.picked).map(|(n, _)| n.clone()).unwrap_or_default();
-            // A door's or a window's ghost stands where its family's axes are in the wall: its opening's frame.
-            let mut place = json!({"family": name, "type": type_name, "at": [0, 0], "params": self.preview_params});
             let frame = s.model.elements.values().find_map(|e| match e {
                 Element::Door(o) | Element::Window(o) => s.model.opening_frame(o),
                 _ => None,
             });
-            if let Some((p, _, z)) = frame {
-                (place["at"], place["offset"]) = (json!([p.0, p.1]), json!(z));
+            for (name, g, o) in extra {
+                let mut place = json!({"family": name, "type": type_name, "at": [0, 0], "params": self.preview_params});
+                if let Some((p, _, z)) = frame {
+                    (place["at"], place["offset"]) = (json!([p.0, p.1]), json!(z));
+                }
+                s.model_mut().families.insert(name.clone(), g);
+                let made = s.execute("component", &place)?;
+                if let Some(guid) = made["id"].as_u64().and_then(|id| s.model.elements.guid(id)) {
+                    overrides.push((guid, o));
+                }
             }
-            s.model_mut().families.insert(name.clone(), g);
-            let made = s.execute("component", &place)?;
-            ghost_id = made["id"].as_u64();
             model = Arc::unwrap_or_clone(s.model);
         }
-        let ghost_guid = ghost_id.and_then(|id| model.elements.guid(id));
         let host_hidden = self.temp_hidden_host();
         // Its planes where the type's dimensions put them.
         let flexed = f.flexed(&values).map(std::borrow::Cow::into_owned).unwrap_or_else(|_| f.clone());
@@ -442,14 +457,14 @@ impl FamilyEditor {
                 _ => continue,
             };
             graphics.detail = self.views.detail;
-            if let Some(g) = ghost_guid {
-                graphics.elements.insert(g, Override { halftone: true, ..Default::default() });
+            for (g, o) in &overrides {
+                graphics.elements.insert(*g, o.clone());
             }
             if host_hidden {
                 graphics.categories.insert("wall".into(), Override { hidden: true, ..Default::default() });
             }
             // The view's own Visibility/Graphics (FE-18), under what the document sets for now.
-            super::view_graphics::lay_over(graphics, &self.views.kept.graphics_of(Some(of)));
+            super::view_graphics::lay_over(graphics, &self.views.kept.drawn_graphics(Some(of)));
         }
         Ok(st)
     }
@@ -1857,11 +1872,25 @@ fn ghosts(
     hidden: impl Fn(usize) -> bool,
     by_view: &[bool],
 ) -> Option<Family> {
+    apart_family(f, values, |i, form| {
+        let in_type = form.visible.as_ref().is_some_and(|v| crate::adaptive_editor::worth(v, values) == Some(0.0));
+        !hidden(i) && (in_type || by_view.get(i).copied().unwrap_or(false))
+    })
+}
+
+/// Family `f` with only the solid forms `on` takes (by place and as they are) seen, whatever its type or their Visibility
+/// Settings say: what a view draws apart from the family (the ghost of what its type hides; FE-18's forms with graphics of
+/// their own). A door's or a window's made a generic family, its wall's thickness a parameter, so it stands beside the
+/// opening rather than as a second opening in the wall. None when it takes none.
+pub(super) fn apart_family(
+    f: &Family,
+    values: &BTreeMap<String, bimcraft_core::family::Val>,
+    on: impl Fn(usize, &bimcraft_core::family::Form) -> bool,
+) -> Option<Family> {
     let mut g = f.clone();
     let mut any = false;
     for (i, form) in g.forms.iter_mut().enumerate() {
-        let in_type = form.visible.as_ref().is_some_and(|v| crate::adaptive_editor::worth(v, values) == Some(0.0));
-        let off = !form.void && !hidden(i) && (in_type || by_view.get(i).copied().unwrap_or(false));
+        let off = !form.void && on(i, form);
         form.visible = if off { None } else { Some(Expr::Number(0.0)) };
         form.visibility = None;
         any |= off;

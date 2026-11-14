@@ -344,8 +344,9 @@ step of its history. A void hidden in a type cuts nothing in either.
 
 Temporary Hide/Isolate works in the family document's view as in the project's (`editor/temp_hide.rs`): Hide Element (HH), Hide
 Category (HC), Isolate Element (HI), Isolate Category (IC) and Reset (HR), from the keys (or what Keyboard Shortcuts made them) or
-the view control bar's Temporary Hide/Isolate menu (Apply Hide/Isolate to View greyed: a family's views keep nothing hidden for
-good yet). It acts on what is selected: the form selected in a family that isn't adaptive, the points, lines and forms selected in
+the view control bar's Temporary Hide/Isolate menu. Its Apply Hide/Isolate to View hides the forms and planes hidden for now,
+and Forms as a category, in the view shown for good (FE-18); what a family's view can't keep (reference planes or the wall as
+a category, an adaptive family's elements) stays hidden for now. It acts on what is selected: the form selected in a family that isn't adaptive, the points, lines and forms selected in
 the modelling view; the selection goes. A family has no categories of elements, so the view's own stand for them, as Revit's
 family editor names them: Forms (solid and void alike: forms have no subcategory), Reference Points, Lines, Reference Planes (the
 datums and the family's planes the modelling view draws) and, in a door's or a window's preview, the wall it stands in. Only forms,
@@ -377,6 +378,17 @@ when the family closes (saving them with the family would be a view-only field, 
 - View Range (VR, the family's key alone): a floor or ceiling plan's, typed in the project's units as offsets from Ref.
   Level and checked as a project plan's is (`model::range_ok`). Until it is set the family's floor plan sees every form
   whatever its height, as before; set, a form wholly below its view depth or above its top is left out (`Staged::seen`).
+- Hide in View (EH, VH): EH hides the forms and reference planes selected in the view shown, by their GUIDs
+  (`Graphics::elements` of the view's own, `hidden`); VH hides the forms' category, Visibility/Graphics' row, which VV then
+  shows unticked. VH on a plane alone says it has no category to hide. A hidden form or plane is neither drawn nor picked
+  there; the selection goes. An adaptive family's views hide for now only.
+- Reveal Hidden Elements (RH, and the view control bar's button): the view draws what it hides, a form in magenta, inside the
+  project's cyan frame, where it can be picked; Unhide Element (EU) and Unhide Category (VU) show what is selected again.
+- Override Graphics in View by Element (EO): View-Specific Element Graphics, the project's override editor
+  (`graphics::editor`), on the forms selected; OK gives each that override in the view shown, keeping whether it is hidden.
+- A form with graphics of its own in a view (an override, or revealed) is drawn as a component of its own beside the family,
+  as the ghost of what its type hides is (`views::apart_family`, `FamilyEditor::apart_forms`), so the project's drawing gives
+  it its element's graphics; in {3D} each part already is one.
 
 ### Visibility Settings (F8)
 
