@@ -238,3 +238,18 @@ fn family_hide_and_override_in_three_looks() {
         press(&mut h, "Cancel");
     }
 }
+
+#[test]
+fn keys_are_the_override_dialogs_while_it_is_open() {
+    let (mut h, _) = open(BOXES, "Boxes");
+    view(&mut h, Some(Which::Plan));
+    select_form(&mut h, 1);
+    shortcut(&mut h, "EO");
+    assert!(h.query_by_label("View-Specific Element Graphics").is_some());
+    key(&mut h, Key::Delete);
+    shortcut(&mut h, "EH");
+    assert_eq!(editor(&h).draft_family().map(|f| f.forms.len()).unwrap_or(0), 2, "Delete under the dialog deletes nothing");
+    assert!(editor(&h).views.kept.graphics_of(Some(Which::Plan)).elements.is_empty(), "nor does EH hide");
+    press(&mut h, "Cancel");
+    assert!(untouched(&h));
+}

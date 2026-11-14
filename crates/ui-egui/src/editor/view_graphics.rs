@@ -146,7 +146,7 @@ impl Kept {
 
     /// Whether a dialog of the views' is open, which has the keys.
     pub(crate) fn dialog_open(&self) -> bool {
-        self.range_dialog.is_some()
+        self.range_dialog.is_some() || self.override_dialog.is_some()
     }
 
     /// What each view keeps that changes how it is drawn, for the caches' keys.
