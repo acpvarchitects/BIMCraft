@@ -157,3 +157,54 @@ fn family_model_line_screenshots() {
     key(&mut h, Key::Escape);
     save(&mut h, "front");
 }
+
+/// The grip shown nearest model point `p` in the view, within 3 px.
+fn grip_at(h: &Harness<BimApp>, p: [f64; 3]) -> Option<egui::Pos2> {
+    let want = editor(h).views.screen_of(p)?;
+    editor(h).views.grips_shown.iter().map(|(_, at)| *at).find(|at| at.distance(want) < 3.0)
+}
+
+#[test]
+fn a_selected_model_lines_end_grip_stretches_it_on_its_host_as_one_step() {
+    let (mut h, _) = open(BOX, "Box");
+    view(&mut h, Some(Which::Plan));
+    draw(&mut h, [-1000.0, -800.0, 0.0], [1000.0, -800.0, 0.0]);
+    let was = editor(&h).model_lines[0].clone();
+    assert!(grip_at(&h, was.start).is_some() && grip_at(&h, was.end).is_some(), "a grip at each end: {:?}", editor(&h).views.grips_shown);
+    let steps = editor(&h).steps();
+    let grip = grip_at(&h, was.end).unwrap();
+    drag_screen(&mut h, grip, grip + vec2(40.0, -30.0), PointerButton::Primary);
+    let now = editor(&h).model_lines[0].clone();
+    assert_eq!(now.start, was.start, "its start stays");
+    assert!(now.end[0] > was.end[0] + 20.0 && now.end[1] > was.end[1] + 20.0, "its end follows the grip: {now:?}");
+    assert!(now.end[2].abs() < 1e-6, "still on Ref. Level: {now:?}");
+    assert_eq!(editor(&h).steps(), steps + 1, "one step");
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Z);
+    h.run();
+    assert_eq!(editor(&h).model_lines[0].end, was.end, "Undo puts it back");
+}
+
+#[test]
+fn a_model_lines_end_grip_in_an_elevation_keeps_it_on_its_plane() {
+    let (mut h, _) = open(BOX, "Box");
+    view(&mut h, Some(Which::Elevation(Side::Front)));
+    draw(&mut h, [-300.0, 0.0, 200.0], [300.0, 0.0, 900.0]);
+    let was = editor(&h).model_lines[0].clone();
+    let grip = grip_at(&h, was.start).expect("its start's grip");
+    drag_screen(&mut h, grip, grip + vec2(-30.0, 30.0), PointerButton::Primary);
+    let now = editor(&h).model_lines[0].clone();
+    assert_eq!(now.end, was.end, "its end stays");
+    assert!(now.start[0] < was.start[0] - 20.0 && now.start[2] < was.start[2] - 20.0, "{now:?}");
+    assert!(now.start[1].abs() < 1e-6, "still on Center (Front/Back): {now:?}");
+}
+
+#[test]
+fn a_pinned_model_line_shows_no_grips() {
+    let (mut h, _) = open(BOX, "Box");
+    view(&mut h, Some(Which::Plan));
+    draw(&mut h, [-1000.0, -800.0, 0.0], [1000.0, -800.0, 0.0]);
+    let l = editor(&h).model_lines[0].clone();
+    press(&mut h, "Pin");
+    assert!(editor(&h).model_lines[0].pinned, "pinned");
+    assert!(grip_at(&h, l.start).is_none() && grip_at(&h, l.end).is_none(), "no grips: {:?}", editor(&h).views.grips_shown);
+}

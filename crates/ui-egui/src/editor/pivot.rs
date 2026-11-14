@@ -17,6 +17,8 @@ use egui::{Painter, Pos2};
 pub(crate) enum Grip {
     Rotate(Guid),
     End(Guid, Spot),
+    /// A model line's end (FE-15).
+    ModelEnd(Guid, Spot),
 }
 
 /// How near a grip or a pivot's point a click or a press is, in pixels.
@@ -106,6 +108,7 @@ pub(super) fn target(
 pub(super) enum GripMove {
     Rotate(Guid, [f64; 3]),
     End(Guid, Spot, [f64; 3]),
+    ModelEnd(Guid, Spot, [f64; 3]),
 }
 
 /// Pivot's click at `q` (the view's mm) on line or plane `g` of `flexed`: what it pins it to and where on it.
@@ -233,6 +236,18 @@ impl FamilyEditor {
         let edits = match moved {
             GripMove::Rotate(g, toward) => f.drag_pivot(&values, g, toward, true).map(|(_, e)| e).map_err(|e| e.message),
             GripMove::End(g, spot, by) => f.drag_line_end(&values, g, spot, by),
+            // A model line's end moves on its host, the line hosting nothing.
+            GripMove::ModelEnd(g, spot, by) => {
+                return match f.model_line_end_dragged(&values, g, spot, by) {
+                    Ok([a, b]) => {
+                        if let Some(l) = self.model_lines.iter_mut().find(|l| l.guid == g) {
+                            (l.start, l.end) = (a, b);
+                        }
+                        None
+                    }
+                    Err(e) => Some(e),
+                };
+            }
         };
         match edits {
             Ok(e) => {
@@ -243,7 +258,7 @@ impl FamilyEditor {
         }
     }
 
-    /// Where the selected element's grips are on screen: a pivot's rotate grip, or an unpivoted line's ends.
+    /// Where the selected element's grips are on screen: a pivot's rotate grip, an unpivoted line's ends, or a model line's.
     pub(super) fn grips(
         &self,
         marks: &[PivotMark],
@@ -252,6 +267,15 @@ impl FamilyEditor {
         which: Which,
         screen: &dyn Fn(P2) -> Pos2,
     ) -> Vec<(Grip, Pos2)> {
+        // A model line's ends, unless it is pinned (FE-17).
+        if let Some(super::select_box::Picked::ModelLine(g)) = self.only_selected() {
+            let Some(l) = flexed.model_lines.iter().find(|l| l.guid == g && !l.pinned) else { return Vec::new() };
+            let (a, b) = (st.to_view(which, l.start), st.to_view(which, l.end));
+            if a.dist(b) < 1e-6 {
+                return Vec::new();
+            }
+            return vec![(Grip::ModelEnd(g, Spot::Start), screen(a)), (Grip::ModelEnd(g, Spot::End), screen(b))];
+        }
         let Some(g) = self.selected_line().or_else(|| self.selected_plane()) else { return Vec::new() };
         if let Some(m) = marks.iter().find(|m| m.element == g) {
             return m.grip.map(|p| vec![(Grip::Rotate(g), screen(p))]).unwrap_or_default();
