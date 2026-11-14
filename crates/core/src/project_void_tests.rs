@@ -286,3 +286,43 @@ fn many_cutters_on_one_wall_each_cut_their_own_hole() {
     }
     assert_eq!(voided(&ifc(&mut s), "IFCWALL"), 30);
 }
+
+#[test]
+fn the_tool_picks_a_void_only_cutter_by_its_outline_and_a_sleeping_tie_by_its_place() {
+    use crate::project_geometry::{cutters, pick};
+    let mut s = Session::new();
+    // A family that is only a void: a plan draws nothing of it.
+    run(
+        &mut s,
+        "family",
+        json!({"name": "Hole", "category": "generic", "types": {"A": {}}, "options": {"cut_with_voids_when_loaded": true},
+               "forms": [{"void": true, "profile": [[-200, -400], [200, -400], [200, 400], [-200, 400]], "from": 900, "to": 1500}]}),
+    );
+    let w = wall(&mut s);
+    let c = place(&mut s, "Hole", [3000.0, 0.0]);
+    let found = cutters(&s.model, w, false);
+    assert_eq!(found.len(), 1);
+    assert_eq!((found[0].id, found[0].anchor, found[0].edges.len()), (c, P2(3000.0, 0.0), 4), "{:?}", found[0].edges);
+    // Its outline picks it (the east side at x 3200), and its place; inside, away from both, nothing.
+    assert_eq!(pick(&found, P2(3203.0, 300.0), 10.0), Some(c));
+    assert_eq!(pick(&found, P2(3000.0, 5.0), 10.0), Some(c));
+    assert_eq!(pick(&found, P2(3100.0, 200.0), 10.0), None);
+    cut(&mut s, w, c).unwrap();
+    assert!(cutters(&s.model, w, false).is_empty(), "Cut no longer offers what cuts already");
+    assert_eq!(cutters(&s.model, w, true).len(), 1);
+    // The flag off, the tie sleeps and Uncut still offers it by its outline.
+    run(&mut s, "family", json!({"name": "Hole", "options": {"cut_with_voids_when_loaded": false}}));
+    let asleep = cutters(&s.model, w, true);
+    assert_eq!((asleep.len(), asleep[0].edges.len()), (1, 4));
+    // Its void taken out of the family: no outline left, only its place, which Uncut picks it by.
+    run(
+        &mut s,
+        "family",
+        json!({"name": "Hole", "forms": [{"profile": [[-50, -50], [50, -50], [50, 50], [-50, 50]], "from": 0, "to": 50}]}),
+    );
+    let bare = cutters(&s.model, w, true);
+    assert!(bare.len() == 1 && bare[0].edges.is_empty(), "{bare:?}");
+    assert_eq!(pick(&bare, P2(3004.0, 0.0), 10.0), Some(c));
+    run(&mut s, "uncut_geometry", json!({"target": w, "cutter": c}));
+    assert!(cutters(&s.model, w, true).is_empty());
+}

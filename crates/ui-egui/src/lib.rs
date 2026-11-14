@@ -190,6 +190,12 @@ pub enum Tool {
     },
     /// Split the wall picked.
     Split,
+    /// Cut Geometry, or with `uncut` Uncut Geometry, in the project (T23): the wall to cut, once picked; then the component
+    /// whose voids cut it (or no longer do).
+    CutGeometry {
+        uncut: bool,
+        wall: Option<Id>,
+    },
     /// Copy (or move) the wall picked to the cursor's side, by the Options Bar's distance.
     Offset,
     /// Take the element picked down in the phase of the view on screen, or, if it comes down in it already, back up.
@@ -880,6 +886,9 @@ pub struct BimApp {
     door_flip_hand: bool,
     /// An adaptive component's points clicked so far, in the project, before the last one places it.
     pub(crate) adaptive_clicks: Vec<[f64; 3]>,
+    /// What Cut Geometry's second pick can take (T23), for the model, wall and mode it was worked out for: kept between frames,
+    /// since a project's every component is asked for its voids.
+    cut_candidates: Option<((usize, Id, bool), Vec<bimcraft_core::project_geometry::Candidate>)>,
     /// An adaptive instance's grip being dragged in a plan: the instance, and its point's number.
     pub(crate) adaptive_grip: Option<(Id, u32)>,
     /// The Component tool's Placement Plane for a work plane-based family: a reference plane of the project, by GUID; none,
@@ -1544,6 +1553,7 @@ impl BimApp {
             component_angle: 0.0,
             door_flip_hand: false,
             adaptive_clicks: Vec::new(),
+            cut_candidates: None,
             adaptive_grip: None,
             placement_plane: None,
             place_on_face: false,
@@ -1582,6 +1592,7 @@ impl BimApp {
     /// Run a command; when it fails, say why.
     fn run(&mut self, id: &str, params: Value) -> Option<Value> {
         self.made_in();
+        self.cut_candidates = None;
         match self.session.execute(id, &params) {
             Ok(v) => {
                 self.status = Status::default();
@@ -1594,6 +1605,17 @@ impl BimApp {
                 None
             }
         }
+    }
+
+    /// What Cut Geometry's second pick can take on the wall picked (T23), worked out again when the model, the wall or the mode
+    /// changes; none while the tool waits for a wall.
+    pub(crate) fn cut_candidates(&mut self) -> &[bimcraft_core::project_geometry::Candidate] {
+        let Tool::CutGeometry { uncut, wall: Some(wall) } = self.tool else { return &[] };
+        let key = (Arc::as_ptr(&self.session.model) as usize, wall, uncut);
+        if self.cut_candidates.as_ref().is_none_or(|(k, _)| *k != key) {
+            self.cut_candidates = Some((key, bimcraft_core::project_geometry::cutters(&self.session.model, wall, uncut)));
+        }
+        self.cut_candidates.as_ref().map_or(&[], |(_, c)| c.as_slice())
     }
 
     /// The contextual tab's name while a tool is on or something is selected.
@@ -1612,6 +1634,7 @@ impl BimApp {
             | Tool::TrimTo { .. }
             | Tool::Vertex { .. }
             | Tool::Split
+            | Tool::CutGeometry { .. }
             | Tool::Offset
             | Tool::Demolish
             | Tool::Linework
@@ -2464,6 +2487,7 @@ impl BimApp {
                     return true;
                 }
                 Some("component") => Tool::Component,
+                Some("cut_geometry") => Tool::CutGeometry { uncut: false, wall: None },
                 Some("section") => Tool::Section(None),
                 Some("measure") => Tool::Measure(None),
                 Some("paint") => Tool::Paint,
@@ -2691,6 +2715,7 @@ impl BimApp {
 
     fn set_tool(&mut self, mut tool: Tool) {
         self.adaptive_clicks.clear();
+        self.cut_candidates = None;
         self.note_arrow = None;
         // Trim/Extend to Corner with two lines or walls selected (or picked, sketching) joins them at once, keeping the
         // parts toward their middles; with any other selection it asks for the picks.
@@ -2710,6 +2735,7 @@ impl BimApp {
                 | Tool::TrimTo { .. }
                 | Tool::Vertex { .. }
                 | Tool::Split
+                | Tool::CutGeometry { .. }
                 | Tool::Offset
                 | Tool::Demolish
                 | Tool::Linework
@@ -3028,6 +3054,7 @@ impl BimApp {
                 Tool::Align(None)
             }
             Tool::Trim(Some(_)) => Tool::Trim(None),
+            Tool::CutGeometry { uncut, wall: Some(_) } => Tool::CutGeometry { uncut, wall: None },
             Tool::TrimTo { boundary: Some(_), many } => Tool::TrimTo { boundary: None, many },
             Tool::Dimension(mode, refs) if !refs.is_empty() => Tool::Dimension(mode, Vec::new()),
             Tool::Angular(refs) if !refs.is_empty() => Tool::Angular(Vec::new()),
@@ -4930,6 +4957,18 @@ impl BimApp {
             }
         });
         panel(ui, msg!("Geometry"), |ui| {
+            // One button, as Revit's Cut, dropping down Cut Geometry and Uncut Geometry, so the panel stays narrow.
+            let tip = msg!("Cut Geometry (CU): pick a wall, then a component whose voids cut it; Uncut Geometry takes a cut back");
+            let on = matches!(self.tool, Tool::CutGeometry { .. });
+            let icon = if matches!(self.tool, Tool::CutGeometry { uncut: true, .. }) { Icon::UncutGeometry } else { Icon::CutGeometry };
+            let r = big_button(ui, icon, msg!("Cut"), on, tip);
+            ribbon::choices(ui, &r, false, |ui| {
+                for (uncut, label) in [(false, msg!("Cut Geometry")), (true, msg!("Uncut Geometry"))] {
+                    if ui.button(t(label)).clicked() {
+                        self.set_tool(Tool::CutGeometry { uncut, wall: None });
+                    }
+                }
+            });
             let tip = msg!("Paint (PT): lay a material, and its texture, over the face you click in the 3D view");
             if big_button(ui, Icon::Paint, "Paint", self.tool == Tool::Paint, tip).clicked() {
                 self.set_tool(Tool::Paint);
@@ -5463,6 +5502,14 @@ impl BimApp {
             Tool::Vertex { delete: false } => msg!("Click a polyline or a spline where a vertex goes."),
             Tool::Vertex { delete: true } => msg!("Click a polyline's corner or a spline's point to take it out."),
             Tool::Split => msg!("Click a wall or a line where to split it."),
+            Tool::CutGeometry { uncut: false, wall: None } => msg!("Pick the wall to cut."),
+            Tool::CutGeometry { uncut: false, wall: Some(_) } => {
+                msg!("Pick the component whose voids cut the wall. Esc picks another wall.")
+            }
+            Tool::CutGeometry { uncut: true, wall: None } => msg!("Pick the wall to uncut."),
+            Tool::CutGeometry { uncut: true, wall: Some(_) } => {
+                msg!("Pick the component that no longer cuts the wall. Esc picks another wall.")
+            }
             Tool::Offset => msg!("Point to a wall or a line: the offset goes to the cursor's side. Click to place it."),
             Tool::Demolish => msg!("Click an element to take it down in the view's phase; click it again to take it back."),
             Tool::Linework => msg!("Click an edge to draw it in the line style in the Options Bar; <By Category> puts it back."),
