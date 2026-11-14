@@ -107,7 +107,7 @@ fn a_model_line_hosts_nothing() {
 
 /// Level 1's plan round (2000, 1000): 0.5 px a mm.
 fn plan_view() -> crate::render::View {
-    crate::render::View { scale: 0.5, cx: 2000.0, cy: 1000.0, width: 1200, height: 1200 }
+    crate::render::View { scale: 0.5, cx: 2000.0, cy: 1000.0, width: 1200, height: 1200, angle: 0.0 }
 }
 
 /// The pixels that aren't paper within 6 mm of model point `p` in Level 1's plan at `detail`.

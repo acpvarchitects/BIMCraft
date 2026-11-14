@@ -214,7 +214,7 @@ fn shared_nested_screenshots() {
         Sheet::Plan(level) => level,
         _ => panic!("a plan"),
     };
-    h.state_mut().canvas.look_at(level, P2(5150.0, 150.0), 0.6);
+    h.state_mut().canvas.set_view(level, 5150.0, 150.0, 0.6);
     h.run();
     let at = P2(5325.0, -10.0);
     h.hover_at(h.state().screen(at));
@@ -239,7 +239,7 @@ fn shared_nested_screenshots() {
     h.state_mut().open_sheet(Sheet::Section(front));
     h.run();
     h.run();
-    h.state_mut().canvas.look_at(front, P2(1300.0, 450.0), 0.6);
+    h.state_mut().canvas.set_view(front, 1300.0, 450.0, 0.6);
     h.run();
     let at = P2(FRONT_HANDLE[0] - 4000.0, FRONT_HANDLE[2]);
     // Nothing selected and the pointer away: the handle as the elevation draws it.

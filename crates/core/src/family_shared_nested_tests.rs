@@ -209,7 +209,7 @@ fn a_file_from_before_opens_unchanged() {
 fn a_plan_picks_the_host_first_and_its_shared_nested_instance_next() {
     let (s, host) = cabinet(true);
     let (id, n) = nested(&s.model)[0].clone();
-    let view = crate::render::View { scale: 0.5, cx: 5000.0, cy: 300.0, width: 800, height: 800 };
+    let view = crate::render::View { scale: 0.5, cx: 5000.0, cy: 300.0, width: 800, height: 800, angle: 0.0 };
     let d = crate::render::draw(&s.model, n.level, view);
     assert_eq!(d.nested.len(), 1);
     assert_eq!((d.nested[0].id, d.nested[0].host), (id, host));
@@ -249,7 +249,7 @@ fn a_tag_on_a_shared_nested_element_is_drawn_as_one_on_a_component() {
     let on_cabinet = run(&mut s, "tag", json!({"ids": [host], "offset": [0, 1500]}))["ids"][0].as_u64().unwrap();
     let on_handle = run(&mut s, "tag", json!({"ids": [id], "offset": [0, -1500]}))["ids"][0].as_u64().unwrap();
     for scale in [0.05, 0.35] {
-        let view = crate::render::View { scale, cx: 5000.0, cy: 0.0, width: 1600, height: 1600 };
+        let view = crate::render::View { scale, cx: 5000.0, cy: 0.0, width: 1600, height: 1600, angle: 0.0 };
         let d = crate::render::draw(&s.model, n.level, view);
         let (a, b) = (tag_size(&d, on_cabinet), tag_size(&d, on_handle));
         assert!(a.1 > 0.0 && (a.1 - b.1).abs() < 0.01, "at {scale} px a mm: the cabinet's {a:?}, the handle's {b:?}");
@@ -346,7 +346,7 @@ fn a_shared_nested_family_of_symbols_alone_is_picked_by_its_lines() {
     run(&mut s, "family", json!({"name": "Desk", "nested_instance": {"family": "Mark", "type": "X", "at": [100, 300]}}));
     let host = run(&mut s, "component", json!({"family": "Desk", "type": "D", "at": [0, 0]}))["id"].as_u64().unwrap();
     let (id, n) = nested(&s.model)[0].clone();
-    let view = crate::render::View { scale: 0.5, cx: 600.0, cy: 300.0, width: 800, height: 800 };
+    let view = crate::render::View { scale: 0.5, cx: 600.0, cy: 300.0, width: 800, height: 800, angle: 0.0 };
     let d = crate::render::draw(&s.model, n.level, view);
     let at = view.px(crate::geom::P2(250.0, 300.0));
     assert_eq!(d.pick_all(at, 3.0), vec![host, id]);
@@ -361,7 +361,7 @@ fn an_elevation_sees_a_shared_nested_instance_where_it_draws_it() {
     run(&mut s, "family", json!({"name": "Cabinet", "nested_instance": {"guid": g, "at": [250, -20], "offset": 400}}));
     run(&mut s, "rotate", json!({"ids": [host], "about": [5000, 0], "angle": -90}));
     let id = run(&mut s, "elevation", json!({"start": [4000, -2000], "end": [7000, -2000]}))["id"].as_u64().unwrap();
-    let view = crate::render::View { scale: 0.5, cx: 1500.0, cy: 400.0, width: 800, height: 800 };
+    let view = crate::render::View { scale: 0.5, cx: 1500.0, cy: 400.0, width: 800, height: 800, angle: 0.0 };
     let seen = s.model.nested_seen(host, &|p| crate::render::section_px(&s.model, id, view, p));
     assert_eq!(seen.len(), 1);
     // The handle, 60 wide (x 5250 to 5310), 400 to 430 up: 1280 along the line, 415 up.
@@ -386,7 +386,7 @@ fn a_shared_nested_instance_is_drawn_in_elevations_and_in_3d() {
     for shared in [true, false] {
         let (mut s, host) = front(shared);
         let id = run(&mut s, "elevation", json!({"start": [4000, -2000], "end": [7000, -2000]}))["id"].as_u64().unwrap();
-        let view = crate::render::View { scale: 1.0, cx: 1300.0, cy: 450.0, width: 600, height: 600 };
+        let view = crate::render::View { scale: 1.0, cx: 1300.0, cy: 450.0, width: 600, height: 600, angle: 0.0 };
         let pm = tiny_skia::Pixmap::decode_png(&crate::render::section_png(&s.model, id, view).unwrap()).unwrap();
         // Along the handle's top edge, 430 up from 1250 to 1310 along the line (60 wide): ink, not paper.
         let dark = (1255..1305)

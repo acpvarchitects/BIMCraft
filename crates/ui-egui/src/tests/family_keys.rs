@@ -273,8 +273,9 @@ fn the_projects_keys_are_unchanged_on_its_tab_with_a_family_open() {
     let mut h = open();
     press(&mut h, "Level 1");
     assert!(h.state().active_family().is_none(), "the project's tab");
-    // The keys the family alone has do nothing in the project.
-    for keys in ["FG", "CG", "PL", "DD", "AA", "AN", "WP", "WW", "FA", "ZX"] {
+    // The keys the family alone has do nothing in the project: those of letters that aren't Ctrl's own keys there (with Ctrl
+    // held, PL, DD, AN, WP and ZX are P, D, N and Z on their own: print, the start page, New and Undo).
+    for keys in ["FG", "CG", "AA", "WW", "FA"] {
         h.state_mut().typed.clear();
         shortcut(&mut h, keys);
         assert_eq!(h.state().tool, Tool::Modify, "{keys}");

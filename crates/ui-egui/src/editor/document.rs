@@ -1828,11 +1828,16 @@ impl BimApp {
             let pressed = |m: egui::Modifiers, k: egui::Key| ctx.input_mut(|i| i.consume_key(m, k));
             if pressed(egui::Modifiers::COMMAND | egui::Modifiers::SHIFT, egui::Key::S) {
                 self.family_save(true);
-            } else if pressed(egui::Modifiers::COMMAND, egui::Key::S) {
-                self.family_save(false);
             }
-            if pressed(egui::Modifiers::COMMAND, egui::Key::K) {
-                self.find = Some(String::new());
+            // In a text field Ctrl's keys are the field's but S and K, which act at once; elsewhere they are letters typed
+            // with Ctrl (`family_typed`), which wait for a second.
+            if ctx.text_edit_focused() {
+                if pressed(egui::Modifiers::COMMAND, egui::Key::S) {
+                    self.family_save(false);
+                }
+                if pressed(egui::Modifiers::COMMAND, egui::Key::K) {
+                    self.find = Some(String::new());
+                }
             }
         }
         if ctx.text_edit_focused() {
@@ -1846,7 +1851,8 @@ impl BimApp {
         if self.show_shortcuts {
             return;
         }
-        // FE-14: Ctrl+C, Ctrl+X and Ctrl+V, in a family that isn't adaptive.
+        // FE-14: the window's Copy, Cut and Paste (Ctrl+C, Ctrl+X and Ctrl+V), in a family that isn't adaptive. C, X and V
+        // pressed as keys with Ctrl held are letters (`family_typed`): on their own they do the same (`family_ctrl_key`).
         if self.active_family().is_some_and(|ed| ed.adaptive.is_none())
             && let Some(c) = super::clipboard::key(ctx, &mut self.paste_heard)
         {
@@ -1888,9 +1894,6 @@ impl BimApp {
                     None => s.delete_picked(),
                 }
             }
-            if ctx.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::Z)) {
-                ed.undo_sketch();
-            }
             return;
         }
         // Escape lets a selected form go, though a button clicked has the keyboard (the window's own Escape does it otherwise).
@@ -1931,10 +1934,9 @@ impl BimApp {
         {
             refused = Some(e);
         }
-        if pressed(egui::Modifiers::COMMAND | egui::Modifiers::SHIFT, egui::Key::Z) || pressed(egui::Modifiers::COMMAND, egui::Key::Y) {
+        // Ctrl+Z and Ctrl+Y are letters typed with Ctrl (`family_ctrl_key`); Ctrl+Shift+Z redoes at once.
+        if pressed(egui::Modifiers::COMMAND | egui::Modifiers::SHIFT, egui::Key::Z) {
             ed.ask.redo = true;
-        } else if pressed(egui::Modifiers::COMMAND, egui::Key::Z) {
-            ed.ask.undo = true;
         }
         if let Some(text) = refused {
             self.status = Status { text, error: true };
@@ -2432,7 +2434,16 @@ impl BimApp {
                 mesh
             }
         };
-        let shot = crate::orbit::Shown { model: &model, scene: &scene, cam, tints: &tints, marks: &plane_marks, dragged: None, cut: None };
+        let shot = crate::orbit::Shown {
+            model: &model,
+            scene: &scene,
+            cam,
+            tints: &tints,
+            marks: &plane_marks,
+            dragged: None,
+            cut: None,
+            caps: None,
+        };
         if let Some(status) = ed.orbit.paint(ui.ctx(), &p, &mut self.card, mesh.as_ref(), shot) {
             self.status = status;
         }

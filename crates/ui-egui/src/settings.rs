@@ -113,6 +113,8 @@ pub struct Settings {
     pub autosave_minutes: u32,
     /// Draw the 3D view on the graphics card, when there is one.
     pub gpu_3d: bool,
+    /// Fill what the 3D view's section box cuts.
+    pub cut_fills_3d: bool,
     pub window: Window,
     /// What High Contrast Point Clouds fills a view's scans with.
     pub high_contrast: [u8; 3],
@@ -124,7 +126,8 @@ pub struct Settings {
     pub drag_on_selection: bool,
     /// Select Pinned Elements (PE), in a family document: a click and a box take what is pinned.
     pub select_pinned: bool,
-    /// The plans' origin marker, and the view's name in their corner: working aids on the screen.
+    /// The plans' old origin marker (now the Internal Origin, Site's in Visibility/Graphics: kept so a settings file reads
+    /// back as it was written), and the view's name in their corner, a working aid on the screen.
     pub origin_marker: bool,
     pub view_name: bool,
     /// The shortcuts the user made (Keyboard Shortcuts): two-character key to the English name of an action.
@@ -141,6 +144,8 @@ pub struct Settings {
     pub assistant_sealed: Option<String>,
     /// Tokens the providers counted, by the project's file (none for one not yet saved): `usage_from` reads them back.
     pub assistant_usage: BTreeMap<String, Usage>,
+    /// Co-Work: the name the others see, where a host listens, whether it is visible on the network, whether guests may edit.
+    pub cowork: crate::cowork::Prefs,
 }
 
 impl Settings {
@@ -178,6 +183,7 @@ impl Settings {
             "palettes": self.docking.to_json(),
             "autosave_minutes": self.autosave_minutes,
             "gpu_3d": self.gpu_3d,
+            "cut_fills_3d": self.cut_fills_3d,
             "window": self.window.to_json(),
             "high_contrast": self.high_contrast,
             "grid_snapping": self.grid_snapping,
@@ -191,6 +197,7 @@ impl Settings {
             "agents": {"listen": self.agents_listen, "port": self.agents_port, "edit": self.agents_edit},
             // The key, only when the user asked for it to be kept, and then only sealed.
             "assistant": self.assistant_json(),
+            "cowork": self.cowork.to_json(),
         })
     }
 
@@ -227,6 +234,7 @@ impl Settings {
             docking: if v["palettes"].is_object() { Docking::from_json(&v["palettes"]) } else { base.docking },
             autosave_minutes: v["autosave_minutes"].as_u64().filter(|n| *n <= 120).map_or(base.autosave_minutes, |n| n as u32),
             gpu_3d: v["gpu_3d"].as_bool().unwrap_or(base.gpu_3d),
+            cut_fills_3d: v["cut_fills_3d"].as_bool().unwrap_or(base.cut_fills_3d),
             window: Window::from_json(&v["window"], base.window),
             high_contrast: colour(&v["high_contrast"]).unwrap_or(base.high_contrast),
             grid_snapping: v["grid_snapping"].as_bool().unwrap_or(base.grid_snapping),
@@ -248,6 +256,7 @@ impl Settings {
                 Some(sealed) => sealed.as_str().filter(|s| seal::well_formed(s)).map(str::to_string),
             },
             assistant_usage: usage_from(&v["assistant"]["usage"], base.assistant_usage),
+            cowork: crate::cowork::Prefs::from_json(&v["cowork"], base.cowork),
         }
     }
 }
@@ -316,12 +325,13 @@ pub enum Page {
     Files,
     Agents,
     Assistant,
+    Cowork,
     Updates,
 }
 
 impl Page {
-    pub const ALL: [Page; 7] =
-        [Page::Interface, Page::Performance, Page::Graphics, Page::Files, Page::Agents, Page::Assistant, Page::Updates];
+    pub const ALL: [Page; 8] =
+        [Page::Interface, Page::Performance, Page::Graphics, Page::Files, Page::Agents, Page::Assistant, Page::Cowork, Page::Updates];
 
     pub fn name(self) -> &'static str {
         match self {
@@ -331,6 +341,7 @@ impl Page {
             Page::Files => msg!("Files"),
             Page::Agents => msg!("Agents"),
             Page::Assistant => msg!("Assistant"),
+            Page::Cowork => msg!("Co-Work"),
             Page::Updates => msg!("Updates"),
         }
     }
@@ -365,6 +376,7 @@ impl BimApp {
         self.light_canvas = kept.light_canvas;
         self.autosave.interval_minutes = kept.autosave_minutes;
         self.card.wanted = kept.gpu_3d;
+        self.cut_fills_3d = kept.cut_fills_3d;
         self.window.kept = kept.window;
         self.scan_contrast = kept.high_contrast;
         self.grid_snapping = kept.grid_snapping;
@@ -374,6 +386,7 @@ impl BimApp {
         self.custom_shortcuts = kept.shortcuts.clone();
         self.system_title_bar = kept.system_title_bar;
         (self.agents.listen, self.agents.port, self.agents.edit) = (kept.agents_listen, kept.agents_port, kept.agents_edit);
+        self.cowork_prefs = kept.cowork.clone();
         let a = &mut self.assistant;
         (a.provider, a.model, a.sealed) = (kept.assistant_provider, kept.assistant_model.clone(), kept.assistant_sealed.clone());
         a.usage = kept.assistant_usage.clone();
@@ -416,6 +429,7 @@ impl BimApp {
             docking: self.docking.clone(),
             autosave_minutes: self.autosave.interval_minutes,
             gpu_3d: self.card.wanted,
+            cut_fills_3d: self.cut_fills_3d,
             window: self.window.kept,
             high_contrast: self.scan_contrast,
             grid_snapping: self.grid_snapping,
@@ -433,6 +447,7 @@ impl BimApp {
             assistant_model: self.assistant.model.clone(),
             assistant_sealed: self.assistant.sealed.clone(),
             assistant_usage: self.assistant.usage.clone(),
+            cowork: self.cowork_prefs.clone(),
         }
     }
 
@@ -478,6 +493,7 @@ impl BimApp {
                             Page::Files => self.files_page(ui),
                             Page::Agents => self.agents_page(ui),
                             Page::Assistant => self.assistant_page(ui),
+                            Page::Cowork => self.cowork_page(ui),
                             Page::Updates => self.updates_page(ui),
                         });
                     });
@@ -643,10 +659,6 @@ impl BimApp {
         heading(ui, msg!("Palettes"));
         self.palette_switches(ui);
         heading(ui, msg!("Plans"));
-        ui.checkbox(&mut self.show_origin, t("Show the origin marker in plans")).on_hover_text(t(
-            "A small marker at the project's 0, 0 with the directions of x (east) and y (north). It is drawn on the screen only: \
-             never in a printed drawing, a sheet or an export",
-        ));
         ui.checkbox(&mut self.show_view_name, t("Show the view's name in the corner of plans")).on_hover_text(t(
             "The name of the floor plan or ceiling plan in its bottom left corner. It is drawn on the screen only, and the view's tab \
              names it too",
@@ -685,6 +697,10 @@ impl BimApp {
             (true, None) => crate::lang::tf("Card: {}", &[&self.card.adapter().unwrap_or_default()]),
         };
         muted(ui, text);
+        heading(ui, msg!("3D view"));
+        ui.checkbox(&mut self.cut_fills_3d, t("Fill what the section box cuts")).on_hover_text(t(
+            "Each face of the box shows what it cuts in its cut pattern. Off, the faces are left hollow and moving the box is faster",
+        ));
         later(ui, |ui| {
             let (mut undo, mut quality, mut smooth, mut background) = (100, 0, true, false);
             ui.horizontal(|ui| {
@@ -773,12 +789,7 @@ impl BimApp {
             t("Opens the control port now and whenever BIMCraft starts: an agent connects with bimcraft-cli mcp --connect. Only this \
              machine can reach it, and only with the token in bridge.json beside your favorites");
         if ui.checkbox(&mut on, t("Let agents work on this project")).on_hover_text(tip).changed() {
-            self.agents.listen = on;
-            if on {
-                self.open_control();
-            } else {
-                self.close_control();
-            }
+            self.set_agents(on);
         }
         ui.horizontal(|ui| {
             let l = ui.label(t("Port"));

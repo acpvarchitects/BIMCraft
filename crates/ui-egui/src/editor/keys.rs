@@ -105,41 +105,76 @@ pub(crate) fn in_family(action: &str) -> bool {
 }
 
 impl BimApp {
-    /// The family document's shortcuts (`family_keys` calls it unless a field, a dialog or a menu has the keys): Ctrl+1, the
-    /// Properties palette as on a project's tab, and the two-letter keys: what Keyboard Shortcuts made a key, if the family has
-    /// that command, else what [`FAMILY_SHORTCUTS`] gives it. A key that is neither stays in the buffer, as the project's does.
-    /// Nothing while Keyboard Shortcuts is open over the document.
+    /// The family document's shortcuts (`family_keys` calls it unless a field, a dialog or a menu has the keys), typed with
+    /// Ctrl held as the project's are (`crate::ctrl_letters`): two letters are what Keyboard Shortcuts made a key, if the family
+    /// has that command, else what [`FAMILY_SHORTCUTS`] gives it. If the two aren't a key, the first does its own job as a
+    /// Ctrl key ([`BimApp::family_ctrl_key`]) and the second waits in its place; a letter left waiting does its job once Ctrl
+    /// is let go, or after [`crate::CTRL_WAIT`]. Nothing while Keyboard Shortcuts is open over the document.
     pub(super) fn family_typed(&mut self, ctx: &Context) {
         if self.show_shortcuts {
             return;
         }
-        if ctx.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::Num1)) {
-            self.toggle_properties();
-        }
-        let typed: String = ctx.input(|i| {
-            i.events
-                .iter()
-                .filter_map(|e| match e {
-                    egui::Event::Text(t) => Some(t.as_str()),
-                    _ => None,
-                })
-                .collect()
-        });
-        for ch in typed.chars().filter(char::is_ascii_alphanumeric) {
-            self.typed.push(ch.to_ascii_uppercase());
-            if self.typed.len() > 2 {
-                self.typed.remove(0);
+        for ch in crate::ctrl_letters(ctx) {
+            // V's press is heard here, so its V let go isn't a Paste of its own (`clipboard::key`).
+            if ch == 'V' {
+                self.paste_heard = true;
             }
+            self.typed.push(ch);
+            self.typed_at = ctx.input(|i| i.time);
             if self.typed.len() < 2 {
                 continue;
             }
             let custom = self.custom_shortcuts.get(&self.typed).map(String::as_str).filter(|a| in_family(a));
-            let Some(action) = custom.or_else(|| FAMILY_SHORTCUTS.iter().find(|(k, _)| *k == self.typed).map(|(_, a)| *a)) else {
+            if let Some(action) = custom.or_else(|| FAMILY_SHORTCUTS.iter().find(|(k, _)| *k == self.typed).map(|(_, a)| *a)) {
+                let action = action.to_string();
+                self.typed.clear();
+                self.family_action(&action);
                 continue;
-            };
-            let action = action.to_string();
-            self.typed.clear();
-            self.family_action(&action);
+            }
+            // Not a shortcut: the first does its own job as a Ctrl key, and the second waits in its place.
+            let first = self.typed.remove(0);
+            self.family_ctrl_key(first);
+        }
+        if self.typed.len() == 1 {
+            let (held, now) = ctx.input(|i| (i.modifiers.command, i.time));
+            let left = crate::CTRL_WAIT - (now - self.typed_at);
+            if held && left > 0.0 {
+                ctx.request_repaint_after(std::time::Duration::from_secs_f64(left));
+            } else {
+                let letter = self.typed.remove(0);
+                self.family_ctrl_key(letter);
+            }
+        }
+    }
+
+    /// What a letter typed with Ctrl does on its own in a family document: S saves it, K finds a command, Z undoes (a sketch's
+    /// last change while sketching; the document's history waits for Finish), Y redoes, 1 shows Properties, and C, X and V are
+    /// the Clipboard panel's Copy, Cut and Paste (FE-14) in a family that isn't adaptive.
+    fn family_ctrl_key(&mut self, letter: char) {
+        match letter {
+            'S' => self.family_save(false),
+            'K' => self.find = Some(String::new()),
+            '1' => self.toggle_properties(),
+            'C' | 'X' | 'V' => {
+                let c = match letter {
+                    'C' => super::clipboard::Command::Copy,
+                    'X' => super::clipboard::Command::Cut,
+                    _ => super::clipboard::Command::Paste(super::clipboard::Paste::Pointer),
+                };
+                if self.active_family().is_some_and(|ed| ed.adaptive.is_none()) {
+                    self.family_clipboard(c);
+                }
+            }
+            'Z' | 'Y' => {
+                let Some(ed) = self.active_family_mut() else { return };
+                match (letter, ed.sketch.is_some()) {
+                    ('Z', true) => ed.undo_sketch(),
+                    ('Z', false) => ed.ask.undo = true,
+                    ('Y', false) => ed.ask.redo = true,
+                    _ => {}
+                }
+            }
+            _ => {}
         }
     }
 
