@@ -1065,9 +1065,11 @@ impl FamilyEditor {
             fv::form_at(f, &values, &c.staged, which, q)
                 .map(|_| Err(t("Offset takes reference planes and reference lines: edit a form's sketch to offset its lines.").to_string()))
         };
-        // The planes' and lines' traces a Modify tool's points snap to (FE-8).
+        // The planes' and lines' traces a Modify tool's points snap to (FE-8), and Measure's and a drawn plane's or line's
+        // (FE-21b). A model line is one too, seen flat.
+        let snapping = self.views.modify.is_some() || self.views.measuring.is_some() || self.views.drawing.is_some();
         let traces: Vec<(P2, P2)> = match family.as_ref() {
-            Some(f) if self.views.modify.is_some() => {
+            Some(f) if snapping => {
                 let planes = f
                     .planes
                     .iter()
@@ -1076,6 +1078,7 @@ impl FamilyEditor {
                 planes
                     .filter_map(|p| plane_trace(&c.staged, which, &p.frame()))
                     .chain(f.lines.iter().map(|l| (c.staged.to_view(which, l.start), c.staged.to_view(which, l.end))))
+                    .chain(f.model_lines.iter().map(|l| (c.staged.to_view(which, l.start), c.staged.to_view(which, l.end))))
                     .collect()
             }
             _ => Vec::new(),
@@ -1189,18 +1192,20 @@ impl FamilyEditor {
                 }
             }
         }
-        // The plane being drawn, from its first click to the pointer.
+        // The plane being drawn, from its first click to the pointer, snapped as the click will be.
         if let Some(Some(first)) = self.views.drawing
             && let Some(hover) = response.hover_pos()
         {
-            let hover =
-                if ui.input(|i| i.modifiers.shift) { screen(bimcraft_core::snap::orthogonal_step(first, at_view(hover)).0) } else { hover };
-            painter.line_segment([screen(first), hover], Stroke::new(1.5, PICKED));
+            let at = snapped(hover);
+            let at = if ui.input(|i| i.modifiers.shift) { bimcraft_core::snap::orthogonal_step(first, at).0 } else { at };
+            painter.line_segment([screen(first), screen(at)], Stroke::new(1.5, PICKED));
         }
-        // Measure's ruler (FE-17): from its first click to the pointer, and the one laid in this view, read beside it.
+        // Measure's ruler (FE-17): from its first click to the pointer, snapped, and the one laid in this view, read beside it.
         if let Some(m) = self.views.measuring.as_ref() {
             if let (Some(first), Some(hover)) = (m.first, response.hover_pos()) {
-                painter.line_segment([screen(first), hover], Stroke::new(1.5, PICKED));
+                let at = snapped(hover);
+                let at = if ui.input(|i| i.modifiers.shift) { bimcraft_core::snap::orthogonal_step(first, at).0 } else { at };
+                painter.line_segment([screen(first), screen(at)], Stroke::new(1.5, PICKED));
             }
             if let Some((a, b, _)) = m.laid.filter(|l| l.2 == which) {
                 let (pa, pb) = (screen(a), screen(b));
@@ -1330,6 +1335,7 @@ impl FamilyEditor {
         let mut on_dims: Option<(Clicked, Vec<f64>)> = None;
         let mut modify_at: Option<super::modify::Click> = None;
         let mut measure_at: Option<P2> = None;
+        let mut drew_at = false;
         let mut paste_at: Option<P2> = None;
         let mut clicked_any = false;
         // A double click on a form sketches it again, as Edit Extrusion or Edit Revolve does (F5).
@@ -1380,6 +1386,9 @@ impl FamilyEditor {
                 };
                 measure_at = Some(at);
             } else if let Some(first) = self.views.drawing {
+                // A plane's or a line's points snap as a Modify tool's do (FE-21b).
+                let q = snapped(p);
+                drew_at = true;
                 match first {
                     None => self.views.drawing = Some(Some(q)),
                     Some(a) => {
@@ -1746,7 +1755,7 @@ impl FamilyEditor {
             }
         }
         // A point a snap override was for (FE-21) ends it.
-        self.took_point |= measure_at.is_some() || modify_at.is_some();
+        self.took_point |= measure_at.is_some() || modify_at.is_some() || drew_at;
         // A Modify tool's click (FE-8), and Rotate's Angle typed.
         if let Some(at) = measure_at
             && let Some(text) = self.measure_click(at, which, base.units)
