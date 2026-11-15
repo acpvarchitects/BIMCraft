@@ -195,3 +195,29 @@ fn two_clicks_that_snap_to_one_point_keep_the_first_and_say_so() {
     let said = format!("{:?} {}", editor(&h).views.status, h.state().status.text);
     assert!(said.contains("same"), "{said}");
 }
+
+/// Reference Plane's band from its first click to a point snapped onto Edge, its marker there, in the three looks, when
+/// `BIMCRAFT_FE21B_DUMP` names a folder.
+#[test]
+fn draw_snap_marker_in_three_looks() {
+    let Ok(dir) = std::env::var("BIMCRAFT_FE21B_DUMP") else { return };
+    std::fs::create_dir_all(&dir).unwrap();
+    for (name, dark, light_canvas) in [("light", false, false), ("dark", true, false), ("dark-ui-light-canvas", true, true)] {
+        let mut h = app(&super::family_drag_move::family_with(""));
+        h.set_size(egui::vec2(1400.0, 900.0));
+        h.state_mut().edit_family("Movers");
+        h.run();
+        super::family_views::view(&mut h, Some(bimcraft_core::family::views::Which::Plan));
+        h.ctx.set_theme(if dark { egui::ThemePreference::Dark } else { egui::ThemePreference::Light });
+        h.state_mut().light_canvas = light_canvas;
+        h.run();
+        shortcut(&mut h, "RP");
+        click(&mut h, 1620.0, 700.0);
+        let pos = editor(&h).views.screen_of([1020.0, 400.0, 0.0]).unwrap();
+        h.hover_at(pos);
+        for _ in 0..4 {
+            h.run();
+        }
+        h.render().unwrap().save(std::path::Path::new(&dir).join(format!("fe21b-marker-{name}.png"))).unwrap();
+    }
+}
