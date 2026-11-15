@@ -7351,6 +7351,7 @@ mod family_already_exists;
 mod family_angles;
 mod family_blend;
 mod family_box_select;
+mod family_canvas_clear;
 mod family_category_dialog;
 mod family_clipboard;
 mod family_dimensions;
