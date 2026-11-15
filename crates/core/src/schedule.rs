@@ -1054,6 +1054,11 @@ impl Row<'_> {
                 // A family's areas and volumes are in mm² and mm³; schedules show m² and m³.
                 (family::Kind::Area, Some(x)) => serde_json::json!(fine(x / 1e6)),
                 (family::Kind::Volume, Some(x)) => serde_json::json!(fine(x / 1e9)),
+                // A family type (T24) as `Family : Type`.
+                (family::Kind::FamilyType, _) => match (v.get("family").and_then(Value::as_str), v.get("type").and_then(Value::as_str)) {
+                    (Some(f), Some(t)) => Value::String(format!("{f} : {t}")),
+                    _ => Value::Null,
+                },
                 (k, _) if k.text() && v.as_str() == Some("") => Value::Null,
                 _ => v,
             };

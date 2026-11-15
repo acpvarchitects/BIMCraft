@@ -3259,6 +3259,7 @@ impl FamilyDialog {
                     Some(Val::Number(x)) if p.kind == Holds::YesNo => (if *x != 0.0 { "1" } else { "0" }).to_string(),
                     Some(Val::Number(x)) => format!("{}", (x * 1e6).round() / 1e6),
                     Some(Val::Text(t)) => t.clone(),
+                    Some(v @ Val::Choice { .. }) => bimcraft_core::family::said_choice(v),
                     None => String::new(),
                 };
                 f.parameters

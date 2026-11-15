@@ -191,7 +191,10 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// 21: what cuts what in the project (T23). A wall names the components Cut Geometry ties to it (`void_cuts`), and a wall, a
 /// floor, a roof or a ceiling the elements Join Geometry cuts it with (`joined_by`); a build that reads up to 20 (0.12) would
 /// leave both out of a file and open the walls and slabs whole, not "saved by a newer BIMCraft". A file of 20 needs no step:
-/// 0.12's hold neither, and one the unreleased Family Editor saved at 18 to 20 with `void_cuts` reads them as written.
+/// 0.12's hold neither, and one the unreleased Family Editor saved at 18 to 20 with `void_cuts` reads them as written. 21 also
+/// holds a nested family chosen by a family type parameter (T24): a nested instance's `label` and family type values
+/// `{"family", "type"}`, which a build that reads up to 20 would leave out (the label) or refuse every command over (the
+/// values); a file of 20 holds neither, null values and no labels.
 pub const FORMAT: u32 = 21;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
@@ -3894,6 +3897,8 @@ impl Model {
             if p.reporting {
                 return Err(format!("{who}: `{k}` is a reporting parameter: its dimension says what it is, and nothing sets it"));
             }
+            // A family type, a family it nests of its category (T24).
+            f.choice_ok(p, v).map_err(|e| format!("{who}: {e}"))?;
             // A pivot's swing within its limits (F7d).
             if let crate::family::Val::Number(n) = crate::family::read(p, v).map_err(|e| format!("{who}: {e}"))? {
                 f.pivot_value_ok(k, n).map_err(|e| format!("{who}: {e}"))?;

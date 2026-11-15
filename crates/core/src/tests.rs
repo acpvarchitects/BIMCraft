@@ -2847,6 +2847,16 @@ fn hostile_params_never_panic_or_break_the_model() {
             json!({"name": "F", "types": {"A": {}}, "nest": {"path": "/nonexistent/x.json", "definition": {}, "overwrite": "maybe", "shared_nested": 5}}),
             json!({"definition": {"name": "S", "types": {"A": {}}, "nested": [{"name": "L", "family": {"shared": true, "types": {"A": {}}}}]}, "shared_nested": {"L": "neither"}}),
             json!({"name": "F", "types": {"A": {}}, "nested": "x", "nested_instances": [{"family": 5}], "nested_instance": {"id": u64::MAX}}),
+            // T24: family type values, labels, choice formulas and associations, hostile.
+            json!({"name": "F", "types": {"A": {"H": {"family": "L", "type": "A"}}},
+                   "parameters": [{"name": "H", "kind": "familytype", "of": "generic", "value": {"family": "L", "type": "A", "x": 1}},
+                                  {"name": "G", "kind": "familytype", "of": "generic", "formula": "if(1e308 * 10, G, if(H, H, 5))"}],
+                   "nested": [{"name": "L", "family": leaf}],
+                   "nested_instances": [{"family": "L", "type": "A", "label": "G", "params": {"X": "H", "H": 1e300}}]}),
+            json!({"name": "F", "types": {"A": {"H": {"family": "\u{0}", "type": 5}}}, "nested": [{"name": "L", "family": leaf}],
+                   "nested_instance": {"family": "L", "type": "A", "label": 5}}),
+            json!({"name": "F", "types": {"A": {}}, "parameter": {"name": "H", "kind": "familytype", "of": "generic", "value": [1, {"family": {}}]},
+                   "nested_instance": {"family": "L", "type": "A", "label": "\u{0}H"}}),
         ]
     };
     // A strip footing of the runs' own: its gripped end, an end that isn't one, an end for a wall and a

@@ -1037,6 +1037,7 @@ fn computed(ui: &mut Ui, label: String, kind: Holds, value: Option<&bimcraft_cor
     let mut text = match value {
         Some(Val::Number(x)) => number_text(*x),
         Some(Val::Text(t)) => t.clone(),
+        Some(v @ Val::Choice { .. }) => bimcraft_core::family::said_choice(v),
         None => "?".into(),
     };
     let r =

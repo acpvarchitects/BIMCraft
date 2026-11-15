@@ -531,7 +531,7 @@ fn move_copy_and_rotate_take_the_selection_from_two_clicks_as_in_revit() {
 fn parameter(h: &Harness<BimApp>, name: &str) -> Option<f64> {
     match h.state().active_family()?.values().get(name)? {
         bimcraft_core::family::Val::Number(x) => Some(*x),
-        bimcraft_core::family::Val::Text(_) => None,
+        bimcraft_core::family::Val::Text(_) | bimcraft_core::family::Val::Choice { .. } => None,
     }
 }
 

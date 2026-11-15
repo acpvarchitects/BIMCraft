@@ -283,7 +283,8 @@ pub enum Kind {
     Volume,
     /// A web address, up to [`MAX_URL`] characters on one line: text, as [`Kind::Text`] is.
     Url,
-    /// A type of a family of the category its parameter's `of` names, for nested families: none is chosen yet.
+    /// A type of a family of the category its parameter's `of` names, which the family nests (T24): `{"family", "type"}`, or
+    /// none. A nested instance labelled with it shows that family's type.
     FamilyType,
 }
 
@@ -510,16 +511,12 @@ impl Parameter {
         self.formula.as_deref()
     }
 
-    /// What it may be on its own, `who` saying which it is: a family type parameter names its category and holds no value,
-    /// nothing else names one; a reporting parameter is a length or an angle worked out by no formula; a shared one's GUID
+    /// What it may be on its own, `who` saying which it is: a family type parameter names its category, nothing else names one; a reporting parameter is a length or an angle worked out by no formula; a shared one's GUID
     /// is a GUID.
     pub fn check_own(&self, who: &str) -> Result<(), String> {
         match (self.kind, self.of) {
             (Kind::FamilyType, None) => {
                 return Err(format!("{who}: a family type parameter needs `of`, the category of the families whose types it picks"));
-            }
-            (Kind::FamilyType, Some(_)) if !self.value.is_null() => {
-                return Err(format!("{who}: a family type parameter holds no value until nested families exist; leave `value` out"));
             }
             (k, Some(_)) if k != Kind::FamilyType => return Err(format!("{who}: `of` is for a family type parameter; leave it out")),
             _ => {}
@@ -1225,12 +1222,43 @@ impl IfcClass {
     }
 }
 
-/// A parameter's value, worked out: a number (yes/no, 1 or 0), or a material's name.
+/// A parameter's value, worked out: a number (yes/no, 1 or 0), a material's name or words, or a family type parameter's
+/// choice (T24): a family the family nests and one of its types, none where `family` is empty.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum Val {
     Number(f64),
     Text(String),
+    Choice {
+        family: String,
+        #[serde(rename = "type")]
+        type_name: String,
+    },
+}
+
+impl Val {
+    /// The family and type a family type parameter's value picks; none where it is no choice, or picks none.
+    pub fn chosen(&self) -> Option<(&str, &str)> {
+        match self {
+            Val::Choice { family, type_name } if !family.is_empty() => Some((family, type_name)),
+            _ => None,
+        }
+    }
+
+    /// No family type picked.
+    pub fn no_choice() -> Val {
+        Val::Choice { family: String::new(), type_name: String::new() }
+    }
+}
+
+/// Category `c` as a file and a command name it: `generic`, `furniture`.
+pub(crate) fn category_name(c: Category) -> String {
+    serde_json::to_value(c).ok().and_then(|v| v.as_str().map(str::to_string)).unwrap_or_default()
+}
+
+/// How a family type is said: `Family : Type`, or nothing for none.
+pub fn said_choice(v: &Val) -> String {
+    v.chosen().map(|(f, t)| format!("{f} : {t}")).unwrap_or_default()
 }
 
 /// A form's solid in the family's own axes: its triangles, its caps' first; its outline seen from
@@ -1743,14 +1771,85 @@ pub(crate) fn read(p: &Parameter, v: &Value) -> Result<Val, String> {
                 _ => Err(format!("parameter `{}` holds {what} on one line, up to {most} characters, not {v}", p.name)),
             }
         }
-        // None is chosen until nested families exist.
-        Kind::FamilyType => match v {
-            Value::Null => Ok(Val::Text(String::new())),
-            _ => {
-                Err(format!("parameter `{}` is a family type parameter, which holds no value until nested families exist, not {v}", p.name))
+        // A family the family nests and one of its types, or none: which, `Family::choice_ok` says.
+        Kind::FamilyType => {
+            fn shaped(s: &Value) -> Option<&str> {
+                s.as_str().filter(|t| t.chars().count() <= MAX_TEXT && !t.chars().any(char::is_control))
             }
-        },
+            match v {
+                Value::Null => Ok(Val::no_choice()),
+                Value::Object(o) if o.len() == 2 => match (o.get("family").and_then(shaped), o.get("type").and_then(shaped)) {
+                    (Some(f), Some(t)) if !f.is_empty() => Ok(Val::Choice { family: f.to_string(), type_name: t.to_string() }),
+                    _ => Err(choice_shape(p, v)),
+                },
+                _ => Err(choice_shape(p, v)),
+            }
+        }
     }
+}
+
+/// Why `v` isn't a value family type parameter `p` holds.
+fn choice_shape(p: &Parameter, v: &Value) -> String {
+    let mut shown = v.to_string();
+    if shown.chars().count() > 80 {
+        shown = shown.chars().take(80).collect::<String>() + "…";
+    }
+    format!(
+        "parameter `{}` is a family type: its value is a family it nests and one of its types, {{\"family\": …, \"type\": …}} \
+         (names of up to {MAX_TEXT} characters on one line), or null, not {shown}",
+        p.name
+    )
+}
+
+/// The node a family type parameter's formula (T24) comes to: another family type parameter's name, or `if(condition, one,
+/// other)` of two such, nested; the condition read as any formula is.
+fn choice_node<'a>(n: &'a Node, get: &mut dyn FnMut(&str) -> Result<Val, String>) -> Result<&'a str, String> {
+    match n {
+        Node::Name(name) => Ok(name),
+        Node::Call(f, args) if f.eq_ignore_ascii_case("if") => match args.as_slice() {
+            [c, a, b] => {
+                let x = value(c, &mut |n: &str| match get(n)? {
+                    Val::Number(x) => Ok(x),
+                    _ => Err(format!("`{n}` isn't a number")),
+                })?;
+                choice_node(if x != 0.0 { a } else { b }, get)
+            }
+            _ => Err(format!("`{f}` takes a condition and two values, not {} values", args.len())),
+        },
+        _ => Err(CHOICE.into()),
+    }
+}
+
+/// What a family type parameter's formula may be.
+const CHOICE: &str = "a family type's formula picks among family type parameters of its category: another's name, or \
+     `if(condition, one, other)`";
+
+/// The family type parameter family type formula `formula` picks for the values `get` gives: its name.
+pub fn choose(formula: &str, get: &mut dyn FnMut(&str) -> Result<Val, String>) -> Result<String, String> {
+    choice_node(&parse(formula)?, get).map(str::to_string)
+}
+
+/// Every family type parameter family type formula `formula` may pick, in each branch of its `if`s; or why it is no choice
+/// formula (a number, a sum, a function but `if`).
+pub fn choice_arms(formula: &str) -> Result<Vec<String>, String> {
+    fn walk(n: &Node, out: &mut Vec<String>) -> Result<(), String> {
+        match n {
+            Node::Name(name) => {
+                if !out.contains(name) {
+                    out.push(name.clone());
+                }
+                Ok(())
+            }
+            Node::Call(f, args) if f.eq_ignore_ascii_case("if") && args.len() == 3 => {
+                walk(&args[1], out)?;
+                walk(&args[2], out)
+            }
+            _ => Err(CHOICE.into()),
+        }
+    }
+    let mut out = Vec::new();
+    walk(&parse(formula)?, &mut out)?;
+    Ok(out)
 }
 
 /// The largest whole number an integer parameter holds: past it, a float no longer counts every one.
@@ -1873,8 +1972,8 @@ impl Family {
     /// The parameters nested instance `i` sets that are its family's materials.
     fn instance_materials(&self, i: usize) -> Vec<String> {
         let Some(inst) = self.nested_instances.get(i) else { return Vec::new() };
-        let Some(n) = self.nested_family(&inst.family) else { return Vec::new() };
-        inst.params.keys().filter(|k| n.family.material_parameter(k)).cloned().collect()
+        let families = self.instance_families(inst);
+        inst.params.keys().filter(|k| families.iter().any(|n| n.family.material_parameter(k))).cloned().collect()
     }
 
     /// Parameter `old` named `new` everywhere the family names it: the parameter itself, its types' values, and every
@@ -1946,6 +2045,9 @@ impl Family {
         for i in 0..self.nested_instances.len() {
             let words: Vec<String> = self.instance_words(&self.nested_instances[i]).into_iter().map(String::from).collect();
             let inst = &mut self.nested_instances[i];
+            if inst.label.as_deref() == Some(old) {
+                inst.label = Some(new.to_string());
+            }
             inst.at.iter_mut().chain([&mut inst.offset, &mut inst.angle]).chain(inst.visible.iter_mut()).for_each(&mut expr);
             for (k, e) in inst.params.iter_mut() {
                 match e {
@@ -2106,11 +2208,22 @@ impl Family {
             Some(_) if path.len() >= MAX_CHAIN => {
                 return Err(format!("`{name}` takes from formulas taking from more than {MAX_CHAIN} others in a row: nested too deep"));
             }
+            // A family type's: the one of its category another family type parameter, as its `if`s pick, holds (T24).
+            Some(f) if p.kind == Kind::FamilyType => {
+                path.push(name.to_string());
+                let picked = choose(f, &mut |n: &str| self.resolve(n, set, instance, done, path));
+                let v = picked.and_then(|q| match self.parameters.iter().find(|x| x.name == q) {
+                    Some(x) if x.kind == Kind::FamilyType && x.of == p.of => self.resolve(&q, set, instance, done, path),
+                    _ => Err(format!("`{q}` isn't a family type parameter of its category: {CHOICE}")),
+                });
+                path.pop();
+                v.map_err(|e| format!("parameter `{name}`: {e}"))?
+            }
             Some(f) => {
                 path.push(name.to_string());
                 let x = eval(f, &mut |n: &str| match self.resolve(n, set, instance, done, path)? {
                     Val::Number(x) => Ok(x),
-                    Val::Text(_) => {
+                    Val::Text(_) | Val::Choice { .. } => {
                         let kind = self.parameters.iter().find(|q| q.name == n).map_or(Kind::Material, |q| q.kind);
                         Err(format!("`{n}` is {}, not a number", kind.said()))
                     }
@@ -2231,7 +2344,19 @@ impl Family {
             }
             match (&p.formula, p.kind) {
                 (Some(_), Kind::Material) => return Err(format!("{who}: a material takes no formula")),
-                (Some(_), k) if k.text() => return Err(format!("{who}: {} takes no formula", k.said())),
+                // A family type's picks among those of its category (T24).
+                (Some(f), Kind::FamilyType) if !long(f) => {
+                    for q in choice_arms(f).map_err(|e| format!("{who}: {e}"))? {
+                        match self.parameters.iter().find(|x| x.name == q) {
+                            Some(x) if x.kind == Kind::FamilyType && x.of == p.of => {}
+                            Some(x) if x.kind == Kind::FamilyType => {
+                                return Err(format!("{who}: its formula picks `{q}`, a family type of another category: {CHOICE}"));
+                            }
+                            _ => return Err(format!("{who}: its formula picks `{q}`, which isn't a family type parameter: {CHOICE}")),
+                        }
+                    }
+                }
+                (Some(_), k) if k.text() && k != Kind::FamilyType => return Err(format!("{who}: {} takes no formula", k.said())),
                 (Some(f), _) if long(f) => return Err(format!("{who}: its formula is longer than {MAX_FORMULA} characters")),
                 _ => {}
             }
@@ -2272,6 +2397,8 @@ impl Family {
                 }
             }
         }
+        // Its family type parameters' values, each a family it nests of its category (T24).
+        self.check_choices()?;
         for (i, form) in self.forms.iter().enumerate() {
             let who = format!("form {}", i + 1);
             let ways = usize::from(form.boundary().next().is_some()) + usize::from(!form.mesh.is_empty());
@@ -3070,6 +3197,7 @@ fn said_text(value: &str, values: &BTreeMap<String, Val>, parameters: &[Paramete
                 out.push_str(plain.trim_end_matches('0').trim_end_matches('.'));
             }
             Some(Val::Text(t)) => out.push_str(t),
+            Some(v @ Val::Choice { .. }) => out.push_str(&said_choice(v)),
             None => return Err(format!("its text reads `{{{name}}}`, which isn't one of the family's parameters")),
         }
         if out.chars().count() > MAX_TEXT {
@@ -3115,6 +3243,7 @@ fn number<'a>(e: &'a Expr, values: &BTreeMap<String, Val>, read: &mut HashMap<&'
             Ok(node) => worked(f, node, &mut |n: &str| match values.get(n) {
                 Some(Val::Number(x)) => Ok(*x),
                 Some(Val::Text(_)) => Err(format!("`{n}` is words (a material, text, a URL), not a number")),
+                Some(Val::Choice { .. }) => Err(format!("`{n}` is a family type, not a number")),
                 None => Err(format!("`{n}` isn't one of its parameters")),
             })?,
             Err(e) => return Err(e.clone()),

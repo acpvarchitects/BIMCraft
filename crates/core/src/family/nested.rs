@@ -71,6 +71,10 @@ pub struct NestedInstance {
     /// Its Visibility Settings (F8), over those of each of its family's forms and symbols.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub visibility: Option<super::Visibility>,
+    /// The host's family type parameter that picks its family and type (T24, the Options Bar's Label): where that holds one,
+    /// it shows that family's type; where it holds none, its own `family` and `type`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
 }
 
 impl NestedInstance {
@@ -167,8 +171,113 @@ impl Family {
         find(&self.nested, name)
     }
 
+    /// The families it nests of category `of`, each with each of its types, in the order it nests them: what a family type
+    /// parameter of that category may pick (T24).
+    pub fn choices(&self, of: Category) -> Vec<(String, String)> {
+        self.nested
+            .iter()
+            .filter(|n| n.family.category == of)
+            .flat_map(|n| n.family.types.keys().map(|t| (n.name.clone(), t.clone())))
+            .collect()
+    }
+
+    /// Whether `v` is a value family type parameter `p` may hold: none, or a family it nests of `p`'s category and one of that
+    /// family's types (T24). Any other parameter's is its own to say.
+    pub fn choice_ok(&self, p: &Parameter, v: &Value) -> Result<(), String> {
+        if p.kind != Kind::FamilyType {
+            return Ok(());
+        }
+        let val = read(p, v)?;
+        let Some((f, t)) = val.chosen() else { return Ok(()) };
+        let of = p.of.unwrap_or_default();
+        let named = category_name(of);
+        let fits = || {
+            let names: Vec<&str> = self.nested.iter().filter(|n| n.family.category == of).map(|n| n.name.as_str()).collect();
+            if names.is_empty() { format!("it nests no {named} family") } else { format!("its {named} families are {}", names.join(", ")) }
+        };
+        let Some(n) = self.nested_family(f) else {
+            return Err(format!("parameter `{}` picks `{f}`, which the family doesn't nest ({})", p.name, fits()));
+        };
+        if n.family.category != of {
+            return Err(format!(
+                "parameter `{}` picks `{f}`, a family of {}: it picks a {named} family ({})",
+                p.name,
+                category_name(n.family.category),
+                fits()
+            ));
+        }
+        if !n.family.types.contains_key(t) {
+            let types: Vec<&str> = n.family.types.keys().map(String::as_str).collect();
+            return Err(format!("parameter `{}` picks `{f}`'s type `{t}`, which it hasn't (it has {})", p.name, types.join(", ")));
+        }
+        Ok(())
+    }
+
+    /// Its family type parameters' values (each one's default and each type's) and the families they may pick, sound: each
+    /// none or a family of its category it nests, and a type of it ([`Family::choice_ok`]).
+    pub(super) fn check_choices(&self) -> Result<(), String> {
+        for p in self.parameters.iter().filter(|p| p.kind == Kind::FamilyType) {
+            self.choice_ok(p, &p.value)?;
+            for (t, set) in &self.types {
+                if let Some(v) = set.get(&p.name) {
+                    self.choice_ok(p, v).map_err(|e| format!("type `{t}`: {e}"))?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// The family and type nested instance `inst` shows for the host's `values`: what the parameter it is labelled with picks
+    /// (T24), else its own.
+    pub fn chosen<'a>(&self, inst: &'a NestedInstance, values: &'a BTreeMap<String, Val>) -> (&'a str, &'a str) {
+        inst.label.as_ref().and_then(|l| values.get(l)).and_then(Val::chosen).unwrap_or((&inst.family, &inst.type_name))
+    }
+
+    /// The families nested instance `inst` may show: those of its label's category where it is labelled, else its own.
+    pub(crate) fn instance_families(&self, inst: &NestedInstance) -> Vec<&NestedFamily> {
+        match self.label_of(inst).and_then(|p| p.of) {
+            Some(of) => self.nested.iter().filter(|n| n.family.category == of).collect(),
+            None => self.nested_family(&inst.family).into_iter().collect(),
+        }
+    }
+
+    /// Each family type parameter a nested instance is labelled with made to hold that instance's family and type where it holds
+    /// none (its default, and each type's when it is a type parameter): labelling an instance leaves it showing what it
+    /// showed (T24). One a formula works out is the formula's.
+    pub fn fill_labels(&mut self) {
+        let fills: Vec<(String, Value)> = self
+            .nested_instances
+            .iter()
+            .filter_map(|i| i.label.as_ref().map(|l| (l.clone(), serde_json::json!({"family": i.family, "type": i.type_name}))))
+            .collect();
+        for (l, v) in fills {
+            let Some(p) = self.parameters.iter_mut().find(|p| p.name == l && p.kind == Kind::FamilyType && p.formula.is_none()) else {
+                continue;
+            };
+            if p.value.is_null() {
+                p.value = v.clone();
+            }
+            if !p.instance {
+                for set in self.types.values_mut() {
+                    let held = set.entry(l.clone()).or_insert(Value::Null);
+                    if held.is_null() {
+                        *held = v.clone();
+                    }
+                }
+            }
+        }
+    }
+
+    /// The family type parameter nested instance `inst` is labelled with, where it is one.
+    fn label_of(&self, inst: &NestedInstance) -> Option<&Parameter> {
+        let l = inst.label.as_ref()?;
+        self.parameters.iter().find(|p| p.name == *l && p.kind == Kind::FamilyType)
+    }
+
     /// Instance `inst`'s parameter values worked out over the host's `values`: the nested family's parameter, its kind, and
-    /// what it comes to. A text-like parameter takes a host parameter's words where it names one, else its own.
+    /// what it comes to. A text-like parameter takes a host parameter's words where it names one, else its own; a family type,
+    /// the host's family type parameter's choice. A labelled instance's parameters its family hasn't (another of those its
+    /// label may pick has them) are left out.
     fn instance_seeds(
         &self,
         inst: &NestedInstance,
@@ -178,12 +287,21 @@ impl Family {
         let mut out = BTreeMap::new();
         let mut read = HashMap::new();
         for (name, e) in &inst.params {
-            let p = nested
-                .parameters
-                .iter()
-                .find(|p| p.name == *name)
-                .ok_or_else(|| format!("`{name}` isn't a parameter of nested family `{}`", inst.family))?;
-            let v = if p.kind.text() {
+            let Some(p) = nested.parameters.iter().find(|p| p.name == *name) else {
+                if inst.label.is_some() {
+                    continue;
+                }
+                return Err(format!("`{name}` isn't a parameter of nested family `{}`", inst.family));
+            };
+            let v = if p.kind == Kind::FamilyType {
+                match e {
+                    Expr::Formula(s) => match values.get(s.as_str()) {
+                        Some(v @ Val::Choice { .. }) => v.clone(),
+                        _ => Val::no_choice(),
+                    },
+                    Expr::Number(_) => Val::no_choice(),
+                }
+            } else if p.kind.text() {
                 match e {
                     Expr::Formula(s) => match values.get(s.as_str()) {
                         Some(Val::Text(t)) if self.parameters.iter().any(|q| q.name == *s) => Val::Text(t.clone()),
@@ -210,14 +328,14 @@ impl Family {
         {
             return Ok(None);
         }
-        let nested = self.nested_family(&inst.family).ok_or_else(|| format!("it places `{}`, which it doesn't nest", inst.family))?;
+        let (family, type_name) = self.chosen(inst, values);
+        let nested = self.nested_family(family).ok_or_else(|| format!("it places `{family}`, which it doesn't nest"))?;
         let seeds = self.instance_seeds(inst, &nested.family, values)?;
         let wall = match values.get(WALL) {
             Some(Val::Number(t)) => *t,
             _ => DEFAULT_WALL,
         };
-        let own =
-            nested.family.values_seeded(&inst.type_name, &BTreeMap::new(), wall, &seeds).map_err(|e| format!("`{}`: {e}", inst.family))?;
+        let own = nested.family.values_seeded(type_name, &BTreeMap::new(), wall, &seeds).map_err(|e| format!("`{family}`: {e}"))?;
         let frame = self.frame(&inst.host).map_err(|e| format!("its host: {e}"))?;
         let (x, y) = (number(&inst.at[0], values, &mut read)?, number(&inst.at[1], values, &mut read)?);
         let offset = number(&inst.offset, values, &mut read)?;
@@ -318,8 +436,8 @@ impl Family {
             let marks = if level { nested.marks(&own).unwrap_or_default().iter().map(|m| m.map(to)).collect() } else { Vec::new() };
             out.push(SharedInstance {
                 path: vec![inst.guid],
-                family: inst.family.clone(),
-                type_name: inst.type_name.clone(),
+                family: flexed.chosen(inst, values).0.to_string(),
+                type_name: flexed.chosen(inst, values).1.to_string(),
                 origin: placed.origin,
                 axes: [placed.x, placed.y, placed.z],
                 marks,
@@ -441,8 +559,12 @@ impl Family {
 
     /// Its parameters an instance's `params` name that hold words (a material, text, a URL): what is no formula there.
     pub fn instance_words<'a>(&self, inst: &'a NestedInstance) -> Vec<&'a str> {
-        let Some(n) = self.nested_family(&inst.family) else { return Vec::new() };
-        inst.params.keys().filter(|k| n.family.parameters.iter().any(|p| p.name == **k && p.kind.text())).map(String::as_str).collect()
+        let families = self.instance_families(inst);
+        inst.params
+            .keys()
+            .filter(|k| families.iter().any(|n| n.family.parameters.iter().any(|p| p.name == **k && p.kind.text())))
+            .map(String::as_str)
+            .collect()
     }
 
     /// Each formula instance `inst`'s parameters hold over the host's, but the words (a material, text, a URL), which name a
@@ -539,46 +661,122 @@ impl Family {
             if inst.place_exprs().any(long) || inst.params.values().any(long) {
                 return Err(format!("{who}: a formula of it is longer than {MAX_FORMULA} characters"));
             }
-            for (name, e) in &inst.params {
-                let p = n.family.parameters.iter().find(|p| p.name == *name).ok_or_else(|| {
-                    format!("{who}: `{}` isn't a parameter of `{}`", name.chars().take(40).collect::<String>(), inst.family)
-                })?;
-                if p.formula.is_some() {
-                    return Err(format!("{who}: `{name}` is worked out by a formula of `{}`: it can't be set from here", inst.family));
+            // Its label (T24): a family type parameter of the host, of its family's category.
+            if let Some(l) = &inst.label {
+                let shown: String = l.chars().take(40).collect();
+                let Some(q) = self.parameters.iter().find(|q| q.name == *l) else {
+                    return Err(format!("{who}: it is labelled `{shown}`, which isn't one of the family's parameters"));
+                };
+                if q.kind != Kind::FamilyType {
+                    return Err(format!("{who}: it is labelled `{shown}`, which is {}: a label is a family type parameter", q.kind.said()));
                 }
-                if p.reporting {
-                    return Err(format!("{who}: `{name}` is a reporting parameter: it reads a dimension and is set by none"));
-                }
-                if p.kind == Kind::FamilyType {
-                    return Err(format!("{who}: `{name}` is a family type: setting one from its host is T24's"));
-                }
-                if p.kind.text() {
-                    let Expr::Formula(s) = e else {
-                        return Err(format!("{who}: `{name}` is {}: it takes words or a parameter's name, not a number", p.kind.said()));
-                    };
-                    if s.chars().count() > MAX_TEXT || s.chars().any(char::is_control) {
-                        return Err(format!("{who}: `{name}`: words of up to {MAX_TEXT} characters on one line"));
-                    }
-                    match self.parameters.iter().find(|q| q.name == *s) {
-                        Some(q) if q.kind != p.kind => {
-                            return Err(format!(
-                                "{who}: `{name}` is {} and `{s}` is {}: associate it with one of its kind",
-                                p.kind.said(),
-                                q.kind.said()
-                            ));
-                        }
-                        Some(_) => {}
-                        None if p.kind == Kind::Material && !has_material(s) => {
-                            return Err(format!("{who}: `{name}`: there's no material or material parameter `{s}`"));
-                        }
-                        None => {}
-                    }
-                } else if let Expr::Number(x) = e
-                    && !(x.is_finite() && x.abs() <= MAX_COORD)
-                {
-                    return Err(format!("{who}: `{name}` is {x}, not a usable number"));
+                if q.of != Some(n.family.category) {
+                    return Err(format!(
+                        "{who}: it is labelled `{shown}`, a family type of {}, and `{}` is of {}: label it with one of its category",
+                        category_name(q.of.unwrap_or_default()),
+                        inst.family,
+                        category_name(n.family.category)
+                    ));
                 }
             }
+            // Its parameters: of any family its label may pick, the same kind in each that has one.
+            let families = self.instance_families(inst);
+            for (name, e) in &inst.params {
+                let found: Vec<(&str, &Parameter)> = families
+                    .iter()
+                    .filter_map(|m| m.family.parameters.iter().find(|p| p.name == *name).map(|p| (m.name.as_str(), p)))
+                    .collect();
+                let Some(&(_, first)) = found.first() else {
+                    return Err(format!("{who}: `{}` isn't a parameter of `{}`", name.chars().take(40).collect::<String>(), inst.family));
+                };
+                if let Some((other, q)) = found.iter().find(|(_, q)| q.kind != first.kind) {
+                    return Err(format!(
+                        "{who}: `{name}` is {} in `{}` and {} in `{other}`: what its label picks among holds it as one kind",
+                        first.kind.said(),
+                        found[0].0,
+                        q.kind.said()
+                    ));
+                }
+                for (family, p) in found {
+                    self.instance_param_ok(&who, family, name, e, p, has_material)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Whether nested instance `who`'s parameter `name`, `p` of nested family `family`, may be set to `e` from the host.
+    fn instance_param_ok(
+        &self,
+        who: &str,
+        family: &str,
+        name: &str,
+        e: &Expr,
+        p: &Parameter,
+        has_material: &dyn Fn(&str) -> bool,
+    ) -> Result<(), String> {
+        if p.formula.is_some() {
+            return Err(format!("{who}: `{name}` is worked out by a formula of `{family}`: it can't be set from here"));
+        }
+        if p.reporting {
+            return Err(format!("{who}: `{name}` is a reporting parameter: it reads a dimension and is set by none"));
+        }
+        // A family type is associated with one of the host's of its category, whose every choice the nested family
+        // nests too (T24): what the host picks, it picks among its own.
+        if p.kind == Kind::FamilyType {
+            let of = p.of.unwrap_or_default();
+            let host = match e {
+                Expr::Formula(s) => self.parameters.iter().find(|q| q.name == *s && q.kind == Kind::FamilyType && q.of == p.of),
+                Expr::Number(_) => None,
+            };
+            let Some(q) = host else {
+                let said = match e {
+                    Expr::Formula(s) => s.chars().take(40).collect::<String>(),
+                    Expr::Number(x) => x.to_string(),
+                };
+                return Err(format!(
+                    "{who}: `{name}` is a family type of {}: associate it with a family type parameter of the host of that \
+                     category, not `{said}`",
+                    category_name(of)
+                ));
+            };
+            let Some(nested) = self.nested_family(family) else { return Ok(()) };
+            for (f, t) in self.choices(of) {
+                if !nested.family.choices(of).iter().any(|(g, u)| *g == f && *u == t) {
+                    return Err(format!(
+                        "{who}: `{name}` is associated with `{}`, which may pick `{f}` (type `{t}`), and `{family}` doesn't \
+                         nest that: load it into `{family}` too, or leave it out",
+                        q.name
+                    ));
+                }
+            }
+            return Ok(());
+        }
+        if p.kind.text() {
+            let Expr::Formula(s) = e else {
+                return Err(format!("{who}: `{name}` is {}: it takes words or a parameter's name, not a number", p.kind.said()));
+            };
+            if s.chars().count() > MAX_TEXT || s.chars().any(char::is_control) {
+                return Err(format!("{who}: `{name}`: words of up to {MAX_TEXT} characters on one line"));
+            }
+            match self.parameters.iter().find(|q| q.name == *s) {
+                Some(q) if q.kind != p.kind => {
+                    return Err(format!(
+                        "{who}: `{name}` is {} and `{s}` is {}: associate it with one of its kind",
+                        p.kind.said(),
+                        q.kind.said()
+                    ));
+                }
+                Some(_) => {}
+                None if p.kind == Kind::Material && !has_material(s) => {
+                    return Err(format!("{who}: `{name}`: there's no material or material parameter `{s}`"));
+                }
+                None => {}
+            }
+        } else if let Expr::Number(x) = e
+            && !(x.is_finite() && x.abs() <= MAX_COORD)
+        {
+            return Err(format!("{who}: `{name}` is {x}, not a usable number"));
         }
         Ok(())
     }
