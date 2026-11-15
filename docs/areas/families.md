@@ -1831,9 +1831,11 @@ the default switches snaps exactly as before (`traces_snap_under_the_default_swi
 work plane grid) are no keys of a family's: nothing in it is a point a snap finds (an adaptive family's {3D} picks its points itself),
 and its work plane's grid is only drawn, in {3D} with Show on. Measure's clicks and the Reference Plane, Reference Line and Model
 Line tools' points snap the same way (FE-21b): the traces are the planes' (datums included), the reference lines' and the model
-lines', each as the view draws it, gathered while one of those tools or a Modify tool is in hand; Shift squares the snapped point
-from the first, a drawn point takes a waiting override as Measure's does, and the rubber band from the first click runs to the point
-the click will take. Tests: `tests/family_snaps.rs`, `tests/family_draw_snaps.rs`; the core's in `snap.rs`.
+lines', each as the view draws it (what it hides, for now or for good, is none: `plane_hidden`, as the staged view leaves it out),
+gathered while one of those tools or a Modify tool is in hand. With Shift held the second point is squared from the first, then slid
+along that square line onto a trace crossing it (`snap::on_traces_square`), so it never leaves the square. A drawn point takes a
+waiting override as Measure's does; two clicks that land on one point keep the first and say so; a cross marks where the next click
+snaps, and the band from the first click runs to it. Tests: `tests/family_snaps.rs`, `tests/family_draw_snaps.rs`; the core's in `snap.rs`.
 
 ## Pin, Measure and Create Similar (FE-17)
 
