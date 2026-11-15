@@ -815,7 +815,7 @@ msgstr "Uitgelijnde maatlijn (DI): kies evenwijdige muurvlakken, muuruiteinden, 
 msgid "Aligned Dimension in 3D"
 msgstr "Uitgelijnde maatlijn in 3D"
 
-#: crates/ui-egui/src/orbit.rs:1413
+#: crates/ui-egui/src/orbit.rs:1543
 msgid "Aligned dimension: {}"
 msgstr "Uitgelijnde maatlijn: {}"
 
@@ -1757,7 +1757,7 @@ msgid "Build"
 msgstr "Bouwen"
 
 #: crates/ui-egui/src/editor/document.rs:2452
-#: crates/ui-egui/src/orbit.rs:1558
+#: crates/ui-egui/src/orbit.rs:1688
 msgid "Building 3D view…"
 msgstr ""
 
@@ -3495,7 +3495,7 @@ msgid "Core Face: Interior"
 msgstr "Kernvlak: binnenkant"
 
 #: crates/ui-egui/src/editor/document.rs:2456
-#: crates/ui-egui/src/orbit.rs:1562
+#: crates/ui-egui/src/orbit.rs:1692
 msgid "Could not fit the 3D view: {}"
 msgstr ""
 
@@ -6317,7 +6317,7 @@ msgstr "Markeer wat onder de cursor ligt"
 msgid "Home"
 msgstr "Startpagina"
 
-#: crates/ui-egui/src/orbit.rs:2399
+#: crates/ui-egui/src/orbit.rs:2529
 msgid "Home View"
 msgstr "Startweergave"
 
@@ -7472,7 +7472,7 @@ msgid "Loaded; nothing taken from it yet"
 msgstr ""
 
 #: crates/ui-egui/src/editor/document.rs:2560
-#: crates/ui-egui/src/orbit.rs:1751
+#: crates/ui-egui/src/orbit.rs:1881
 msgid "Loading 3D view onto the card…"
 msgstr ""
 
@@ -9844,11 +9844,11 @@ msgstr "Muren kiezen: een randlijn langs elke aangeklikte muur"
 msgid "Pick a circle or an arc, then click where the dimension goes."
 msgstr "Kies een cirkel of een boog en klik daarna waar de maatlijn komt."
 
-#: crates/ui-egui/src/orbit.rs:1417
+#: crates/ui-egui/src/orbit.rs:1547
 msgid "Pick a corner, an edge or a face of the model to dimension."
 msgstr "Kies een hoek, een rand of een vlak van het model om te bematen."
 
-#: crates/ui-egui/src/orbit.rs:2261
+#: crates/ui-egui/src/orbit.rs:2391
 msgid "Pick a corner, an edge or a face of the model to measure."
 msgstr ""
 
@@ -9856,7 +9856,7 @@ msgstr ""
 msgid "Pick a curved wall or an arc."
 msgstr "Kies een gebogen muur of een boog."
 
-#: crates/ui-egui/src/orbit.rs:2218
+#: crates/ui-egui/src/orbit.rs:2348
 msgid "Pick a face of a wall, a floor, a ceiling or a roof to place it on."
 msgstr "Kies een vlak van een muur, een vloer, een plafond of een dak om het op te plaatsen."
 
@@ -10283,12 +10283,12 @@ msgid "Place Centre"
 msgstr "Hartlijn plaatsen"
 
 #: crates/ui-egui/src/lib.rs:1960
-#: crates/ui-egui/src/orbit.rs:1432
+#: crates/ui-egui/src/orbit.rs:1562
 msgid "Place Column"
 msgstr "Kolom plaatsen"
 
 #: crates/ui-egui/src/lib.rs:1962
-#: crates/ui-egui/src/orbit.rs:1434
+#: crates/ui-egui/src/orbit.rs:1564
 msgid "Place Component"
 msgstr "Onderdeel plaatsen"
 
@@ -10433,7 +10433,7 @@ msgid "Place Voice Outlet"
 msgstr "Telefoonaansluiting plaatsen"
 
 #: crates/ui-egui/src/lib.rs:1935
-#: crates/ui-egui/src/orbit.rs:1431
+#: crates/ui-egui/src/orbit.rs:1561
 msgid "Place Wall"
 msgstr "Muur plaatsen"
 
@@ -14256,7 +14256,7 @@ msgstr ""
 msgid "The view is edge-on to the sketch's plane: turn it to pick on it."
 msgstr "De weergave kijkt langs het schetsvlak: draai ze om erop te kiezen."
 
-#: crates/ui-egui/src/orbit.rs:1403
+#: crates/ui-egui/src/orbit.rs:1533
 msgid "The view runs along the dimension: turn it to place its line."
 msgstr "De weergave loopt langs de maatlijn: draai ze om de lijn ervan te plaatsen."
 
@@ -15979,7 +15979,7 @@ msgstr ""
 
 #: crates/ui-egui/src/canvas.rs:2066
 #: crates/ui-egui/src/editor/document.rs:1553
-#: crates/ui-egui/src/orbit.rs:2402
+#: crates/ui-egui/src/orbit.rs:2532
 msgid "Zoom to Fit"
 msgstr "Passend zoomen"
 
@@ -16158,7 +16158,7 @@ msgstr "cirkel"
 msgid "click its line's end"
 msgstr "klik op het einde van de lijn"
 
-#: crates/ui-egui/src/orbit.rs:2335
+#: crates/ui-egui/src/orbit.rs:2465
 msgid "click on the floor's top"
 msgstr "klik op de bovenkant van de vloer"
 
@@ -16611,7 +16611,7 @@ msgstr "er is al een parameter `{}`"
 msgid "there's no detail group yet: select detail lines and Create Group"
 msgstr "er is nog geen detailgroep: selecteer detaillijnen en kies Groep maken"
 
-#: crates/ui-egui/src/orbit.rs:1351
+#: crates/ui-egui/src/orbit.rs:1481
 msgid "there's no face to paint there"
 msgstr "daar is geen vlak om te verven"
 
@@ -16623,7 +16623,7 @@ msgstr "hier is geen map om favorieten in te bewaren"
 msgid "this machine"
 msgstr "deze machine"
 
-#: crates/ui-egui/src/orbit.rs:2235
+#: crates/ui-egui/src/orbit.rs:2365
 #: crates/ui-egui/src/paper.rs:172
 #: crates/ui-egui/src/section.rs:431
 msgid "this tool works in plan views: open one from the Project Browser"
@@ -17032,7 +17032,7 @@ msgstr "{} van {} optreden"
 
 #: crates/ui-egui/src/canvas.rs:1484
 #. what a point snapped to, then the category and id of its element: "Endpoint of Wall 100231".
-#: crates/ui-egui/src/orbit.rs:2035
+#: crates/ui-egui/src/orbit.rs:2165
 msgid "{} of {} {}"
 msgstr "{} van {} {}"
 
@@ -17284,11 +17284,11 @@ msgstr ""
 msgid "{}: `{}` isn't a number"
 msgstr "{}: `{}` is geen getal"
 
-#: crates/ui-egui/src/orbit.rs:1445
+#: crates/ui-egui/src/orbit.rs:1575
 msgid "{}: in the 3D view it stands on a level face (the top of a floor, a flat roof or a level): point at one"
 msgstr "{}: in de 3D-weergave staat het op een horizontaal vlak (de bovenkant van een vloer, een plat dak of een niveau): wijs er een aan"
 
-#: crates/ui-egui/src/orbit.rs:1441
+#: crates/ui-egui/src/orbit.rs:1571
 msgid "{}: in the 3D view its points go on a level face (the top of a floor, a column, a flat roof or a level): point at one"
 msgstr "{}: in de 3D-weergave komen de punten op een horizontaal vlak (de bovenkant van een vloer, een kolom, een plat dak of een niveau): wijs er een aan"
 
@@ -18533,7 +18533,4 @@ msgstr "Boven"
 #~ msgstr ""
 #: crates/ui-egui/src/editor/view_graphics.rs:168
 #~ msgid "a view range is a plan's: open a floor or ceiling plan"
-#~ msgstr ""
-#: crates/ui-egui/src/editor/handle_params.rs:258
-#~ msgid "{} would be {}: a length must be above zero."
 #~ msgstr ""
