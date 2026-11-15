@@ -294,6 +294,14 @@ pub struct Lines {
     pub picture: Option<crate::view3d::Image>,
 }
 
+/// The pixels at a picture's top and bottom that something floats over (a window's view tabs, its view control bar): a
+/// view is fitted clear of them (UI-1).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub struct Clear {
+    pub top: u32,
+    pub bottom: u32,
+}
+
 /// What one of a family's views shows: its frame, its drawing (what picks) and its pixels.
 pub struct Shown {
     pub view: View,
@@ -396,13 +404,26 @@ impl Staged {
     /// which, fitted, its annotation and pens are their size on paper, so the names read as a sheet's would, and grow
     /// and shrink as it is zoomed, as a project's views' do.
     pub fn draw_lines(&mut self, which: Which, width: u32, height: u32, zoom: f64, pan: P2) -> Result<Lines, String> {
-        let fitted = self.frame(which, width, height, 1.0, P2(0.0, 0.0));
+        let fitted = self.fitted(which, width, height, Clear::default());
+        self.draw_lines_at(which, fitted, zoom, pan)
+    }
+
+    /// View `which` fitted in a `width` by `height` picture, clear of what floats over it: the frame zoom and pan start from,
+    /// which a front end may keep while only they change.
+    pub fn fitted(&mut self, which: Which, width: u32, height: u32, clear: Clear) -> View {
+        let _ = clear;
+        self.frame(which, width, height, 1.0, P2(0.0, 0.0))
+    }
+
+    /// View `which` drawn as [`draw_lines`](Self::draw_lines) draws it, from frame `fitted` ([`fitted`](Self::fitted)), `zoom`
+    /// times as close, moved `pan` mm.
+    pub fn draw_lines_at(&mut self, which: Which, fitted: View, zoom: f64, pan: P2) -> Result<Lines, String> {
         let n = (crate::sheet::DENSITY / fitted.scale).clamp(1.0, 1e5);
         if let Some(g) = self.view_id(which).and_then(|id| self.model.elements.get_mut(id)).and_then(crate::graphics::graphics_mut) {
             g.scale = Some(n);
         }
         let m = &self.model;
-        let view = self.frame(which, width, height, zoom, pan);
+        let view = View { scale: fitted.scale * zoom.clamp(0.05, 50.0), cx: fitted.cx + pan.0, cy: fitted.cy + pan.1, ..fitted };
         // The reference lines, as the view sees them: seen from above in plan (and from below in the ceiling plan), across
         // an elevation where their plane is square to it, foreshortened where it isn't.
         let lines: Vec<(P2, P2)> = self.lines.iter().map(|(a, b)| (self.to_view(which, *a), self.to_view(which, *b))).collect();
@@ -1548,6 +1569,35 @@ mod tests {
 
     /// A box family's planes, the datums with Left, Right, Front, Back and Top of its own, drawn in every view: no plane's
     /// name lies on any plane's trace, its own or another's.
+    /// UI-1: fitted, everything a view draws (its plane names, its elevation marks' names, its levels') lies inside the picture,
+    /// clear of what floats over its top and bottom, in a narrow window as in a wide one.
+    #[test]
+    fn a_fitted_view_draws_everything_inside_clear_of_what_floats_over_it() {
+        use crate::render::Prim;
+        let mut st = staged(&boxed(0.0, 2000.0));
+        let views = [Which::Plan, Which::Ceiling].into_iter().chain(Side::ALL.iter().map(|s| Which::Elevation(*s)));
+        for which in views {
+            for (w, h) in [(1040, 760), (900, 900), (1600, 700), (600, 900)] {
+                for clear in [Clear::default(), Clear { top: 30, bottom: 50 }] {
+                    let fitted = st.fitted(which, w, h, clear);
+                    let lines = st.draw_lines_at(which, fitted, 1.0, P2(0.0, 0.0)).unwrap();
+                    let ink: Vec<(f32, f32)> =
+                        lines.drawing.prims.iter().filter(|p| !matches!(p, Prim::Image { .. })).flat_map(Prim::points).collect();
+                    assert!(!ink.is_empty());
+                    let (top, bottom) = (clear.top as f32, (h - clear.bottom) as f32);
+                    for (x, y) in ink {
+                        assert!(
+                            (0.0..=w as f32).contains(&x) && (top..=bottom).contains(&y),
+                            "{which:?} {w}x{h} {clear:?}: ({x}, {y}) outside"
+                        );
+                    }
+                    // Not shrunk to nothing: the room still fills a good part of it.
+                    assert!(lines.view.scale >= 0.4 * st.fitted(which, w, h, Clear::default()).scale, "{which:?} {w}x{h}");
+                }
+            }
+        }
+    }
+
     #[test]
     fn no_plane_name_lies_on_a_trace_in_any_view() {
         use crate::render::{Part, Prim};
