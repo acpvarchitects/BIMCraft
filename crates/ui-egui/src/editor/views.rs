@@ -1778,6 +1778,7 @@ impl FamilyEditor {
         // Refused where it leaves the family failing its checks it passed (FE-7 review): put back, saying why.
         let kept = moved.map(|_| (self.draft(), self.sound()));
         let was = (self.planes.clone(), self.lines.clone());
+        let mut placed = Vec::new();
         let held = family.as_ref().is_some_and(|f| {
             f.constrained() && f.dimensions.iter().any(|d| d.refs.contains(&DimRef::Plane(moved.map_or(Guid::default(), |m| m.0))))
         });
@@ -1787,7 +1788,7 @@ impl FamilyEditor {
         {
             let n = p.frame().z;
             let at = p.start[0] * n[0] + p.start[1] * n[1] + p.start[2] * n[2] + d[0] * n[0] + d[1] * n[1] + d[2] * n[2];
-            self.drag_through(g, at);
+            placed = self.drag_through(g, at);
         } else if let Some((g, d)) = moved
             && let Some(p) = self.planes.iter_mut().find(|p| p.guid == g)
         {
@@ -1800,8 +1801,8 @@ impl FamilyEditor {
             // The reference lines drawn on it go with it (FE-7 review).
             super::drag_move::carry_lines(&mut self.lines, g, std::array::from_fn(|i| n[i] * along));
         }
-        // The model lines drawn on what moved go with it (FE-15).
-        self.carry_model_lines(&was.0, &was.1);
+        // The model lines drawn on what moved go with it (FE-15), but those its constraints placed (part 2).
+        self.carry_model_lines(&was.0, &was.1, &placed);
         if let Some((draft, true)) = kept
             && let Err(e) = self.family().and_then(|f| f.check(&|_| true))
         {

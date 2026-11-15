@@ -285,6 +285,10 @@ pub(super) fn paint(painter: &Painter, m: &DimMark, screen: &dyn Fn(P2) -> Pos2,
     let n = vec2(-along.y, along.x);
     let stroke = Stroke::new(1.0, color);
     painter.line_segment([first - along * 8.0, last + along * 8.0], stroke);
+    // From a model line short of it out to its line (FE-15).
+    for (a, b) in &m.witnesses {
+        painter.line_segment([screen(*a), screen(*b)], stroke);
+    }
     for p in &pts {
         painter.line_segment([*p - n * 9.0, *p + n * 9.0], stroke);
         painter.line_segment([*p - (along + n) * 4.0, *p + (along + n) * 4.0], Stroke::new(1.6, color));
@@ -771,7 +775,10 @@ impl FamilyEditor {
 
     /// Edits a drag or Align worked out, made to the draft: planes moved along their normals, extrusion ends given numbers, a
     /// label's parameter given its new value in the type previewed (an instance parameter's, its default).
-    pub(crate) fn apply_edits(&mut self, edits: Vec<Edit>) {
+    pub(crate) fn apply_edits(&mut self, edits: Vec<Edit>) -> Vec<Guid> {
+        // The model lines the constraints set where they now stand (FE-15): what carrying them with their host again would
+        // move twice.
+        let mut placed = Vec::new();
         for e in edits {
             match e {
                 Edit::Plane(g, at) => {
@@ -829,6 +836,7 @@ impl FamilyEditor {
                         // A model line the constraints set (FE-15).
                         l.start = start;
                         l.end = end;
+                        placed.push(g);
                     }
                 }
                 Edit::Turn(i, k, t) => self.turn_sketch_arc(i, k, t),
@@ -850,6 +858,7 @@ impl FamilyEditor {
                 }
             }
         }
+        placed
     }
 
     /// Form `i`'s sketch (and a blend's top) slid `by` along its plane's axes, each coordinate keeping its formula.
@@ -909,14 +918,16 @@ impl FamilyEditor {
         self.forms[i] = FormText::again(&f, tag);
     }
 
-    /// Plane `g` dragged to `to` along its normal, through its constraints: done, or "Constraints are not satisfied".
-    pub(super) fn drag_through(&mut self, g: Guid, to: f64) {
-        let Ok(f) = self.family() else { return };
+    /// Plane `g` dragged to `to` along its normal, through its constraints: done, or "Constraints are not satisfied". The
+    /// model lines the constraints placed (`apply_edits`).
+    pub(super) fn drag_through(&mut self, g: Guid, to: f64) -> Vec<Guid> {
+        let Ok(f) = self.family() else { return Vec::new() };
         match f.drag_plane(&self.values(), g, to) {
             Ok(edits) => self.apply_edits(edits),
             Err(e) => {
                 self.views.drag = None;
                 self.unsatisfied(e, Retry::Drag(g, to));
+                Vec::new()
             }
         }
     }
@@ -1052,7 +1063,9 @@ impl FamilyEditor {
             let before = self.draft();
             self.remove_constraints(&u.dims);
             match u.retry {
-                Retry::Drag(g, to) => self.drag_through(g, to),
+                Retry::Drag(g, to) => {
+                    self.drag_through(g, to);
+                }
                 Retry::Align(a, b) => {
                     if let Some((_, _, at, which)) = self.views.align_pending.take() {
                         self.align_through(a, b, at, which);

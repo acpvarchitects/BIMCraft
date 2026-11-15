@@ -3148,6 +3148,9 @@ pub struct DimMark {
     pub equal: bool,
     pub alignment: bool,
     pub kind: DimKind,
+    /// The witness lines from what it measures to its line where nothing drawn runs past (FE-15: a model line, or its end, short
+    /// of where the dimension is placed), each from the reference to the dimension's line (the view's mm).
+    pub witnesses: Vec<(P2, P2)>,
 }
 
 /// The dimensions of `flexed` (`drawn`, the family as drawn, flexed for `values`) drawn in view `which` of `st`. An angular
@@ -3221,6 +3224,31 @@ pub fn marks(drawn: &Family, flexed: &Family, values: &BTreeMap<String, Val>, st
         let along = along * (1.0 / len);
         let across = P2(-along.1, along.0);
         let locked = (0..lengths.len()).map(|i| d.is_locked(i)).collect();
+        // A model line short of the dimension's line: a witness from it out to there.
+        let mut witnesses = Vec::new();
+        if d.kind.is_aligned() {
+            for (r, p) in d.refs.iter().zip(&points) {
+                let (g, spot) = match *r {
+                    DimRef::ModelLine(g) => (g, None),
+                    DimRef::ModelLinePoint(g, s) => (g, Some(s)),
+                    _ => continue,
+                };
+                let Some(l) = flexed.model_lines.iter().find(|l| l.guid == g) else { continue };
+                let (a, b) = (st.to_view(which, l.start), st.to_view(which, l.end));
+                let q = match spot {
+                    Some(Spot::End) => b,
+                    Some(_) => a,
+                    None => {
+                        let ab = b - a;
+                        let t = ((*p - a).dot(ab) / ab.dot(ab).max(1e-12)).clamp(0.0, 1.0);
+                        a + ab * t
+                    }
+                };
+                if q.dist(*p) > 1e-6 {
+                    witnesses.push((q, *p));
+                }
+            }
+        }
         out.push(DimMark {
             index,
             points,
@@ -3232,6 +3260,7 @@ pub fn marks(drawn: &Family, flexed: &Family, values: &BTreeMap<String, Val>, st
             equal: d.equal,
             alignment: d.alignment,
             kind: d.kind,
+            witnesses,
         });
     }
     out

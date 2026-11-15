@@ -566,11 +566,18 @@ A model line is a dimension's reference as a reference line is (FE-15 part 2, FO
 line seen edge on, the plane through it square to its host (a reference line's vertical face), and `{"model_line": guid,
 "point": "start" | "end"}` one of its ends. The solver takes a line of either list (`constraints::Ln`), so a labelled or
 locked dimension, or an Align lock, moves a model line's start, angle and length on its host by the reference line's own
-rows, and the project draws it where the type puts it (`Family::model_line_parts`). A pinned one is no unknown: a dimension
-that would move it is refused, saying it is pinned, and Align leaves it. Delete takes it from its dimensions, as a plane's;
-copies, the clipboard, Modify and ids remap it. In the family's views Aligned and Angular Dimension and Align pick one the
-view sees edge on (`constraints::line_faces`: in plan, a line drawn on Ref. Level), and Align slides it across its host onto
-the reference, its padlock offered (`family_model_line_ref_tests.rs`, `tests/family_model_line_refs.rs`).
+rows, and the project draws it where the type puts it (`Family::model_line_parts`); a dimension to its end stretches it from
+its start (its length gives way first). Its edge-on plane faces a way, so a dimension to it must be parallel to its other
+references and seen edge on in its view, and Angular measures it as a line. A pinned one is no unknown, nor is what it is
+drawn on for its sake: a dimension that would move it is refused, saying it is pinned, Pin refuses a line a dimension already
+moves (the draft as it was), and Align leaves it. That is stricter than a pinned plane or reference line, which a label still
+flexes (FE-17's pin holds them against a drag only): a model line is drawing, not a datum, and the review of FE-15 part 2
+asked that a pin hold it against the solver too. Delete, from the `family` command or in a view, takes it from its
+dimensions, as a plane's; copies, the clipboard, Modify and ids remap it; a plane dragged carries it once, not again where
+the constraints placed it. In the family's views Aligned and Angular Dimension and Align pick one the view sees edge on
+(`constraints::line_faces`: in plan, a line drawn on Ref. Level), Align slides it across its host onto the reference, its
+padlock offered, and a dimension placed past its ends draws a witness out to it (`DimMark::witnesses`)
+(`family_model_line_ref_tests.rs`, `tests/family_model_line_refs.rs`).
 
 An adaptive family's work planes are these planes too: a reference point is drawn on a datum, a named plane of the family's own
 or a reference line's face, and keeps it as its Work Plane by `PlaneRef`; the three datums an adaptive definition had of its own

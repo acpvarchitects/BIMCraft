@@ -228,6 +228,30 @@ fn an_angular_dimension_turns_a_model_line() {
     assert_eq!(b, pb);
 }
 
+#[test]
+fn a_dimension_to_a_model_line_draws_a_witness_from_the_line_to_where_it_is_placed() {
+    use crate::family::views::{Which, stage};
+    let mut s = Session::new();
+    // Placed east of the line's end (400): a witness from the line out to the dimension's line; Center (Front/Back) runs past.
+    let dims = json!([{"view": "plan", "refs": [{"plane": CENTER_FRONT_BACK.to_string()}, {"model_line": LINE}], "at": [700, -150, 0]}]);
+    run(&mut s, "family", family(false, dims));
+    let f = s.model.families["P"].clone();
+    let values = f.values("A", &Default::default()).unwrap();
+    let st = stage(std::sync::Arc::unwrap_or_clone(s.model.clone()), &f, &values, &|_| true);
+    let marks = crate::family::constraints::marks(&f, &f, &values, &st, Which::Plan);
+    let m = &marks[0];
+    assert_eq!(m.witnesses.len(), 1, "one witness, the model line's: {:?}", m.witnesses);
+    let (from, to) = m.witnesses[0];
+    let (end, at) = (st.to_view(Which::Plan, [400.0, -300.0, 0.0]), st.to_view(Which::Plan, [700.0, -300.0, 0.0]));
+    assert!(from.dist(end) < 1e-6 && to.dist(at) < 1e-6, "from the line's end to the dimension's line: {from:?} {to:?}");
+    // Placed across the line: none.
+    let dims = json!([{"view": "plan", "refs": [{"plane": CENTER_FRONT_BACK.to_string()}, {"model_line": LINE}], "at": [200, -150, 0]}]);
+    run(&mut s, "family", family(false, dims));
+    let f = s.model.families["P"].clone();
+    let st = stage(std::sync::Arc::unwrap_or_clone(s.model.clone()), &f, &values, &|_| true);
+    assert!(crate::family::constraints::marks(&f, &f, &values, &st, Which::Plan)[0].witnesses.is_empty());
+}
+
 /// For the hostile sweep (`tests::hostile_params_never_panic_or_break_the_model`): `family` payloads with model-line
 /// references that name nothing or a point a line hasn't.
 pub(crate) fn sweep_payloads() -> Vec<(&'static str, Value)> {
