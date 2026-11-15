@@ -7364,6 +7364,7 @@ mod family_draw_snaps;
 mod family_edges_not_hull;
 mod family_exit;
 mod family_hide_override;
+mod family_icons;
 mod family_keys;
 mod family_manage;
 mod family_measure;
