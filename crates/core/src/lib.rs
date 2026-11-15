@@ -140,6 +140,8 @@ mod ifc_member_tests;
 pub mod import;
 pub mod inquiry;
 pub mod insert;
+#[cfg(test)]
+mod join_geometry_tests;
 pub mod language;
 pub mod lenient;
 pub mod library;

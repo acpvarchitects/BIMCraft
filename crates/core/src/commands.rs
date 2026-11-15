@@ -25,10 +25,10 @@ use crate::memory;
 use crate::model::{
     CEILING_HEIGHT, CadImport, Ceiling, CeilingType, Column, ColumnType, Component, DEFAULT_HEIGHT, DimKind, Dimension, Dimension3D,
     Element, End, Extrusion, Face, Facing, Floor, FloorType, Grid, Guid, HostRef, Hosted, Id, Key, Landing, Layer, Level, Line, Location,
-    MAX_COORD, MAX_POINTS, MAX_SLOPE, MAX_TEXT, Mass, Model, Note, Opening, OpeningType, Orient, PARAMETER_CATEGORIES, ParameterKind,
-    Pattern, Perspective, PlanView, PointCloud, ProjectParameter, PropertyLine, RAMP_SLOPE, RAMP_WIDTH, RISER, Railing, RailingType, Ramp,
-    Rebar, Ref3, Reference, Roof, RoofType, Room, RoomArea, RoomSeparator, STAIR_WIDTH, Schedule, Scope, Section, SectionBox, Shaft, Sheet,
-    Side, Spot, Stair, TOL, TREAD, Tag, Unbound, View3D, Viewport, Wall, WallType, heading, paper,
+    MAX_COORD, MAX_JOINS, MAX_POINTS, MAX_SLOPE, MAX_TEXT, Mass, Model, Note, Opening, OpeningType, Orient, PARAMETER_CATEGORIES,
+    ParameterKind, Pattern, Perspective, PlanView, PointCloud, ProjectParameter, PropertyLine, RAMP_SLOPE, RAMP_WIDTH, RISER, Railing,
+    RailingType, Ramp, Rebar, Ref3, Reference, Roof, RoofType, Room, RoomArea, RoomSeparator, STAIR_WIDTH, Schedule, Scope, Section,
+    SectionBox, Shaft, Sheet, Side, Spot, Stair, TOL, TREAD, Tag, Unbound, View3D, Viewport, Wall, WallType, heading, paper,
 };
 use crate::paint;
 use crate::phasing;
@@ -41,6 +41,7 @@ use crate::workplane::{Surface, WorkPlane};
 use crate::{pdf, render, schedule, sheet, snap, stairs, view3d};
 
 mod cut_geometry;
+mod join_geometry;
 mod work_plane;
 
 type R = Result<Value, String>;
@@ -291,6 +292,32 @@ other_files(
         "{target: wall, cutter: component} (each an id or GUID) Uncut Geometry: the component no longer cuts the wall, as \
          `cut_geometry` made it",
         cut_geometry::uncut_geometry,
+    ),
+    edit(
+        "join_geometry",
+        ui_msg!("Join Geometry"),
+        &[],
+        "{first, second} (each a wall, floor, roof or ceiling, by id or GUID) Join Geometry: `first` cuts `second` from now on, \
+         which loses what `first`'s own solids take of it, in section and in 3D (plans are as they were). They must meet: overlap, \
+         or share a face. `second` lists `first` in its `joined_by`; the join is kept while both stand, cutting nothing after an \
+         edit parts them (`warnings` says so), and goes with either's deletion. A pair is joined one way at a time \
+         (`switch_join_order` flips it), and a join that would close a loop of joins is refused, naming it. IFC: IfcRelConnectsElements, both bodies whole. Returns {first, second}",
+        join_geometry::join_geometry,
+    ),
+    edit(
+        "switch_join_order",
+        ui_msg!("Switch Join Order"),
+        &[],
+        "{first, second} (a joined pair, either way round) Switch Join Order: the one that was cut cuts the other. Returns \
+         {first, second}, `first` the one that cuts now",
+        join_geometry::switch_join_order,
+    ),
+    edit(
+        "unjoin_geometry",
+        ui_msg!("Unjoin Geometry"),
+        &[],
+        "{first, second} (a joined pair, either way round) Unjoin Geometry: neither cuts the other, as before `join_geometry`",
+        join_geometry::unjoin_geometry,
     ),
     edit(
         "edit_work_plane",
@@ -10129,6 +10156,7 @@ fn wall(s: &mut Session, p: &Value) -> R {
                 attach_base,
                 room_bounding,
                 join: true,
+                joined_by: Vec::new(),
             }))),
             _ => None,
         })
@@ -10351,6 +10379,7 @@ fn floor(s: &mut Session, p: &Value) -> R {
         shape: Default::default(),
         pattern_origin: P2(0.0, 0.0),
         pattern_angle: 0.0,
+        joined_by: Vec::new(),
     }));
     Ok(json!({"id": id, "area_m2": area}))
 }
@@ -10390,6 +10419,7 @@ fn ceiling(s: &mut Session, p: &Value) -> R {
         openings,
         offset,
         sketch,
+        joined_by: Vec::new(),
     }));
     Ok(json!({"id": id, "area_m2": area}))
 }
@@ -12128,6 +12158,7 @@ fn roof(s: &mut Session, p: &Value) -> R {
         extrusion,
         sketch,
         shape: Default::default(),
+        joined_by: Vec::new(),
     };
     // Its sketch lines' slopes are its edges', unless it is given `slopes`.
     if absent(p.get("slopes")) {
@@ -12244,6 +12275,7 @@ fn dormer(s: &mut Session, p: &Value) -> R {
         extrusion: None,
         sketch: Vec::new(),
         shape: Default::default(),
+        joined_by: Vec::new(),
     }));
     let roof_guid = model.guid(roof);
     let wall = |start: P2, end: P2| {
@@ -12264,6 +12296,7 @@ fn dormer(s: &mut Session, p: &Value) -> R {
             attach_base: Some(host),
             room_bounding: true,
             join: true,
+            joined_by: Vec::new(),
         })
     };
     let (l, r) = (micron(at + n * (w / 2.0)), micron(at - n * (w / 2.0)));
@@ -17446,6 +17479,10 @@ fn duplicate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion) -> R {
                 *g = hosts.get(g).copied().unwrap_or(*g);
             }
         }
+        // Copied with what cuts it, a copy is cut by that one's copy; copied alone, by nothing.
+        if let Some(list) = m.elements.get_mut(id).and_then(Element::joined_by_mut) {
+            list.retain_mut(|g| hosts.get(g).map(|to| *g = *to).is_some());
+        }
         let ties = match m.elements.get_mut(id) {
             Some(Element::Wall(w)) => vec![&mut w.attach_top, &mut w.attach_base],
             Some(Element::Column(col) | Element::StructuralColumn(col)) => vec![&mut col.attach_top, &mut col.attach_base],
@@ -18764,11 +18801,15 @@ fn delete_indexed(s: &mut Session, p: &Value) -> R {
                 w.attach_top.is_some_and(|g| gone.contains(&g))
                     || w.attach_base.is_some_and(|g| gone.contains(&g))
                     || w.void_cuts.iter().any(|g| gone.contains(g))
+                    || w.joined_by.iter().any(|g| gone.contains(g))
+            }
+            Some(Element::Floor(Floor { joined_by, .. }) | Element::Ceiling(Ceiling { joined_by, .. })) => {
+                joined_by.iter().any(|g| gone.contains(g))
             }
             Some(Element::Column(col) | Element::StructuralColumn(col)) => {
                 col.attach_top.is_some_and(|g| gone.contains(&g)) || col.attach_base.is_some_and(|g| gone.contains(&g))
             }
-            Some(Element::Roof(r)) => r.join.is_some_and(|g| gone.contains(&g)),
+            Some(Element::Roof(r)) => r.join.is_some_and(|g| gone.contains(&g)) || r.joined_by.iter().any(|g| gone.contains(g)),
             // A 3D view whose work plane's level goes sketches on the lowest level again.
             Some(Element::View3D(v)) => v.work_plane.as_ref().is_some_and(|wp| wp.level.is_some_and(|l| gone.contains(&l))),
             // A board supplied by one that goes is left without a supply.
@@ -18816,6 +18857,10 @@ fn delete_indexed(s: &mut Session, p: &Value) -> R {
                     w.attach_base = None;
                 }
                 w.void_cuts.retain(|g| !gone.contains(g));
+                w.joined_by.retain(|g| !gone.contains(g));
+            }
+            Some(Element::Floor(Floor { joined_by, .. }) | Element::Ceiling(Ceiling { joined_by, .. })) => {
+                joined_by.retain(|g| !gone.contains(g));
             }
             Some(Element::Column(col) | Element::StructuralColumn(col)) => {
                 if col.attach_top.is_some_and(|g| gone.contains(&g)) {
@@ -18825,7 +18870,12 @@ fn delete_indexed(s: &mut Session, p: &Value) -> R {
                     col.attach_base = None;
                 }
             }
-            Some(Element::Roof(r)) if r.join.is_some_and(|g| gone.contains(&g)) => r.join = None,
+            Some(Element::Roof(r)) => {
+                if r.join.is_some_and(|g| gone.contains(&g)) {
+                    r.join = None;
+                }
+                r.joined_by.retain(|g| !gone.contains(g));
+            }
             Some(Element::View3D(v)) if v.work_plane.as_ref().is_some_and(|wp| wp.level.is_some_and(|l| gone.contains(&l))) => {
                 v.work_plane = None
             }
@@ -18972,6 +19022,9 @@ fn delete_from_scratch(s: &mut Session, p: &Value) -> R {
     for e in m.elements.values_mut() {
         if let Element::Wall(w) = e {
             w.void_cuts.retain(|g| !gone.contains(g));
+        }
+        if let Some(list) = e.joined_by_mut() {
+            list.retain(|g| !gone.contains(g));
         }
         let ties = match e {
             Element::Wall(w) => vec![&mut w.attach_top, &mut w.attach_base],

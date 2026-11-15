@@ -970,7 +970,8 @@ pub(crate) fn lazy_points(m: &Model, id: Id, e: &Element, components: &mut crate
 fn wall_solids(m: &Model, id: Id, index: Option<&walls::Index>) -> Vec<Solid> {
     let prism =
         |p: walls::Prism| Solid::Prism { owner: id, color: WALL, tex: 0, ring: p.ring, bottom: p.bottom, top: p.top, curve: p.curve };
-    let voids = walls::host_voids_in(m, id, index);
+    let mut voids = walls::host_voids_in(m, id, index);
+    voids.extend(join_voids(m, id, index));
     let prisms = walls::prisms_in(m, id, true, index).into_iter().map(prism).collect();
     if voids.is_empty() {
         return prisms;
@@ -996,6 +997,72 @@ pub(crate) fn takes_from_wall(m: &Model, id: Id, voids: &[Vec<[P3; 3]>]) -> bool
         voids.iter().zip(&boxes).any(|(v, b)| {
             (0..3).all(|c| b.0[c] < hi[c] && lo[c] < b.1[c])
                 && crate::csg::subtract(&tris, v, &mut meter).is_ok_and(|left| whole - volume(&left) > 1000.0)
+        })
+    })
+}
+
+/// Element `id`'s own solids, each as the triangles of one closed mesh, before anything cuts it: a wall's prisms round its
+/// doors' and windows' rectangles, a floor's, a ceiling's or a roof's slabs ([`slab_solids`]); none for another kind. A
+/// wall's neighbours are found through `index` where there is one.
+fn own_meshes(m: &Model, id: Id, index: Option<&walls::Index>) -> Vec<Vec<[P3; 3]>> {
+    let solids: Vec<Solid> = match m.elements.get(id) {
+        Some(Element::Wall(_)) => walls::prisms_in(m, id, true, index)
+            .into_iter()
+            .map(|p| Solid::Prism { owner: id, color: WALL, tex: 0, ring: p.ring, bottom: p.bottom, top: p.top, curve: p.curve })
+            .collect(),
+        Some(e @ (Element::Floor(_) | Element::Ceiling(_) | Element::Roof(_))) => slab_solids(m, id, e),
+        _ => Vec::new(),
+    };
+    solids
+        .iter()
+        .map(|s| {
+            let mut made = Vec::new();
+            s.tris(&mut made);
+            made.into_iter().map(|t| t.p).collect::<Vec<[P3; 3]>>()
+        })
+        .filter(|v| !v.is_empty() && v.iter().flatten().all(|p| p.iter().all(|x| x.is_finite())))
+        .collect()
+}
+
+/// What Join Geometry cuts element `id` with (T23): the own solids ([`own_meshes`]) of each element its `joined_by` names, as
+/// they are before anything cuts them, so nothing recurses (and joins never go round in a loop: `join_geometry` refuses one).
+pub(crate) fn join_voids(m: &Model, id: Id, index: Option<&walls::Index>) -> Vec<Vec<[P3; 3]>> {
+    let Some(e) = m.elements.get(id) else { return Vec::new() };
+    e.joined_by().iter().filter_map(|g| m.elements.id(*g)).flat_map(|by| own_meshes(m, by, index)).collect()
+}
+
+/// How near two elements' solids must come to meet, mm: within it, two that only share a face (a floor under a wall's foot)
+/// meet, as their faces do.
+const TOUCH: f64 = 1.0;
+
+/// Whether elements `a` and `b` meet, as Join Geometry asks before it joins them: one's own solids, as they are or moved
+/// [`TOUCH`] along an axis, take more than 100 mm³ of the other's ([`crate::csg::subtract`]). So two that overlap meet, and
+/// so do two that share a face of a square centimetre or more; two that touch along an edge or a point, or not at all, don't.
+pub(crate) fn meets(m: &Model, a: Id, b: Id, index: Option<&walls::Index>) -> bool {
+    let volume = |tris: &[[P3; 3]]| tris.iter().map(|[p, q, r]| dot(*p, cross(*q, *r)) / 6.0).sum::<f64>().abs();
+    let (cutters, cut) = (own_meshes(m, a, index), own_meshes(m, b, index));
+    let mut meter = crate::csg::Meter::default();
+    let shifts = [
+        [0.0, 0.0, 0.0],
+        [TOUCH, 0.0, 0.0],
+        [-TOUCH, 0.0, 0.0],
+        [0.0, TOUCH, 0.0],
+        [0.0, -TOUCH, 0.0],
+        [0.0, 0.0, TOUCH],
+        [0.0, 0.0, -TOUCH],
+    ];
+    cut.iter().any(|x| {
+        let (lo, hi) = tri_box(x);
+        let whole = volume(x);
+        cutters.iter().any(|y| {
+            let (ylo, yhi) = tri_box(y);
+            if !(0..3).all(|c| ylo[c] <= hi[c] + TOUCH && lo[c] <= yhi[c] + TOUCH) {
+                return false;
+            }
+            shifts.iter().any(|s| {
+                let moved: Vec<[P3; 3]> = y.iter().map(|t| t.map(|p| [p[0] + s[0], p[1] + s[1], p[2] + s[2]])).collect();
+                crate::csg::subtract(x, &moved, &mut meter).is_ok_and(|left| whole - volume(&left) > 100.0)
+            })
         })
     })
 }
@@ -1071,9 +1138,10 @@ fn slab_solids(m: &Model, id: Id, e: &Element) -> Vec<Solid> {
 
 /// Floor, ceiling or roof `id`'s solids: [`slab_solids`], less the voids of the components on its faces that reach it
 /// ([`Model::hosted_voids`]); should cutting fail, uncut.
-fn host_slab_solids(m: &Model, id: Id, e: &Element) -> Vec<Solid> {
+fn host_slab_solids(m: &Model, id: Id, e: &Element, index: Option<&walls::Index>) -> Vec<Solid> {
     let solids = slab_solids(m, id, e);
-    let voids: Vec<Vec<[P3; 3]>> = m.hosted_voids(id).into_iter().flat_map(|(_, v)| v).collect();
+    let mut voids: Vec<Vec<[P3; 3]>> = m.hosted_voids(id).into_iter().flat_map(|(_, v)| v).collect();
+    voids.extend(join_voids(m, id, index));
     if voids.is_empty() {
         return solids;
     }
@@ -1172,7 +1240,7 @@ fn solids_in_with(
     for &(id, e) in elements {
         match e {
             Element::Wall(_) => out.extend(wall_solids(m, id, index)),
-            Element::Floor(_) | Element::Ceiling(_) | Element::Roof(_) => out.extend(host_slab_solids(m, id, e)),
+            Element::Floor(_) | Element::Ceiling(_) | Element::Roof(_) => out.extend(host_slab_solids(m, id, e, index)),
             Element::Column(_) | Element::StructuralColumn(_) | Element::Footing(_) => {
                 let color = if matches!(e, Element::Column(_)) { WALL } else { STRUCTURE };
                 // Attached, its top follows what's over it, however that slopes: prisms, as a wall's.
