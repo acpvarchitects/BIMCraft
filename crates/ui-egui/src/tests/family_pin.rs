@@ -63,7 +63,8 @@ fn the_modify_panels_name_sits_on_the_ribbons_baseline_with_the_others() {
     h.run();
     pick(&mut h, &[Picked::Form(0)]);
     // Its tools are all small, one row: the panel keeps the ribbon's height all the same, its name where the others' are.
-    let y = |h: &Harness<BimApp>, name: &str| h.get_by_label(&format!("{name} \u{25be}")).rect().center().y;
+    // (A name over tools that all show is painted, and no widget: the ribbon says where it drew it.)
+    let y = |h: &Harness<BimApp>, name: &str| crate::ribbon::name_rect(&h.ctx, name).expect("the panel is drawn").center().y;
     let (modify, clipboard, measure) = (y(&h, "Modify"), y(&h, "Clipboard"), y(&h, "Measure"));
     assert!((modify - clipboard).abs() < 1.0 && (modify - measure).abs() < 1.0, "{modify} {clipboard} {measure}");
 }
