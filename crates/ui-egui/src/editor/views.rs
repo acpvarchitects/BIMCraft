@@ -1066,7 +1066,7 @@ impl FamilyEditor {
                 .map(|_| Err(t("Offset takes reference planes and reference lines: edit a form's sketch to offset its lines.").to_string()))
         };
         // The planes' and lines' traces a Modify tool's points snap to (FE-8), and Measure's and a drawn plane's or line's
-        // (FE-21b). A model line is one too, seen flat.
+        // (FE-21b). A model line is one too, seen flat. What the view hides, as the staged view leaves it out, is none.
         let snapping = self.views.modify.is_some() || self.views.measuring.is_some() || self.views.drawing.is_some();
         let traces: Vec<(P2, P2)> = match family.as_ref() {
             Some(f) if snapping => {
@@ -1076,9 +1076,15 @@ impl FamilyEditor {
                     .cloned()
                     .chain(bimcraft_core::family::datums().into_iter().filter(|d| !f.planes.iter().any(|p| p.guid == d.guid)));
                 planes
+                    .filter(|p| !self.plane_hidden(p.guid))
                     .filter_map(|p| plane_trace(&c.staged, which, &p.frame()))
                     .chain(f.lines.iter().map(|l| (c.staged.to_view(which, l.start), c.staged.to_view(which, l.end))))
-                    .chain(f.model_lines.iter().map(|l| (c.staged.to_view(which, l.start), c.staged.to_view(which, l.end))))
+                    .chain(
+                        f.model_lines
+                            .iter()
+                            .filter(|l| !self.plane_hidden(l.guid))
+                            .map(|l| (c.staged.to_view(which, l.start), c.staged.to_view(which, l.end))),
+                    )
                     .collect()
             }
             _ => Vec::new(),
@@ -1086,6 +1092,12 @@ impl FamilyEditor {
         // As Manage > Snaps says, or a snap override (FE-21) for the next point.
         let snaps = self.snaps;
         let snapped = |p: egui::Pos2| bimcraft_core::snap::on_traces(at_view(p), &traces, reach, &snaps);
+        // A drawn point's or Measure's second, from `first`: with Shift held squared, then snapped along the square line (FE-21b).
+        let shift = ui.input(|i| i.modifiers.shift);
+        let second = |first: Option<P2>, p: egui::Pos2| match first {
+            Some(a) if shift => bimcraft_core::snap::on_traces_square(a, at_view(p), &traces, reach, &snaps),
+            _ => snapped(p),
+        };
         if self.views.modify.is_some() {
             let pieces: Vec<[egui::Pos2; 2]> =
                 scene.as_ref().map(|s| shown_selection.iter().flat_map(|p| s.pieces(*p)).collect()).unwrap_or_default();
@@ -1192,21 +1204,27 @@ impl FamilyEditor {
                 }
             }
         }
-        // The plane being drawn, from its first click to the pointer, snapped as the click will be.
-        if let Some(Some(first)) = self.views.drawing
-            && let Some(hover) = response.hover_pos()
-        {
-            let at = snapped(hover);
-            let at = if ui.input(|i| i.modifiers.shift) { bimcraft_core::snap::orthogonal_step(first, at).0 } else { at };
-            painter.line_segment([screen(first), screen(at)], Stroke::new(1.5, PICKED));
-        }
-        // Measure's ruler (FE-17): from its first click to the pointer, snapped, and the one laid in this view, read beside it.
-        if let Some(m) = self.views.measuring.as_ref() {
-            if let (Some(first), Some(hover)) = (m.first, response.hover_pos()) {
-                let at = snapped(hover);
-                let at = if ui.input(|i| i.modifiers.shift) { bimcraft_core::snap::orthogonal_step(first, at).0 } else { at };
-                painter.line_segment([screen(first), screen(at)], Stroke::new(1.5, PICKED));
+        // Where the next click of a drawing tool or Measure lands, from the pointer: a marker where it snaps (FE-21b), and the
+        // band from the first click, the plane's or line's being drawn or Measure's ruler.
+        let first = match (self.views.drawing, self.views.measuring.as_ref()) {
+            (Some(first), _) => Some(first),
+            (None, Some(m)) => Some(m.first),
+            _ => None,
+        };
+        if let (Some(first), Some(hover)) = (first, response.hover_pos()) {
+            let at = second(first, hover);
+            if at.dist(at_view(hover)) > 1e-9 {
+                let c = screen(at);
+                let r = 5.0;
+                painter.line_segment([c - vec2(r, r), c + vec2(r, r)], Stroke::new(1.5, PICKED));
+                painter.line_segment([c - vec2(r, -r), c + vec2(r, -r)], Stroke::new(1.5, PICKED));
             }
+            if let Some(a) = first {
+                painter.line_segment([screen(a), screen(at)], Stroke::new(1.5, PICKED));
+            }
+        }
+        // Measure's ruler (FE-17): the one laid in this view, read beside it.
+        if let Some(m) = self.views.measuring.as_ref() {
             if let Some((a, b, _)) = m.laid.filter(|l| l.2 == which) {
                 let (pa, pb) = (screen(a), screen(b));
                 painter.line_segment([pa, pb], Stroke::new(2.0, PICKED));
@@ -1380,19 +1398,18 @@ impl FamilyEditor {
             } else if self.views.measuring.is_some() {
                 // Measure (FE-17): a ruler by two clicks, snapped as a Modify tool's points are; Shift keeps it square.
                 let first = self.views.measuring.as_ref().and_then(|m| m.first);
-                let at = match first {
-                    Some(a) if ui.input(|i| i.modifiers.shift) => bimcraft_core::snap::orthogonal_step(a, snapped(p)).0,
-                    _ => snapped(p),
-                };
-                measure_at = Some(at);
+                measure_at = Some(second(first, p));
             } else if let Some(first) = self.views.drawing {
                 // A plane's or a line's points snap as a Modify tool's do (FE-21b).
-                let q = snapped(p);
+                let q = second(first, p);
                 drew_at = true;
                 match first {
                     None => self.views.drawing = Some(Some(q)),
+                    // Two clicks on one point (both snapped to it): the first kept, and why nothing was drawn.
+                    Some(a) if a.dist(q) < 1e-6 => {
+                        self.views.status = Some(t("The two points are the same: pick the second elsewhere.").to_string());
+                    }
                     Some(a) => {
-                        let q = if ui.input(|i| i.modifiers.shift) { bimcraft_core::snap::orthogonal_step(a, q).0 } else { q };
                         if self.views.drawing_line {
                             // Reference Line (FE-11): on the view's work plane, where the view looks onto it.
                             let host = self.views.work_plane();

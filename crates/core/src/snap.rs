@@ -745,8 +745,26 @@ pub fn on_traces(q: P2, traces: &[(P2, P2)], reach: f64, o: &Snaps) -> P2 {
 /// square line onto the nearest trace crossing it within `reach`, if the switches take crossings or nearest points; else
 /// squared. A family's drawn points and Measure's snap so with Shift held (FE-21b), so the point never leaves the square line.
 pub fn on_traces_square(from: P2, q: P2, traces: &[(P2, P2)], reach: f64, o: &Snaps) -> P2 {
-    let _ = (traces, reach, o);
-    orthogonal_step(from, q).0
+    let at = orthogonal_step(from, q).0;
+    let d = at - from;
+    if !(o.intersection || o.nearest) || d.dot(d) < 1e-18 {
+        return at;
+    }
+    traces
+        .iter()
+        .filter(|(a, b)| a.dist(*b) > 1e-9 && geom::dist_to_segment(at, *a, *b) <= reach)
+        .filter_map(|(a, b)| {
+            let r = *b - *a;
+            let den = d.cross(r);
+            if den.abs() < 1e-9 * d.dot(d).sqrt() * r.dot(r).sqrt() {
+                return None;
+            }
+            // Where the square line crosses the trace, on the trace, near the point, and not the first point itself.
+            let x = from + d * ((*a - from).cross(r) / den);
+            (geom::dist_to_segment(x, *a, *b) < 1e-6 && x.dist(at) <= reach && x.dist(from) > 1e-6).then_some(x)
+        })
+        .min_by(|x, y| x.dist(at).total_cmp(&y.dist(at)))
+        .unwrap_or(at)
 }
 
 /// A sketch's view and draft geometry. The element being edited is omitted so its old boundary cannot attract a grip.
