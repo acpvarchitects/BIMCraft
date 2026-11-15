@@ -1224,22 +1224,22 @@ impl FamilyEditor {
             }
         }
         // Measure's ruler (FE-17): the one laid in this view, read beside it.
-        if let Some(m) = self.views.measuring.as_ref() {
-            if let Some((a, b, _)) = m.laid.filter(|l| l.2 == which) {
-                let (pa, pb) = (screen(a), screen(b));
-                painter.line_segment([pa, pb], Stroke::new(2.0, PICKED));
-                for q in [pa, pb] {
-                    let mark = egui::Rect::from_center_size(q, egui::vec2(8.0, 8.0));
-                    painter.rect_stroke(mark, 0.0, Stroke::new(2.0, PICKED), egui::StrokeKind::Middle);
-                }
-                let n = (pb - pa).normalized().rot90();
-                let text = super::measure::read(&bimcraft_core::snap::ruler(a, b), base.units);
-                // On a backing of the canvas's colour, so it reads over what the view draws.
-                let galley = painter.layout_no_wrap(text, egui::FontId::proportional(12.0), PICKED);
-                let at = egui::Rect::from_center_size(pa + (pb - pa) / 2.0 + n * 16.0, galley.size());
-                painter.rect_filled(at.expand(3.0), 3.0, crate::style::pal().surface);
-                painter.galley(at.min, galley, PICKED);
+        if let Some(m) = self.views.measuring.as_ref()
+            && let Some((a, b, _)) = m.laid.filter(|l| l.2 == which)
+        {
+            let (pa, pb) = (screen(a), screen(b));
+            painter.line_segment([pa, pb], Stroke::new(2.0, PICKED));
+            for q in [pa, pb] {
+                let mark = egui::Rect::from_center_size(q, egui::vec2(8.0, 8.0));
+                painter.rect_stroke(mark, 0.0, Stroke::new(2.0, PICKED), egui::StrokeKind::Middle);
             }
+            let n = (pb - pa).normalized().rot90();
+            let text = super::measure::read(&bimcraft_core::snap::ruler(a, b), base.units);
+            // On a backing of the canvas's colour, so it reads over what the view draws.
+            let galley = painter.layout_no_wrap(text, egui::FontId::proportional(12.0), PICKED);
+            let at = egui::Rect::from_center_size(pa + (pb - pa) / 2.0 + n * 16.0, galley.size());
+            painter.rect_filled(at.expand(3.0), 3.0, crate::style::pal().surface);
+            painter.galley(at.min, galley, PICKED);
         }
         // A selected extrusion's Start and End, where the view sees its plane edge-on: shape handles to drag (F5); one tied to
         // a parameter, a formula or a dimension, greyed. Its profile's edges' handles too (FE-5), drawn alike.
