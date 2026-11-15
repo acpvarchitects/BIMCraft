@@ -1122,13 +1122,19 @@ fn top_params(m: &Model, level: Id, top: Option<Option<Id>>, height: &str) -> Re
 /// A ribbon button: an icon over its label, tinted while its tool is on; as wide as its label, which breaks over two lines
 /// when one would make it wider than `WIDE`.
 fn big_button(ui: &mut Ui, icon: Icon, label: &str, active: bool, tip: &str) -> Response {
-    ribbon_button(ui, icon, label, active, tip, true, None)
+    ribbon_button(ui, icon, label, active, tip, "", None)
+}
+
+/// A big ribbon button whose name is translated in `context` (`msg!(context, label)`), for a word that says something else
+/// elsewhere in the window: until its own translation is given it shows in English, not as the other.
+fn big_button_in(ui: &mut Ui, icon: Icon, context: &str, label: &str, active: bool, tip: &str) -> Response {
+    ribbon_button(ui, icon, label, active, tip, context, None)
 }
 
 /// A big ribbon button, or its row in a list, whose icon and name are in `own` rather than the theme's ink: Finish Edit Mode's
 /// green and Cancel Edit Mode's red.
 fn inked_button(ui: &mut Ui, icon: Icon, label: &str, active: bool, tip: &str, own: Option<Color32>) -> Response {
-    ribbon_button(ui, icon, label, active, tip, true, own)
+    ribbon_button(ui, icon, label, active, tip, "", own)
 }
 
 /// A ribbon button whose label is a plugin's data: it isn't translated, as its manifest wrote it, and it has no icon
@@ -1186,19 +1192,20 @@ fn plugin_row(ui: &mut Ui, label: &str, tip: &str) -> Response {
     r.on_hover_text(t(tip))
 }
 
-fn ribbon_button(ui: &mut Ui, icon: Icon, label: &str, active: bool, tip: &str, translate: bool, own: Option<Color32>) -> Response {
+/// A ribbon button named `label` in English, shown translated: in `context` when it has one, else as the word is anywhere.
+fn ribbon_button(ui: &mut Ui, icon: Icon, label: &str, active: bool, tip: &str, context: &str, own: Option<Color32>) -> Response {
     const WIDE: f32 = 78.0;
     if ribbon::left_out(label) {
         return ui.allocate_response(egui::Vec2::ZERO, Sense::hover());
     }
     let name = label;
     if ribbon::listing() {
-        return list_row_in(ui, icon, label, active, tip, translate, own);
+        return list_row_in(ui, icon, label, active, tip, context, own);
     }
     if let Some(r) = ribbon::handed_over(ui) {
         return r;
     }
-    let (label, tip) = if translate { (t(label).to_string(), t(tip)) } else { (label.to_string(), t(tip)) };
+    let (label, tip) = (if context.is_empty() { t(label) } else { lang::tc(context, label) }.to_string(), t(tip));
     let font = FontId::proportional(12.0);
     let wide = |s: &str| ui.painter().layout_no_wrap(s.to_string(), font.clone(), pal().text).size().x;
     let one = wide(&label);
@@ -1271,16 +1278,16 @@ pub(crate) fn small_button(ui: &mut Ui, icon: Icon, label: &str, active: bool, t
 
 /// A ribbon button in its panel's list: a row of its icon and its name.
 fn list_row(ui: &mut Ui, icon: Icon, label: &str, active: bool, tip: &str) -> Response {
-    list_row_in(ui, icon, label, active, tip, true, None)
+    list_row_in(ui, icon, label, active, tip, "", None)
 }
 
 /// [`list_row`], its icon and name in `own` where it has an ink of its own ([`inked_button`]).
-fn list_row_in(ui: &mut Ui, icon: Icon, label: &str, active: bool, tip: &str, translate: bool, own: Option<Color32>) -> Response {
+fn list_row_in(ui: &mut Ui, icon: Icon, label: &str, active: bool, tip: &str, context: &str, own: Option<Color32>) -> Response {
     if ribbon::left_out(label) {
         return ui.allocate_response(egui::Vec2::ZERO, Sense::hover());
     }
     let name = label;
-    let (label, tip) = if translate { (t(label).to_string(), t(tip)) } else { (label.to_string(), t(tip)) };
+    let (label, tip) = (if context.is_empty() { t(label) } else { lang::tc(context, label) }.to_string(), t(tip));
     // A panel's list is at least a menu wide; the Tools palette's rows are as wide as its column.
     let width = if ribbon::in_palette() { ui.available_width() } else { ui.available_width().max(200.0) };
     let (rect, r) = ui.allocate_exact_size(vec2(width, 30.0), Sense::click());
@@ -5471,7 +5478,8 @@ impl BimApp {
                 Some(JoinMode::Unjoin) => Icon::UnjoinGeometry,
                 _ => Icon::JoinGeometry,
             };
-            let r = big_button(ui, icon, msg!("Join"), mode.is_some(), tip);
+            // "Join" is Co-Work's word too, for joining a session: geometry's has its own translation.
+            let r = big_button_in(ui, icon, "geometry", msg!("geometry", "Join"), mode.is_some(), tip);
             ribbon::choices(ui, &r, false, |ui| {
                 let items = [
                     (JoinMode::Join, msg!("Join Geometry")),
@@ -6083,11 +6091,13 @@ impl BimApp {
             Tool::CutGeometry { uncut: true, wall: Some(_) } => {
                 msg!("Pick the component that no longer cuts the wall. Esc picks another wall.")
             }
-            Tool::JoinGeometry { mode: JoinMode::Join, first: None } => {
-                msg!("Pick the first to join: a wall, a floor, a roof or a ceiling.")
-            }
+            // A plan shows walls with floors and roofs, a ceiling plan walls with ceilings: the prompt names what can be picked.
+            Tool::JoinGeometry { mode: JoinMode::Join, first: None } => match self.sheet {
+                Sheet::Ceiling(_) => msg!("Pick the first to join: a wall or a ceiling. Tab steps through what is under the cursor."),
+                _ => msg!("Pick the first to join: a wall, a floor or a roof. Tab steps through what is under the cursor."),
+            },
             Tool::JoinGeometry { mode: JoinMode::Join, first: Some(_) } => {
-                msg!("Pick the one it meets, which it cuts. Esc picks another first.")
+                msg!("Pick the one it meets, which it cuts; Tab steps through what is there. Esc picks another first.")
             }
             Tool::JoinGeometry { mode: JoinMode::Switch, first: None } => msg!("Pick one of a joined pair, to switch which cuts which."),
             Tool::JoinGeometry { mode: JoinMode::Switch, first: Some(_) } => {

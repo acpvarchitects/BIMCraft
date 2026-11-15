@@ -28,7 +28,7 @@ use crate::icons::Icon;
 use crate::lang::{t, tf};
 use crate::properties::number;
 use crate::style::{canvas_pal, pal};
-use crate::{BimApp, Sheet, Status, Tool, icon_button, top_params};
+use crate::{BimApp, JoinMode, Sheet, Status, Tool, icon_button, top_params};
 
 /// How near the cursor an element is picked, in px.
 pub(crate) const PICK: f32 = 6.0;
@@ -341,6 +341,8 @@ pub struct Canvas {
     /// What's under the cursor, as `Drawing::pick_all` orders it, and how far Tab has gone.
     under: Vec<Id>,
     cycle: usize,
+    /// The plan Cut Geometry's or Join Geometry's first pick was made in: its view, and whether as a ceiling plan.
+    first_in: Option<(Id, bool)>,
     /// A crop region's grip being dragged: the view, and which edge (see [`grips`]).
     crop_drag: Option<(Id, usize)>,
     /// A selected wall's end being dragged: the wall, and whether it's its start.
@@ -381,6 +383,7 @@ impl Default for Canvas {
             drag: None,
             under: Vec::new(),
             cycle: 0,
+            first_in: None,
             crop_drag: None,
             grip: None,
             view_grip: None,
@@ -1493,6 +1496,14 @@ impl BimApp {
         let model = self.view_model();
         let level = model.plan_level(key).unwrap_or(key);
         let up = matches!(self.sheet, Sheet::Ceiling(_));
+        // Cut Geometry's and Join Geometry's first pick is this plan's, of an element that stands: one an undo or a delete
+        // took, or one picked in another plan, is let go of.
+        let held = |id: Id| model.elements.contains_key(id) && self.canvas.first_in == Some((key, up));
+        match self.tool {
+            Tool::CutGeometry { uncut, wall: Some(wall) } if !held(wall) => self.tool = Tool::CutGeometry { uncut, wall: None },
+            Tool::JoinGeometry { mode, first: Some(first) } if !held(first) => self.tool = Tool::JoinGeometry { mode, first: None },
+            _ => {}
+        }
         let fit = |w, h| if up { render::ceiling_plan(&model, key, w, h).view } else { render::plan(&model, key, w, h).view };
         // Oriented to true north, the plan turns on screen.
         self.canvas.turn(key, render::view_angle(&model, key));
@@ -1514,8 +1525,24 @@ impl BimApp {
         // What's under the cursor; Tab steps through it. (Without the app's input hook, as in
         // tests, egui moved the keyboard to a widget on that Tab: give it back.)
         let sketching = self.sketch.is_some();
+        // What Join Geometry and its two take at pixel `q`, the one Tab hasn't stepped past first: what joins of what is
+        // drawn there, never the first pick again, and for the second pick another kind than the first before its own (a
+        // floor drawn on its walls' centre lines has a wall at every edge).
+        let join_under = |q: (f32, f32), first: Option<Id>| -> Vec<Id> {
+            let kind = |id: Id| model.elements.get(id).map(Element::category);
+            let mut found: Vec<Id> = d
+                .pick_all(q, PICK)
+                .into_iter()
+                .filter(|id| Some(*id) != first && model.elements.get(*id).is_some_and(Element::joinable))
+                .collect();
+            if let Some(of) = first.and_then(kind) {
+                found.sort_by_key(|id| kind(*id) == Some(of));
+            }
+            found
+        };
         let under = match (&self.tool, local) {
             (Tool::Modify, Some(q)) if !sketching => d.pick_all(q, PICK),
+            (Tool::JoinGeometry { first, .. }, Some(q)) => join_under(q, *first),
             _ => Vec::new(),
         };
         // A dimension under the cursor: Tab steps through its segments before its element.
@@ -1631,9 +1658,7 @@ impl BimApp {
                 bimcraft_core::project_geometry::pick(&cut_candidates, view.mm(q), f64::from(PICK) / view.scale)
             }
             // Join Geometry and its two: one of what joins, then another.
-            Tool::JoinGeometry { first, .. } => {
-                d.pick_all(q, PICK).into_iter().find(|id| Some(*id) != *first && model.elements.get(id).is_some_and(Element::joinable))
-            }
+            Tool::JoinGeometry { first, .. } => join_under(q, *first).first().copied(),
             Tool::Trim(_) | Tool::Offset => {
                 d.pick_all(q, PICK).into_iter().find(|id| matches!(model.elements.get(id), Some(Element::Wall(_) | Element::DetailLine(_))))
             }
@@ -1698,7 +1723,7 @@ impl BimApp {
             _ => None,
         };
         let hovered = match (&tool, local) {
-            (Tool::Modify, Some(_)) => c.under.get(c.cycle).copied(),
+            (Tool::Modify | Tool::JoinGeometry { .. }, Some(_)) => c.under.get(c.cycle).copied(),
             (_, Some(q)) => under_at(q),
             _ => None,
         };
@@ -2400,7 +2425,10 @@ impl BimApp {
             },
             Tool::Trim(_) | Tool::TrimTo { .. } => self.trim_click(hovered, v.mm(at)),
             &Tool::CutGeometry { uncut, wall } => match (wall, hovered) {
-                (None, Some(w)) => self.tool = Tool::CutGeometry { uncut, wall: Some(w) },
+                (None, Some(w)) => {
+                    self.canvas.first_in = Some((key, matches!(self.sheet, Sheet::Ceiling(_))));
+                    self.tool = Tool::CutGeometry { uncut, wall: Some(w) };
+                }
                 (Some(w), Some(c)) => {
                     let (g, by) = (m.guid(w), m.guid(c));
                     let family = match m.elements.get(c) {
@@ -2415,10 +2443,23 @@ impl BimApp {
                 _ => {}
             },
             &Tool::JoinGeometry { mode, first } => match (first, hovered) {
-                (None, Some(a)) => self.tool = Tool::JoinGeometry { mode, first: Some(a) },
+                (None, Some(a)) => {
+                    self.canvas.first_in = Some((key, matches!(self.sheet, Sheet::Ceiling(_))));
+                    self.tool = Tool::JoinGeometry { mode, first: Some(a) };
+                }
                 (Some(a), Some(b)) => {
-                    if self.run(mode.command(), json!({"first": m.guid(a), "second": m.guid(b)})).is_none() {
-                        self.status.text = join_refusal(&self.status.text, m);
+                    match self.run(mode.command(), json!({"first": m.guid(a), "second": m.guid(b)})) {
+                        // A join shows in a section and in 3D, not in the plan it is made in: the status bar says what was done.
+                        Some(reply) => {
+                            let now = |key: &str, or: Id| named(m, reply[key].as_u64().unwrap_or(or));
+                            let text = match mode {
+                                JoinMode::Join => tf("Joined: {} cuts {}.", &[&named(m, a), &named(m, b)]),
+                                JoinMode::Switch => tf("Switched: {} now cuts {}.", &[&now("first", a), &now("second", b)]),
+                                JoinMode::Unjoin => tf("Unjoined: {} and {}.", &[&named(m, a), &named(m, b)]),
+                            };
+                            self.status = Status { text, error: false };
+                        }
+                        None => self.status.text = join_refusal(&self.status.text, m),
                     }
                     self.tool = Tool::JoinGeometry { mode, first: None };
                 }
@@ -5181,6 +5222,14 @@ pub(crate) fn snap_mark(p: &Painter, at: Pos2, from: Option<Pos2>, kind: Kind, n
     }
 }
 
+/// Element `id` as the window names it: what it is, then its id ("Wall 100002").
+fn named(m: &Model, id: Id) -> String {
+    match m.elements.get(id) {
+        Some(e) => format!("{} {id}", crate::lang::category(e.category(), false)),
+        None => id.to_string(),
+    }
+}
+
 /// What Join Geometry's, Switch Join Order's or Unjoin Geometry's refusal `error` (the core's, written for agents) says to
 /// someone at the window, about the model `m`; any other error as it is.
 fn join_refusal(error: &str, m: &Model) -> String {
@@ -5192,19 +5241,16 @@ fn join_refusal(error: &str, m: &Model) -> String {
         t("These two aren't joined.").to_string()
     } else if let Some((chain, _)) = error.split_once("would close a loop of joins (").and_then(|(_, rest)| rest.split_once(')')) {
         // The loop as the core names it, each cutting the next round to the first, with what each is before its id.
-        let named: Vec<String> = chain
-            .split(" cuts ")
-            .map(|s| match s.parse::<Id>().ok().and_then(|id| m.elements.get(id).map(|e| (id, e))) {
-                Some((id, e)) => format!("{} {id}", crate::lang::category(e.category(), false)),
-                None => s.to_string(),
-            })
-            .collect();
+        let loop_: Vec<String> = chain.split(" cuts ").map(|s| s.parse::<Id>().map_or_else(|_| s.to_string(), |id| named(m, id))).collect();
         tf(
             "That would close a loop of joins, each cutting the next: {}. Join these two the other way round, or unjoin one of the loop first.",
-            &[&named.join(" → ")],
+            &[&loop_.join(" → ")],
         )
     } else if error.contains("joined elements already") {
-        t("The one to cut is cut by as many joined elements as one may be. Unjoin one of them first.").to_string()
+        tf(
+            "The one to cut is joined to {} that cut it already, the most there may be. Unjoin one of them first.",
+            &[&bimcraft_core::model::MAX_JOINS.to_string()],
+        )
     } else {
         error.to_string()
     }
