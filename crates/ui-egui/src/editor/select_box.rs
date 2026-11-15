@@ -319,9 +319,12 @@ impl FamilyEditor {
             for i in places(|p| if let Picked::Connector(i) = p { Some(i) } else { None }) {
                 self.remove_connector(i);
             }
-            // A model line hosts nothing (FE-15): it always goes.
+            // A model line hosts nothing (FE-15): it always goes, and the dimensions measuring to it lose it (part 2).
             let gone = guids(|p| if let Picked::ModelLine(g) = p { Some(g) } else { None });
             self.model_lines.retain(|l| !gone.contains(&l.guid));
+            for g in &gone {
+                self.forget_reference(*g);
+            }
             for g in guids(|p| if let Picked::Line(g) = p { Some(g) } else { None }) {
                 self.delete_line(g)?;
             }

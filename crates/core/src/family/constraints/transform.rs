@@ -391,6 +391,7 @@ impl Family {
             DimRef::Plane(g) => planes.contains(&g),
             DimRef::Form(g, _) | DimRef::Sketch(g, _) | DimRef::Point(g, ..) => form_guids.contains(&g),
             DimRef::Line(g, _) | DimRef::LinePoint(g, _) => lines.contains(&g),
+            DimRef::ModelLine(g) | DimRef::ModelLinePoint(g, _) => model_lines.contains(&g),
         };
         let scaling = matches!(t, Transform::Scale { factor, .. } if (factor - 1.0).abs() > 1e-12);
         let mut held: Vec<usize> = Vec::new();

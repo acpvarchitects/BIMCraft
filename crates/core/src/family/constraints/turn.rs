@@ -74,7 +74,8 @@ impl Family {
         match *target {
             DimRef::Plane(g) => self.turn_plane(values, g, n, at, axis),
             DimRef::Line(g, _) => self.turn_line(values, g, n, at, axis),
-            DimRef::LinePoint(..) | DimRef::Point(..) => {
+            DimRef::ModelLine(_) => Err(Unsat::from("Align moves a model line along its host: turn it with Rotate".to_string())),
+            DimRef::LinePoint(..) | DimRef::Point(..) | DimRef::ModelLinePoint(..) => {
                 Err(Unsat::from("Align takes a plane or a line: a point faces no way to turn onto the reference".to_string()))
             }
             DimRef::Sketch(..) | DimRef::Form(..) => {

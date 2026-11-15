@@ -1667,7 +1667,8 @@ other_files(
          {line: guid, face}, subcategory?, visibility?: {coarse?, medium?, fine?}}], model_line?: {id | guid, …}, \
          delete_model_line?: [id | guid, …], dimensions?: [{guid?, view?: plan|ceiling|front|back|left|right, refs: [{plane: guid} | \
          {form: guid, end: start|end} | {form: guid, line: guid} | {form: guid, line: guid, point: start|end|centre} | \
-         {line: guid, face: horizontal|vertical|start|end}, …], at: [x, y, z], kind?: aligned|radial|diameter, label?: parameter, \
+         {line: guid, face: horizontal|vertical|start|end} | {line: guid, point: start|end} | {model_line: guid} | \
+         {model_line: guid, point: start|end}, …], at: [x, y, z], kind?: aligned|radial|diameter, label?: parameter, \
          locked?: [{segment, length}], equal?, alignment?}], \
          dimension?: {id | guid, …a dimension's fields} (none: one added), delete_dimension?: [id | guid, …], \
          invalid_dimensions?: delete, solve?: type, \
@@ -14892,7 +14893,11 @@ fn family(s: &mut Session, p: &Value) -> R {
     }
     if let Some(list) = p.get("delete_model_line").and_then(Value::as_array) {
         for v in list {
-            patches.model_lines_deleted.push(take_part(c, &name, &mut f.model_lines, v, "model_line")?);
+            let at = part_at(c, &mut f.model_lines, v, "model_line", &name)?;
+            let gone = f.model_lines.remove(at);
+            // The dimensions measuring to it lose it, as a plane's do (FE-15, part 2).
+            patches.dimensions_dropped += f.forget_reference(gone.guid);
+            patches.model_lines_deleted.push(gone.id);
         }
     }
     // The forms as they were: a sketch line a form no longer has takes its dimensions with it (F7b).

@@ -835,16 +835,16 @@ impl Problem<'_> {
             let at = |x: String| Unsat::from(format!("{who}: {x}"));
             let swing = match e {
                 Pivoted::Line(k) => {
-                    if self.unknown(Unknown::LineAngle(k)).is_none() {
+                    if self.unknown(Unknown::LineAngle(Ln::Ref(k))).is_none() {
                         continue;
                     }
                     let l = &f.lines[k];
                     let h = self.host_ad(&l.host, DEPTH).map_err(at)?;
-                    let d = self.line_drawn(k).map_err(at)?;
+                    let d = self.line_drawn(Ln::Ref(k)).map_err(at)?;
                     let s = piv.at.distance(d[5]);
-                    let su = self.value(Unknown::LineStart(k, 0), d[0]);
-                    let sv = self.value(Unknown::LineStart(k, 1), d[1]);
-                    let th = self.value(Unknown::LineAngle(k), d[4]);
+                    let su = self.value(Unknown::LineStart(Ln::Ref(k), 0), d[0]);
+                    let sv = self.value(Unknown::LineStart(Ln::Ref(k), 1), d[1]);
+                    let th = self.value(Unknown::LineAngle(Ln::Ref(k)), d[4]);
                     let u = su.add(&th.cos().scale(s));
                     let v = sv.add(&th.sin().scale(s));
                     let p = self.pivot_point(&piv.to, &h, DEPTH).map_err(at)?;
@@ -930,7 +930,8 @@ impl Problem<'_> {
                 self.sketch_point(&s, &self.vertex_ad(s.form, v))?
             }
             DimRef::Line(g, face) => self.line_face(g, face, DEPTH)?.origin,
-            DimRef::LinePoint(g, spot) => {
+            DimRef::ModelLine(g) => self.line_face(g, Face::Vertical, DEPTH)?.origin,
+            DimRef::LinePoint(g, spot) | DimRef::ModelLinePoint(g, spot) => {
                 let (_, a, b, _) = self.line_ends(g, DEPTH)?;
                 if spot == Spot::End { b } else { a }
             }
