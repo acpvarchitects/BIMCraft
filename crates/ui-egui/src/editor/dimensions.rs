@@ -810,9 +810,23 @@ impl FamilyEditor {
                             moving.push(l.guid);
                         }
                     }
+                    // A model line aligned (FE-15), or drawn on a line that moved.
+                    for l in self.model_lines.iter_mut() {
+                        let on = matches!(l.host, PlaneRef::Line(h, _) if moving.contains(&h));
+                        if l.guid == g || on {
+                            for (k, d) in by.iter().enumerate() {
+                                l.start[k] += d;
+                                l.end[k] += d;
+                            }
+                        }
+                    }
                 }
                 Edit::LineEnds(g, start, end) => {
                     if let Some(l) = self.lines.iter_mut().find(|l| l.guid == g) {
+                        l.start = start;
+                        l.end = end;
+                    } else if let Some(l) = self.model_lines.iter_mut().find(|l| l.guid == g) {
+                        // A model line the constraints set (FE-15).
                         l.start = start;
                         l.end = end;
                     }
@@ -915,6 +929,7 @@ impl FamilyEditor {
         let moved = match target {
             DimRef::Plane(g) => Some(Picked::Plane(g)),
             DimRef::Line(g, _) | DimRef::LinePoint(g, _) => Some(Picked::Line(g)),
+            DimRef::ModelLine(g) | DimRef::ModelLinePoint(g, _) => Some(Picked::ModelLine(g)),
             DimRef::Form(g, _) | DimRef::Sketch(g, _) | DimRef::Point(g, _, _) => form(g),
         };
         if let Some(e) = moved.and_then(|p| self.pinned_refusal(&[p])) {
@@ -925,13 +940,17 @@ impl FamilyEditor {
             Ok(edits) => {
                 // What it turned or moved must still build: a draft sound before stays sound, else it is as it was.
                 let sound = |f: &Family| f.check(&|_| true).is_ok();
-                let was = sound(&f)
-                    .then(|| (self.forms.clone(), self.planes.clone(), self.lines.clone(), self.params.clone(), self.types.clone()));
+                let was = sound(&f).then(|| {
+                    let lines = (self.lines.clone(), self.model_lines.clone());
+                    (self.forms.clone(), self.planes.clone(), lines, self.params.clone(), self.types.clone())
+                });
                 self.apply_edits(edits);
                 if let Some(was) = was
                     && let Err(e) = self.family().and_then(|f| f.check(&|_| true))
                 {
-                    (self.forms, self.planes, self.lines, self.params, self.types) = was;
+                    let lines;
+                    (self.forms, self.planes, lines, self.params, self.types) = was;
+                    (self.lines, self.model_lines) = lines;
                     self.views.status = Some(tf("Align can't put it there: {}", &[&e]));
                     return;
                 }

@@ -3395,7 +3395,7 @@ pub fn sketch_circles(flexed: &Family, values: &BTreeMap<String, Val>, st: &view
 
 /// The reference lines of `flexed` view `which` sees a face of edge on, each by that face and the segment the line is drawn
 /// as (the view's mm): what a dimension or Align picks of a reference line (its vertical face in a plan of a line drawn on
-/// a level, its horizontal one in an elevation that sees it along).
+/// a level, its horizontal one in an elevation that sees it along); and its model lines seen edge on, as a vertical face.
 pub fn line_faces(flexed: &Family, st: &views::Staged, which: views::Which) -> Vec<(DimRef, P2, P2)> {
     let eye = DimView::of(which).eye();
     let mut out = Vec::new();
@@ -3412,6 +3412,15 @@ pub fn line_faces(flexed: &Family, st: &views::Staged, which: views::Which) -> V
                 break;
             }
         }
+    }
+    // A model line seen edge on (FE-15, part 2): the plane through it square to its host, where the view sees that edge on.
+    for l in flexed.model_lines.iter().filter(|l| !l.guid.is_nil()) {
+        let (a, b) = (st.to_view(which, l.start), st.to_view(which, l.end));
+        let Ok(host) = flexed.frame(&l.host) else { continue };
+        if a.dist(b) < 1e-6 || unit3(cross(sub(l.end, l.start), host.z)).is_none_or(|n| dot(n, eye).abs() > PARALLEL) {
+            continue;
+        }
+        out.push((DimRef::ModelLine(l.guid), a, b));
     }
     out
 }
