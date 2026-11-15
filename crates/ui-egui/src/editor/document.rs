@@ -1940,9 +1940,8 @@ impl BimApp {
         if self.show_shortcuts {
             return;
         }
-        // FE-14: the window's Copy, Cut and Paste (Ctrl+C, Ctrl+X and Ctrl+V), in a family that isn't adaptive. With Shortcuts
-        // need Ctrl they, and C, X and V pressed as keys with Ctrl held, are letters (`family_typed`) that never reach this:
-        // on their own they do the same (`family_ctrl_key`).
+        // FE-14: the window's Copy, Cut and Paste (Ctrl+C, Ctrl+X and Ctrl+V), in a family that isn't adaptive, at once and
+        // whatever Shortcuts need Ctrl says: they are the clipboard's, never letters of a shortcut (`crate::ctrl_letters`).
         if self.active_family().is_some_and(|ed| ed.adaptive.is_none())
             && let Some(c) = super::clipboard::key(ctx, &mut self.paste_heard)
         {

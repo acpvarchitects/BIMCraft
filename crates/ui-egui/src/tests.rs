@@ -922,8 +922,9 @@ fn typed_shortcuts_pick_tools_like_revit() {
     assert!(matches!(h.state().tool, Tool::Dimension(..)));
     shortcut(&mut h, "tg");
     assert!(matches!(h.state().tool, Tool::Tag));
+    // C with Ctrl held is the clipboard's, never a letter: CR is no Section then.
     shortcut(&mut h, "CR");
-    assert!(matches!(h.state().tool, Tool::Section(None)));
+    assert!(matches!(h.state().tool, Tool::Tag), "{:?}", h.state().tool);
     shortcut(&mut h, "DW");
     assert!(matches!(h.state().tool, Tool::Demolish));
     key(&mut h, Key::Escape);
@@ -7358,6 +7359,7 @@ mod family_dimensions;
 mod family_document;
 mod family_drag_copy;
 mod family_drag_move;
+mod family_draw_snaps;
 mod family_edges_not_hull;
 mod family_exit;
 mod family_hide_override;

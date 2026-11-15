@@ -146,7 +146,7 @@ impl BimApp {
             self.family_plain_letters(ctx);
             return;
         }
-        for ch in crate::ctrl_letters(ctx, &mut self.paste_heard) {
+        for ch in crate::ctrl_letters(ctx) {
             self.typed.push(ch);
             self.typed_at = ctx.input(|i| i.time);
             if self.typed.len() < 2 {
@@ -214,23 +214,13 @@ impl BimApp {
     }
 
     /// What a letter typed with Ctrl does on its own in a family document: S saves it, K finds a command, Z undoes (a sketch's
-    /// last change while sketching; the document's history waits for Finish), Y redoes, 1 shows Properties, and C, X and V are
-    /// the Clipboard panel's Copy, Cut and Paste (FE-14) in a family that isn't adaptive.
+    /// last change while sketching; the document's history waits for Finish), Y redoes, 1 shows Properties. (C, X and V are never
+    /// letters: Ctrl+C, Ctrl+X and Ctrl+V are the clipboard's, `clipboard::key`'s.)
     fn family_ctrl_key(&mut self, letter: char) {
         match letter {
             'S' => self.family_save(false),
             'K' => self.find = Some(String::new()),
             '1' => self.toggle_properties(),
-            'C' | 'X' | 'V' => {
-                let c = match letter {
-                    'C' => super::clipboard::Command::Copy,
-                    'X' => super::clipboard::Command::Cut,
-                    _ => super::clipboard::Command::Paste(super::clipboard::Paste::Pointer),
-                };
-                if self.active_family().is_some_and(|ed| ed.adaptive.is_none()) {
-                    self.family_clipboard(c);
-                }
-            }
             'Z' | 'Y' => {
                 let Some(ed) = self.active_family_mut() else { return };
                 match (letter, ed.sketch.is_some()) {
