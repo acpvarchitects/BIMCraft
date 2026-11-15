@@ -294,14 +294,6 @@ pub struct Lines {
     pub picture: Option<crate::view3d::Image>,
 }
 
-/// The pixels at a picture's top and bottom that something floats over (a window's view tabs, its view control bar): a
-/// view is fitted clear of them (UI-1).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
-pub struct Clear {
-    pub top: u32,
-    pub bottom: u32,
-}
-
 /// What one of a family's views shows: its frame, its drawing (what picks) and its pixels.
 pub struct Shown {
     pub view: View,
@@ -404,15 +396,47 @@ impl Staged {
     /// which, fitted, its annotation and pens are their size on paper, so the names read as a sheet's would, and grow
     /// and shrink as it is zoomed, as a project's views' do.
     pub fn draw_lines(&mut self, which: Which, width: u32, height: u32, zoom: f64, pan: P2) -> Result<Lines, String> {
-        let fitted = self.fitted(which, width, height, Clear::default());
+        let fitted = self.fitted(which, width, height);
         self.draw_lines_at(which, fitted, zoom, pan)
     }
 
-    /// View `which` fitted in a `width` by `height` picture, clear of what floats over it: the frame zoom and pan start from,
-    /// which a front end may keep while only they change.
-    pub fn fitted(&mut self, which: Which, width: u32, height: u32, clear: Clear) -> View {
-        let _ = clear;
-        self.frame(which, width, height, 1.0, P2(0.0, 0.0))
+    /// View `which` fitted in a `width` by `height` picture: the frame zoom and pan start from, which a front end may keep while
+    /// only they change.
+    ///
+    /// The room fitted; a plan (or the ceiling plan) then fitted again to what it draws, its lines and its lettering, which
+    /// reaches past the room (its elevation marks' names: UI-1), in up to eight passes, as lettering keeps its size on paper while the
+    /// frame shrinks. An elevation makes room for its levels' names by itself (`frame`), and its planes run from edge to edge
+    /// of the picture, their names along its top, whatever the frame.
+    pub fn fitted(&mut self, which: Which, width: u32, height: u32) -> View {
+        const MARGIN: f32 = 8.0;
+        let mut v = self.frame(which, width, height, 1.0, P2(0.0, 0.0));
+        if matches!(which, Which::Elevation(_)) {
+            return v;
+        }
+        let (lo, hi) = ((MARGIN, MARGIN), (v.width as f32 - MARGIN, v.height as f32 - MARGIN));
+        for _ in 0..8 {
+            let Ok(lines) = self.draw_lines_at(which, v, 1.0, P2(0.0, 0.0)) else { break };
+            let ink = lines
+                .drawing
+                .prims
+                .iter()
+                .filter(|p| !matches!(p, render::Prim::Image { .. }))
+                .flat_map(render::Prim::points)
+                .filter(|p| p.0.is_finite() && p.1.is_finite())
+                .fold(None, |b: Option<((f32, f32), (f32, f32))>, p| {
+                    Some(b.map_or((p, p), |(a, z)| ((a.0.min(p.0), a.1.min(p.1)), (z.0.max(p.0), z.1.max(p.1)))))
+                });
+            let Some((a, z)) = ink else { break };
+            if a.0 >= lo.0 && a.1 >= lo.1 && z.0 <= hi.0 && z.1 <= hi.1 {
+                break;
+            }
+            let s = (f64::from(hi.0 - lo.0) / f64::from(z.0 - a.0).max(1.0))
+                .min(f64::from(hi.1 - lo.1) / f64::from(z.1 - a.1).max(1.0))
+                .min(1.0);
+            let mid = v.mm(((a.0 + z.0) / 2.0, (a.1 + z.1) / 2.0));
+            (v.scale, v.cx, v.cy) = (v.scale * s, mid.0, mid.1);
+        }
+        v
     }
 
     /// View `which` drawn as [`draw_lines`](Self::draw_lines) draws it, from frame `fitted` ([`fitted`](Self::fitted)), `zoom`
@@ -1570,30 +1594,29 @@ mod tests {
     /// A box family's planes, the datums with Left, Right, Front, Back and Top of its own, drawn in every view: no plane's
     /// name lies on any plane's trace, its own or another's.
     /// UI-1: fitted, everything a view draws (its plane names, its elevation marks' names, its levels') lies inside the picture,
-    /// clear of what floats over its top and bottom, in a narrow window as in a wide one.
+    /// in a narrow window as in a wide one; a plan's, 8 px clear of its edges.
     #[test]
-    fn a_fitted_view_draws_everything_inside_clear_of_what_floats_over_it() {
+    fn a_fitted_view_draws_everything_inside() {
         use crate::render::Prim;
         let mut st = staged(&boxed(0.0, 2000.0));
         let views = [Which::Plan, Which::Ceiling].into_iter().chain(Side::ALL.iter().map(|s| Which::Elevation(*s)));
         for which in views {
+            let m = if matches!(which, Which::Elevation(_)) { 0.0 } else { 8.0 };
             for (w, h) in [(1040, 760), (900, 900), (1600, 700), (600, 900)] {
-                for clear in [Clear::default(), Clear { top: 30, bottom: 50 }] {
-                    let fitted = st.fitted(which, w, h, clear);
-                    let lines = st.draw_lines_at(which, fitted, 1.0, P2(0.0, 0.0)).unwrap();
-                    let ink: Vec<(f32, f32)> =
-                        lines.drawing.prims.iter().filter(|p| !matches!(p, Prim::Image { .. })).flat_map(Prim::points).collect();
-                    assert!(!ink.is_empty());
-                    let (top, bottom) = (clear.top as f32, (h - clear.bottom) as f32);
-                    for (x, y) in ink {
-                        assert!(
-                            (0.0..=w as f32).contains(&x) && (top..=bottom).contains(&y),
-                            "{which:?} {w}x{h} {clear:?}: ({x}, {y}) outside"
-                        );
-                    }
-                    // Not shrunk to nothing: the room still fills a good part of it.
-                    assert!(lines.view.scale >= 0.4 * st.fitted(which, w, h, Clear::default()).scale, "{which:?} {w}x{h}");
+                let fitted = st.fitted(which, w, h);
+                let lines = st.draw_lines_at(which, fitted, 1.0, P2(0.0, 0.0)).unwrap();
+                let ink: Vec<(f32, f32)> =
+                    lines.drawing.prims.iter().filter(|p| !matches!(p, Prim::Image { .. })).flat_map(Prim::points).collect();
+                assert!(!ink.is_empty());
+                for (x, y) in ink {
+                    assert!(
+                        (m - 0.5..=w as f32 - m + 0.5).contains(&x) && (m - 0.5..=h as f32 - m + 0.5).contains(&y),
+                        "{which:?} {w}x{h}: ({x}, {y}) outside"
+                    );
                 }
+                // The same frame draw_lines draws, and the room still a good part of it.
+                assert_eq!(st.draw_lines(which, w, h, 1.0, P2(0.0, 0.0)).unwrap().view, lines.view);
+                assert!(lines.view.scale >= 0.5 * st.frame(which, w, h, 1.0, P2(0.0, 0.0)).scale, "{which:?} {w}x{h}");
             }
         }
     }

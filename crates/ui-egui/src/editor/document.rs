@@ -1470,12 +1470,22 @@ impl BimApp {
         let pane = ui.available_rect_before_wrap();
         self.view_rect = pane;
         self.pane = pane;
+        // A plan, an elevation and {3D} are drawn below the tabs that float over the view's top (UI-1: as they were last drawn),
+        // so a plane's name along an elevation's top and the top of what {3D} fits show; above, the canvas.
+        let drawn = pane.with_min_y(self.tabs_foot.clamp(pane.top(), (pane.bottom() - 64.0).max(pane.top())));
+        if ed.adaptive.is_none() {
+            ui.painter().rect_filled(pane.with_max_y(drawn.top()), 0.0, crate::canvas::color(bimcraft_core::render::PAPER));
+        }
+        #[cfg(test)]
+        {
+            ed.views.drawn = Some(drawn);
+        }
         let values = ed.values();
         let hidden = ed.adaptive.as_ref().map(|d| ed.temp_hidden(d)).unwrap_or_default();
         if let Some(which) = ed.views.shown {
             // A plan or an elevation (F4): the project's own drawing of the family in a scratch model.
             let base = Arc::clone(&self.session.model);
-            if let Some(e) = ed.view_2d(ui, &base, which, pane, self.thin) {
+            if let Some(e) = ed.view_2d(ui, &base, which, drawn, self.thin) {
                 self.status = Status { text: e, error: true };
             }
             if let Some(text) = ed.views.said.take() {
@@ -1491,7 +1501,7 @@ impl BimApp {
                 self.status = Status { text: e, error: true };
             }
         } else {
-            self.family_3d(ui, &mut ed, pane);
+            self.family_3d(ui, &mut ed, drawn);
         }
         // The point a snap override waited for, picked: it is done.
         if std::mem::take(&mut ed.took_point) {
