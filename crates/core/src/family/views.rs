@@ -405,8 +405,8 @@ impl Staged {
     ///
     /// The room fitted; then, in a plan or the ceiling plan, an elevation mark the picture cuts at its edge (its name reaches
     /// past the room, beyond the narrow view's side: UI-1) brought wholly in, the frame shrunk about what those marks and the
-    /// room take, in up to eight passes, as lettering keeps its size on paper while the frame shrinks. A mark wholly outside
-    /// stays out, so a view wide enough keeps the room's frame. An elevation makes room for its levels' names by itself
+    /// room take, in a few passes, as lettering keeps its size on paper while the frame shrinks; a mark a pass brings partly in is
+    /// brought wholly in by the next. A mark wholly outside stays out, so a view wide enough keeps the room's frame. An elevation makes room for its levels' names by itself
     /// (`frame`), and its planes run from edge to edge of the picture, their names along its top, whatever the frame.
     pub fn fitted(&mut self, which: Which, width: u32, height: u32) -> View {
         const MARGIN: f32 = 8.0;
@@ -430,14 +430,20 @@ impl Staged {
         };
         // The marks the room's frame shows a part of, and whether it cuts any.
         let first = marks(self, room);
-        let shown: Vec<Id> = first.iter().filter(|(_, pts)| pts.iter().any(|p| inside(*p))).map(|(id, _)| *id).collect();
+        let mut shown: Vec<Id> = first.iter().filter(|(_, pts)| pts.iter().any(|p| inside(*p))).map(|(id, _)| *id).collect();
         let cut = |pts: &[(f32, f32)]| pts.iter().any(|p| p.0 < lo.0 || p.1 < lo.1 || p.0 > hi.0 || p.1 > hi.1);
         if !shown.iter().any(|id| first.get(id).is_some_and(|pts| cut(pts))) {
             return room;
         }
         let mut v = room;
-        for _ in 0..8 {
+        for _ in 0..12 {
             let by = marks(self, v);
+            // A mark the room's frame hid that the shrunk one shows a part of is brought in too.
+            for (id, pts) in &by {
+                if !shown.contains(id) && pts.iter().any(|p| inside(*p)) {
+                    shown.push(*id);
+                }
+            }
             let corners = [self.room.0, self.room.1];
             let room_px = (0..8).map(|k| v.px(self.to_view(which, [corners[k & 1][0], corners[(k >> 1) & 1][1], corners[k >> 2][2]])));
             let pts: Vec<(f32, f32)> = shown.iter().filter_map(|id| by.get(id)).flatten().copied().chain(room_px).collect();

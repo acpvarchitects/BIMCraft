@@ -1477,10 +1477,6 @@ impl BimApp {
         if ed.adaptive.is_none() {
             ui.painter().rect_filled(pane.with_max_y(drawn.top()), 0.0, crate::canvas::color(bimcraft_core::render::PAPER));
         }
-        #[cfg(test)]
-        {
-            ed.views.drawn = Some(drawn);
-        }
         let values = ed.values();
         let hidden = ed.adaptive.as_ref().map(|d| ed.temp_hidden(d)).unwrap_or_default();
         if let Some(which) = ed.views.shown {
@@ -2436,6 +2432,10 @@ impl BimApp {
     /// over it), and on nothing lets the selection go, as in Revit and the project's 3D view; the pointer over one lights it
     /// first (T11). A double click on a form sketches it again, as Edit Extrusion or Edit Revolve does (F5).
     fn family_3d(&mut self, ui: &mut Ui, ed: &mut FamilyEditor, pane: Rect) {
+        #[cfg(test)]
+        {
+            ed.views.drawn = Some(pane);
+        }
         let response = ui.interact(pane, UiId::new("family-preview"), Sense::click_and_drag());
         self.canvas.track(ui, &response);
         // The triad stands left of the ViewCube, which is in the top right corner; both are laid over the view, so a click on
