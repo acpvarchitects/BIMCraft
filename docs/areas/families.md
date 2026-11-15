@@ -1671,8 +1671,18 @@ labels and formulas (`Family::rename_parameter`); deleting it while it labels, o
 FORMAT 21 holds `label` and these values (0.12 reads up to 20, so it refuses the file rather than leave the label out and
 refuse every command over the values); a file of 20 holds neither. Select All Instances in the family document takes the
 instances showing the same family and type for the type previewed (`select::instances`). Tests: `family_type_param_tests.rs`.
-The desktop's (Family Types' picker, the Options Bar's Label, an editable Properties row) is PR 3's; until then Properties
-shows a component's choice read only, `Family : Type`.
+In the family document: Parameter Properties' Category for a family type says which nested families of it are loaded;
+Family Types picks a family type's value in a drop-down (`<None>`, then each `Family : Type` of its category) and takes its
+formula; a selected nested instance's Options Bar has Label (`<None>`, the family type parameters of its family's category,
+and Create Parameter…, which makes one of that category, Type or Instance, and labels the instance with it,
+`Creating::for_label`); labelled, its Type in Properties is greyed, showing what its label picks for the type previewed, with
+"Labelled by …", and the selection's name says the same (`FamilyEditor::shown_type`); unlabelled, it keeps the family and
+type it showed in the type previewed (`set_nested_label`). A nested family's own family type is listed with "=" alone,
+Associate Family Parameter offering the host's of its category. In the project, Properties picks a component's instance
+family type in a drop-down (`modify {params}`) and Type Properties a type's (sent only where it was changed, so OK with
+nothing edited changes nothing; `properties::choice_combo`). Tests: `tests/family_type_params.rs`; `BIMCRAFT_T24_UI_DUMP`
+saves the Options Bar's Label, Family Types' drop-down, the labelled instance's Properties and the project's Properties
+before and after the swap, in the three looks and both profiles.
 
 Open: the family's check builds each of its types, not every choice a component may hold, so a choice that doesn't build
 with the instance's `params` (a value the family picked can't take) leaves the instance out of that component's geometry
@@ -1819,9 +1829,13 @@ another view or tab. A form's sketch follows it through `snap::among`; the Modif
 Intersection and Nearest find anything on the traces (any other kind, and SO, leave the point where it was clicked), and which under
 the default switches snaps exactly as before (`traces_snap_under_the_default_switches_exactly_as_before`). SX (points) and SW (the
 work plane grid) are no keys of a family's: nothing in it is a point a snap finds (an adaptive family's {3D} picks its points itself),
-and its work plane's grid is only drawn, in {3D} with Show on. Reference Plane, Reference Line and Model Line still draw unsnapped
-(Shift keeping them square), and Measure's clicks find no traces outside a Modify tool, so an override there only ends at its click.
-Tests: `tests/family_snaps.rs`; the core's in `snap.rs`.
+and its work plane's grid is only drawn, in {3D} with Show on. Measure's clicks and the Reference Plane, Reference Line and Model
+Line tools' points snap the same way (FE-21b): the traces are the planes' (datums included), the reference lines' and the model
+lines', each as the view draws it (what it hides, for now or for good, is none: `plane_hidden`, as the staged view leaves it out),
+gathered while one of those tools or a Modify tool is in hand. With Shift held the second point is squared from the first, then slid
+along that square line onto a trace crossing it (`snap::on_traces_square`), so it never leaves the square. A drawn point takes a
+waiting override as Measure's does; two clicks that land on one point keep the first and say so; a cross marks where the next click
+snaps, and the band from the first click runs to it. Tests: `tests/family_snaps.rs`, `tests/family_draw_snaps.rs`; the core's in `snap.rs`.
 
 ## Pin, Measure and Create Similar (FE-17)
 
