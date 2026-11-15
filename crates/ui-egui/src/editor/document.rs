@@ -187,6 +187,32 @@ impl FamilyEditor {
         self.let_everything_go();
     }
 
+    /// Which tool is in hand, not how far it has got: what a snap override waiting for a point (FE-21) watches, going when another
+    /// is picked up, as the project's goes with `set_tool`.
+    pub(crate) fn tool_in_hand(&self) -> u64 {
+        use std::hash::{Hash, Hasher};
+        use std::mem::discriminant as d;
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        let v = &self.views;
+        (
+            d(&self.modeller.tool),
+            v.drawing.is_some(),
+            v.drawing_line,
+            v.drawing_model,
+            v.measuring.is_some(),
+            v.modify.as_ref().map(|m| d(&m.tool)),
+            v.dimensioning.is_some(),
+            v.aligning.is_some(),
+            v.pivoting.is_some(),
+            v.picking.is_some(),
+            v.pasting.is_some(),
+            self.placing.is_some(),
+        )
+            .hash(&mut h);
+        self.sketch.as_ref().map(|s| (s.tool.map(|t| d(&t)), s.axis_tool, s.edit.map(|t| d(&t)), s.pasting.is_some())).hash(&mut h);
+        h.finish()
+    }
+
     /// The draft as it is now, for `saved_as` once it has been saved.
     pub(super) fn draft(&self) -> Draft {
         Draft::of(self)
@@ -1428,6 +1454,16 @@ impl BimApp {
     /// button, and its view control bar at the bottom.
     pub(crate) fn family_central(&mut self, ui: &mut Ui) {
         let Some(mut ed) = self.take_family() else { return };
+        // A snap override (FE-21) waits for a point of the tool in hand: another tool picked up ends it.
+        let tool = ed.tool_in_hand();
+        match (self.snap_once.is_some(), ed.override_tool) {
+            (true, Some(was)) if was != tool => self.snap_once = None,
+            (true, None) => ed.override_tool = Some(tool),
+            _ => {}
+        }
+        if self.snap_once.is_none() {
+            ed.override_tool = None;
+        }
         ed.snaps = self.snaps_now();
         (ed.selecting.by_face, ed.selecting.drag_faces) = (self.select_by_face, self.drag_on_selection);
         ed.selecting.pins = self.select_pinned;
@@ -1456,6 +1492,11 @@ impl BimApp {
             }
         } else {
             self.family_3d(ui, &mut ed, pane);
+        }
+        // The point a snap override waited for, picked: it is done.
+        if std::mem::take(&mut ed.took_point) {
+            self.snap_once = None;
+            ed.override_tool = None;
         }
         // Zoom In Region's drag, over the view (`zoom.rs`).
         ed.zoom_region_drag(ui, pane);
@@ -1899,6 +1940,11 @@ impl BimApp {
             && let Some(c) = super::clipboard::key(ctx, &mut self.paste_heard)
         {
             self.family_clipboard(c);
+        }
+        // A snap override waiting for its point (FE-21) goes first, leaving what is being drawn, as the project's Escape does.
+        if self.snap_once.is_some() && ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape)) {
+            self.snap_once = None;
+            return;
         }
         let Some(ed) = self.active_family_mut() else { return };
         // Zoom In Region armed: Escape gives it up, and nothing else.

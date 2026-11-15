@@ -695,6 +695,52 @@ pub fn among(
     solve(scene, p, reach, from, square, o, true)
 }
 
+/// Where a point picked at `q` lands on `traces`, lines a family's planes and reference lines draw across a view, within
+/// `reach`: where two cross near it, if the switches take crossings; else the nearest point of the nearest, if they take
+/// nearest points; else `q`, as picked. A family's Modify and Measure points snap so (FE-8, FE-17), the snap overrides
+/// (FE-21) as much as Manage > Snaps: a kind traces have none of finds nothing.
+pub fn on_traces(q: P2, traces: &[(P2, P2)], reach: f64, o: &Snaps) -> P2 {
+    let near: Vec<(f64, (P2, P2))> = traces
+        .iter()
+        .filter(|(a, b)| a.dist(*b) > 1e-9)
+        .map(|s| (geom::dist_to_segment(q, s.0, s.1), *s))
+        .filter(|(d, _)| *d <= reach)
+        .collect();
+    let crossing = |(a, b): (P2, P2), (c, d): (P2, P2)| -> Option<P2> {
+        let (r, s) = (b - a, d - c);
+        let den = r.cross(s);
+        if den.abs() < 1e-9 * r.dot(r).sqrt() * s.dot(s).sqrt() {
+            return None;
+        }
+        Some(a + r * ((c - a).cross(s) / den))
+    };
+    if o.intersection {
+        let mut best: Option<(f64, P2)> = None;
+        for (i, (_, s)) in near.iter().enumerate() {
+            for (_, u) in &near[i + 1..] {
+                if let Some(x) = crossing(*s, *u).filter(|x| x.dist(q) <= reach * 1.5)
+                    && best.is_none_or(|(d, _)| x.dist(q) < d)
+                {
+                    best = Some((x.dist(q), x));
+                }
+            }
+        }
+        if let Some((_, x)) = best {
+            return x;
+        }
+    }
+    if !o.nearest {
+        return q;
+    }
+    near.iter()
+        .min_by(|a, b| a.0.total_cmp(&b.0))
+        .map(|(_, (a, b))| {
+            let r = *b - *a;
+            *a + r * ((q - *a).dot(r) / r.dot(r))
+        })
+        .unwrap_or(q)
+}
+
 /// A sketch's view and draft geometry. The element being edited is omitted so its old boundary cannot attract a grip.
 pub struct Sketch<'a> {
     pub view: Id,
@@ -1712,5 +1758,84 @@ mod tests {
         assert_eq!(at(&s.model, P2(5030.0, 5020.0), &[], &Snaps::default()).kind, Kind::Free);
         let level = s.model.levels().last().unwrap().0;
         assert_eq!(snap(&s.model, level, P2(5030.0, 5020.0), REACH, &[], false, &Snaps::default()).kind, Kind::Endpoint);
+    }
+
+    /// FE-21: what a family's Modify and Measure points snapped to before the switches governed them (`modify::snap_to`, as it
+    /// was), kept here to hold [`on_traces`] to it under the default switches.
+    fn before_fe21(q: P2, traces: &[(P2, P2)], reach: f64) -> P2 {
+        let near: Vec<(f64, (P2, P2))> = traces
+            .iter()
+            .filter(|(a, b)| a.dist(*b) > 1e-9)
+            .map(|s| (geom::dist_to_segment(q, s.0, s.1), *s))
+            .filter(|(d, _)| *d <= reach)
+            .collect();
+        let crossing = |(a, b): (P2, P2), (c, d): (P2, P2)| -> Option<P2> {
+            let (r, s) = (b - a, d - c);
+            let den = r.cross(s);
+            if den.abs() < 1e-9 * r.dot(r).sqrt() * s.dot(s).sqrt() {
+                return None;
+            }
+            Some(a + r * ((c - a).cross(s) / den))
+        };
+        let mut best: Option<(f64, P2)> = None;
+        for (i, (_, s)) in near.iter().enumerate() {
+            for (_, u) in &near[i + 1..] {
+                if let Some(x) = crossing(*s, *u).filter(|x| x.dist(q) <= reach * 1.5)
+                    && best.is_none_or(|(d, _)| x.dist(q) < d)
+                {
+                    best = Some((x.dist(q), x));
+                }
+            }
+        }
+        if let Some((_, x)) = best {
+            return x;
+        }
+        near.iter()
+            .min_by(|a, b| a.0.total_cmp(&b.0))
+            .map(|(_, (a, b))| {
+                let r = *b - *a;
+                *a + r * ((q - *a).dot(r) / r.dot(r))
+            })
+            .unwrap_or(q)
+    }
+
+    /// Two planes' traces crossing at the origin, a third slanting across them, and one of no length.
+    const TRACES: [(P2, P2); 4] = [
+        (P2(0.0, -1000.0), P2(0.0, 1000.0)),
+        (P2(-1000.0, 0.0), P2(1000.0, 0.0)),
+        (P2(-1000.0, 300.0), P2(1000.0, 700.0)),
+        (P2(50.0, 50.0), P2(50.0, 50.0)),
+    ];
+
+    #[test]
+    fn traces_snap_under_the_default_switches_exactly_as_before() {
+        let mut n = 0;
+        for i in -40..=40 {
+            for j in -40..=40 {
+                let q = P2(f64::from(i) * 17.3, f64::from(j) * 19.1);
+                assert_eq!(on_traces(q, &TRACES, 60.0, &Snaps::default()), before_fe21(q, &TRACES, 60.0), "{q:?}");
+                n += usize::from(before_fe21(q, &TRACES, 60.0) != q);
+            }
+        }
+        assert!(n > 100, "the sweep snaps somewhere: {n}");
+    }
+
+    #[test]
+    fn traces_snap_as_the_switches_and_an_override_say() {
+        let q = P2(20.0, 30.0);
+        // Where two cross, else the nearest; each alone, and none.
+        assert_eq!(on_traces(q, &TRACES, 60.0, &Snaps::default()), P2(0.0, 0.0));
+        assert_eq!(on_traces(q, &TRACES, 60.0, &Snaps::only(Kind::Intersection)), P2(0.0, 0.0));
+        assert_eq!(on_traces(q, &TRACES, 60.0, &Snaps::only(Kind::Nearest)), P2(0.0, 30.0));
+        assert_eq!(on_traces(q, &TRACES, 60.0, &Snaps { intersection: false, ..Snaps::default() }), P2(0.0, 30.0));
+        assert_eq!(on_traces(q, &TRACES, 60.0, &Snaps::none()), q, "snaps off: the point as picked");
+        // A kind traces have none of: the point as picked.
+        for kind in [Kind::Endpoint, Kind::Midpoint, Kind::Centre, Kind::Perpendicular, Kind::Quadrant, Kind::Tangent, Kind::Point] {
+            assert_eq!(on_traces(q, &TRACES, 60.0, &Snaps::only(kind)), q, "{kind:?}");
+        }
+        // Far from any crossing, Intersection alone finds nothing.
+        let far = P2(20.0, -600.0);
+        assert_eq!(on_traces(far, &TRACES, 60.0, &Snaps::only(Kind::Intersection)), far);
+        assert_eq!(on_traces(far, &TRACES, 60.0, &Snaps::default()), P2(0.0, -600.0));
     }
 }

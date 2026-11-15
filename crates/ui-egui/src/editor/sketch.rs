@@ -1257,8 +1257,11 @@ impl FamilyEditor {
         {
             s.sketch.drag = Some(Drag::Grip(g));
         }
+        // Whether a point was picked, which a snap override waiting for it (FE-21) was for.
+        let mut took = false;
         if response.drag_stopped() {
             if let (Some(Drag::Grip(from)), Some(to)) = (s.sketch.drag, hover) {
+                took = true;
                 s.sketch.move_end(from, to);
             }
             s.sketch.drag = None;
@@ -1266,7 +1269,9 @@ impl FamilyEditor {
         if response.clicked()
             && let Some(pos) = response.interact_pointer_pos()
         {
-            match at(pos).map(|raw| if snapping { snap(s, raw).at } else { raw }) {
+            let picked = at(pos).map(|raw| if snapping { snap(s, raw).at } else { raw });
+            took |= picked.is_some() && snapping;
+            match picked {
                 Some(p) if s.pasting.is_some() => paste_at = Some(p),
                 Some(p) if s.edit.is_some() => {
                     // A Modify tool (FE-8): on the lines picked, or the line clicked.
@@ -1314,6 +1319,7 @@ impl FamilyEditor {
             let from = f.guide.and_then(|g| screen(g.from));
             crate::canvas::snap_mark(painter, at, from, f.kind, t(f.kind.name()).to_string());
         }
+        self.took_point |= took;
         if let Some(p) = paste_at {
             self.views.said = self.sketch_paste_click(p);
         }

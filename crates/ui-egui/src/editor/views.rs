@@ -1080,7 +1080,9 @@ impl FamilyEditor {
             }
             _ => Vec::new(),
         };
-        let snapped = |p: egui::Pos2| super::modify::snap_to(at_view(p), &traces, reach);
+        // As Manage > Snaps says, or a snap override (FE-21) for the next point.
+        let snaps = self.snaps;
+        let snapped = |p: egui::Pos2| bimcraft_core::snap::on_traces(at_view(p), &traces, reach, &snaps);
         if self.views.modify.is_some() {
             let pieces: Vec<[egui::Pos2; 2]> =
                 scene.as_ref().map(|s| shown_selection.iter().flat_map(|p| s.pieces(*p)).collect()).unwrap_or_default();
@@ -1743,6 +1745,8 @@ impl FamilyEditor {
                 Err(e) => problem = Some(e),
             }
         }
+        // A point a snap override was for (FE-21) ends it.
+        self.took_point |= measure_at.is_some() || modify_at.is_some();
         // A Modify tool's click (FE-8), and Rotate's Angle typed.
         if let Some(at) = measure_at
             && let Some(text) = self.measure_click(at, which, base.units)

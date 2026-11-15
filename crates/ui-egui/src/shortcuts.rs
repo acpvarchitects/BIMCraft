@@ -6,7 +6,6 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use bimcraft_core::geom::P2;
-use bimcraft_core::snap::Kind as Snap;
 use egui::{Align, ComboBox, Context, Grid, Id as UiId, Layout, RichText, ScrollArea, TextEdit, vec2};
 
 use bimcraft_i18n::msg;
@@ -14,7 +13,7 @@ use bimcraft_i18n::msg;
 use crate::graphics;
 use crate::lang::{Lang, t, tf, translated_in};
 use crate::pal;
-use crate::{BimApp, Once, Tab, Tool, phasing};
+use crate::{BimApp, Tab, Tool, phasing};
 
 /// A shortcuts file is a list of commands: Revit's export of its keyboard shortcuts, every command with its tabs and
 /// panels, is about 300 KiB. One over this isn't one.
@@ -133,6 +132,8 @@ pub const ACTIONS: &[&str] = &[
     "Snap to Intersections",
     "Snap to Centres",
     "Snap to Perpendiculars",
+    "Snap to Quadrants",
+    "Snap to Tangents",
     "Snap to Nearest",
     "Snaps Off",
     "Turn Snap Override Off",
@@ -462,15 +463,6 @@ impl BimApp {
             "Delete" => self.delete(),
             "Pin" => self.set_pinned(true),
             "Unpin" => self.set_pinned(false),
-            // Revit's snap overrides, for the next point picked.
-            "Snap to Endpoints" => self.snap_once = Some(Once::Only(Snap::Endpoint)),
-            "Snap to Midpoints" => self.snap_once = Some(Once::Only(Snap::Midpoint)),
-            "Snap to Intersections" => self.snap_once = Some(Once::Only(Snap::Intersection)),
-            "Snap to Centres" => self.snap_once = Some(Once::Only(Snap::Centre)),
-            "Snap to Perpendiculars" => self.snap_once = Some(Once::Only(Snap::Perpendicular)),
-            "Snap to Nearest" => self.snap_once = Some(Once::Only(Snap::Nearest)),
-            "Snaps Off" => self.snap_once = Some(Once::Off),
-            "Turn Snap Override Off" => self.snap_once = None,
             "Show Mass" => self.show_mass(),
             "Mass Floors" => self.by_mass("mass_floors"),
             "Wall by Face" => self.by_mass("wall_by_face"),
@@ -499,6 +491,8 @@ impl BimApp {
             "Patch Panel" => self.set_tool(Tool::Fixture("patchpanel")),
             "Isolated Footing" => self.set_tool(Tool::Stand("footing")),
             "Wall Footing" => self.set_tool(Tool::Run("stripfooting", None)),
+            // Revit's snap overrides, for the next point picked.
+            a if self.snap_override(a) => {}
             _ => return false,
         }
         true
