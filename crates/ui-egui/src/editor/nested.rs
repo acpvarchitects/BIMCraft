@@ -342,6 +342,7 @@ impl BimApp {
                         let mut value = e.take().unwrap_or_else(|| match own.get(&p.name) {
                             Some(Val::Number(x)) => Expr::Number(*x),
                             Some(Val::Text(s)) => Expr::Formula(s.clone()),
+                            Some(v @ Val::Choice { .. }) => Expr::Formula(bimcraft_core::family::said_choice(v)),
                             None => Expr::Number(0.0),
                         });
                         let before = value.clone();

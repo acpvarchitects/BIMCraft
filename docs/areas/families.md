@@ -277,7 +277,7 @@ otherwise; its formula rounds half away from zero), an angle, an `area` (mm²) o
 lengths in mm needs no conversion (`Width * Depth` is an area), schedules and `{label}` text showing them in m² and m³;
 yes or no; or words: a material, `text`, a `url` (`MAX_URL`, one line) or a `familytype`. Words take no formula and no formula
 reads them (`Kind::text`; `family/validate.rs` refuses the formula, a material still where it is worked out). A family type
-parameter names the category of the families whose types it picks (`of`) and holds no value until T24 (a nested family's type chosen by it).
+parameter names the category of the families whose types it picks (`of`), and holds one of them: *Family type parameters*, below.
 `group` is the heading it is listed under (`Group`, 14 of them); none, its kind's (`Parameter::group`: Dimensions for lengths,
 areas, volumes and angles, Materials and Finishes for materials, else Other). `shared` is a shared parameter's GUID, the
 same wherever it is used and distinct from the parameter's library-entry GUID (which is per project and per family): two
@@ -1524,7 +1524,7 @@ when none) at `at` in that plane's axes, `offset` along its normal and turned `a
 formula, and `params` setting the nested family's parameters, type or instance: a number, or a formula over the host's
 (Associate Family Parameter: `{"W": "Width"}`); a material, a text or a URL parameter names one of the host's of its kind, or
 holds the material's name or the words, as a form's `material` does. A parameter the nested family works out by a formula, a
-reporting one and a family type (T24's) can't be set. Both are parts (`HasPart`: ids and GUIDs, kept by place); the definition
+reporting one can't be set; a family type is set by associating it with one of the host's (*Family type parameters*, below). Both are parts (`HasPart`: ids and GUIDs, kept by place); the definition
 inside is the nested family's own, its forms' and planes' ids and GUIDs not the project library's (a nested copy of a project
 family holds the same GUIDs). Every walk that names a parameter or a material reaches them: `rename_parameter`, `every_formula`,
 `material_refs_mut`, `materials`, `rename_material` (into the definitions, at every depth), `hosted_on`, `rehost` and
@@ -1560,7 +1560,7 @@ it is made the first one met going down its nested families in order (`Family::u
 holding Leaf, defined otherwise, load with P's Leaf in both and in the project's), and what the target takes is read once
 the answers are applied, so no definition taken brings back a copy another replaced. A shared nested instance is built into its host as any other, and is also an element of its own in the project (T6b,
 *Shared nested instances in a project*, below). A nested family's type chosen by a family type parameter
-is T24's. A door's leaf on a hinge (T26) is a nested instance on a pivoted line's face or on a pivoted plane, placed on its
+is *Family type parameters*, below. A door's leaf on a hinge (T26) is a nested instance on a pivoted line's face or on a pivoted plane, placed on its
 host's flexed frame, so it turns with the pivot (F7d, *Dimensions and constraints*): `family_pivot_tests` swings a nested leaf
 by an instance `Swing Angle` and finds it, and the door's IFC body, as drawn by hand at 45°. An instance's `angle` may also
 read an instance parameter.
@@ -1646,6 +1646,38 @@ dragged in its family's plan and elevation, pinned, by a formula, undone). `BIMC
 screenshots there (the plan at 1 : 20 with tags, a schedule with a phase column, Tab in an elevation and in {3D});
 `BIMCRAFT_T24_DUMP` the three levels' (Tab to the handle, then the knob, and the knob's Properties).
 
+### Family type parameters
+
+T24 (`family.rs`, `family/nested.rs`). A parameter of kind `familytype` names a category (`of`) and holds a family the family
+nests of that category and one of its types, `{"family": "Knob", "type": "K"}` (`Val::Choice` worked out), or null for none:
+as its default, in a type, or, an instance parameter, in a component's `params`. `Family::choices` lists what it may hold, and
+`family {name}` replies them as `choices`; `Family::choice_ok` refuses anything else, naming the parameter and what would do
+(`Family::check_choices` for the family's own values, `Model::family_values_ok` for a component's). A nested instance's `label`
+names one, of its own family's category (`Family::check_nested`): it then shows the family and type that holds
+(`Family::chosen`, read where the instance is built, `placed_instance`), so plans, 3D, IFC, schedules and the elements of
+shared ones swap with it; where it holds none, the instance shows its own `family` and `type`. Labelling fills the parameter's
+values that hold none with the instance's own (`Family::fill_labels`), so nothing changes until a value does: only on the
+command that sets or changes the label (a value taken back to none afterwards stays none, the instance showing its own),
+and never for a label of another category's parameter, which the check then names. A labelled
+instance's `params` may name parameters of any family its label may pick (one kind in all that have it); one the family shown
+hasn't is left out. Its formula picks another of its category, `Long Handle`, or `if(condition, one, other)` of them, nested
+(`family::choose`, `choice_arms`); a literal, a number or another category's is refused, and one coming back to itself too.
+Three levels down, a nested family's own family type parameter is set by associating it with one of the host's of its
+category (`{"Handle": "Handle"}`), whose every choice the nested family nests too (else refused, naming what it lacks), so
+the cabinet's type picks what stands on its shared plate. The element of a shared instance keeps its GUID through a swap
+(its path is instance GUIDs, `guid_of`), with its tags, which show its new type; one shared inside it that the new family
+hasn't goes, with its tags; a swap to a family that isn't shared takes its element and tags away. Renaming the parameter renames
+labels and formulas (`Family::rename_parameter`); deleting it while it labels, or a nested family a value holds, is refused.
+FORMAT 21 holds `label` and these values (0.12 reads up to 20, so it refuses the file rather than leave the label out and
+refuse every command over the values); a file of 20 holds neither. Select All Instances in the family document takes the
+instances showing the same family and type for the type previewed (`select::instances`). Tests: `family_type_param_tests.rs`.
+The desktop's (Family Types' picker, the Options Bar's Label, an editable Properties row) is PR 3's; until then Properties
+shows a component's choice read only, `Family : Type`.
+
+Open: the family's check builds each of its types, not every choice a component may hold, so a choice that doesn't build
+with the instance's `params` (a value the family picked can't take) leaves the instance out of that component's geometry
+rather than being refused.
+
 ## Reloading a family
 
 `family {path, name?, overwrite?}` can choose how to load over a family already in the project:
@@ -1655,8 +1687,9 @@ screenshots there (the plan at 1 : 20 with tags, a schedule with a phase column,
 - `version_and_values` replaces the definition and takes its defaults and matching type values from the file.
 
 Compatibility means the same case-sensitive parameter name, kind, Type/Instance setting and shared GUID (including both absent).
-Reporting parameters never carry values over. Family Type parameters also require the same `of` category; their values remain
-null until nested-family support. Neither compatible version is driven by
+Reporting parameters never carry values over. Family Type parameters also require the same `of` category, and a value is kept
+only where the new version still nests that family, of that category, with that type; else it takes the new version's. A
+component's own value naming a family the new version doesn't nest refuses the reload, naming it. Neither compatible version is driven by
 a formula. Incoming formulas always belong to the new definition. Project-only types remain, keeping compatible values;
 new parameters and types use the incoming values. Explicit instance overrides are never rewritten by a family reload.
 Optional definition fields omitted from an explicit replacement are reset, rather than retained from the old definition.
