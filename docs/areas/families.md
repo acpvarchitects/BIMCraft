@@ -1202,6 +1202,18 @@ Start or End otherwise for the type previewed than it is drawn, its Properties s
 `held_forms`), its ends a dimension sets greyed as they come to: the drawn numbers stay, and its Edit tool or the dimensions
 change them.
 
+FE-25 (`editor/handles3d.rs`): {3D} shows the same handles on the selected extrusion or Blend, drawn over the picture where the
+type previewed puts them: an extrusion's at the middle of each profile edge at mid-depth, a Blend's base's at its base, and the
+End and Start (a Blend's Second and First End) at the middle of the profile there (a Blend's top at its End), pointing out along
+the plane's normal, drawn whether or not the solid hides them, as the plans draw them. A press on one holds it rather than turning the view (a greyed one too, doing nothing and saying why); the
+pointer is read along the arrow as the view showed it when the button went down, and a side's drag is the plans' own
+(`drag_edge_to`), an end's writes its number. It is live, one step of the history, and Escape, Undo, Redo and a plan or an
+elevation shown give it up, the form put back. A handle the view sees end-on (its way within about 75 degrees of the way the view
+looks, `handles3d::SEEN`) can't be dragged along: it isn't drawn, as a plan draws none on a side it sees flat, and turning the
+view brings it back. Revolves, sweeps and swept blends have no handles in any view: their shapes are their profiles' and paths',
+changed by sketching them again (Edit Revolve, Edit Sweep). In every view the drag reads the pointer where the button comes up
+too, so a hand quicker than the frames still lands where it let go.
+
 ## Blends, sweeps and swept blends
 
 F6, part of FORMAT 18 (`family/forms.rs`). A form's `sketch` is always drawn in its host plane's axes: an extrusion's or a revolve's
@@ -1936,7 +1948,7 @@ In `crates/ui-egui`, the Family Editor:
   Display Options, View Range.
 - `editor/keys.rs`: the document's two-letter keys (`FAMILY_SHORTCUTS`) and what each does (`BimApp::family_action`).
 - `editor/zoom.rs`: the zoom commands in the document's views and their Previous Pan/Zoom history, over the window's `zoom.rs`.
-- `editor/sketch.rs`: sketch mode. `editor/sketch_dims.rs`: the dimensions while a form is sketched (FE-12). `editor/shape_handles.rs`: a selected form's profile handles. `editor/dimensions.rs`: their dimensions and Align.
+- `editor/sketch.rs`: sketch mode. `editor/sketch_dims.rs`: the dimensions while a form is sketched (FE-12). `editor/shape_handles.rs`: a selected form's profile handles; `editor/handles3d.rs`: the same and its ends in {3D} (FE-25). `editor/dimensions.rs`: their dimensions and Align.
 - `editor/work_plane.rs`: its Work Plane dialog and Go To View.
 - `editor/options.rs`: the family's options (Family Category and Parameters, Properties' Other).
 - `editor/nested.rs`: its nested families (Load Family, Component, Edit Family). `editor/pivot.rs`: its pivots and grips.

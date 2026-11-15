@@ -59,8 +59,12 @@ pub(crate) struct Views {
     /// millimetres, the normal it moves along, and the view as it was when the drag began, which the pointer is read through
     /// while it goes on (a drag that changes what the view frames would otherwise change its scale under the hand).
     pub(super) end_drag: Option<EndDrag>,
-    /// A profile edge being dragged by its handle (FE-5).
+    /// A profile edge being dragged by its handle (FE-5), in a plan, an elevation or {3D}.
     pub(super) edge_drag: Option<super::shape_handles::EdgeDrag>,
+    /// A handle being dragged in {3D} (FE-25, `handles3d.rs`): how the pointer is read along it, and an end's number before.
+    pub(super) drag3d: Option<super::handles3d::Drag3d>,
+    /// Where the selected form's handles were last shown in {3D} (FE-25).
+    pub(crate) handles3d_shown: Vec<(egui::Pos2, super::handles3d::Handle3d)>,
     /// The selection being dragged to move it (FE-7, `drag_move.rs`).
     pub(super) moving: Option<super::drag_move::MoveDrag>,
     /// A Modify tool in hand (FE-8, `modify.rs`): Move, Copy, Rotate, Mirror, Scale or Offset, with what has been clicked.
@@ -553,7 +557,8 @@ impl FamilyEditor {
         // A handle's drag begun in another view, or in this one before something else was shown, is given up (FE-5).
         let pass = ui.ctx().cumulative_pass_nr();
         let stale = |w: Which, seen: u64| w != which || seen + 1 < pass;
-        if self.views.edge_drag.as_ref().is_some_and(|d| stale(d.which, d.seen))
+        if self.views.edge_drag.as_ref().is_some_and(|d| d.which.is_none_or(|w| stale(w, d.seen)))
+            || self.views.drag3d.is_some()
             || self.views.end_drag.as_ref().is_some_and(|d| stale(d.which, d.seen))
             || self.views.moving.as_ref().is_some_and(|d| stale(d.which, d.seen))
         {
@@ -1292,7 +1297,7 @@ impl FamilyEditor {
                 .min_by(|a, b| screen(a.at).distance(p).total_cmp(&screen(b.at).distance(p)))
                 && let Some(f) = family.as_ref()
             {
-                match self.edge_drag(h, (at_view(p), view, which, pass), f) {
+                match self.edge_drag(h, (Some((at_view(p), view)), Some(which), pass), f) {
                     Ok(d) => self.views.edge_drag = Some(d),
                     Err(e) => problem = Some(e),
                 }
@@ -1301,7 +1306,7 @@ impl FamilyEditor {
         let held_at = |v: View, p: egui::Pos2| v.mm((p.x - pane.min.x, p.y - pane.min.y));
         if let Some(EndDrag { end, last: from, n, view: then, .. }) = self.views.end_drag.clone()
             && let Some(to) = response.interact_pointer_pos().map(|p| held_at(then, p))
-            && response.dragged_by(PointerButton::Primary)
+            && (response.dragged_by(PointerButton::Primary) || response.drag_stopped_by(PointerButton::Primary))
         {
             let d = c.staged.vector(which, P2(to.0 - from.0, to.1 - from.1));
             end_moved = Some((end, d[0] * n[0] + d[1] * n[1] + d[2] * n[2]));
@@ -1309,9 +1314,9 @@ impl FamilyEditor {
                 e.last = to;
             }
         }
-        if let Some((from, then)) = self.views.edge_drag.as_ref().map(|d| (d.from, d.view))
+        if let Some((from, then)) = self.views.edge_drag.as_ref().and_then(|d| d.on)
             && let Some(to) = response.interact_pointer_pos().map(|p| held_at(then, p))
-            && response.dragged_by(PointerButton::Primary)
+            && (response.dragged_by(PointerButton::Primary) || response.drag_stopped_by(PointerButton::Primary))
         {
             edge_moved = Some(c.staged.vector(which, P2(to.0 - from.0, to.1 - from.1)));
         }

@@ -2472,8 +2472,28 @@ impl BimApp {
             }
             None => cam,
         };
+        // A selected form's handles (FE-25), where the view shows them as the hand found it: a press on one holds it, and the
+        // drag is the handle's, not the view's.
+        ed.keep_3d(ui.ctx().cumulative_pass_nr());
+        let before = on_pane(cam, [w, h], pane);
+        let handles = ed.handles_3d_on(&before, cam.scale);
+        let on_handle = |p: egui::Pos2| {
+            handles
+                .iter()
+                .filter(|(at, ..)| at.distance(p) <= super::handles3d::REACH)
+                .min_by(|a, b| a.0.distance(p).total_cmp(&b.0.distance(p)))
+        };
+        if response.drag_started_by(egui::PointerButton::Primary)
+            && !ed.sketching()
+            && let Some(press) = ui.input(|i| i.pointer.press_origin()).filter(|p| !crate::orbit::Orbit::on_cube(pane, *p))
+            && let Some((_, per_mm, h)) = on_handle(press)
+            && let Err(e) = ed.grab_3d(h, press, *per_mm, ui.ctx().cumulative_pass_nr())
+            && !e.is_empty()
+        {
+            self.status = Status { text: e, error: true };
+        }
         // While sketching, a drag from a picked line's end drags it rather than turn the view.
-        let gripped = ed.sketch.as_ref().is_some_and(|s| s.sketch.drag.is_some());
+        let gripped = ed.sketch.as_ref().is_some_and(|s| s.sketch.drag.is_some()) || ed.holding_3d();
         let quick = self.canvas.quick();
         let nav = ed.orbit.navigate(ui, &response, &input, cam, gripped, false, quick, fresh.then_some(&*scene));
         let cam = nav.cam;
@@ -2497,7 +2517,8 @@ impl BimApp {
             ed.connector_hover = at.and_then(|p| super::connector_marks::pick(&marks, &project, p));
             ed.views.hover3d = at.filter(|_| ed.connector_hover.is_none()).map(|p| (p, cam, part_at(ed, p)));
             let click = response.clicked().then(|| response.interact_pointer_pos()).flatten().or(self.canvas.quick_press());
-            if let Some(p) = click.filter(|p| !crate::orbit::Orbit::on_cube(pane, *p)) {
+            // A click on a handle, with no drag: the selection stays.
+            if let Some(p) = click.filter(|p| !crate::orbit::Orbit::on_cube(pane, *p) && on_handle(*p).is_none()) {
                 match super::connector_marks::pick(&marks, &project, p) {
                     Some(i) => ed.select_connector(i),
                     None => ed.click_3d(part_at(ed, p)),
@@ -2512,6 +2533,18 @@ impl BimApp {
                     self.status = Status { text: e, error: true };
                 }
             }
+        }
+        // The handle held, the pointer read along it; let go, it stays where the drag left it, a step of the history.
+        if ed.holding_3d()
+            && (response.dragged_by(egui::PointerButton::Primary) || response.drag_stopped_by(egui::PointerButton::Primary))
+            && let Some(now) = response.interact_pointer_pos()
+            && let Err(e) = ed.drag_3d_to(now)
+            && !e.is_empty()
+        {
+            self.status = Status { text: e, error: true };
+        }
+        if response.drag_stopped() || !ui.input(|i| i.pointer.primary_down()) {
+            ed.let_go_3d();
         }
         // The picture: what is selected and under the pointer tinted, the work plane and a datum selected laid over it.
         let tints = ed.scene3d.as_ref().map(|s| s.tints(&ed.lit_3d())).unwrap_or_default();
@@ -2550,6 +2583,16 @@ impl BimApp {
             .filter_map(|x| if let super::select_box::Picked::Connector(i) = x { Some(*i) } else { None })
             .collect();
         super::connector_marks::paint(&p, &marks, &project, &chosen, ed.connector_hover, lit);
+        // The selected form's handles over it, where the view shows them now: blue, or grey where they can't be dragged.
+        let shown = ed.handles_3d_on(&project, cam.scale);
+        for (at, along, h) in &shown {
+            let way = along.normalized();
+            let side = egui::vec2(-way.y, way.x);
+            let tip = vec![*at + way * super::handles3d::ARROW, *at + side * 6.0, *at - side * 6.0];
+            let colour = if h.blocked.is_none() { super::views::PICKED } else { pal().muted };
+            p.add(egui::Shape::convex_polygon(tip, colour, Stroke::new(1.0, Color32::WHITE)));
+        }
+        ed.views.handles3d_shown = shown.into_iter().map(|(at, _, h)| (at, h)).collect();
         // A form being sketched on its plane, over the picture (F5), with its padlocks.
         if let Some(e) = ed.sketch_in_3d(ui, &response, &p, &cam, size, pane) {
             self.status = Status { text: e, error: true };

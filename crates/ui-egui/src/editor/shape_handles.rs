@@ -17,7 +17,7 @@ use bimcraft_core::geom::P2;
 /// A handle on an edge of the selected form's profile, as a view shows it.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct ShapeHandle {
-    /// Where it shows, in the view's millimetres.
+    /// Where it shows, in the view's millimetres (in {3D}, where it is on the profile's plane, its own axes).
     pub(crate) at: P2,
     /// The way out of the solid, in the family's axes: what a drag moves it along.
     pub(crate) way: [f64; 3],
@@ -33,18 +33,25 @@ pub(crate) struct ShapeHandle {
 /// has gone.
 #[derive(Clone)]
 pub(crate) struct EdgeDrag {
-    /// The view it is dragged in, and the last pass that view was drawn in: shown no longer, the drag is given up.
-    pub(super) which: Which,
+    /// The view it is dragged in ({3D} none), and the last pass that view was drawn in: shown no longer, the drag is given up.
+    pub(super) which: Option<Which>,
     pub(super) seen: u64,
     line: usize,
     out: P2,
     way: [f64; 3],
-    pub(super) from: P2,
-    /// The view as the drag began: the pointer is read through it while the drag goes on.
-    pub(super) view: bimcraft_core::render::View,
+    /// In a plan or an elevation, where the button went down and the view as the drag began: the pointer is read through it
+    /// while the drag goes on. {3D} reads it itself (`handles3d.rs`).
+    pub(super) on: Option<(P2, bimcraft_core::render::View)>,
     before: FormText,
     shown: Vec<FormLine>,
     last: f64,
+}
+
+impl EdgeDrag {
+    /// The way out of the solid it is dragged along, in the family's axes.
+    pub(super) fn way(&self) -> [f64; 3] {
+        self.way
+    }
 }
 
 fn dot3(a: [f64; 3], b: [f64; 3]) -> f64 {
@@ -149,12 +156,12 @@ impl FamilyEditor {
         out
     }
 
-    /// A drag on handle `h` begun at `from` (the view's millimetres, `view` as it was then), as the type previewed shows the
-    /// form (`shown`): what the views keep while it goes on, or why it can't be dragged.
+    /// A drag on handle `h` begun at `on` (the view's millimetres and the view as it was then; none in {3D}) in view `which`,
+    /// as the type previewed shows the form (`shown`): what the views keep while it goes on, or why it can't be dragged.
     pub(crate) fn edge_drag(
         &self,
         h: &ShapeHandle,
-        (from, view, which, seen): (P2, bimcraft_core::render::View, Which, u64),
+        (on, which, seen): (Option<(P2, bimcraft_core::render::View)>, Option<Which>, u64),
         shown: &Family,
     ) -> Result<EdgeDrag, String> {
         if let Some(why) = &h.blocked {
@@ -165,7 +172,7 @@ impl FamilyEditor {
         let guid = before.original.guid;
         let flexed = if guid.is_nil() { shown.forms.get(i) } else { shown.forms.iter().find(|f| f.guid == guid) };
         let shown = flexed.map(|f| f.sketch.clone()).unwrap_or_default();
-        Ok(EdgeDrag { which, seen, line: h.line, out: h.out, way: h.way, from, view, before, shown, last: 0.0 })
+        Ok(EdgeDrag { which, seen, line: h.line, out: h.out, way: h.way, on, before, shown, last: 0.0 })
     }
 
     /// The edge being dragged, the pointer `moved` (the family's mm) from where the button went down: the form made again from
@@ -201,6 +208,8 @@ impl FamilyEditor {
     pub(crate) fn cancel_drags(&mut self) -> bool {
         // The selection being moved too (FE-7).
         let mut any = self.cancel_move();
+        // An End or a Start held in {3D} (FE-25); a side held there is the edge drag below.
+        any |= self.cancel_3d();
         if let Some(d) = self.views.edge_drag.take() {
             if let Some(i) = self.forms.iter().position(|f| f.tag == d.before.tag) {
                 self.forms[i] = d.before;

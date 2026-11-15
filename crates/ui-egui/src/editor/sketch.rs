@@ -1495,7 +1495,7 @@ impl FamilyEditor {
 
     /// Why form `form`'s end `extent` (typed `text`) can't be dragged, if it can't: a dimension's label, lock or EQ holds it, or
     /// it is a parameter's or a formula's.
-    fn end_blocked(&self, family: Option<&Family>, form: Guid, text: &str, extent: Extent) -> Option<String> {
+    pub(super) fn end_blocked(&self, family: Option<&Family>, form: Guid, text: &str, extent: Extent) -> Option<String> {
         if let Some(held) = family.filter(|_| !form.is_nil()).and_then(|f| f.end_held(form, extent)) {
             return Some(super::shape_handles::held_said(&held, true));
         }
