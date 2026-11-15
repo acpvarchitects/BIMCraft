@@ -54,14 +54,23 @@ pub(crate) enum Retry {
     Modify(super::modify::Again),
 }
 
-/// Create Parameter…, for the selected dimension's label: the Parameter Properties a label needs.
+/// Create Parameter…, for the selected dimension's label, or a selected nested instance's (T24, `nested`: the instance and
+/// its family's category, which the new family type parameter picks among): the Parameter Properties a label needs.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct Creating {
     dim: Guid,
+    pub(super) nested: Option<(usize, Category)>,
     name: String,
     instance: bool,
     reporting: bool,
     error: Option<String>,
+}
+
+impl Creating {
+    /// Create Parameter… for nested instance `i`'s Label (T24): a family type of `of`, its family's category.
+    pub(crate) fn for_label(i: usize, of: Category) -> Creating {
+        Creating { nested: Some((i, of)), ..Creating::default() }
+    }
 }
 
 /// What a click on the dimensions asked, done once the view is drawn.
@@ -1076,8 +1085,16 @@ impl FamilyEditor {
                         ui.radio_value(&mut c.instance, true, t("Instance"));
                     });
                     ui.end_row();
+                    // A nested instance's label is a family type of its family's category; a dimension's may report.
                     ui.label("");
-                    ui.checkbox(&mut c.reporting, t("Reporting Parameter"));
+                    match c.nested {
+                        Some((_, of)) => {
+                            ui.label(tf("Family Type of {}", &[&category_label(of)]));
+                        }
+                        None => {
+                            ui.checkbox(&mut c.reporting, t("Reporting Parameter"));
+                        }
+                    }
                     ui.end_row();
                 });
                 if let Some(e) = &c.error {
@@ -1112,6 +1129,14 @@ impl FamilyEditor {
         }
         if self.param_at(name).is_some() || self.sketch_params().iter().any(|(n, _)| n == name) {
             return Err(tf("there's a parameter `{}` already", &[name]));
+        }
+        // A nested instance's: a family type of its family's category, labelling it (T24).
+        if let Some((i, of)) = c.nested {
+            let p: Parameter = serde_json::from_value(json!({"name": name, "kind": "familytype", "of": of, "instance": c.instance}))
+                .map_err(|e| e.to_string())?;
+            self.params.push(ParamText::of(&p));
+            self.set_nested_label(i, Some(name.to_string()));
+            return Ok(());
         }
         let angular = self.dimensions_now().iter().any(|d| d.guid == c.dim && d.kind == DimKind::Angular);
         let length = self.dimension_length(c.dim).unwrap_or(if angular { 90.0 } else { 1000.0 });

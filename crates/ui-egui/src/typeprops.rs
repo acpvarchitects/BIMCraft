@@ -267,6 +267,18 @@ impl Table<'_> {
         });
     }
 
+    /// A row picking a family type parameter's value (T24) among `choices`: `typed` its `{"family", "type"}` written out, blank
+    /// for none.
+    pub(crate) fn choice(&mut self, label: &str, typed: &mut String, choices: &[(String, String)]) {
+        let salt = self.salt;
+        self.row(label, |ui, l| {
+            let now = crate::editor::text_choice(typed);
+            if let Some(v) = crate::properties::choice_combo(ui, (salt.value(), label), l, &now, choices) {
+                *typed = crate::editor::choice_text(&v);
+            }
+        });
+    }
+
     /// A row picking one of `options`.
     pub(crate) fn pick(&mut self, label: &str, current: &mut String, options: &[String]) {
         let salt = self.salt;

@@ -1655,8 +1655,18 @@ labels and formulas (`Family::rename_parameter`); deleting it while it labels, o
 FORMAT 21 holds `label` and these values (0.12 reads up to 20, so it refuses the file rather than leave the label out and
 refuse every command over the values); a file of 20 holds neither. Select All Instances in the family document takes the
 instances showing the same family and type for the type previewed (`select::instances`). Tests: `family_type_param_tests.rs`.
-The desktop's (Family Types' picker, the Options Bar's Label, an editable Properties row) is PR 3's; until then Properties
-shows a component's choice read only, `Family : Type`.
+In the family document: Parameter Properties' Category for a family type says which nested families of it are loaded;
+Family Types picks a family type's value in a drop-down (`<None>`, then each `Family : Type` of its category) and takes its
+formula; a selected nested instance's Options Bar has Label (`<None>`, the family type parameters of its family's category,
+and Create Parameter…, which makes one of that category, Type or Instance, and labels the instance with it,
+`Creating::for_label`); labelled, its Type in Properties is greyed, showing what its label picks for the type previewed, with
+"Labelled by …", and the selection's name says the same (`FamilyEditor::shown_type`); unlabelled, it keeps the family and
+type it showed in the type previewed (`set_nested_label`). A nested family's own family type is listed with "=" alone,
+Associate Family Parameter offering the host's of its category. In the project, Properties picks a component's instance
+family type in a drop-down (`modify {params}`) and Type Properties a type's (sent only where it was changed, so OK with
+nothing edited changes nothing; `properties::choice_combo`). Tests: `tests/family_type_params.rs`; `BIMCRAFT_T24_UI_DUMP`
+saves the Options Bar's Label, Family Types' drop-down, the labelled instance's Properties and the project's Properties
+before and after the swap, in the three looks and both profiles.
 
 Open: the family's check builds each of its types, not every choice a component may hold, so a choice that doesn't build
 with the instance's `params` (a value the family picked can't take) leaves the instance out of that component's geometry
