@@ -28,12 +28,22 @@ fn family_views_are_drawn_below_the_tabs_and_show_all_they_draw() {
             assert!(foot.is_finite(), "tabs drawn");
             let drawn = editor(&h).views.drawn.expect("a view drawn");
             assert!(drawn.top() >= foot - 0.5, "{own} {which:?}: drawn from {} under the tabs to {foot}", drawn.top());
-            if which.is_some() {
-                let ink = editor(&h).views.ink_on_screen();
-                assert!(!ink.is_empty());
+            if let Some(which) = which {
+                let (marks, rest) = editor(&h).views.ink_on_screen();
                 let inside = drawn.expand(0.5);
-                let out: Vec<_> = ink.iter().filter(|p| !inside.contains(**p)).collect();
-                assert!(out.is_empty(), "{own} {which:?}: {} points outside {drawn:?}, as {:?}", out.len(), out.first());
+                // No elevation mark, its name with it, cut at the view's edge: wholly in, or (in a plan) wholly out.
+                for m in &marks {
+                    assert!(
+                        m.iter().all(|p| inside.contains(*p)) || !m.iter().any(|p| inside.contains(*p)),
+                        "{own} {which:?}: a mark cut at {drawn:?}"
+                    );
+                }
+                // An elevation draws all it draws inside, plane names along its top under the tabs no more.
+                if let Which::Elevation(_) = which {
+                    assert!(!rest.is_empty());
+                    let out: Vec<_> = rest.iter().filter(|p| !inside.contains(**p)).collect();
+                    assert!(out.is_empty(), "{own} {which:?}: {} points outside {drawn:?}, as {:?}", out.len(), out.first());
+                }
             }
         }
     }

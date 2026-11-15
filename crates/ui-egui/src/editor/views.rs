@@ -306,16 +306,23 @@ impl Views {
         Some(self.pane?.min + vec2(x, y))
     }
 
-    /// Every point the drawing of the plan or elevation shown paints, its lettering's included, on screen.
-    pub(crate) fn ink_on_screen(&self) -> Vec<egui::Pos2> {
-        let (Some(c), Some(pane)) = (self.cache.as_ref(), self.pane) else { return Vec::new() };
-        c.drawing
-            .prims
-            .iter()
-            .filter(|p| !matches!(p, bimcraft_core::render::Prim::Image { .. }))
-            .flat_map(bimcraft_core::render::Prim::points)
-            .map(|(x, y)| pane.min + vec2(x, y))
-            .collect()
+    /// Every point the drawing of the plan or elevation shown paints, its lettering's included, on screen: each elevation mark's
+    /// (with its name) apart, then the rest.
+    pub(crate) fn ink_on_screen(&self) -> (Vec<Vec<egui::Pos2>>, Vec<egui::Pos2>) {
+        let (Some(c), Some(pane)) = (self.cache.as_ref(), self.pane) else { return Default::default() };
+        let mut marks: std::collections::BTreeMap<bimcraft_core::ids::Id, Vec<egui::Pos2>> = Default::default();
+        let mut rest = Vec::new();
+        for (p, o) in c.drawing.prims.iter().zip(&c.drawing.owners) {
+            if matches!(p, bimcraft_core::render::Prim::Image { .. }) {
+                continue;
+            }
+            let pts = p.points().into_iter().map(|(x, y)| pane.min + vec2(x, y));
+            match o.filter(|id| matches!(c.staged.model.elements.get(*id), Some(Element::Elevation(_)))) {
+                Some(id) => marks.entry(id).or_default().extend(pts),
+                None => rest.extend(pts),
+            }
+        }
+        (marks.into_values().collect(), rest)
     }
 }
 

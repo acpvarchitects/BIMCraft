@@ -403,33 +403,50 @@ impl Staged {
     /// View `which` fitted in a `width` by `height` picture: the frame zoom and pan start from, which a front end may keep while
     /// only they change.
     ///
-    /// The room fitted; a plan (or the ceiling plan) then fitted again to what it draws, its lines and its lettering, which
-    /// reaches past the room (its elevation marks' names: UI-1), in up to eight passes, as lettering keeps its size on paper while the
-    /// frame shrinks. An elevation makes room for its levels' names by itself (`frame`), and its planes run from edge to edge
-    /// of the picture, their names along its top, whatever the frame.
+    /// The room fitted; then, in a plan or the ceiling plan, an elevation mark the picture cuts at its edge (its name reaches
+    /// past the room, beyond the narrow view's side: UI-1) brought wholly in, the frame shrunk about what those marks and the
+    /// room take, in up to eight passes, as lettering keeps its size on paper while the frame shrinks. A mark wholly outside
+    /// stays out, so a view wide enough keeps the room's frame. An elevation makes room for its levels' names by itself
+    /// (`frame`), and its planes run from edge to edge of the picture, their names along its top, whatever the frame.
     pub fn fitted(&mut self, which: Which, width: u32, height: u32) -> View {
         const MARGIN: f32 = 8.0;
-        let mut v = self.frame(which, width, height, 1.0, P2(0.0, 0.0));
+        let room = self.frame(which, width, height, 1.0, P2(0.0, 0.0));
         if matches!(which, Which::Elevation(_)) {
-            return v;
+            return room;
         }
-        let (lo, hi) = ((MARGIN, MARGIN), (v.width as f32 - MARGIN, v.height as f32 - MARGIN));
+        let (w, h) = (room.width as f32, room.height as f32);
+        let (lo, hi) = ((MARGIN, MARGIN), (w - MARGIN, h - MARGIN));
+        let inside = |p: (f32, f32)| (0.0..=w).contains(&p.0) && (0.0..=h).contains(&p.1);
+        // Each elevation mark's ink, by the element it draws.
+        let marks = |st: &mut Self, v: View| -> BTreeMap<Id, Vec<(f32, f32)>> {
+            let mut by: BTreeMap<Id, Vec<(f32, f32)>> = BTreeMap::new();
+            let Ok(lines) = st.draw_lines_at(which, v, 1.0, P2(0.0, 0.0)) else { return by };
+            for (prim, owner) in lines.drawing.prims.iter().zip(&lines.drawing.owners) {
+                if let Some(id) = owner.filter(|id| matches!(st.model.elements.get(*id), Some(Element::Elevation(_)))) {
+                    by.entry(id).or_default().extend(render::Prim::points(prim).into_iter().filter(|p| p.0.is_finite() && p.1.is_finite()));
+                }
+            }
+            by
+        };
+        // The marks the room's frame shows a part of, and whether it cuts any.
+        let first = marks(self, room);
+        let shown: Vec<Id> = first.iter().filter(|(_, pts)| pts.iter().any(|p| inside(*p))).map(|(id, _)| *id).collect();
+        let cut = |pts: &[(f32, f32)]| pts.iter().any(|p| p.0 < lo.0 || p.1 < lo.1 || p.0 > hi.0 || p.1 > hi.1);
+        if !shown.iter().any(|id| first.get(id).is_some_and(|pts| cut(pts))) {
+            return room;
+        }
+        let mut v = room;
         for _ in 0..8 {
-            let Ok(lines) = self.draw_lines_at(which, v, 1.0, P2(0.0, 0.0)) else { break };
-            let ink = lines
-                .drawing
-                .prims
-                .iter()
-                .filter(|p| !matches!(p, render::Prim::Image { .. }))
-                .flat_map(render::Prim::points)
-                .filter(|p| p.0.is_finite() && p.1.is_finite())
-                .fold(None, |b: Option<((f32, f32), (f32, f32))>, p| {
-                    Some(b.map_or((p, p), |(a, z)| ((a.0.min(p.0), a.1.min(p.1)), (z.0.max(p.0), z.1.max(p.1)))))
-                });
-            let Some((a, z)) = ink else { break };
-            if a.0 >= lo.0 && a.1 >= lo.1 && z.0 <= hi.0 && z.1 <= hi.1 {
+            let by = marks(self, v);
+            let corners = [self.room.0, self.room.1];
+            let room_px = (0..8).map(|k| v.px(self.to_view(which, [corners[k & 1][0], corners[(k >> 1) & 1][1], corners[k >> 2][2]])));
+            let pts: Vec<(f32, f32)> = shown.iter().filter_map(|id| by.get(id)).flatten().copied().chain(room_px).collect();
+            if !cut(&pts) {
                 break;
             }
+            let (a, z) = pts.iter().fold(((f32::MAX, f32::MAX), (f32::MIN, f32::MIN)), |(a, z), p| {
+                ((a.0.min(p.0), a.1.min(p.1)), (z.0.max(p.0), z.1.max(p.1)))
+            });
             let s = (f64::from(hi.0 - lo.0) / f64::from(z.0 - a.0).max(1.0))
                 .min(f64::from(hi.1 - lo.1) / f64::from(z.1 - a.1).max(1.0))
                 .min(1.0);
@@ -1593,32 +1610,47 @@ mod tests {
 
     /// A box family's planes, the datums with Left, Right, Front, Back and Top of its own, drawn in every view: no plane's
     /// name lies on any plane's trace, its own or another's.
-    /// UI-1: fitted, everything a view draws (its plane names, its elevation marks' names, its levels') lies inside the picture,
-    /// in a narrow window as in a wide one; a plan's, 8 px clear of its edges.
+    /// UI-1: fitted, no elevation mark (its name with it) is cut at a plan's edge, in a narrow window as in a wide one: each is
+    /// wholly inside, 8 px clear of the edges, or wholly outside; a wide one keeps the room's frame. An elevation draws all it
+    /// draws inside its picture.
     #[test]
-    fn a_fitted_view_draws_everything_inside() {
+    fn a_fitted_view_cuts_no_elevation_mark_at_its_edge() {
         use crate::render::Prim;
         let mut st = staged(&boxed(0.0, 2000.0));
         let views = [Which::Plan, Which::Ceiling].into_iter().chain(Side::ALL.iter().map(|s| Which::Elevation(*s)));
+        let mut refitted = 0;
         for which in views {
-            let m = if matches!(which, Which::Elevation(_)) { 0.0 } else { 8.0 };
-            for (w, h) in [(1040, 760), (900, 900), (1600, 700), (600, 900)] {
+            for (w, h) in [(1040, 760), (900, 900), (1600, 700), (600, 900), (2400, 1400)] {
                 let fitted = st.fitted(which, w, h);
                 let lines = st.draw_lines_at(which, fitted, 1.0, P2(0.0, 0.0)).unwrap();
-                let ink: Vec<(f32, f32)> =
-                    lines.drawing.prims.iter().filter(|p| !matches!(p, Prim::Image { .. })).flat_map(Prim::points).collect();
-                assert!(!ink.is_empty());
-                for (x, y) in ink {
-                    assert!(
-                        (m - 0.5..=w as f32 - m + 0.5).contains(&x) && (m - 0.5..=h as f32 - m + 0.5).contains(&y),
-                        "{which:?} {w}x{h}: ({x}, {y}) outside"
-                    );
+                let (wf, hf) = (w as f32, h as f32);
+                if let Which::Elevation(_) = which {
+                    for (x, y) in lines.drawing.prims.iter().filter(|p| !matches!(p, Prim::Image { .. })).flat_map(Prim::points) {
+                        assert!((-0.5..=wf + 0.5).contains(&x) && (-0.5..=hf + 0.5).contains(&y), "{which:?} {w}x{h}: ({x}, {y})");
+                    }
+                    continue;
                 }
-                // The same frame draw_lines draws, and the room still a good part of it.
+                let mut marks: BTreeMap<Id, Vec<(f32, f32)>> = BTreeMap::new();
+                for (p, o) in lines.drawing.prims.iter().zip(&lines.drawing.owners) {
+                    if let Some(id) = o.filter(|id| matches!(st.model.elements.get(*id), Some(Element::Elevation(_)))) {
+                        marks.entry(id).or_default().extend(p.points());
+                    }
+                }
+                assert_eq!(marks.len(), 4, "{which:?}: four marks");
+                for (id, pts) in &marks {
+                    let within = |p: &(f32, f32)| (7.5..=wf - 7.5).contains(&p.0) && (7.5..=hf - 7.5).contains(&p.1);
+                    let seen = |p: &(f32, f32)| (0.0..=wf).contains(&p.0) && (0.0..=hf).contains(&p.1);
+                    assert!(pts.iter().all(within) || !pts.iter().any(seen), "{which:?} {w}x{h}: mark {id} cut at the edge");
+                }
+                let room = st.frame(which, w, h, 1.0, P2(0.0, 0.0));
+                refitted += usize::from(lines.view != room);
+                if w == 2400 {
+                    assert_eq!(lines.view, room, "{which:?}: wide enough, the room's frame");
+                }
                 assert_eq!(st.draw_lines(which, w, h, 1.0, P2(0.0, 0.0)).unwrap().view, lines.view);
-                assert!(lines.view.scale >= 0.5 * st.frame(which, w, h, 1.0, P2(0.0, 0.0)).scale, "{which:?} {w}x{h}");
             }
         }
+        assert!(refitted > 0, "a narrow view is refitted");
     }
 
     #[test]

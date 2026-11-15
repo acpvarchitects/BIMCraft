@@ -1468,11 +1468,12 @@ impl BimApp {
         (ed.selecting.by_face, ed.selecting.drag_faces) = (self.select_by_face, self.drag_on_selection);
         ed.selecting.pins = self.select_pinned;
         let pane = ui.available_rect_before_wrap();
-        self.view_rect = pane;
         self.pane = pane;
         // A plan, an elevation and {3D} are drawn below the tabs that float over the view's top (UI-1: as they were last drawn),
         // so a plane's name along an elevation's top and the top of what {3D} fits show; above, the canvas.
-        let drawn = pane.with_min_y(self.tabs_foot.clamp(pane.top(), (pane.bottom() - 64.0).max(pane.top())));
+        // On a whole pixel, as the pane's own top is, so a point on screen stands for the same millimetres as before.
+        let drawn = pane.with_min_y(self.tabs_foot.ceil().clamp(pane.top(), (pane.bottom() - 64.0).max(pane.top())));
+        self.view_rect = drawn;
         if ed.adaptive.is_none() {
             ui.painter().rect_filled(pane.with_max_y(drawn.top()), 0.0, crate::canvas::color(bimcraft_core::render::PAPER));
         }
