@@ -1819,9 +1819,11 @@ another view or tab. A form's sketch follows it through `snap::among`; the Modif
 Intersection and Nearest find anything on the traces (any other kind, and SO, leave the point where it was clicked), and which under
 the default switches snaps exactly as before (`traces_snap_under_the_default_switches_exactly_as_before`). SX (points) and SW (the
 work plane grid) are no keys of a family's: nothing in it is a point a snap finds (an adaptive family's {3D} picks its points itself),
-and its work plane's grid is only drawn, in {3D} with Show on. Reference Plane, Reference Line and Model Line still draw unsnapped
-(Shift keeping them square), and Measure's clicks find no traces outside a Modify tool, so an override there only ends at its click.
-Tests: `tests/family_snaps.rs`; the core's in `snap.rs`.
+and its work plane's grid is only drawn, in {3D} with Show on. Measure's clicks and the Reference Plane, Reference Line and Model
+Line tools' points snap the same way (FE-21b): the traces are the planes' (datums included), the reference lines' and the model
+lines', each as the view draws it, gathered while one of those tools or a Modify tool is in hand; Shift squares the snapped point
+from the first, a drawn point takes a waiting override as Measure's does, and the rubber band from the first click runs to the point
+the click will take. Tests: `tests/family_snaps.rs`, `tests/family_draw_snaps.rs`; the core's in `snap.rs`.
 
 ## Pin, Measure and Create Similar (FE-17)
 
