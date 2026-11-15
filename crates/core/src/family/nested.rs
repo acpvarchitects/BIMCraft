@@ -241,25 +241,32 @@ impl Family {
         }
     }
 
-    /// Each family type parameter a nested instance is labelled with made to hold that instance's family and type where it holds
-    /// none (its default, and each type's when it is a type parameter): labelling an instance leaves it showing what it
-    /// showed (T24). One a formula works out is the formula's.
-    pub fn fill_labels(&mut self) {
+    /// Each family type parameter a nested instance was labelled with since `before` (the family as it was; none, all of its
+    /// labels are new) made to hold that instance's family and type where it holds none: its default, and a type that holds
+    /// none outright. Labelling an instance leaves it showing what it showed (T24); a value taken back to none afterwards
+    /// stays none, the instance showing its own. A label of another category's parameter, or of one a formula works out, fills
+    /// nothing, so the check says what is wrong with the label.
+    pub fn fill_labels(&mut self, before: Option<&Family>) {
+        let had = |i: &NestedInstance| {
+            !i.guid.is_nil() && before.is_some_and(|b| b.nested_instances.iter().any(|j| j.guid == i.guid && j.label == i.label))
+        };
         let fills: Vec<(String, Value)> = self
             .nested_instances
             .iter()
+            .filter(|i| !had(i))
+            .filter(|i| {
+                let category = self.nested_family(&i.family).map(|n| n.family.category);
+                self.label_of(i).is_some_and(|p| p.formula.is_none() && p.of.is_some() && p.of == category)
+            })
             .filter_map(|i| i.label.as_ref().map(|l| (l.clone(), serde_json::json!({"family": i.family, "type": i.type_name}))))
             .collect();
         for (l, v) in fills {
-            let Some(p) = self.parameters.iter_mut().find(|p| p.name == l && p.kind == Kind::FamilyType && p.formula.is_none()) else {
-                continue;
-            };
+            let Some(p) = self.parameters.iter_mut().find(|p| p.name == l) else { continue };
             if p.value.is_null() {
                 p.value = v.clone();
             }
             if !p.instance {
-                for set in self.types.values_mut() {
-                    let held = set.entry(l.clone()).or_insert(Value::Null);
+                for held in self.types.values_mut().filter_map(|set| set.get_mut(&l)) {
                     if held.is_null() {
                         *held = v.clone();
                     }
@@ -741,8 +748,10 @@ impl Family {
                 ));
             };
             let Some(nested) = self.nested_family(family) else { return Ok(()) };
+            // What the nested family may pick, gathered once: each of the host's choices is looked up in it, not walked for.
+            let theirs: std::collections::HashSet<(String, String)> = nested.family.choices(of).into_iter().collect();
             for (f, t) in self.choices(of) {
-                if !nested.family.choices(of).iter().any(|(g, u)| *g == f && *u == t) {
+                if !theirs.contains(&(f.clone(), t.clone())) {
                     return Err(format!(
                         "{who}: `{name}` is associated with `{}`, which may pick `{f}` (type `{t}`), and `{family}` doesn't \
                          nest that: load it into `{family}` too, or leave it out",

@@ -2327,8 +2327,12 @@ impl BimApp {
                             _ if p.formula.is_some() || p.reporting => {
                                 ui.label(RichText::new(shown(kind, &val, units)).color(pal().muted));
                             }
+                            // A family and a type it nests (T24), read only: `Family : Type`.
                             Holds::FamilyType => {
-                                ui.label(RichText::new(val.as_str().unwrap_or_default()).color(pal().muted));
+                                let said = serde_json::from_value::<bimcraft_core::family::Val>(val.clone())
+                                    .map(|v| bimcraft_core::family::said_choice(&v))
+                                    .unwrap_or_default();
+                                ui.label(RichText::new(said).color(pal().muted));
                             }
                             Holds::Text | Holds::Url => {
                                 if let Some(typed) = self.field(ui, id, &p.name, val.as_str().unwrap_or_default().to_string(), name.id, "")

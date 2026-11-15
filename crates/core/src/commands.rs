@@ -15093,8 +15093,9 @@ fn family(s: &mut Session, p: &Value) -> R {
         None => None,
     };
     let to = rename.clone().unwrap_or_else(|| name.clone());
-    // A family type parameter a nested instance is labelled with holds what it showed, where it held none (T24).
-    f.fill_labels();
+    // A family type parameter a nested instance is labelled with by this command holds what it showed, where it held none
+    // (T24); later edits leave it as they find it.
+    f.fill_labels(was.as_ref());
     // The instances inside what it nests, each by a GUID of its own, which the elements of shared ones are named by (T6b).
     f.give_inner_guids();
     // Every error of what it comes to, each addressed to what has it, and every warning of it.

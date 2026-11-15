@@ -79,9 +79,9 @@ fn types(s: &Session) -> Value {
 #[test]
 fn labelling_fills_null_values_with_the_instances_type() {
     let s = cabinet(false);
+    // The default holds it; the types, set nothing, follow the default.
     let t = types(&s);
-    assert_eq!(t["Small"]["Handle"], choice("Lever", "L"), "{t}");
-    assert_eq!(t["Big"]["Handle"], choice("Lever", "L"), "{t}");
+    assert!(t["Small"].get("Handle").is_none() && t["Big"].get("Handle").is_none(), "{t}");
     let handle = s.model.families["Cabinet"].parameters.iter().find(|p| p.name == "Handle").unwrap().clone();
     assert_eq!(handle.value, choice("Lever", "L"));
     // The family's reply says what it may pick.
@@ -164,7 +164,12 @@ fn a_label_must_be_a_family_type_parameter_of_the_instances_category() {
     assert!(e.contains("Nope"), "{e}");
     run(&mut s, "family", json!({"name": "Cabinet", "parameter": {"name": "Unit", "kind": "familytype", "of": "furniture"}}));
     let e = err(&mut s, "family", json!({"name": "Cabinet", "nested_instance": {"guid": g, "label": "Unit"}}));
-    assert!(e.contains("Unit") && e.contains("furniture"), "{e}");
+    assert_eq!(
+        e,
+        "family `Cabinet`: nested instance 1: it is labelled `Unit`, a family type of furniture, and `Lever` is of generic: \
+         label it with one of its category",
+        "the label's own error, not a value's"
+    );
     // Unlabelled, it shows its own family and type, whatever the parameter says.
     run(&mut s, "family", json!({"name": "Cabinet", "types": {"Big": {"Handle": choice("Knob", "K")}}}));
     run(&mut s, "family", json!({"name": "Cabinet", "nested_instance": {"guid": g, "label": null}}));
@@ -211,11 +216,15 @@ fn a_choice_formula_with_a_literal_or_another_category_or_a_cycle_is_refused() {
     run(&mut s, "family", json!({"name": "Cabinet", "parameter": {"name": "Other", "kind": "familytype", "of": "generic"}}));
     let t = json!({"Small": {"Handle": null}, "Big": {"Handle": null}});
     for (formula, says) in [
-        ("if(Width > 700, 5, Other)", "family type"),
-        ("Width", "family type"),
-        ("Unit", "Unit"),
-        ("if(Width > 700, Handle, Other)", "itself"),
-        ("if(Other, Other, Other)", "Other"),
+        (
+            "if(Width > 700, 5, Other)",
+            "parameter `Handle`: a family type's formula picks among family type parameters of its category: another's name, or \
+             `if(condition, one, other)`",
+        ),
+        ("Width", "parameter `Handle`: its formula picks `Width`, which isn't a family type parameter"),
+        ("Unit", "parameter `Handle`: its formula picks `Unit`, a family type of another category"),
+        ("if(Width > 700, Handle, Other)", "`Handle`'s formula comes back to itself"),
+        ("if(Other, Other, Other)", "`Other` isn't a number"),
     ] {
         let e = err(&mut s, "family", json!({"name": "Cabinet", "types": t, "parameter": {"name": "Handle", "formula": formula}}));
         assert!(e.contains(says), "{formula}: {e}");
@@ -394,4 +403,161 @@ fn a_host_parameter_associated_into_b_swaps_c_three_levels_deep() {
         json!({"name": "Cabinet", "nest": {"definition": part("generic", "B", 5.0, 5.0, 5.0, false), "name": "Bolt"}}),
     );
     assert!(e.contains("Bolt") && e.contains("Plate"), "{e}");
+}
+
+#[test]
+fn filling_happens_only_when_a_label_is_set_or_changed() {
+    let mut s = cabinet(false);
+    let g = s.model.families["Cabinet"].nested_instances[0].guid;
+    let handle = |s: &Session| s.model.families["Cabinet"].parameters.iter().find(|p| p.name == "Handle").unwrap().value.clone();
+    // Taken back to none after labelling: it stays none through later edits, and the instance shows its own.
+    run(&mut s, "family", json!({"name": "Cabinet", "parameter": {"name": "Handle", "value": null}}));
+    run(&mut s, "family", json!({"name": "Cabinet", "parameter": {"name": "Width", "value": 650}}));
+    run(&mut s, "family", json!({"name": "Cabinet", "nested_instance": {"guid": g, "at": [120, 50]}}));
+    run(&mut s, "family", json!({"name": "Cabinet", "nested_instance": {"guid": g, "label": "Handle"}}));
+    assert_eq!(handle(&s), Value::Null, "the same label again changes nothing");
+    let r = run(&mut s, "family", json!({"name": "Cabinet"}));
+    assert_eq!(r["values"]["Big"]["Handle"], Value::Null);
+    assert_eq!(top(&mut s, "Big", json!({})), 830.0, "its own lever");
+    // A type set to the knob keeps it, and one set back to none follows the default again.
+    run(&mut s, "family", json!({"name": "Cabinet", "types": {"Big": {"Handle": choice("Knob", "K")}}}));
+    run(&mut s, "family", json!({"name": "Cabinet", "types": {"Big": {"Handle": null}}}));
+    assert!(types(&s)["Big"].get("Handle").is_none());
+    // Labelled anew (taken off, then on), it fills again.
+    run(&mut s, "family", json!({"name": "Cabinet", "nested_instance": {"guid": g, "label": null}}));
+    run(&mut s, "family", json!({"name": "Cabinet", "nested_instance": {"guid": g, "label": "Handle"}}));
+    assert_eq!(handle(&s), choice("Lever", "L"));
+}
+
+#[test]
+fn select_all_instances_takes_what_the_label_shows() {
+    let mut s = cabinet(false);
+    run(&mut s, "family", json!({"name": "Cabinet", "types": {"Big": {"Handle": choice("Knob", "K")}}}));
+    run(&mut s, "family", json!({"name": "Cabinet", "nested_instance": {"family": "Knob", "type": "K", "at": [300, 50], "offset": 800}}));
+    let f = s.model.families["Cabinet"].clone();
+    use crate::family::select::{Picked, instances};
+    let big = f.values("Big", &std::collections::BTreeMap::new()).unwrap();
+    let small = f.values("Small", &std::collections::BTreeMap::new()).unwrap();
+    assert_eq!(instances(&f, &big, &[Picked::Nested(1)], None), [Picked::Nested(0), Picked::Nested(1)], "Big shows knobs on both");
+    assert_eq!(instances(&f, &small, &[Picked::Nested(1)], None), [Picked::Nested(1)], "Small, a lever on the first");
+}
+
+#[test]
+fn a_swap_between_a_shared_and_an_unshared_family_takes_the_element_away_and_brings_it_back() {
+    let mut s = Session::new();
+    run(
+        &mut s,
+        "family",
+        json!({"name": "Cabinet", "category": "furniture",
+               "parameters": [{"name": "Handle", "kind": "familytype", "of": "generic", "instance": true}],
+               "types": {"Small": {}}, "forms": [{"profile": [[0, 0], [600, 0], [600, 400], [0, 400]], "to": 800}]}),
+    );
+    run(
+        &mut s,
+        "family",
+        json!({"name": "Cabinet", "nest": {"definition": part("generic", "L", 40.0, 20.0, 30.0, true), "name": "Lever"}}),
+    );
+    run(
+        &mut s,
+        "family",
+        json!({"name": "Cabinet", "nest": {"definition": part("generic", "K", 10.0, 10.0, 50.0, false), "name": "Knob"}}),
+    );
+    run(
+        &mut s,
+        "family",
+        json!({"name": "Cabinet", "nested_instance": {"family": "Lever", "type": "L", "at": [100, 50], "offset": 800, "label": "Handle"}}),
+    );
+    let id = run(&mut s, "component", json!({"family": "Cabinet", "type": "Small", "at": [0, 0]}))["id"].as_u64().unwrap();
+    let nested = |m: &Model| -> Vec<Id> { m.elements.iter().filter(|(_, e)| matches!(e, Element::Nested(_))).map(|(id, _)| *id).collect() };
+    let tags = |m: &Model| m.elements.values().filter(|e| matches!(e, Element::Tag(_))).count();
+    let lever = nested(&s.model)[0];
+    let guid = s.model.guid(lever);
+    run(&mut s, "tag", json!({"ids": [lever]}));
+    // To the knob, which isn't shared: no element, no tag.
+    run(&mut s, "modify", json!({"id": id, "params": {"Handle": choice("Knob", "K")}}));
+    assert!(nested(&s.model).is_empty());
+    assert_eq!(tags(&s.model), 0);
+    // Undone, both are back, by the same GUID.
+    run(&mut s, "undo", json!({}));
+    assert_eq!(nested(&s.model).iter().map(|id| s.model.guid(*id)).collect::<Vec<_>>(), [guid]);
+    assert_eq!(tags(&s.model), 1);
+    // To the knob and back to the lever: the element comes back by the same GUID; the tag went with it.
+    run(&mut s, "modify", json!({"id": id, "params": {"Handle": choice("Knob", "K")}}));
+    run(&mut s, "modify", json!({"id": id, "params": {"Handle": choice("Lever", "L")}}));
+    assert_eq!(nested(&s.model).iter().map(|id| s.model.guid(*id)).collect::<Vec<_>>(), [guid]);
+    assert_eq!(tags(&s.model), 0);
+}
+
+/// A choice formula whose condition is no number a float holds, an `if` picking itself on the branch not taken, and an
+/// association three levels down, all past reading: worked out or refused, never a panic, the model as it was.
+#[test]
+fn a_hostile_choice_formula_and_association_are_worked_out_or_refused() {
+    let mut s = cabinet(false);
+    let before = s.model.families["Cabinet"].clone();
+    for p in [
+        json!({"name": "Cabinet", "parameter": {"name": "Other", "kind": "familytype", "of": "generic", "value": choice("Knob", "K")}}),
+        json!({"name": "Cabinet", "types": {"Small": {"Handle": null}, "Big": {"Handle": null}},
+               "parameter": {"name": "Handle", "formula": "if(1e308 * 1e308 - 1e308 * 1e308, Other, if(0 / 0, Handle, Other))"}}),
+    ] {
+        let _ = s.execute("family", &p);
+    }
+    s.model.check().unwrap();
+    let mut plate = part("casework", "P", 100.0, 100.0, 10.0, false);
+    plate["parameters"] = json!([{"name": "Pick", "kind": "familytype", "of": "generic"}]);
+    plate["nested"] = json!([{"name": "Lever", "family": part("generic", "L", 40.0, 20.0, 30.0, false)},
+                             {"name": "Knob", "family": part("generic", "K", 10.0, 10.0, 50.0, false)}]);
+    plate["nested_instances"] = json!([{"family": "Lever", "type": "L", "label": "Pick"}]);
+    plate["types"]["P"]["Pick"] = choice("Knob", "Z");
+    let _ = s.execute("family", &json!({"name": "Cabinet", "nest": {"definition": plate, "name": "Plate"}}));
+    plate["types"]["P"]["Pick"] = choice("Knob", "K");
+    let _ = s.execute("family", &json!({"name": "Cabinet", "nest": {"definition": plate, "name": "Plate"}}));
+    let _ = s.execute(
+        "family",
+        &json!({"name": "Cabinet", "nested_instance": {"family": "Plate", "type": "P", "params": {"Pick": "Other", "Nope": "Width / 0"}}}),
+    );
+    let _ =
+        s.execute("family", &json!({"name": "Cabinet", "nested_instance": {"family": "Plate", "type": "P", "params": {"Pick": "Handle"}}}));
+    s.model.check().unwrap();
+    assert_ne!(s.model.families["Cabinet"], before, "something got past reading");
+    top(&mut s, "Big", json!({}));
+}
+
+/// The association check compares every choice of the host with the nested family's once: four families of `n` types each,
+/// checked at two sizes, grow as the choices do, not as their square.
+#[test]
+fn the_association_check_grows_with_the_choices_not_their_square() {
+    fn with_types(n: usize) -> Session {
+        let names: serde_json::Map<String, Value> = (0..n).map(|i| (format!("T{i}"), json!({}))).collect();
+        let leaf = json!({"category": "generic", "types": names});
+        let fams: Vec<Value> = (0..4).map(|k| json!({"name": format!("F{k}"), "family": leaf})).collect();
+        let mut s = Session::new();
+        let mut plate = json!({"category": "casework", "types": {"P": {}}, "nested": fams,
+                               "parameters": [{"name": "Pick", "kind": "familytype", "of": "generic"}]});
+        plate["nested_instances"] = json!([{"family": "F0", "type": "T0", "label": "Pick"}]);
+        run(
+            &mut s,
+            "family",
+            json!({"name": "Cabinet", "category": "furniture", "types": {"A": {}}, "nested": fams.iter().cloned().chain([json!({"name": "Plate", "family": plate})]).collect::<Vec<_>>(),
+                   "parameters": [{"name": "Pick", "kind": "familytype", "of": "generic"}],
+                   "nested_instances": [{"family": "Plate", "type": "P", "params": {"Pick": "Pick"}}]}),
+        );
+        s
+    }
+    let timed = |n: usize| {
+        let mut s = with_types(n);
+        (0..3)
+            .map(|i| {
+                let t = std::time::Instant::now();
+                run(
+                    &mut s,
+                    "family",
+                    json!({"name": "Cabinet", "parameter": {"name": "Pick", "group": if i % 2 == 0 { "data" } else { "other" }}}),
+                );
+                t.elapsed().as_secs_f64()
+            })
+            .fold(f64::INFINITY, f64::min)
+    };
+    let (small, large) = (timed(250), timed(1000));
+    assert!(large < 20.0, "4 × 1000 types took {large} s a command");
+    assert!(large < small * 9.0 + 0.05, "four times the choices took {:.1} times as long ({small} s, {large} s)", large / small);
 }

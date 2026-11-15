@@ -1640,7 +1640,9 @@ as its default, in a type, or, an instance parameter, in a component's `params`.
 names one, of its own family's category (`Family::check_nested`): it then shows the family and type that holds
 (`Family::chosen`, read where the instance is built, `placed_instance`), so plans, 3D, IFC, schedules and the elements of
 shared ones swap with it; where it holds none, the instance shows its own `family` and `type`. Labelling fills the parameter's
-values that hold none with the instance's own (`Family::fill_labels`), so nothing changes until a value does. A labelled
+values that hold none with the instance's own (`Family::fill_labels`), so nothing changes until a value does: only on the
+command that sets or changes the label (a value taken back to none afterwards stays none, the instance showing its own),
+and never for a label of another category's parameter, which the check then names. A labelled
 instance's `params` may name parameters of any family its label may pick (one kind in all that have it); one the family shown
 hasn't is left out. Its formula picks another of its category, `Long Handle`, or `if(condition, one, other)` of them, nested
 (`family::choose`, `choice_arms`); a literal, a number or another category's is refused, and one coming back to itself too.
@@ -1651,8 +1653,14 @@ the cabinet's type picks what stands on its shared plate. The element of a share
 hasn't goes, with its tags; a swap to a family that isn't shared takes its element and tags away. Renaming the parameter renames
 labels and formulas (`Family::rename_parameter`); deleting it while it labels, or a nested family a value holds, is refused.
 FORMAT 21 holds `label` and these values (0.12 reads up to 20, so it refuses the file rather than leave the label out and
-refuse every command over the values); a file of 20 holds neither. Tests: `family_type_param_tests.rs`. The desktop's (Family
-Types' picker, the Options Bar's Label, Properties) is PR 3's.
+refuse every command over the values); a file of 20 holds neither. Select All Instances in the family document takes the
+instances showing the same family and type for the type previewed (`select::instances`). Tests: `family_type_param_tests.rs`.
+The desktop's (Family Types' picker, the Options Bar's Label, an editable Properties row) is PR 3's; until then Properties
+shows a component's choice read only, `Family : Type`.
+
+Open: the family's check builds each of its types, not every choice a component may hold, so a choice that doesn't build
+with the instance's `params` (a value the family picked can't take) leaves the instance out of that component's geometry
+rather than being refused.
 
 ## Reloading a family
 
