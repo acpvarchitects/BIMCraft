@@ -7357,6 +7357,7 @@ mod family_dimensions;
 mod family_document;
 mod family_drag_copy;
 mod family_drag_move;
+mod family_draw_snaps;
 mod family_edges_not_hull;
 mod family_exit;
 mod family_hide_override;
