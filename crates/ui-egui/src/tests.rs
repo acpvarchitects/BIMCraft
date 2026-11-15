@@ -6316,6 +6316,7 @@ mod patterns;
 mod perspective;
 mod planviews;
 mod plugins;
+mod properties_groups;
 mod popup;
 mod presets;
 mod printsets;
