@@ -79,12 +79,13 @@ fn model_line_reference_screenshots() {
     let Ok(dir) = std::env::var("BIMCRAFT_FE15B_DUMP") else { return };
     let dir = std::path::PathBuf::from(dir);
     std::fs::create_dir_all(&dir).unwrap();
-    for (name, dark) in [("light", false), ("dark", true)] {
+    for (name, dark, light_canvas) in [("light", false, false), ("dark", true, false), ("dark-ui-light-canvas", true, true)] {
         let mut h = app(&family(false));
         h.set_size(egui::vec2(1400.0, 900.0));
         h.state_mut().edit_family("Lined");
         h.run();
         h.ctx.set_theme(if dark { egui::ThemePreference::Dark } else { egui::ThemePreference::Light });
+        h.state_mut().light_canvas = light_canvas;
         view(&mut h, Some(Which::Plan));
         ed_mut(&mut h).radial_tool(DimKind::Aligned);
         h.run();

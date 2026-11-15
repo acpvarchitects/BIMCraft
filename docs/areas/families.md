@@ -559,9 +559,18 @@ component; a section's kept paint holds them, so a hover repaints them. The card
 (`family_model_line_view_tests.rs`). A door's or a window's model lines are still drawn in plans only. Create > Model > Model
 Line draws one as Reference Line does, on the view's work plane; a click picks it, Delete takes it away, a drag slides it along
 its host and a plane moved takes the lines on it along; selected and unpinned, a grip at each end stretches it along its host
-(`Family::model_line_end_dragged`), as one step; Properties sets its subcategory. Dimensions and Align don't keep a model line
-as a reference yet: that needs a reference of a new shape, which waits for a format step. It has no key yet
+(`Family::model_line_end_dragged`), as one step; Properties sets its subcategory. It has no key yet
 (`tests/family_model_line.rs`, `family_model_line_tests.rs`).
+
+A model line is a dimension's reference as a reference line is (FE-15 part 2, FORMAT 21): `{"model_line": guid}` is the
+line seen edge on, the plane through it square to its host (a reference line's vertical face), and `{"model_line": guid,
+"point": "start" | "end"}` one of its ends. The solver takes a line of either list (`constraints::Ln`), so a labelled or
+locked dimension, or an Align lock, moves a model line's start, angle and length on its host by the reference line's own
+rows, and the project draws it where the type puts it (`Family::model_line_parts`). A pinned one is no unknown: a dimension
+that would move it is refused, saying it is pinned, and Align leaves it. Delete takes it from its dimensions, as a plane's;
+copies, the clipboard, Modify and ids remap it. In the family's views Aligned and Angular Dimension and Align pick one the
+view sees edge on (`constraints::line_faces`: in plan, a line drawn on Ref. Level), and Align slides it across its host onto
+the reference, its padlock offered (`family_model_line_ref_tests.rs`, `tests/family_model_line_refs.rs`).
 
 An adaptive family's work planes are these planes too: a reference point is drawn on a datum, a named plane of the family's own
 or a reference line's face, and keeps it as its Work Plane by `PlaneRef`; the three datums an adaptive definition had of its own
