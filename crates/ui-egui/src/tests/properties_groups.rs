@@ -26,6 +26,8 @@ fn a_components_properties_head_other_once_its_yes_no_parameter_under_it() {
     let other = h.get_by_label("Other").rect().top();
     assert!(other < lit && lit < dims && dims < depth, "Other {other} < Lit {lit} < Dimensions {dims} < Depth {depth}");
     // It still edits: Lit ticked.
+    h.get_by_role_and_label(Role::CheckBox, "Lit").scroll_to_me();
+    h.run();
     h.get_by_role_and_label(Role::CheckBox, "Lit").click();
     h.run();
     let Some(Element::Component(c)) = h.state().session.model.elements.values().find(|e| matches!(e, Element::Component(_))).cloned() else {
