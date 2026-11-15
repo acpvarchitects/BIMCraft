@@ -69,7 +69,19 @@ fn a_labelled_dimension_moves_a_model_line_on_its_host_in_the_family_and_the_pro
     assert_eq!(a, pa);
     let (b, pb) = ends(&s, "B");
     assert!(close(b[0], [0.0, -500.0, 0.0]) && close(b[1], [400.0, -500.0, 0.0]), "with D 500, 500 from the centre: {b:?}");
-    assert_eq!(b, pb, "the project draws it where the type puts it");
+    assert_eq!(b, pb);
+    // Placed in the project, a component of A, then of B: its model line where each type puts it.
+    let id = run(&mut s, "component", json!({"family": "P", "type": "A", "at": [0, 0]}))["id"].as_u64().unwrap();
+    let placed = |s: &Session| {
+        let c = match s.model.elements.get(id) {
+            Some(crate::model::Element::Component(c)) => c.clone(),
+            other => panic!("{other:?}"),
+        };
+        s.model.component_model_line_parts(&c)[0].0
+    };
+    assert!(placed(&s).iter().all(|p| (p[1] + 300.0).abs() < 1e-6), "{:?}", placed(&s));
+    run(&mut s, "modify", json!({"id": id, "type": "B"}));
+    assert!(placed(&s).iter().all(|p| (p[1] + 500.0).abs() < 1e-6), "the project draws it where B puts it: {:?}", placed(&s));
 }
 
 #[test]
@@ -94,6 +106,7 @@ fn a_labelled_dimension_to_a_model_lines_end_stretches_it_on_its_host() {
     run(&mut s, "family", def);
     let (b, pb) = ends(&s, "B");
     assert!((b[1][0] - 700.0).abs() < 1e-6, "its end 700 from the centre: {b:?}");
+    assert!(close(b[0], [0.0, -300.0, 0.0]), "its start where it was: {b:?}");
     assert!(b.iter().all(|p| p[2].abs() < 1e-6), "still on Ref. Level: {b:?}");
     assert_eq!(b, pb);
 }
@@ -105,6 +118,18 @@ fn a_pinned_model_line_is_not_moved_by_a_dimension() {
     let e = s.execute("family", &family(true, dims)).map(|_| ()).unwrap_err();
     assert!(e.contains("dimension 1") && e.contains("model line 1 is pinned"), "{e}");
     assert!(!s.model.families.contains_key("P"), "nothing kept");
+    // Over-constrained elsewhere, the pin not the cause: Edge held 300 and 400 from the centre, the pinned line merely measured
+    // from it. No word of the pin.
+    let mut def = family(
+        true,
+        json!([
+        {"view": "plan", "refs": [{"plane": EDGE}, {"model_line": LINE}], "at": [200, -300, 0]},
+        {"view": "plan", "refs": [{"plane": CENTER_FRONT_BACK.to_string()}, {"plane": EDGE}], "at": [-600, -150, 0], "label": "D"},
+        {"view": "plan", "refs": [{"plane": CENTER_FRONT_BACK.to_string()}, {"plane": EDGE}], "at": [-800, -150, 0], "label": "E"}]),
+    );
+    def["parameters"] = json!([{"name": "D", "value": 300}, {"name": "E", "value": 400}]);
+    let e = s.execute("family", &def).map(|_| ()).unwrap_err();
+    assert!(e.contains("dimension") && !e.contains("pinned"), "{e}");
     // A dimension that only measures it is fine.
     let dims = json!([{"view": "plan", "refs": [{"plane": CENTER_FRONT_BACK.to_string()}, {"model_line": LINE}], "at": [600, -150, 0]}]);
     run(&mut s, "family", family(true, dims));
@@ -135,6 +160,72 @@ fn a_dimension_to_a_model_line_the_family_has_not_is_refused() {
     assert!(e.contains("centre"), "{e}");
     let dims = json!([{"view": "plan", "refs": [{"model_line": LINE, "face": "vertical"}], "at": [600, -150, 0]}]);
     assert!(s.execute("family", &family(false, dims)).is_err());
+}
+
+const ACROSS: &str = "6a7b8c9d-0e1f-4a2b-9c3d-4e5f60718294";
+const WALL: &str = "7b8c9d0e-1f2a-4b3c-8d4e-5f6071829305";
+
+#[test]
+fn a_dimension_to_a_model_line_that_isnt_parallel_or_is_seen_the_wrong_way_is_refused() {
+    let mut s = Session::new();
+    // Center (Front/Back) to a line along y: not parallel.
+    let mut def = family(
+        false,
+        json!([{"view": "plan", "refs": [{"plane": CENTER_FRONT_BACK.to_string()}, {"model_line": ACROSS}], "at": [600, -150, 0]}]),
+    );
+    def["model_lines"] = json!([{"guid": ACROSS, "start": [500, -100, 0], "end": [500, -600, 0]}]);
+    let e = s.execute("family", &def).map(|_| ()).unwrap_err();
+    assert!(e.contains("aren't parallel"), "{e}");
+    // Ref. Level to a vertical line on a wall, in Front: not parallel either.
+    let mut def = family(
+        false,
+        json!([{"view": "front", "refs": [{"plane": REF_LEVEL.to_string()}, {"model_line": ACROSS}], "at": [100, 0, 800], "label": "D"}]),
+    );
+    def["ref_planes"] = json!([{"guid": WALL, "name": "Wall", "start": [-1000, -300, 0], "end": [1000, -300, 0], "up": [0, 0, 1]}]);
+    def["model_lines"] = json!([{"guid": ACROSS, "start": [200, -300, 0], "end": [200, -300, 600], "host": {"plane": WALL}}]);
+    let e = s.execute("family", &def).map(|_| ()).unwrap_err();
+    assert!(e.contains("aren't parallel"), "{e}");
+    // A line along x on Ref. Level from Center (Front/Back) in Front: it measures the way the view looks.
+    let def = family(
+        false,
+        json!([{"view": "front", "refs": [{"plane": CENTER_FRONT_BACK.to_string()}, {"model_line": LINE}], "at": [600, 0, 100]}]),
+    );
+    let e = s.execute("family", &def).map(|_| ()).unwrap_err();
+    assert!(e.contains("the way its view looks"), "{e}");
+    assert!(!s.model.families.contains_key("P"));
+}
+
+#[test]
+fn a_pinned_model_line_doesnt_move_through_its_host_either() {
+    let mut s = Session::new();
+    let mut def = family(
+        true,
+        json!([{"view": "plan", "refs": [{"plane": CENTER_FRONT_BACK.to_string()}, {"model_line": ACROSS, "point": "start"}], "at": [300, -150, 0], "label": "D"}]),
+    );
+    def["ref_planes"] = json!([{"guid": WALL, "name": "Wall", "start": [-1000, -300, 0], "end": [1000, -300, 0], "up": [0, 0, 1]}]);
+    def["model_lines"] = json!([{"guid": ACROSS, "start": [0, -300, 0], "end": [0, -300, 400], "host": {"plane": WALL}, "pinned": true}]);
+    let e = s.execute("family", &def).map(|_| ()).unwrap_err();
+    assert!(e.contains("model line 1 is pinned"), "Wall, which it is drawn on, isn't moved for it: {e}");
+}
+
+#[test]
+fn an_angular_dimension_turns_a_model_line() {
+    let mut s = Session::new();
+    let mut def = family(false, json!([]));
+    def["parameters"] = json!([{"name": "A", "kind": "angle", "value": 30}]);
+    def["types"] = json!({"T30": {}, "T60": {"A": 60}});
+    let (c, n) = (30f64.to_radians().cos() * 400.0, 30f64.to_radians().sin() * 400.0);
+    def["model_lines"] = json!([{"guid": LINE, "start": [0, 0, 0], "end": [c, n, 0]}]);
+    def["dimensions"] = json!([
+        {"view": "plan", "refs": [{"plane": CENTER_LEFT_RIGHT.to_string()}, {"model_line": LINE, "point": "start"}], "at": [0, 0, 0], "locked": [{"segment": 0, "length": 0}], "alignment": true},
+        {"view": "plan", "refs": [{"plane": CENTER_FRONT_BACK.to_string()}, {"model_line": LINE, "point": "start"}], "at": [0, 0, 0], "locked": [{"segment": 0, "length": 0}], "alignment": true},
+        {"view": "plan", "kind": "angular", "refs": [{"plane": CENTER_FRONT_BACK.to_string()}, {"model_line": LINE}], "at": [300, 100, 0], "label": "A"}]);
+    run(&mut s, "family", def);
+    let (b, pb) = ends(&s, "T60");
+    let turned = (b[1][1] - b[0][1]).atan2(b[1][0] - b[0][0]).to_degrees();
+    assert!((turned - 60.0).abs() < 1e-6, "turned to 60°: {b:?}");
+    assert!(close(b[0], [0.0, 0.0, 0.0]) && b[1][2].abs() < 1e-6, "about its start, on Ref. Level: {b:?}");
+    assert_eq!(b, pb);
 }
 
 /// For the hostile sweep (`tests::hostile_params_never_panic_or_break_the_model`): `family` payloads with model-line

@@ -1407,6 +1407,8 @@ impl<'f> Problem<'f> {
                     pivoted(h).into_iter().for_each(|i| add(Unknown::PlaneTurn(i)));
                 }
             }
+            // A pinned model line holds: neither it nor what it is drawn on moves for its sake (FE-15).
+            DimRef::ModelLine(g) | DimRef::ModelLinePoint(g, _) if f.model_lines.iter().any(|l| l.guid == g && l.pinned) => {}
             DimRef::Line(g, _) | DimRef::LinePoint(g, _) | DimRef::ModelLine(g) | DimRef::ModelLinePoint(g, _) => {
                 if kind != DimKind::Angular {
                     line_root(f, g).and_then(own).into_iter().for_each(|i| add(Unknown::Plane(i)));
@@ -1487,7 +1489,7 @@ impl<'f> Problem<'f> {
                 let way = vcross(&v3(eye), &f.z);
                 (f.origin, way)
             }
-            DimRef::Line(g, _) => {
+            DimRef::Line(g, _) | DimRef::ModelLine(g) => {
                 let (_, start, end, _) = self.line_ends(g, DEPTH)?;
                 let way = vsub(&end, &start);
                 (start, way)
@@ -1685,7 +1687,7 @@ impl Family {
                 let mut seen = Vec::new();
                 for r in &d.refs {
                     match r {
-                        DimRef::Plane(_) | DimRef::Line(..) => {
+                        DimRef::Plane(_) | DimRef::Line(..) | DimRef::ModelLine(_) => {
                             let (p, w) = problem.in_view(r, d.view).map_err(|e| format!("{who}: {e}"))?;
                             seen.push((P2(p.0.v, p.1.v), P2(w.0.v, w.1.v)));
                         }
@@ -1700,7 +1702,9 @@ impl Family {
             }
             // The ways what is drawn faces, whatever the values: planes, extrusion ends and reference lines.
             let mut normals = Vec::new();
-            for r in d.refs.iter().filter(|r| d.kind.is_aligned() && matches!(r, DimRef::Plane(_) | DimRef::Form(..) | DimRef::Line(..))) {
+            for r in d.refs.iter().filter(|r| {
+                d.kind.is_aligned() && matches!(r, DimRef::Plane(_) | DimRef::Form(..) | DimRef::Line(..) | DimRef::ModelLine(_))
+            }) {
                 if let Some(n) = problem.direction(r).map_err(|e| format!("{who}: {e}"))? {
                     normals.push(n);
                 }
@@ -1840,8 +1844,14 @@ impl Family {
     /// faces the way the dimension's other references do and is seen edge on in its view; a radial or diameter one's circle
     /// is seen flat in its view.
     pub(super) fn check_dimensions_for(&self, values: &BTreeMap<String, Val>) -> Result<(), String> {
-        let sketchy =
-            |d: &&FamilyDimension| d.refs.iter().any(|r| matches!(r, DimRef::Sketch(..) | DimRef::Point(..) | DimRef::LinePoint(..)));
+        let sketchy = |d: &&FamilyDimension| {
+            d.refs.iter().any(|r| {
+                matches!(
+                    r,
+                    DimRef::Sketch(..) | DimRef::Point(..) | DimRef::LinePoint(..) | DimRef::ModelLine(_) | DimRef::ModelLinePoint(..)
+                )
+            })
+        };
         if !self.dimensions.iter().any(|d| sketchy(&d)) {
             return Ok(());
         }
@@ -1916,7 +1926,11 @@ impl Family {
     /// `e`, saying which model line a pin holds where one of the dimensions it names measures to one (FE-15): a pinned model
     /// line is no unknown, so a dimension that would move it can't hold.
     fn why_pinned(&self, mut e: Unsat) -> Unsat {
-        let pinned = e.dims.iter().filter_map(|d| self.dimensions.get(*d)).flat_map(|d| d.refs.iter()).find_map(|r| match *r {
+        // Only where the pin is the cause: the dimension refused over-constrained, the first it names, measures to one.
+        if !e.over {
+            return e;
+        }
+        let pinned = e.dims.first().and_then(|d| self.dimensions.get(*d)).into_iter().flat_map(|d| d.refs.iter()).find_map(|r| match *r {
             DimRef::ModelLine(g) | DimRef::ModelLinePoint(g, _) => self.model_lines.iter().position(|l| l.guid == g && l.pinned),
             _ => None,
         });
@@ -2043,6 +2057,8 @@ impl Family {
             .unknowns
             .iter()
             .map(|u| match u {
+                // A model line's length gives way before its start, so a dimension to its end stretches it (FE-15).
+                Unknown::LineLength(Ln::Model(_)) => END_GIVES,
                 Unknown::Plane(_) | Unknown::LineStart(..) | Unknown::LineLength(_) => 1.0,
                 Unknown::LineAngle(i) => 1.0 / problem.line_drawn(*i).map_or(1.0, |d| d[5]).max(1e-3),
                 Unknown::PlaneTurn(i) => {
