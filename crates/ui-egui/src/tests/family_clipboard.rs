@@ -427,7 +427,7 @@ fn a_box_leaves_a_hidden_form_out_and_so_does_the_copy() {
 fn ctrl_v_is_heard_whatever_the_systems_clipboard_holds_and_a_copy_never_writes_it() {
     for ctrl in [false, true] {
         let mut h = plan();
-        // Shortcuts as plain letters, and needing Ctrl (where the window's Copy and Paste are letters, done on their own).
+        // Shortcuts as plain letters, and needing Ctrl: the window's Copy and Paste are the clipboard's either way.
         h.state_mut().shortcuts_need_ctrl = ctrl;
         pick(&mut h, &[Picked::Form(0)]);
         // Ctrl+C as the window gets it: Copy. Nothing goes to the system's clipboard.
