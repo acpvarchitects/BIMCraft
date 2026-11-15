@@ -175,9 +175,7 @@ impl FamilyEditor {
             Picked::Dimension(_) => t("Dimension").to_string(),
             Picked::Symbol(i) => self.symbol_name(i),
             Picked::Connector(i) => self.connector_name(i),
-            Picked::Nested(i) => {
-                self.nested_instances.get(i).map(|n| format!("{}. {} : {}", i + 1, n.family, n.type_name)).unwrap_or_default()
-            }
+            Picked::Nested(i) => self.shown_type(i).map(|n| format!("{}. {n}", i + 1)).unwrap_or_default(),
         };
         self.selection.items().iter().filter_map(|p| select::names(&family, *p)).map(|n| (name(n.picked), n.id, n.guid)).collect()
     }

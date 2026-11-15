@@ -300,7 +300,7 @@ fn table(ed: &mut FamilyEditor, ui: &mut Ui, materials: &[String]) {
 /// Row `i` of the table: its name (selecting it), its value, its formula and its lock. Whether its name was clicked.
 fn row(ed: &mut FamilyEditor, ui: &mut Ui, i: usize, values: &BTreeMap<String, Val>, materials: &[String]) -> bool {
     let h = ui.spacing().interact_size.y;
-    let FamilyEditor { params, types, picked, types_dialog, dimensions, .. } = ed;
+    let FamilyEditor { params, types, picked, types_dialog, dimensions, nested, .. } = ed;
     let p = &mut params[i];
     let name = p.name.trim().to_string();
     // Revit marks an instance parameter's: what is typed is the value a new instance starts with.
@@ -311,10 +311,25 @@ fn row(ed: &mut FamilyEditor, ui: &mut Ui, i: usize, values: &BTreeMap<String, V
     let own = (!p.instance && !p.original.reporting).then(|| types.get_mut(*picked)).flatten();
     match p.kind {
         _ if !p.formula.trim().is_empty() => computed(ui, value_label, p.kind, values.get(&name), VALUE_W),
+        // A family it nests of the parameter's category and one of its types (T24), picked: the type's own, else the family's.
         Holds::FamilyType => {
-            let mut none = t("(none)").to_string();
-            let r = ui.add_enabled_ui(false, |ui| ui.add_sized([VALUE_W, h], TextEdit::singleline(&mut none)));
-            r.inner.widget_info(|| WidgetInfo::labeled(WidgetType::TextEdit, false, value_label.as_str()));
+            let typed = own.as_ref().and_then(|(_, set)| set.get(&name).cloned());
+            let current = super::text_choice(&typed.clone().unwrap_or_else(|| p.value.clone()));
+            let of = p.original.of;
+            let choices: Vec<(String, String)> = nested
+                .iter()
+                .filter(|n| Some(n.family.category) == of)
+                .flat_map(|n| n.family.types.keys().map(|ty| (n.name.clone(), ty.clone())))
+                .collect();
+            if let Some(v) = cell(ui, VALUE_W, |ui| choice_cell(ui, &value_label, &current, &choices)) {
+                let text = super::choice_text(&v);
+                match own {
+                    Some((_, set)) => {
+                        set.insert(name.clone(), text);
+                    }
+                    None => p.value = text,
+                }
+            }
         }
         kind => {
             // A type parameter's value is the type's own, else the family's; an instance's, a reporting one's (no type sets
@@ -350,9 +365,10 @@ fn row(ed: &mut FamilyEditor, ui: &mut Ui, i: usize, values: &BTreeMap<String, V
             }
         }
     }
-    // Words take no formula, nor does a reporting parameter: its dimension says what it is.
+    // Words take no formula, nor does a reporting parameter: its dimension says what it is. A family type's picks another of
+    // its category (T24).
     let formula_label = format!("{} {name}", t("Parameter Formula"));
-    if p.kind.text() || p.original.reporting {
+    if (p.kind.text() && p.kind != Holds::FamilyType) || p.original.reporting {
         let r = ui.add_enabled_ui(false, |ui| ui.add_sized([FORMULA_W, h], TextEdit::singleline(&mut p.formula.clone())));
         r.inner.widget_info(|| WidgetInfo::labeled(WidgetType::TextEdit, false, formula_label.as_str()));
     } else {
@@ -384,6 +400,24 @@ fn row(ed: &mut FamilyEditor, ui: &mut Ui, i: usize, values: &BTreeMap<String, V
         }
     }
     clicked
+}
+
+/// A family type's value in the table, named `label`: `<None>` or `Family : Type` of `choices`. What was picked, if another.
+fn choice_cell(ui: &mut Ui, label: &str, current: &Value, choices: &[(String, String)]) -> Option<Value> {
+    let mut picked = None;
+    let mut options = vec![Value::Null];
+    options.extend(choices.iter().map(|(f, ty)| json!({"family": f, "type": ty})));
+    let said = crate::properties::choice_said;
+    let c =
+        ComboBox::from_id_salt(("family-types-choice", label)).selected_text(said(current)).width(VALUE_W).truncate().show_ui(ui, |ui| {
+            for o in &options {
+                if ui.selectable_label(o == current, said(o)).clicked() && o != current {
+                    picked = Some(o.clone());
+                }
+            }
+        });
+    c.response.widget_info(|| WidgetInfo::labeled(WidgetType::ComboBox, true, label));
+    picked
 }
 
 /// A cell of the table `w` wide, its content from the left, so the columns line up from group to group.
@@ -609,6 +643,18 @@ fn editing(ctx: &Context, ed: &mut FamilyEditor) {
                         }
                     });
                     c.response.labelled_by(l.id);
+                    ui.end_row();
+                    // What it chooses among (T24): the families of that category loaded into this one.
+                    ui.label("");
+                    let names: Vec<&str> = ed.nested.iter().filter(|n| Some(n.family.category) == e.of).map(|n| n.name.as_str()).collect();
+                    let hint = match (e.of, names.is_empty()) {
+                        (None, _) => t("Pick the category of the nested families it chooses among.").to_string(),
+                        (Some(_), true) => {
+                            t("No family of this category is loaded into this family yet: Insert > Load Family.").to_string()
+                        }
+                        (Some(_), false) => tf("It chooses among the nested families {}.", &[&names.join(", ")]),
+                    };
+                    ui.label(RichText::new(hint).color(pal().muted));
                     ui.end_row();
                 }
                 let l = ui.label(t("Group parameter under:"));

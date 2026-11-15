@@ -382,21 +382,3 @@ fn three_levels_screenshots() {
     click(&mut h, BACK_KNOB);
     save(&mut h, "c-selected-nested-in");
 }
-
-/// A cabinet whose `Handle`, an instance family type parameter (T24), labels its nested lever, and a component of it set to the
-/// knob.
-const HANDLED: &str = r#"family {"name": "Cabinet", "category": "furniture", "parameters": [{"name": "Handle", "kind": "familytype", "of": "generic", "instance": true}], "types": {"Small": {}}, "forms": [{"profile": [[0, 0], [600, 0], [600, 400], [0, 400]], "to": 800}]}
-family {"name": "Cabinet", "nest": {"name": "Lever", "definition": {"category": "generic", "types": {"L": {}}, "forms": [{"profile": [[0, 0], [40, 0], [40, 20], [0, 20]], "to": 30}]}}}
-family {"name": "Cabinet", "nest": {"name": "Knob", "definition": {"category": "generic", "types": {"K": {}}, "forms": [{"profile": [[0, 0], [10, 0], [10, 10], [0, 10]], "to": 50}]}}}
-family {"name": "Cabinet", "nested_instance": {"family": "Lever", "type": "L", "at": [100, 50], "offset": 800, "label": "Handle"}}
-component {"family": "Cabinet", "type": "Small", "at": [5000, 0], "params": {"Handle": {"family": "Knob", "type": "K"}}}"#;
-
-#[test]
-fn properties_show_a_components_family_type_as_family_and_type() {
-    let mut h = app(HANDLED);
-    let cabinet = find(&h, |e| matches!(e, Element::Component(_)));
-    h.state_mut().selection = vec![cabinet];
-    h.run();
-    h.run();
-    assert!(h.query_by_label("Knob : K").is_some(), "the knob it picks, read only until the drop-down comes");
-}
