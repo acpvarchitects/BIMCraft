@@ -1892,9 +1892,11 @@ impl FamilyEditor {
         }
     }
 
-    /// The work plane {3D} shows, while Work Plane > Show is on in a family that isn't adaptive: its frame.
+    /// The work plane {3D} shows, while Work Plane > Show is on in a family that isn't adaptive, or a Modify tool is in hand
+    /// there, whose clicks land on it (FE-24): its frame.
     pub(crate) fn shown_work_plane_3d(&self) -> Option<bimcraft_core::family::Frame> {
-        if self.adaptive.is_some() || !self.views.show_work_plane {
+        let tooling = self.views.shown.is_none() && self.views.modify.is_some() && !self.sketching();
+        if self.adaptive.is_some() || !(self.views.show_work_plane || tooling) {
             return None;
         }
         self.plane_set().frame(&self.views.work_plane()).ok()
