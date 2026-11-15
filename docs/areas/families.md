@@ -155,7 +155,10 @@ Blend, Revolve, Sweep, Swept Blend, Void Forms), symbols on Annotate's Detail pa
 each made selected so Properties show its rows, and Manage's Adaptive Component makes the family adaptive (Make Family Adaptive,
 or Four-Point Panel for a ready-made one); Family Types and Family Category and Parameters open dialogs
 (Apply, OK, and Cancel putting back what the dialog began from). Extrusion, Blend, Revolve, Sweep, Swept Blend and Void Forms
-sketch forms (F5 and F6, below). Undo and Redo are the document's own (`Draft`), and never undo the project.
+sketch forms (F5 and F6, below). Each of the six has an icon of its own (`icons.rs`: a block rising, a square base under a
+round top, a ring on its axis, a tube, a horn, a solid in dots), and a selected form's Properties are headed by its tool's
+(`FormText::icon`); Model Text, Connector and Show have theirs too, and Reference Plane and Set the project's own tools'.
+Undo and Redo are the document's own (`Draft`), and never undo the project.
 Family Types is Revit's (`editor/types_dialog.rs`): Type name, a drop-down of the types with New Type (a name asked, the type
 shown copied), Rename Type and Delete Type (refused for the last, saying why); Search parameters (by name, case aside); one table,
 Parameter, Value, Formula and Lock, under the groups' headings in `Group::ALL`'s order (the Properties palette's), each folding.
