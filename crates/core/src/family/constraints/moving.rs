@@ -209,10 +209,10 @@ impl Family {
             if off != 0.0 {
                 return stays(Stays::Hosted(said));
             }
-            pins.push(Pin::Shifted(Unknown::LineStart(i, 0), by.0));
-            pins.push(Pin::Shifted(Unknown::LineStart(i, 1), by.1));
-            pins.push(Pin::Shifted(Unknown::LineAngle(i), 0.0));
-            pins.push(Pin::Shifted(Unknown::LineLength(i), 0.0));
+            pins.push(Pin::Shifted(Unknown::LineStart(Ln::Ref(i), 0), by.0));
+            pins.push(Pin::Shifted(Unknown::LineStart(Ln::Ref(i), 1), by.1));
+            pins.push(Pin::Shifted(Unknown::LineAngle(Ln::Ref(i)), 0.0));
+            pins.push(Pin::Shifted(Unknown::LineLength(Ln::Ref(i)), 0.0));
         }
         for &i in &moving.forms {
             let (Some(form), Some(drawn)) = (flexed.forms.get(i), self.forms.get(i)) else { continue };
@@ -275,7 +275,11 @@ impl Family {
             let still = at.is_some_and(|v| (v - dot(p.start, p.frame().z)).abs() <= 1e-6);
             (!still).then_some(Named::Plane(*g))
         };
-        let line = |g: &Guid| (!moving.lines.contains(g) && self.lines.iter().any(|l| l.guid == *g && l.pinned)).then_some(Named::Line(*g));
+        let line = |g: &Guid| {
+            let pinned = self.lines.iter().any(|l| l.guid == *g && l.pinned);
+            let model = self.model_lines.iter().any(|l| l.guid == *g && l.pinned);
+            (!moving.lines.contains(g) && pinned).then_some(Named::Line(*g)).or_else(|| model.then_some(Named::ModelLine(*g)))
+        };
         let form = |i: &usize| (!moving.forms.contains(i) && self.forms.get(*i).is_some_and(|f| f.pinned)).then_some(Named::Form(*i));
         edits.iter().find_map(|e| match e {
             Edit::Plane(g, v) => plane(g, Some(*v)),

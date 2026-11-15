@@ -14875,7 +14875,11 @@ fn family(s: &mut Session, p: &Value) -> R {
     }
     if let Some(list) = p.get("delete_model_line").and_then(Value::as_array) {
         for v in list {
-            patches.model_lines_deleted.push(take_part(c, &name, &mut f.model_lines, v, "model_line")?);
+            let at = part_at(c, &mut f.model_lines, v, "model_line", &name)?;
+            let gone = f.model_lines.remove(at);
+            // The dimensions measuring to it lose it, as a plane's do (FE-15, part 2).
+            patches.dimensions_dropped += f.forget_reference(gone.guid);
+            patches.model_lines_deleted.push(gone.id);
         }
     }
     // The forms as they were: a sketch line a form no longer has takes its dimensions with it (F7b).

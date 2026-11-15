@@ -76,6 +76,7 @@ mod family_clipboard_tests;
 mod family_constraint_tests;
 #[cfg(test)]
 mod family_model_line_ref_tests;
+#[cfg(test)]
 mod family_model_line_tests;
 #[cfg(test)]
 mod family_model_line_view_tests;

@@ -90,8 +90,7 @@ fn a_labelled_dimension_to_a_model_lines_end_stretches_it_on_its_host() {
     let mut def = family(false, json!([]));
     def["parameters"] = json!([{"name": "W", "value": 400}]);
     def["types"] = json!({"A": {}, "B": {"W": 700}});
-    def["dimensions"] =
-        json!([{"view": "plan", "refs": [{"plane": CENTER_LEFT_RIGHT.to_string()}, {"model_line": LINE, "point": "end"}], "at": [200, -600, 0], "label": "W"}]);
+    def["dimensions"] = json!([{"view": "plan", "refs": [{"plane": CENTER_LEFT_RIGHT.to_string()}, {"model_line": LINE, "point": "end"}], "at": [200, -600, 0], "label": "W"}]);
     run(&mut s, "family", def);
     let (b, pb) = ends(&s, "B");
     assert!((b[1][0] - 700.0).abs() < 1e-6, "its end 700 from the centre: {b:?}");
@@ -104,7 +103,7 @@ fn a_pinned_model_line_is_not_moved_by_a_dimension() {
     let mut s = Session::new();
     let dims = json!([{"view": "plan", "refs": [{"plane": CENTER_FRONT_BACK.to_string()}, {"model_line": LINE}], "at": [600, -150, 0], "label": "D"}]);
     let e = s.execute("family", &family(true, dims)).map(|_| ()).unwrap_err();
-    assert!(e.contains("type `B`") && e.contains("pinned"), "{e}");
+    assert!(e.contains("dimension 1") && e.contains("model line 1 is pinned"), "{e}");
     assert!(!s.model.families.contains_key("P"), "nothing kept");
     // A dimension that only measures it is fine.
     let dims = json!([{"view": "plan", "refs": [{"plane": CENTER_FRONT_BACK.to_string()}, {"model_line": LINE}], "at": [600, -150, 0]}]);
@@ -130,7 +129,7 @@ fn a_dimension_to_a_model_line_the_family_has_not_is_refused() {
     let mut s = Session::new();
     let dims = json!([{"view": "plan", "refs": [{"plane": REF_LEVEL.to_string()}, {"model_line": EDGE}], "at": [600, -150, 0]}]);
     let e = s.execute("family", &family(false, dims)).map(|_| ()).unwrap_err();
-    assert!(e.contains("model line"), "{e}");
+    assert!(e.contains("dimension 1") && e.contains("no longer has"), "{e}");
     let dims = json!([{"view": "plan", "refs": [{"plane": REF_LEVEL.to_string()}, {"model_line": LINE, "point": "centre"}], "at": [600, -150, 0]}]);
     let e = s.execute("family", &family(false, dims)).map(|_| ()).unwrap_err();
     assert!(e.contains("centre"), "{e}");
@@ -141,7 +140,12 @@ fn a_dimension_to_a_model_line_the_family_has_not_is_refused() {
 /// For the hostile sweep (`tests::hostile_params_never_panic_or_break_the_model`): `family` payloads with model-line
 /// references that name nothing or a point a line hasn't.
 pub(crate) fn sweep_payloads() -> Vec<(&'static str, Value)> {
-    let bad = |r: Value| ("family", family(false, json!([{"view": "plan", "refs": [{"plane": CENTER_FRONT_BACK.to_string()}, r], "at": [0, 0, 0], "label": "D"}])));
+    let bad = |r: Value| {
+        (
+            "family",
+            family(false, json!([{"view": "plan", "refs": [{"plane": CENTER_FRONT_BACK.to_string()}, r], "at": [0, 0, 0], "label": "D"}])),
+        )
+    };
     vec![
         bad(json!({"model_line": "00000000-0000-4000-8000-000000000001"})),
         bad(json!({"model_line": LINE, "point": "middle"})),

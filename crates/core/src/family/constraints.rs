@@ -127,9 +127,11 @@ impl Spot {
 /// What a dimension measures to: a reference plane (a datum or one of the family's own), an extrusion's start or end face, a
 /// straight line of a form's sketch (the plane through it square to the form's host, as Revit's sketch line seen edge on;
 /// a circle, for a radial or diameter dimension), a point of a form's sketch (along the way the dimension's other references
-/// measure), or a face of a reference line. In JSON `{"plane": guid}`, `{"form": guid, "end": "start" | "end"}`,
-/// `{"form": guid, "line": guid}`, `{"form": guid, "line": guid, "point": "start" | "end" | "centre"}` or `{"line": guid,
-/// "face": "horizontal" | "vertical" | "start" | "end"}`; an id reads as the one it names.
+/// measure), a face of a reference line, or a model line (FE-15: seen edge on, the plane through it square to its host, or one
+/// of its ends). In JSON `{"plane": guid}`, `{"form": guid, "end": "start" | "end"}`, `{"form": guid, "line": guid}`,
+/// `{"form": guid, "line": guid, "point": "start" | "end" | "centre"}`, `{"line": guid, "face": "horizontal" | "vertical" |
+/// "start" | "end"}`, `{"model_line": guid}` or `{"model_line": guid, "point": "start" | "end"}`; an id reads as the one it
+/// names.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(try_from = "RawDimRef", into = "RawDimRef")]
 pub enum DimRef {
@@ -143,20 +145,30 @@ pub enum DimRef {
     Line(Guid, Face),
     /// A reference line's start or end (F7c): the line's GUID, which end.
     LinePoint(Guid, Spot),
+    /// A model line seen edge on (FE-15, FORMAT 21): the plane through it square to its host, as a reference line's vertical
+    /// face is.
+    ModelLine(Guid),
+    /// A model line's start or end (FE-15, FORMAT 21).
+    ModelLinePoint(Guid, Spot),
 }
 
 impl DimRef {
     /// Whether it names `g`: as its plane, its form, its form's sketch line or its reference line.
     pub fn names(&self, g: Guid) -> bool {
         match *self {
-            DimRef::Plane(a) | DimRef::Form(a, _) | DimRef::Line(a, _) | DimRef::LinePoint(a, _) => a == g,
+            DimRef::Plane(a)
+            | DimRef::Form(a, _)
+            | DimRef::Line(a, _)
+            | DimRef::LinePoint(a, _)
+            | DimRef::ModelLine(a)
+            | DimRef::ModelLinePoint(a, _) => a == g,
             DimRef::Sketch(f, l) | DimRef::Point(f, l, _) => f == g || l == g,
         }
     }
 
     /// Whether it is a point, with no direction of its own.
     pub fn is_point(&self) -> bool {
-        matches!(self, DimRef::Point(..) | DimRef::LinePoint(..))
+        matches!(self, DimRef::Point(..) | DimRef::LinePoint(..) | DimRef::ModelLinePoint(..))
     }
 }
 
@@ -170,6 +182,8 @@ impl std::fmt::Display for DimRef {
             DimRef::Point(g, l, s) => write!(f, "form {g}'s line {l}'s {}", s.said()),
             DimRef::Line(g, face) => write!(f, "line {g}'s {} face", face_said(*face)),
             DimRef::LinePoint(g, s) => write!(f, "line {g}'s {}", s.said()),
+            DimRef::ModelLine(g) => write!(f, "model line {g}"),
+            DimRef::ModelLinePoint(g, s) => write!(f, "model line {g}'s {}", s.said()),
         }
     }
 }
@@ -198,11 +212,22 @@ struct RawDimRef {
     point: Option<Spot>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     face: Option<Face>,
+    /// A model line (FE-15, FORMAT 21).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    model_line: Option<Guid>,
 }
 
 impl TryFrom<RawDimRef> for DimRef {
     type Error = String;
     fn try_from(r: RawDimRef) -> Result<DimRef, String> {
+        if let Some(g) = r.model_line {
+            return match (r.plane, r.form, r.end, r.line, r.point, r.face) {
+                (None, None, None, None, None, None) => Ok(DimRef::ModelLine(g)),
+                (None, None, None, None, Some(Spot::Centre), None) => Err("a model line has a start and an end, no centre".into()),
+                (None, None, None, None, Some(s), None) => Ok(DimRef::ModelLinePoint(g, s)),
+                _ => Err("a model line as a dimension's reference is {\"model_line\": guid} or {\"model_line\": guid, \"point\": \"start\" | \"end\"}".into()),
+            };
+        }
         match (r.plane, r.form, r.end, r.line, r.point, r.face) {
             (Some(g), None, None, None, None, None) => Ok(DimRef::Plane(g)),
             (None, Some(g), Some(e), None, None, None) => Ok(DimRef::Form(g, e)),
@@ -213,7 +238,8 @@ impl TryFrom<RawDimRef> for DimRef {
             _ => Err(
                 "a dimension's reference is {\"plane\": guid}, {\"form\": guid, \"end\": \"start\" | \"end\"}, {\"form\": guid, \"line\": \
                       guid}, {\"form\": guid, \"line\": guid, \"point\": \"start\" | \"end\" | \"centre\"}, {\"line\": guid, \"face\": \
-                      \"horizontal\" | \"vertical\" | \"start\" | \"end\"} or {\"line\": guid, \"point\": \"start\" | \"end\"}"
+                      \"horizontal\" | \"vertical\" | \"start\" | \"end\"}, {\"line\": guid, \"point\": \"start\" | \"end\"}, \
+                      {\"model_line\": guid} or {\"model_line\": guid, \"point\": \"start\" | \"end\"}"
                     .into(),
             ),
         }
@@ -230,6 +256,8 @@ impl From<DimRef> for RawDimRef {
             DimRef::Point(g, l, s) => RawDimRef { form: Some(g), line: Some(l), point: Some(s), ..none },
             DimRef::Line(l, face) => RawDimRef { line: Some(l), face: Some(face), ..none },
             DimRef::LinePoint(l, s) => RawDimRef { line: Some(l), point: Some(s), ..none },
+            DimRef::ModelLine(l) => RawDimRef { model_line: Some(l), ..none },
+            DimRef::ModelLinePoint(l, s) => RawDimRef { model_line: Some(l), point: Some(s), ..none },
         }
     }
 }
@@ -388,16 +416,16 @@ impl From<String> for Unsat {
 /// What can move: a plane of the family's own (its place in `planes`) along its normal, an extrusion's end, a vertex of a
 /// form's sketch along its host's x or y (the form's place, the vertex's, 0 or 1), a circle's radius (the form's place,
 /// the line's); and (F7c) a reference line's start along x or y of what it is drawn on, its angle there (radians) and its
-/// length (its place in `lines`), and an arc's turn (radians; the form's place, the line's).
+/// length (its place in `lines`; a model line's alike, FE-15), and an arc's turn (radians; the form's place, the line's).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 enum Unknown {
     Plane(usize),
     End(usize, Extent),
     Vertex(usize, usize, usize),
     Radius(usize, usize),
-    LineStart(usize, usize),
-    LineAngle(usize),
-    LineLength(usize),
+    LineStart(Ln, usize),
+    LineAngle(Ln),
+    LineLength(Ln),
     Turn(usize, usize),
     /// A plane its pivot turns, about its axis from as drawn (radians; F7d).
     PlaneTurn(usize),
@@ -668,6 +696,8 @@ pub struct Solution {
     /// Each reference line the constraints set (F7c): its place in `lines`, and its start (x, y), angle (radians) and length
     /// in the axes of what it is drawn on.
     pub lines: Vec<(usize, [f64; 4])>,
+    /// Each model line the constraints set (FE-15), as `lines`: its place in `model_lines`.
+    pub model_lines: Vec<(usize, [f64; 4])>,
     /// Each arc's turn the constraints set: the form's place, the line's, and the turn in degrees.
     pub turns: Vec<(usize, usize, f64)>,
     /// Each plane its pivot turned (F7d): its place in `planes`, its axes as it now stands and the turn (radians).
@@ -863,16 +893,53 @@ fn sketch_line(form: &Form, i: usize, l: Guid) -> Result<(usize, &FormLine), Str
         .ok_or_else(|| format!("form {}: line {l} isn't one of its sketch's lines", i + 1))
 }
 
-/// The plane reference line `g` is drawn on, followed through the lines it is drawn on: what moves it.
+/// The plane reference line or model line `g` is drawn on, followed through the reference lines it is drawn on: what moves it.
 fn line_root(f: &Family, g: Guid) -> Option<Guid> {
-    let mut at = g;
+    let mut at = f.line_of(g)?.1;
     for _ in 0..=f.lines.len() {
-        match f.lines.iter().find(|l| l.guid == at)?.host {
+        match at {
             PlaneRef::Plane(h) => return Some(h),
-            PlaneRef::Line(h, _) => at = h,
+            PlaneRef::Line(h, _) => at = f.lines.iter().find(|l| l.guid == h)?.host,
         }
     }
     None
+}
+
+/// A line the solver moves as F7c moves a reference line: a reference line (its place in `lines`) or a model line (its place
+/// in `model_lines`, FE-15).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub(super) enum Ln {
+    Ref(usize),
+    Model(usize),
+}
+
+impl Family {
+    /// Reference line or model line `g`: which, what it is drawn on, its start and its end.
+    fn line_of(&self, g: Guid) -> Option<(Ln, PlaneRef, P3, P3)> {
+        if let Some(i) = self.lines.iter().position(|l| l.guid == g) {
+            let l = &self.lines[i];
+            return Some((Ln::Ref(i), l.host, l.start, l.end));
+        }
+        let i = self.model_lines.iter().position(|l| l.guid == g)?;
+        let l = &self.model_lines[i];
+        Some((Ln::Model(i), l.host, l.start, l.end))
+    }
+
+    /// Line `ln`: what it is drawn on, its start and its end.
+    fn line_slot(&self, ln: Ln) -> Option<(PlaneRef, P3, P3)> {
+        match ln {
+            Ln::Ref(i) => self.lines.get(i).map(|l| (l.host, l.start, l.end)),
+            Ln::Model(i) => self.model_lines.get(i).map(|l| (l.host, l.start, l.end)),
+        }
+    }
+
+    /// How a message names line `ln`.
+    fn line_said(&self, ln: Ln) -> String {
+        match ln {
+            Ln::Ref(i) => format!("reference line {}", i + 1),
+            Ln::Model(i) => format!("model line {}", i + 1),
+        }
+    }
 }
 
 /// A line of a sketch a solve reads: its form's place, its own, the form's host plane and the axes it is drawn in (its
@@ -991,23 +1058,23 @@ impl<'f> Problem<'f> {
         }
     }
 
-    /// Reference line `i` as drawn in the axes of what it is drawn on: its start (x, y and off the plane), its end off the
-    /// plane, its angle and its length.
-    fn line_drawn(&self, i: usize) -> Result<[f64; 6], String> {
-        let l = self.family.lines.get(i).ok_or("no such line")?;
-        let fr = self.family.frame(&l.host)?;
-        let ((a, h0), (b, h1)) = (fr.local(l.start), fr.local(l.end));
+    /// Reference line or model line `i` as drawn in the axes of what it is drawn on: its start (x, y and off the plane), its
+    /// end off the plane, its angle and its length.
+    fn line_drawn(&self, i: Ln) -> Result<[f64; 6], String> {
+        let (host, start, end) = self.family.line_slot(i).ok_or("no such line")?;
+        let fr = self.family.frame(&host)?;
+        let ((a, h0), (b, h1)) = (fr.local(start), fr.local(end));
         Ok([a.0, a.1, h0, h1, (b.1 - a.1).atan2(b.0 - a.0), a.dist(b)])
     }
 
-    /// Reference line `g`'s place, its start and end, and the normal of what it is drawn on, moving with the unknowns.
-    fn line_ends(&self, g: Guid, depth: usize) -> Result<(usize, V3, V3, V3), String> {
-        let i = self.family.lines.iter().position(|l| l.guid == g).ok_or_else(|| format!("line {g} isn't one of its lines"))?;
+    /// Reference line or model line `g`'s place, its start and end, and the normal of what it is drawn on, moving with the
+    /// unknowns.
+    fn line_ends(&self, g: Guid, depth: usize) -> Result<(Ln, V3, V3, V3), String> {
+        let (i, host, ..) = self.family.line_of(g).ok_or_else(|| format!("line {g} isn't one of its lines"))?;
         if depth == 0 {
-            return Err(format!("line {}: it is drawn on lines too deep to follow", i + 1));
+            return Err(format!("{}: it is drawn on lines too deep to follow", self.family.line_said(i)));
         }
-        let l = &self.family.lines[i];
-        let h = self.host_ad(&l.host, depth - 1)?;
+        let h = self.host_ad(&host, depth - 1)?;
         let [su, sv, h0, h1, th, len] = self.line_drawn(i)?;
         let (su, sv) = (self.value(Unknown::LineStart(i, 0), su), self.value(Unknown::LineStart(i, 1), sv));
         let (th, len) = (self.value(Unknown::LineAngle(i), th), self.value(Unknown::LineLength(i), len));
@@ -1016,7 +1083,8 @@ impl<'f> Problem<'f> {
         Ok((i, start, end, h.z))
     }
 
-    /// Face `face` of reference line `g`, its axes as T18 has them, moving and turning with the line.
+    /// Face `face` of reference line `g` (or of model line `g`: its vertical face is the line seen edge on), its axes as T18
+    /// has them, moving and turning with the line.
     fn line_face(&self, g: Guid, face: Face, depth: usize) -> Result<AdFrame, String> {
         let (_, start, end, n) = self.line_ends(g, depth)?;
         let d = vunit(&vsub(&end, &start));
@@ -1032,11 +1100,11 @@ impl<'f> Problem<'f> {
         })
     }
 
-    /// Whether reference line `g`, or one it is drawn on, may turn or move: one of the unknowns is its.
+    /// Whether reference line or model line `g`, or one it is drawn on, may turn or move: one of the unknowns is its.
     fn line_moves(&self, g: Guid) -> bool {
         let mut at = g;
         for _ in 0..=self.family.lines.len() {
-            let Some(i) = self.family.lines.iter().position(|l| l.guid == at) else { return false };
+            let Some((i, host, ..)) = self.family.line_of(at) else { return false };
             if self
                 .unknowns
                 .iter()
@@ -1044,7 +1112,7 @@ impl<'f> Problem<'f> {
             {
                 return true;
             }
-            match self.family.lines[i].host {
+            match host {
                 PlaneRef::Plane(h) => return self.turning_plane(h).is_some(),
                 PlaneRef::Line(h, _) => at = h,
             }
@@ -1174,8 +1242,13 @@ impl<'f> Problem<'f> {
                 Some(self.family.frame(&form.host)?.z)
             }
             DimRef::Sketch(g, l) => Some(self.across(&self.seen(g, l)?)?),
-            DimRef::Point(..) | DimRef::LinePoint(..) => None,
+            DimRef::Point(..) | DimRef::LinePoint(..) | DimRef::ModelLinePoint(..) => None,
             DimRef::Line(g, face) => Some(self.family.frame(&PlaneRef::Line(g, face))?.z),
+            // As drawn: the vertical face's normal, flat on its host.
+            DimRef::ModelLine(g) => {
+                let z = self.line_face(g, Face::Vertical, DEPTH)?.z;
+                Some([z[0].v, z[1].v, z[2].v])
+            }
         })
     }
 
@@ -1258,11 +1331,13 @@ impl<'f> Problem<'f> {
                 }
                 Ok(signed(fr.z, lin))
             }
-            DimRef::LinePoint(g, spot) => {
+            DimRef::LinePoint(g, spot) | DimRef::ModelLinePoint(g, spot) => {
                 let (_, start, end, _) = self.line_ends(g, DEPTH)?;
                 let p = if spot == Spot::End { end } else { start };
                 Ok(vdotk(&p, m).lin(&self.at))
             }
+            // Seen edge on, its vertical face, moving with it and with what it is drawn on (FE-15).
+            DimRef::ModelLine(g) => Ok(vdotk(&self.line_face(g, Face::Vertical, DEPTH)?.origin, m).lin(&self.at)),
         }
     }
 
@@ -1274,13 +1349,17 @@ impl<'f> Problem<'f> {
         let own = |g: Guid| f.planes.iter().position(|p| p.guid == g && !p.datum() && !p.defines_origin && p.pivot.is_none());
         // A plane a pivot turns: its turn, whatever measures it (F7d).
         let pivoted = |g: Guid| f.planes.iter().position(|p| p.guid == g && p.pivot.is_some() && !p.datum());
+        // A reference line, or a model line (FE-15) unless pinned: a pin holds it where it is, as it holds it against a drag.
         let line = |g: Guid, add: &mut dyn FnMut(Unknown)| {
-            if let Some(i) = f.lines.iter().position(|l| l.guid == g) {
-                add(Unknown::LineStart(i, 0));
-                add(Unknown::LineStart(i, 1));
-                add(Unknown::LineAngle(i));
-                add(Unknown::LineLength(i));
-            }
+            let i = match f.line_of(g) {
+                Some((Ln::Model(k), ..)) if f.model_lines.get(k).is_some_and(|l| l.pinned) => return,
+                Some((i, ..)) => i,
+                None => return,
+            };
+            add(Unknown::LineStart(i, 0));
+            add(Unknown::LineStart(i, 1));
+            add(Unknown::LineAngle(i));
+            add(Unknown::LineLength(i));
         };
         match *r {
             DimRef::Plane(g) => {
@@ -1328,7 +1407,7 @@ impl<'f> Problem<'f> {
                     pivoted(h).into_iter().for_each(|i| add(Unknown::PlaneTurn(i)));
                 }
             }
-            DimRef::Line(g, _) | DimRef::LinePoint(g, _) => {
+            DimRef::Line(g, _) | DimRef::LinePoint(g, _) | DimRef::ModelLine(g) | DimRef::ModelLinePoint(g, _) => {
                 if kind != DimKind::Angular {
                     line_root(f, g).and_then(own).into_iter().for_each(|i| add(Unknown::Plane(i)));
                 }
@@ -1745,6 +1824,15 @@ impl Family {
                 }
                 Ok(())
             }
+            DimRef::ModelLine(g) | DimRef::ModelLinePoint(g, _) => {
+                let Some(i) = self.model_lines.iter().position(|l| l.guid == g) else {
+                    return Err(format!("model line {g} isn't one of its model lines"));
+                };
+                if matches!(r, DimRef::ModelLinePoint(_, Spot::Centre)) {
+                    return Err(format!("model line {}: a model line has a start and an end, no centre", i + 1));
+                }
+                Problem::bare(self).line_ends(g, DEPTH).map(|_| ())
+            }
         }
     }
 
@@ -1822,6 +1910,23 @@ impl Family {
     /// [`Family::solve`], `pins` held where they are said to be as well, the labels of the dimensions `free` (by place) not
     /// held, and the work counted on `meter`.
     fn solve_with(&self, values: &BTreeMap<String, Val>, pins: &[Pin], free: &[usize], meter: &mut Meter) -> Result<Solution, Unsat> {
+        self.solve_unpinned(values, pins, free, meter).map_err(|e| self.why_pinned(e))
+    }
+
+    /// `e`, saying which model line a pin holds where one of the dimensions it names measures to one (FE-15): a pinned model
+    /// line is no unknown, so a dimension that would move it can't hold.
+    fn why_pinned(&self, mut e: Unsat) -> Unsat {
+        let pinned = e.dims.iter().filter_map(|d| self.dimensions.get(*d)).flat_map(|d| d.refs.iter()).find_map(|r| match *r {
+            DimRef::ModelLine(g) | DimRef::ModelLinePoint(g, _) => self.model_lines.iter().position(|l| l.guid == g && l.pinned),
+            _ => None,
+        });
+        if let Some(i) = pinned {
+            e.message = format!("{}; model line {} is pinned: unpin it to let the dimension move it", e.message, i + 1);
+        }
+        e
+    }
+
+    fn solve_unpinned(&self, values: &BTreeMap<String, Val>, pins: &[Pin], free: &[usize], meter: &mut Meter) -> Result<Solution, Unsat> {
         let reporting = |l: &str| self.reporting(l);
         if !self.constrained() && pins.is_empty() {
             return Ok(Solution::default());
@@ -1896,10 +2001,10 @@ impl Family {
             for (e, _) in self.pivots() {
                 match e {
                     Pivoted::Line(i) => {
-                        add(Unknown::LineStart(i, 0));
-                        add(Unknown::LineStart(i, 1));
-                        add(Unknown::LineAngle(i));
-                        add(Unknown::LineLength(i));
+                        add(Unknown::LineStart(Ln::Ref(i), 0));
+                        add(Unknown::LineStart(Ln::Ref(i), 1));
+                        add(Unknown::LineAngle(Ln::Ref(i)));
+                        add(Unknown::LineLength(Ln::Ref(i)));
                     }
                     Pivoted::Plane(i) => add(Unknown::PlaneTurn(i)),
                 }
@@ -2061,7 +2166,7 @@ impl Family {
                     return refuse(format!("they would give a circle of form {} a radius of {v} mm", i + 1));
                 }
                 Unknown::LineLength(i) if *v < 1e-3 => {
-                    return refuse(format!("they would give reference line {} a length of {v} mm", i + 1));
+                    return refuse(format!("they would give {} a length of {v} mm", self.line_said(i)));
                 }
                 Unknown::Turn(i, _) if !(v.abs() > 1e-9 && v.abs() < std::f64::consts::TAU) => {
                     return refuse(format!("they would make an arc of form {} straight or a whole circle", i + 1));
@@ -2071,7 +2176,7 @@ impl Family {
         }
         let mut out = Solution::default();
         let mut vertices: BTreeMap<(usize, usize), P2> = BTreeMap::new();
-        let mut lines: BTreeMap<usize, [f64; 4]> = BTreeMap::new();
+        let mut lines: BTreeMap<Ln, [f64; 4]> = BTreeMap::new();
         for (u, v) in problem.unknowns.iter().zip(&x) {
             match *u {
                 Unknown::Plane(i) => out.planes.push((i, *v)),
@@ -2092,7 +2197,12 @@ impl Family {
                 Unknown::PlaneTurn(_) => {}
             }
         }
-        out.lines = lines.into_iter().collect();
+        for (ln, v) in lines {
+            match ln {
+                Ln::Ref(i) => out.lines.push((i, v)),
+                Ln::Model(i) => out.model_lines.push((i, v)),
+            }
+        }
         // Each plane a pivot turned, its axes where it now stands (F7d).
         problem.at = x.clone();
         for (u, v) in problem.unknowns.iter().zip(&x) {
@@ -2132,7 +2242,7 @@ impl Family {
         let reporting = |l: &str| self.reporting(l);
         let mut rows: Vec<Row> = Vec::new();
         let mut soft: Vec<(Guid, Guid)> = Vec::new();
-        let mut keep: Vec<usize> = Vec::new();
+        let mut keep: Vec<Ln> = Vec::new();
         let mut turned_soft: Vec<Row> = Vec::new();
         for &(k, d) in constraining {
             let who = format!("dimension {}", k + 1);
@@ -2167,8 +2277,8 @@ impl Family {
                     {
                         soft.push((g, l));
                     }
-                    if let DimRef::Line(g, _) = *r
-                        && let Some(i) = self.lines.iter().position(|l| l.guid == g)
+                    if let DimRef::Line(g, _) | DimRef::ModelLine(g) = *r
+                        && let Some((i, ..)) = self.line_of(g)
                         && problem.unknown(Unknown::LineAngle(i)).is_some()
                         && !keep.contains(&i)
                     {
@@ -2396,7 +2506,7 @@ impl Family {
         // A reference line lies on what it is drawn on: moved with it, and what is drawn on it with it. One the constraints
         // set goes where they put it, in the axes of what it is drawn on as that now stands (F7c); one drawn on a line that
         // turned turns with it.
-        if !shift.is_empty() || !s.lines.is_empty() {
+        if !shift.is_empty() || !s.lines.is_empty() || !s.model_lines.is_empty() {
             // Each line that went: by how much, or turned (none).
             let mut lines: Vec<(Guid, Option<P3>)> = Vec::new();
             for k in 0..f.lines.len() {
@@ -2435,25 +2545,31 @@ impl Family {
                 f.lines[k].end = if how.is_some() { end } else { tidy(end) };
                 lines.push((l.guid, how));
             }
-            // A model line lies on what it is drawn on as a reference line does, and moves with it (FE-15).
+            // A model line lies on what it is drawn on as a reference line does, and moves with it (FE-15); one the constraints
+            // set goes where they put it, as a reference line does (FE-15, part 2).
             for k in 0..f.model_lines.len() {
                 let l = f.model_lines[k].clone();
                 let host = match l.host {
                     PlaneRef::Plane(g) => shift.iter().find(|(h, _)| *h == g).map(|(_, b)| *b),
                     PlaneRef::Line(g, _) => lines.iter().find(|(h, _)| *h == g).map(|(_, b)| *b),
                 };
+                let solved = s.model_lines.iter().find(|(i, _)| *i == k).map(|(_, v)| *v);
                 let (Ok(old), Ok(new)) = (self.frame(&l.host), f.frame(&l.host)) else { continue };
-                let (start, end) = match host {
-                    Some(Some(by)) => (add(l.start, by), add(l.end, by)),
-                    Some(None) => {
+                let tidy = |p: P3| p.map(|v| (v * 1e9).round() / 1e9);
+                let (start, end) = match (solved, host) {
+                    (Some([su, sv, th, len]), _) => {
+                        let ((_, h0), (_, h1)) = (old.local(l.start), old.local(l.end));
+                        (tidy(new.point(P2(su, sv), h0)), tidy(new.point(P2(su + len * th.cos(), sv + len * th.sin()), h1)))
+                    }
+                    (None, Some(Some(by))) => (add(l.start, by), add(l.end, by)),
+                    (None, Some(None)) => {
                         let move_ = |p: P3| {
                             let (q, t) = old.local(p);
                             new.point(q, t)
                         };
-                        let tidy = |p: P3| p.map(|v| (v * 1e9).round() / 1e9);
                         (tidy(move_(l.start)), tidy(move_(l.end)))
                     }
-                    None => continue,
+                    (None, None) => continue,
                 };
                 f.model_lines[k].start = start;
                 f.model_lines[k].end = end;
@@ -2633,8 +2749,14 @@ impl Family {
     fn edits(&self, s: &Solution, values: &BTreeMap<String, Val>) -> Vec<Edit> {
         let mut out: Vec<Edit> = s.planes.iter().filter_map(|(i, v)| Some(Edit::Plane(self.planes.get(*i)?.guid, *v))).collect();
         // Reference lines the constraints moved or turned, and those drawn on them (F7c), or on a plane that moved or turned.
-        if !s.lines.is_empty() || !s.planes.is_empty() || !s.turned_planes.is_empty() {
+        if !s.lines.is_empty() || !s.model_lines.is_empty() || !s.planes.is_empty() || !s.turned_planes.is_empty() {
             let moved = self.moved(s);
+            // Model lines the constraints set (FE-15); those on a plane that moved go with it as the draft moves the plane.
+            for (k, (was, now)) in self.model_lines.iter().zip(&moved.model_lines).enumerate() {
+                if s.model_lines.iter().any(|(i, _)| *i == k) && (was.start != now.start || was.end != now.end) {
+                    out.push(Edit::LineEnds(was.guid, now.start, now.end));
+                }
+            }
             for (was, now) in self.lines.iter().zip(&moved.lines) {
                 if was.start != now.start || was.end != now.end {
                     // A pivoted line is drawn unturned: its pivot turns it again as it flexes (F7d).
@@ -2709,6 +2831,7 @@ impl Family {
                     DimRef::Form(g, _) => !self.forms.iter().any(|f| f.guid == g),
                     DimRef::Sketch(g, l) | DimRef::Point(g, l, _) => !line(g, l),
                     DimRef::Line(g, _) | DimRef::LinePoint(g, _) => !self.lines.iter().any(|x| x.guid == g),
+                    DimRef::ModelLine(g) | DimRef::ModelLinePoint(g, _) => !self.model_lines.iter().any(|x| x.guid == g),
                 })
             })
             .map(|(i, _)| i)
@@ -2757,6 +2880,7 @@ impl Family {
         let plane_ids = ids(&mut self.planes.iter().map(|p| (p.id, p.guid)));
         let form_ids = ids(&mut self.forms.iter().map(|f| (f.id, f.guid)));
         let line_ids = ids(&mut self.lines.iter().map(|l| (l.id, l.guid)));
+        let model_line_ids = ids(&mut self.model_lines.iter().map(|l| (l.id, l.guid)));
         let sketch_ids: Vec<(Guid, Vec<(Id, Guid)>)> =
             self.forms.iter().map(|f| (f.guid, f.plane_lines().map(|l| (l.id, l.guid)).collect())).collect();
         let pick = |among: &[(Id, Guid)], g: &mut Guid| {
@@ -2812,6 +2936,7 @@ impl Family {
                 DimRef::Plane(g) => pick(&plane_ids, g),
                 DimRef::Form(g, _) => pick(&form_ids, g),
                 DimRef::Line(g, _) | DimRef::LinePoint(g, _) => pick(&line_ids, g),
+                DimRef::ModelLine(g) | DimRef::ModelLinePoint(g, _) => pick(&model_line_ids, g),
                 DimRef::Sketch(g, l) | DimRef::Point(g, l, _) => {
                     pick(&form_ids, g);
                     if let Some((_, lines)) = sketch_ids.iter().find(|(f, _)| f == g) {
@@ -2820,7 +2945,12 @@ impl Family {
                 }
             }
             match r {
-                DimRef::Plane(g) | DimRef::Form(g, _) | DimRef::Line(g, _) | DimRef::LinePoint(g, _) => follow(g),
+                DimRef::Plane(g)
+                | DimRef::Form(g, _)
+                | DimRef::Line(g, _)
+                | DimRef::LinePoint(g, _)
+                | DimRef::ModelLine(g)
+                | DimRef::ModelLinePoint(g, _) => follow(g),
                 DimRef::Sketch(g, l) | DimRef::Point(g, l, _) => {
                     follow(g);
                     follow(l);
@@ -3365,5 +3495,12 @@ pub fn align(f: &Family, values: &BTreeMap<String, Val>, reference: &DimRef, tar
             }
         }
         DimRef::Line(g, _) | DimRef::LinePoint(g, _) => Ok(vec![Edit::Line(g, mul(m, at - was))]),
+        // A model line slides along its host (FE-15); a pin holds it.
+        DimRef::ModelLine(g) | DimRef::ModelLinePoint(g, _) => {
+            if f.model_lines.iter().any(|l| l.guid == g && l.pinned) {
+                return Err(Unsat::from("the model line is pinned: unpin it to align it".to_string()));
+            }
+            Ok(vec![Edit::Line(g, mul(m, at - was))])
+        }
     }
 }
