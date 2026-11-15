@@ -332,47 +332,6 @@ pub(crate) fn offset_line(line: (P2, P2), q: P2, o: &Options) -> Option<(P2, P2)
     Some((line.0 + n, line.1 + n))
 }
 
-/// `q` (the view's mm) snapped to the traces of the planes and lines `traces` within `reach`: where two cross near it, there;
-/// else onto the nearest. A point clicked for a Modify tool lands on the references it is meant to, as Revit's snaps it, so a
-/// half turn about a point on the level line keeps what is drawn on the level on it.
-pub(crate) fn snap_to(q: P2, traces: &[(P2, P2)], reach: f64) -> P2 {
-    let near: Vec<(f64, (P2, P2))> = traces
-        .iter()
-        .filter(|(a, b)| a.dist(*b) > 1e-9)
-        .map(|s| (bimcraft_core::geom::dist_to_segment(q, s.0, s.1), *s))
-        .filter(|(d, _)| *d <= reach)
-        .collect();
-    let crossing = |(a, b): (P2, P2), (c, d): (P2, P2)| -> Option<P2> {
-        let (r, s) = (b - a, d - c);
-        let den = r.cross(s);
-        if den.abs() < 1e-9 * r.dot(r).sqrt() * s.dot(s).sqrt() {
-            return None;
-        }
-        let t = (c - a).cross(s) / den;
-        Some(a + r * t)
-    };
-    let mut best: Option<(f64, P2)> = None;
-    for (i, (_, s)) in near.iter().enumerate() {
-        for (_, u) in &near[i + 1..] {
-            if let Some(x) = crossing(*s, *u).filter(|x| x.dist(q) <= reach * 1.5)
-                && best.is_none_or(|(d, _)| x.dist(q) < d)
-            {
-                best = Some((x.dist(q), x));
-            }
-        }
-    }
-    if let Some((_, x)) = best {
-        return x;
-    }
-    near.iter()
-        .min_by(|a, b| a.0.total_cmp(&b.0))
-        .map(|(_, (a, b))| {
-            let r = *b - *a;
-            *a + r * ((q - *a).dot(r) / r.dot(r))
-        })
-        .unwrap_or(q)
-}
-
 /// What the status bar asks for while `tool` is in hand.
 pub(crate) fn prompt(tool: &Tool, o: &Options, sketch: bool) -> &'static str {
     match *tool {
