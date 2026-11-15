@@ -1014,7 +1014,7 @@ Ref. Level turns in a plan, and in an elevation only by a half turn about a poin
 host's normal over (that half turn, a mirror across the level, a form on a reference line's face mirrored with the line), an
 extrusion's Start and End go to the other side (−End to −Start) and a Blend's base and top each to the other side, a sweep
 refusing. The points a tool clicks in the views snap to the planes' and lines' traces within reach, and to where two cross
-(`modify::snap_to`), so a centre clicked on the level line is on it; Offset's isn't, as it reads the side clicked. Only the
+(`snap::on_traces`, in the core, as Manage > Snaps and a snap override say: FE-21, below), so a centre clicked on the level line is on it; Offset's isn't, as it reads the side clicked. Only the
 numbers that change are written; one that is a formula refuses it. A mirrored arc turns the other way and a mirrored revolve
 turns from −End to −Start (a turn keeps a revolve's angles); a sweep isn't mirrored (its profile would face the wrong way), and Scale leaves forms (a form is sized
 by its dimensions and parameters, as Revit's Scale leaves it), its button greyed for a selection with one, saying so. A dimension
@@ -1781,13 +1781,31 @@ can Trim/Extend Single and Multiple Elements: `FAMILY_KEYLESS`), KS Keyboard Sho
 and HR Temporary Hide/Isolate; FF Filter, PR Select Previous, ID Select by ID, SA and SV Select All Instances (Visible in
 View and In Entire Family) and BF Select Elements by Face (FE-20, above); Drag Elements on Selection has none, as in Revit
 (`keys::FAMILY_KEYLESS`); PN Pin, UP Unpin, PE Select Pinned Elements, ME Measure and CS Create Similar (FE-17, below; PN, UP,
-ME and CS as the project's, PE the family's alone). A key made in Keyboard Shortcuts is tried first
+ME and CS as the project's, PE the family's alone); SE, SM, SI, SC, SP, SQ, ST, SN, SO and SS the project's snap overrides
+(FE-21, below). A key made in Keyboard Shortcuts is tried first
 when it names a command the family has. The
 commands only a family has (Work Plane, Load Family, Angular Dimension, Pick Lines, Finish and Cancel Edit Mode, FE-3's zoom
 commands, Scale, FE-20's Filter Selection, Select Previous, Select by ID, Select All Instances: In Entire Family and Select
 Elements by Face and Drag Elements on Selection, FE-14's clipboard commands, and FE-17's Select Pinned Elements) are in
 `shortcuts::ACTIONS`, so the dialog and a file can give them keys, and in `shortcuts::FAMILY_ONLY`: on a project's tab their keys
 do nothing, and Find leaves them out. Tests: `tests/family_keys.rs`.
+
+## Snap overrides (FE-21)
+
+A family tab has the project's snap overrides, in `FAMILY_SHORTCUTS` and typed as its other keys (Shortcuts need Ctrl too): SE,
+SM, SI, SC, SP, SQ, ST and SN keep the next point picked to that snap alone, SO picks it with no snap, and SS ends the override.
+It is the window's `snap_once`, the project's own (`BimApp::snap_override`, which the project's keys and Keyboard Shortcuts' actions
+go through too, Snap to Quadrants and Snap to Tangents among them), reaching the document through `snaps_now` each frame, so the
+status bar says it as the project's does ("Snap: Endpoint (next point)", "Snaps off (next point)"). The point it was for ends it
+(`FamilyEditor::took_point`: a sketch's point while a shape is drawn or a line's end let go, a Modify tool's or Measure's click), and
+so do Escape (first, leaving what is drawn), another tool picked up (`FamilyEditor::tool_in_hand`, watched by `family_central`) and
+another view or tab. A form's sketch follows it through `snap::among`; the Modify tools' points through `snap::on_traces`, where only
+Intersection and Nearest find anything on the traces (any other kind, and SO, leave the point where it was clicked), and which under
+the default switches snaps exactly as before (`traces_snap_under_the_default_switches_exactly_as_before`). SX (points) and SW (the
+work plane grid) are no keys of a family's: nothing in it is a point a snap finds (an adaptive family's {3D} picks its points itself),
+and its work plane's grid is only drawn, in {3D} with Show on. Reference Plane, Reference Line and Model Line still draw unsnapped
+(Shift keeping them square), and Measure's clicks find no traces outside a Modify tool, so an override there only ends at its click.
+Tests: `tests/family_snaps.rs`; the core's in `snap.rs`.
 
 ## Pin, Measure and Create Similar (FE-17)
 

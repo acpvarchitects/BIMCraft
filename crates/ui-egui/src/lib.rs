@@ -328,8 +328,8 @@ pub struct Status {
     pub error: bool,
 }
 
-/// A snap override typed as a shortcut, for the next point picked: Revit's SE, SM, SI, SC, SP and
-/// SN (that snap alone), and SO (none).
+/// A snap override typed as a shortcut, for the next point picked: Revit's SE, SM, SI, SC, SP, SQ,
+/// ST and SN (that snap alone), and SO (none).
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum Once {
     Only(Snap),
@@ -2767,19 +2767,8 @@ impl BimApp {
             }
             // Revit's snap overrides: for the next point picked, that snap alone, or none.
             "SE" | "SM" | "SI" | "SC" | "SP" | "SQ" | "ST" | "SN" | "SO" | "SS" => {
-                self.snap_once = match self.typed.as_str() {
-                    "SQ" => Some(Once::Only(Snap::Quadrant)),
-                    "ST" => Some(Once::Only(Snap::Tangent)),
-                    "SE" => Some(Once::Only(Snap::Endpoint)),
-                    "SM" => Some(Once::Only(Snap::Midpoint)),
-                    "SI" => Some(Once::Only(Snap::Intersection)),
-                    "SC" => Some(Once::Only(Snap::Centre)),
-                    "SP" => Some(Once::Only(Snap::Perpendicular)),
-                    "SN" => Some(Once::Only(Snap::Nearest)),
-                    "SO" => Some(Once::Off),
-                    _ => None,
-                };
-                return true;
+                let action = SHORTCUTS.iter().find(|(k, _)| *k == self.typed).map_or("", |(_, a)| *a);
+                return self.snap_override(action);
             }
             code if mep::fixture_with(code).is_some() => Tool::Fixture(mep::fixture_with(code).map_or("", |f| f.key)),
             code if mep::run_with(code).is_some() => Tool::Run(mep::run_with(code).unwrap_or("beam"), None),
@@ -2890,8 +2879,27 @@ impl BimApp {
         true
     }
 
+    /// A snap override's action (Snap to Endpoints, … Snaps Off, Turn Snap Override Off) done: the next point picked takes that
+    /// snap alone, or none, or Manage > Snaps again. The project's and a family document's (FE-21). Whether `action` is one.
+    pub(crate) fn snap_override(&mut self, action: &str) -> bool {
+        self.snap_once = match action {
+            "Snap to Endpoints" => Some(Once::Only(Snap::Endpoint)),
+            "Snap to Midpoints" => Some(Once::Only(Snap::Midpoint)),
+            "Snap to Intersections" => Some(Once::Only(Snap::Intersection)),
+            "Snap to Centres" => Some(Once::Only(Snap::Centre)),
+            "Snap to Perpendiculars" => Some(Once::Only(Snap::Perpendicular)),
+            "Snap to Quadrants" => Some(Once::Only(Snap::Quadrant)),
+            "Snap to Tangents" => Some(Once::Only(Snap::Tangent)),
+            "Snap to Nearest" => Some(Once::Only(Snap::Nearest)),
+            "Snaps Off" => Some(Once::Off),
+            "Turn Snap Override Off" => None,
+            _ => return false,
+        };
+        true
+    }
+
     /// The snaps in force for the next point picked: Manage > Snaps, unless a shortcut (SE, SM, SI,
-    /// SC, SP, SN, SO) has overridden them for it.
+    /// SC, SP, SQ, ST, SN, SO) has overridden them for it, in the project or a family document.
     pub(crate) fn snaps_now(&self) -> Snaps {
         match self.snap_once {
             Some(Once::Only(kind)) => Snaps::only(kind),
@@ -3588,6 +3596,8 @@ impl BimApp {
         // A family document's view: its tab after the document's others (after the project's and the documents' before it),
         // and the document showing it. The project's tool, selection and views are left as they are.
         if let Sheet::Family(id, view) = sheet {
+            // A snap override was for a point in the view it was typed in (FE-21), as the project's.
+            self.snap_once = None;
             if !self.views.contains(&sheet) {
                 let at = self.views.iter().position(|s| matches!(s, Sheet::Family(d, _) if *d > id)).unwrap_or(self.views.len());
                 self.views.insert(at, sheet);

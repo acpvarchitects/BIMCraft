@@ -561,6 +561,10 @@ pub(crate) struct FamilyEditor {
     pub(crate) sketch: Option<Box<sketch::FormSketch>>,
     /// What a sketch snaps to, as Manage > Snaps says: the window's, given each frame.
     pub(crate) snaps: bimcraft_core::snap::Snaps,
+    /// A point was picked this frame, so a snap override waiting for it (FE-21) is done: the window lets it go.
+    pub(crate) took_point: bool,
+    /// The tool in hand when a snap override began waiting ([`FamilyEditor::tool_in_hand`]): another picked up ends it.
+    pub(crate) override_tool: Option<u64>,
     /// The families loaded into it and their instances placed in it (T6a, `nested.rs`), as the family holds them.
     pub(crate) nested: Vec<bimcraft_core::family::NestedFamily>,
     /// Manage > Purge Unused, open (FE-19).
@@ -694,6 +698,8 @@ impl FamilyEditor {
             views: Default::default(),
             sketch: None,
             snaps: Default::default(),
+            took_point: false,
+            override_tool: None,
             nested: f.nested.clone(),
             purging: None,
             nested_instances: f.nested_instances.clone(),
