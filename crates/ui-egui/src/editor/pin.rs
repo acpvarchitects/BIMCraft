@@ -54,6 +54,21 @@ impl FamilyEditor {
         if !self.can_pin(on) {
             return;
         }
+        // A pinned model line is no unknown of its dimensions (FE-15): a pin a dimension would move it through is refused, as
+        // the `family` command refuses it, the draft as it was.
+        let sound = |ed: &Self| ed.family().and_then(|f| f.check(&|_| true)).is_ok();
+        let was = (on && sound(self)).then(|| self.model_lines.clone());
+        self.pin_each(on);
+        if let Some(lines) = was
+            && let Err(e) = self.family().and_then(|f| f.check(&|_| true))
+        {
+            self.model_lines = lines;
+            self.views.status = Some(tf("Pin can't hold it there: {}", &[&e]));
+        }
+    }
+
+    /// What is selected pinned (`on`) or unpinned, a datum left pinned.
+    fn pin_each(&mut self, on: bool) {
         for p in self.selection.items().to_vec() {
             match p {
                 Picked::Form(i) => {

@@ -213,7 +213,12 @@ impl Family {
 /// Whether `r` names one of `copied`.
 fn copied_ref(r: &DimRef, copied: &BTreeSet<Guid>) -> bool {
     match *r {
-        DimRef::Plane(g) | DimRef::Form(g, _) | DimRef::Line(g, _) | DimRef::LinePoint(g, _) => copied.contains(&g),
+        DimRef::Plane(g)
+        | DimRef::Form(g, _)
+        | DimRef::Line(g, _)
+        | DimRef::LinePoint(g, _)
+        | DimRef::ModelLine(g)
+        | DimRef::ModelLinePoint(g, _) => copied.contains(&g),
         DimRef::Sketch(_, l) | DimRef::Point(_, l, _) => copied.contains(&l),
     }
 }

@@ -194,7 +194,9 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// 0.12's hold neither, and one the unreleased Family Editor saved at 18 to 20 with `void_cuts` reads them as written. 21 also
 /// holds a nested family chosen by a family type parameter (T24): a nested instance's `label` and family type values
 /// `{"family", "type"}`, which a build that reads up to 20 would leave out (the label) or refuse every command over (the
-/// values); a file of 20 holds neither, null values and no labels.
+/// values); a file of 20 holds neither, null values and no labels. And a family's dimension may measure to one of its model
+/// lines (`{"model_line": guid}`, with a `point` for an end; FE-15), a reference a build that reads up to 20 would refuse as a
+/// key its references don't have.
 pub const FORMAT: u32 = 21;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;

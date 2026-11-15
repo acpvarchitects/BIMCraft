@@ -435,15 +435,16 @@ impl FamilyEditor {
         if held {
             let at = dot(p.start) + along;
             let edits = f.drag_plane(&self.values(), g, at).map_err(|e| Ok((e, at)))?;
-            self.apply_edits(edits);
+            let placed = self.apply_edits(edits);
+            self.carry_model_lines(&was.0, &was.1, &placed);
         } else if let Some(p) = self.planes.iter_mut().find(|p| p.guid == g) {
             for (i, k) in n.iter().enumerate() {
                 p.start[i] += k * along;
                 p.end[i] += k * along;
             }
             carry_lines(&mut self.lines, g, std::array::from_fn(|i| n[i] * along));
+            self.carry_model_lines(&was.0, &was.1, &[]);
         }
-        self.carry_model_lines(&was.0, &was.1);
         Ok(())
     }
 
@@ -484,13 +485,14 @@ impl FamilyEditor {
                 _ => {}
             }
         }
+        let mut placed = Vec::new();
         if !moving.is_empty() {
             let edits = f.move_by(&values, &moving, d).map_err(|e| match e {
                 MoveRefused::Stays(s) => stays_said(&s, names),
                 MoveRefused::Unsat(u) => names.origin.unsat(&u),
             })?;
             let (points, rest): (Vec<Edit>, Vec<Edit>) = edits.into_iter().partition(|e| matches!(e, Edit::Point(..)));
-            self.apply_edits(rest);
+            placed = self.apply_edits(rest);
             for e in points {
                 if let Edit::Point(i, k, spot, p) = e {
                     self.shift_sketch_point(i, k, spot, p, &values);
@@ -566,8 +568,9 @@ impl FamilyEditor {
                 Picked::Form(_) | Picked::Plane(_) | Picked::Line(_) | Picked::ModelLine(_) => {}
             }
         }
-        // The model lines: on what moved, with it; those selected, by the move along what they are drawn on.
-        self.carry_model_lines(&was.0, &was.1);
+        // The model lines: on what moved, with it, unless the constraints placed them; those selected, by the move along what
+        // they are drawn on.
+        self.carry_model_lines(&was.0, &was.1, &placed);
         for p in items {
             if let Picked::ModelLine(g) = *p {
                 self.slide_model_line(g, d);
@@ -632,10 +635,10 @@ impl FamilyEditor {
 impl FamilyEditor {
     /// The model lines (FE-15) drawn on what moved from where `planes` and `lines` had it, carried with it: from its axes
     /// as they were into its axes as they now stand.
-    pub(super) fn carry_model_lines(&mut self, planes: &[RefPlane], lines: &[RefLine]) {
+    pub(super) fn carry_model_lines(&mut self, planes: &[RefPlane], lines: &[RefLine], placed: &[Guid]) {
         let was = bimcraft_core::family::Planes { planes, lines };
         let now = bimcraft_core::family::Planes { planes: &self.planes, lines: &self.lines };
-        for l in self.model_lines.iter_mut() {
+        for l in self.model_lines.iter_mut().filter(|l| !placed.contains(&l.guid)) {
             let (Ok(a), Ok(b)) = (was.frame(&l.host), now.frame(&l.host)) else { continue };
             if a == b {
                 continue;

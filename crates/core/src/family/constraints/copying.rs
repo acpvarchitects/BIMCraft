@@ -86,6 +86,8 @@ impl Copies {
             DimRef::Point(f, l, s) => DimRef::Point(m(f)?, m(l)?, s),
             DimRef::Line(g, face) => DimRef::Line(m(g)?, face),
             DimRef::LinePoint(g, s) => DimRef::LinePoint(m(g)?, s),
+            DimRef::ModelLine(g) => DimRef::ModelLine(m(g)?),
+            DimRef::ModelLinePoint(g, s) => DimRef::ModelLinePoint(m(g)?, s),
         })
     }
 }
