@@ -1653,6 +1653,34 @@ mod tests {
         assert!(refitted > 0, "a narrow view is refitted");
     }
 
+    /// UI-1 review: across a sweep of pane sizes, a plan's fit cuts no elevation mark, one the room's frame hid that a refit
+    /// brings partly in included.
+    #[test]
+    fn no_pane_size_leaves_a_mark_cut() {
+        let mut st = staged(&boxed(0.0, 2000.0));
+        let mut cut = Vec::new();
+        for which in [Which::Plan, Which::Ceiling] {
+            for w in (300..=1700).step_by(50) {
+                for h in (300..=1300).step_by(50) {
+                    let lines = st.draw_lines(which, w, h, 1.0, P2(0.0, 0.0)).unwrap();
+                    let mut marks: BTreeMap<Id, Vec<(f32, f32)>> = BTreeMap::new();
+                    for (p, o) in lines.drawing.prims.iter().zip(&lines.drawing.owners) {
+                        if let Some(id) = o.filter(|id| matches!(st.model.elements.get(*id), Some(Element::Elevation(_)))) {
+                            marks.entry(id).or_default().extend(p.points());
+                        }
+                    }
+                    let (wf, hf) = (w as f32, h as f32);
+                    let within = |p: &(f32, f32)| (7.5..=wf - 7.5).contains(&p.0) && (7.5..=hf - 7.5).contains(&p.1);
+                    let seen = |p: &(f32, f32)| (0.0..=wf).contains(&p.0) && (0.0..=hf).contains(&p.1);
+                    if marks.values().any(|pts| !pts.iter().all(within) && pts.iter().any(seen)) {
+                        cut.push((which, w, h));
+                    }
+                }
+            }
+        }
+        assert!(cut.is_empty(), "{} sizes cut a mark, as {:?}", cut.len(), &cut[..cut.len().min(6)]);
+    }
+
     #[test]
     fn no_plane_name_lies_on_a_trace_in_any_view() {
         use crate::render::{Part, Prim};
