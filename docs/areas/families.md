@@ -344,8 +344,9 @@ step of its history. A void hidden in a type cuts nothing in either.
 
 Temporary Hide/Isolate works in the family document's view as in the project's (`editor/temp_hide.rs`): Hide Element (HH), Hide
 Category (HC), Isolate Element (HI), Isolate Category (IC) and Reset (HR), from the keys (or what Keyboard Shortcuts made them) or
-the view control bar's Temporary Hide/Isolate menu (Apply Hide/Isolate to View greyed: a family's views keep nothing hidden for
-good yet). It acts on what is selected: the form selected in a family that isn't adaptive, the points, lines and forms selected in
+the view control bar's Temporary Hide/Isolate menu. Its Apply Hide/Isolate to View hides the forms and planes hidden for now,
+and Forms as a category, in the view shown for good (FE-18); what a family's view can't keep (reference planes or the wall as
+a category) stays hidden for now. In an adaptive family, whose views hide for now only, it is greyed. It acts on what is selected: the form selected in a family that isn't adaptive, the points, lines and forms selected in
 the modelling view; the selection goes. A family has no categories of elements, so the view's own stand for them, as Revit's
 family editor names them: Forms (solid and void alike: forms have no subcategory), Reference Points, Lines, Reference Planes (the
 datums and the family's planes the modelling view draws) and, in a door's or a window's preview, the wall it stands in. Only forms,
@@ -379,6 +380,21 @@ when the family closes (saving them with the family would be a view-only field, 
   every form whatever its height, as before, and OK on the range the dialog first shows sets none; set, a form wholly below
   its view depth or above its top is left out (`Staged::seen`). The ceiling plan looks up from its own cut, as a project's
   does, and has none. While one of these dialogs is open it has the keys: neither the document nor its views get them.
+- Hide in View (EH, VH): EH hides the forms and reference planes selected in the view shown, by their GUIDs
+  (`Graphics::elements` of the view's own, `hidden`); VH hides the forms' category, Visibility/Graphics' row, which VV then
+  shows unticked. VH on a plane alone says it has no category to hide. A hidden form or plane is neither drawn nor picked
+  there, by a click, a box, Dimension or Align (a form hidden for now, HH, alike); the selection goes. An adaptive family's
+  views hide for now only.
+- Reveal Hidden Elements (RH, and the view control bar's button): the view draws what it hides in magenta, a form and a plane's
+  trace alike, inside the project's cyan frame, where it can be picked; Unhide Element (EU) and Unhide Category (VU) show what is selected again.
+- Override Graphics in View by Element (EO): View-Specific Element Graphics, the project's override editor
+  (`graphics::editor`), on the forms selected. It opens on the first's override, and OK sets on each only what was edited
+  there, field by field, keeping the rest of its own and whether it is hidden; OK with nothing edited sets nothing.
+- A form with graphics of its own in a view (an override, or revealed) is drawn as a component of its own beside the family,
+  as the ghost of what its type hides is (`views::apart_family`, `FamilyEditor::apart_forms`), so the project's drawing gives
+  it its element's graphics; the family's voids go with it and cut it as they cut the family. A form its view hides, with its
+  category or by itself, is never drawn apart unless revealed, whatever it overrides (a door's forms drawn apart are a generic
+  family, which the door category's hide wouldn't reach). In {3D} each part already is one.
 
 ### Visibility Settings (F8)
 
@@ -1082,7 +1098,7 @@ an elevation, always edge-on there, goes through Go To View, as in Revit. From a
 family of their own in the scratch model, drawn halftone, as {3D} ghosts them (not for a door or a window, whose wall holds one
 opening); on, they are left out. Temporary Hide/Isolate leaves a form hidden for now out of every view; a selected plane can be
 hidden (HH), isolated or hidden with every plane (HC). It keeps **one state for the whole family document**, every view showing
-what it hides, a deliberate limit: Revit keeps it per view, and Apply Hide/Isolate to View stays greyed. An adaptive family's
+what it hides, a deliberate limit: Revit keeps it per view. Apply Hide/Isolate to View keeps it in the view shown (FE-18). An adaptive family's
 plans and elevations show its test placement and nothing more (no selection, no Reference Plane, no drag); its tools stay in
 {3D}, its modelling view. None of this is a field of the family or a step of FORMAT: what a view keeps is the session's.
 
