@@ -713,6 +713,45 @@ pub(crate) fn combo(ui: &mut Ui, salt: (Id, &str), label: UiId, current: &str, o
     picked
 }
 
+/// A family type parameter's value as people read it: `Family : Type`, or `<None>`.
+pub(crate) fn choice_said(v: &Value) -> String {
+    match (v.get("family").and_then(Value::as_str), v.get("type").and_then(Value::as_str)) {
+        (Some(f), Some(t)) => format!("{f} : {t}"),
+        _ => t("<None>").to_string(),
+    }
+}
+
+/// A drop-down of a family type parameter's choices (T24): `<None>`, then each family it may pick with each of its types
+/// (`Family::choices`), shown as `Family : Type`. The value picked, `{"family", "type"}` or null, if one other than `current`
+/// was.
+pub(crate) fn choice_combo(
+    ui: &mut Ui,
+    salt: impl std::hash::Hash + std::fmt::Debug,
+    label: UiId,
+    current: &Value,
+    choices: &[(String, String)],
+) -> Option<Value> {
+    let mut picked = None;
+    let mut options = vec![Value::Null];
+    options.extend(choices.iter().map(|(f, ty)| json!({"family": f, "type": ty})));
+    let c = ComboBox::from_id_salt(salt).selected_text(choice_said(current)).width(ui.available_width()).truncate().show_ui(ui, |ui| {
+        for o in &options {
+            if ui.selectable_label(o == current, choice_said(o)).clicked() && o != current {
+                picked = Some(o.clone());
+            }
+        }
+    });
+    // Named by its row's label; what it holds is its value, as a field's is.
+    let shown = choice_said(current);
+    let enabled = ui.is_enabled();
+    c.response.labelled_by(label).widget_info(|| {
+        let mut info = WidgetInfo::new(WidgetType::ComboBox);
+        (info.enabled, info.current_text_value) = (enabled, Some(shown.clone()));
+        info
+    });
+    picked
+}
+
 /// [`combo`] of line styles: each row with a sample of the line its style draws (`linestyles::style_row`); `options` that
 /// aren't a style (Invisible) have none.
 fn style_combo(ui: &mut Ui, salt: (Id, &str), label: UiId, current: &str, options: &[String], model: &Model) -> Option<String> {
@@ -2327,12 +2366,12 @@ impl BimApp {
                             _ if p.formula.is_some() || p.reporting => {
                                 ui.label(RichText::new(shown(kind, &val, units)).color(pal().muted));
                             }
-                            // A family and a type it nests (T24), read only: `Family : Type`.
+                            // A family it nests of the parameter's category and one of its types (T24), picked.
                             Holds::FamilyType => {
-                                let said = serde_json::from_value::<bimcraft_core::family::Val>(val.clone())
-                                    .map(|v| bimcraft_core::family::said_choice(&v))
-                                    .unwrap_or_default();
-                                ui.label(RichText::new(said).color(pal().muted));
+                                let choices = f.choices(p.of.unwrap_or_default());
+                                if let Some(v) = choice_combo(ui, ("component-choice", id, &p.name), name.id, &val, &choices) {
+                                    change = Some((p.name.clone(), Ok(v)));
+                                }
                             }
                             Holds::Text | Holds::Url => {
                                 if let Some(typed) = self.field(ui, id, &p.name, val.as_str().unwrap_or_default().to_string(), name.id, "")
@@ -3249,11 +3288,13 @@ pub(crate) struct FamilyDialog {
     error: Option<String>,
     /// The type's values of the project's type parameters, as typed.
     project: Vec<TypeValue>,
+    /// Each family type parameter's value as the dialog opened (T24): one OK leaves as it was isn't sent.
+    opened: BTreeMap<String, String>,
 }
 
 impl FamilyDialog {
     pub(crate) fn new(m: &Model, family: String, name: String, elements: Vec<Id>) -> FamilyDialog {
-        let fields = m
+        let fields: Vec<(String, Holds, String, bool, Under)> = m
             .families
             .get(&family)
             .map(|f| {
@@ -3263,7 +3304,10 @@ impl FamilyDialog {
                     Some(Val::Number(x)) if p.kind == Holds::YesNo => (if *x != 0.0 { "1" } else { "0" }).to_string(),
                     Some(Val::Number(x)) => format!("{}", (x * 1e6).round() / 1e6),
                     Some(Val::Text(t)) => t.clone(),
-                    Some(v @ Val::Choice { .. }) => bimcraft_core::family::said_choice(v),
+                    // A family type as `{"family", "type"}` written out (T24); blank for none.
+                    Some(v @ Val::Choice { .. }) => {
+                        v.chosen().map(|(a, b)| json!({"family": a, "type": b}).to_string()).unwrap_or_default()
+                    }
                     None => String::new(),
                 };
                 f.parameters
@@ -3278,7 +3322,8 @@ impl FamilyDialog {
         let guid = m.library.guid(&LibKind::FamilyType, &format!("{family}: {name}"));
         let own = |n: &str| m.families.get(&family).is_some_and(|f| f.parameters.iter().any(|q| q.name == n));
         let project = type_values(m, category, guid).into_iter().filter(|v| !own(&v.name)).collect();
-        FamilyDialog { family, name, elements, fields, naming: Naming::None, error: None, project }
+        let opened = fields.iter().filter(|f| f.1 == Holds::FamilyType).map(|f| (f.0.clone(), f.2.clone())).collect();
+        FamilyDialog { family, name, elements, fields, naming: Naming::None, error: None, project, opened }
     }
 
     /// The dialog showing type `name` as the model has it now.
@@ -3290,6 +3335,12 @@ impl FamilyDialog {
     /// aren't what they hold.
     fn params(&self, name: &str, units: Units) -> Result<Value, String> {
         let mut set = serde_json::Map::new();
+        // A family type only where it was picked anew (T24): none takes the type back to the family's.
+        for (key, _, typed, ..) in self.fields.iter().filter(|f| !f.3 && f.1 == Holds::FamilyType) {
+            if self.opened.get(key) != Some(typed) {
+                set.insert(key.clone(), crate::editor::text_choice(typed));
+            }
+        }
         for (key, kind, typed, ..) in self.fields.iter().filter(|f| !f.3 && f.1 != Holds::FamilyType) {
             let v = match kind {
                 Holds::Length => json!(units.parse(typed).ok_or_else(|| tf("{}: `{}` is not a length", &[key, typed]))?),
@@ -3336,7 +3387,16 @@ impl BimApp {
                                 Holds::Angle => tb.text(key, typed, "°"),
                                 Holds::Area => tb.text(key, typed, "mm²"),
                                 Holds::Volume => tb.text(key, typed, "mm³"),
-                                Holds::FamilyType => tb.shown(key, typed),
+                                Holds::FamilyType => {
+                                    let choices = model
+                                        .families
+                                        .get(&d.family)
+                                        .and_then(|f| {
+                                            f.parameters.iter().find(|p| p.name == *key).map(|p| f.choices(p.of.unwrap_or_default()))
+                                        })
+                                        .unwrap_or_default();
+                                    tb.choice(key, typed, &choices);
+                                }
                                 Holds::Number | Holds::Integer | Holds::Text | Holds::Url => tb.text(key, typed, ""),
                             }
                         }

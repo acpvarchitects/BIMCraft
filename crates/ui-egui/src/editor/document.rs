@@ -1180,7 +1180,7 @@ impl BimApp {
         }
         // A nested instance selected: its type, where it stands and its family's parameters (T6a).
         if let Some(i) = ed.selected_nested() {
-            let what = ed.nested_instances.get(i).map(|n| format!("{} : {}", n.family, n.type_name)).unwrap_or_default();
+            let what = ed.shown_type(i).unwrap_or_default();
             selector(ui, Icon::Component, &what);
             ui.add_space(6.0);
             self.nested_properties(ui, &mut ed, i);
@@ -1679,6 +1679,13 @@ impl BimApp {
             }
             // Component's family and type (T6a).
             super::nested::placing_options(ui, ed);
+            // A nested instance's Label (T24): the family type parameter that picks its family and type.
+            if let Some(i) = ed.selected_nested()
+                && ed.placing.is_none()
+            {
+                ui.separator();
+                ed.nested_label_options(ui, i);
+            }
             // A dimension's Label, as Revit's Options Bar has it (T19).
             if let Some(g) = ed.selected_dimension() {
                 ui.separator();

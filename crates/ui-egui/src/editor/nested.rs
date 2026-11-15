@@ -18,6 +18,92 @@ use bimcraft_core::units::Units;
 const LIMIT: f64 = 1e7;
 
 impl FamilyEditor {
+    /// The family type parameters nested instance `i` may be labelled with (T24): those whose category is its family's.
+    pub(crate) fn label_choices(&self, i: usize) -> Vec<String> {
+        let category = self.nested_instances.get(i).and_then(|inst| nested::find(&self.nested, &inst.family)).map(|n| n.family.category);
+        self.params
+            .iter()
+            .filter(|p| p.kind == Holds::FamilyType && p.original.of.is_some() && p.original.of == category)
+            .map(|p| p.name.trim().to_string())
+            .collect()
+    }
+
+    /// The Options Bar's Label for selected nested instance `i` (T24): `<None>`, the family type parameters of its family's
+    /// category, and Create Parameter…, which makes one of that category to label it with.
+    pub(crate) fn nested_label_options(&mut self, ui: &mut Ui, i: usize) {
+        let Some(inst) = self.nested_instances.get(i) else { return };
+        let now = inst.label.clone();
+        let category = nested::find(&self.nested, &inst.family).map(|n| n.family.category);
+        let choices = self.label_choices(i);
+        let l = ui.label(t("Label"));
+        let shown = now.clone().unwrap_or_else(|| t("<None>").to_string());
+        let (mut picked, mut create): (Option<Option<String>>, bool) = (None, false);
+        let c = ComboBox::from_id_salt("family-nested-label").selected_text(shown).width(200.0).show_ui(ui, |ui| {
+            if ui.selectable_label(now.is_none(), t("<None>")).clicked() {
+                picked = Some(None);
+            }
+            for name in &choices {
+                if ui.selectable_label(now.as_deref() == Some(name.as_str()), name).clicked() {
+                    picked = Some(Some(name.clone()));
+                }
+            }
+            if category.is_some() && ui.selectable_label(false, t("Create Parameter…")).clicked() {
+                create = true;
+            }
+        });
+        c.response.labelled_by(l.id);
+        if create && let Some(of) = category {
+            self.views.creating = Some(super::dimensions::Creating::for_label(i, of));
+        }
+        if let Some(label) = picked
+            && label != now
+        {
+            self.set_nested_label(i, label);
+        }
+    }
+
+    /// Nested instance `i` labelled `label` (T24). Labelled, the parameter holds what it showed where it held none; unlabelled,
+    /// the instance keeps the family and type it showed in the type previewed.
+    pub(crate) fn set_nested_label(&mut self, i: usize, label: Option<String>) {
+        let values = self.values();
+        let shown = self.family().ok().and_then(|f| {
+            let inst = f.nested_instances.get(i)?;
+            let (a, b) = f.chosen(inst, &values);
+            Some((a.to_string(), b.to_string()))
+        });
+        let Some(inst) = self.nested_instances.get_mut(i) else { return };
+        match label {
+            None => {
+                if let Some((family, type_name)) = shown {
+                    (inst.family, inst.type_name) = (family, type_name);
+                }
+                inst.label = None;
+            }
+            Some(name) => {
+                let value = json!({"family": inst.family, "type": inst.type_name});
+                inst.label = Some(name.clone());
+                if let Some(p) = self.params.iter_mut().find(|p| p.name.trim() == name && p.formula.trim().is_empty())
+                    && p.value.trim().is_empty()
+                {
+                    p.value = super::choice_text(&value);
+                }
+            }
+        }
+    }
+
+    /// Nested instance `i`'s family and type as it shows them, `Family : Type`: a labelled one's, what its label picks for the
+    /// type previewed (T24).
+    pub(crate) fn shown_type(&self, i: usize) -> Option<String> {
+        let inst = self.nested_instances.get(i)?;
+        let picked = inst.label.as_ref().and_then(|_| {
+            let f = self.family().ok()?;
+            let values = self.values();
+            let (a, b) = f.chosen(f.nested_instances.get(i)?, &values);
+            Some(format!("{a} : {b}"))
+        });
+        Some(picked.unwrap_or_else(|| format!("{} : {}", inst.family, inst.type_name)))
+    }
+
     /// The nested instance selected, while it alone is and it is there.
     pub(crate) fn selected_nested(&self) -> Option<usize> {
         match self.only_selected() {
@@ -129,6 +215,7 @@ fn worked_out(e: &Expr, kind: Holds, values: &BTreeMap<String, Val>) -> String {
     match (kind.text(), e) {
         (true, Expr::Formula(s)) => match values.get(s.as_str()) {
             Some(Val::Text(t)) => t.clone(),
+            Some(v @ Val::Choice { .. }) => bimcraft_core::family::said_choice(v),
             _ => s.clone(),
         },
         _ => worth(e, values).map(number_text).unwrap_or_else(|| expr_text(e)),
@@ -138,6 +225,15 @@ fn worked_out(e: &Expr, kind: Holds, values: &BTreeMap<String, Val>) -> String {
 impl Tied for NestedRows<'_> {
     fn tie(&mut self, a: &Associating, values: &BTreeMap<String, Val>) {
         let kind = a.kind;
+        // A family type untied is taken away: it is the host's to set by "=" alone (T24).
+        if kind == Holds::FamilyType && a.chosen.is_none() {
+            if let Some((i, Some(p))) = row_of(&a.id)
+                && let Some(inst) = self.instances.get_mut(i)
+            {
+                inst.params.remove(p);
+            }
+            return;
+        }
         let Some(e) = self.expr(a) else { return };
         *e = match &a.chosen {
             Some(p) => Expr::Formula(p.clone()),
@@ -220,6 +316,28 @@ impl Rows<'_> {
         ui.end_row();
     }
 
+    /// A row of a family type (T24) of one of the nested family's parameters: what it is tied to, greyed, and "=" alone, which
+    /// ties it to one of the host's family type parameters of its category, `of`.
+    fn choice(&mut self, ui: &mut Ui, label: &str, e: &mut Expr, of: Option<Category>, id: String) {
+        let l = ui.label(label);
+        let w = width(ui);
+        ui.horizontal(|ui| {
+            let tied = self.bound(e, Holds::FamilyType);
+            let mut shown = if tied { worked_out(e, Holds::FamilyType, self.values) } else { t("<None>").to_string() };
+            ui.add_enabled(false, TextEdit::singleline(&mut shown).desired_width(w)).labelled_by(l.id);
+            if equals(ui, label, tied) {
+                let now = match e {
+                    Expr::Formula(f) => Some(f.clone()),
+                    Expr::Number(_) => None,
+                };
+                let mut a = associating(&id, Field::Nested(NestedSlot::Param), Holds::FamilyType, label, now.as_deref(), self.params);
+                a.of = of;
+                self.asked = Some(a);
+            }
+        });
+        ui.end_row();
+    }
+
     /// A row of words (a material, text, a URL) of one of the nested family's parameters, with Revit's "=": tied, it shows what
     /// the host's parameter holds, greyed; a material is picked from the project's.
     fn words(&mut self, ui: &mut Ui, label: &str, e: &mut Expr, kind: Holds, id: String) {
@@ -270,27 +388,45 @@ impl BimApp {
         let types: Vec<(String, String)> =
             ed.nested.iter().flat_map(|n| n.family.types.keys().map(|t| (n.name.clone(), t.clone()))).collect();
         let nested = ed.nested.clone();
+        // A labelled instance shows what its label picks for the type previewed (T24): its Type is the label's to say.
+        let chosen = ed.family().ok().and_then(|f| {
+            let inst = f.nested_instances.get(i)?;
+            let (a, b) = f.chosen(inst, &values);
+            Some(format!("{a} : {b}"))
+        });
         let Some(inst) = ed.nested_instances.get_mut(i) else { return };
         let mut rows = Rows { params: &params, values: &values, units, materials: &materials, asked: None };
         let id = i.to_string();
         group(ui, msg!("Constraints"), |ui| {
             let l = ui.label(t("Type"));
-            let shown = format!("{} : {}", inst.family, inst.type_name);
-            let c = ComboBox::from_id_salt(("nested-type", i)).selected_text(shown).width(width(ui) + 26.0).truncate().show_ui(ui, |ui| {
-                for (f, ty) in &types {
-                    if ui.selectable_label(*f == inst.family && *ty == inst.type_name, format!("{f} : {ty}")).clicked() {
-                        // Another family's: what it set of the one before that this one hasn't goes.
-                        if *f != inst.family
-                            && let Some(n) = nested::find(&nested, f)
-                        {
-                            inst.params.retain(|k, _| n.family.parameters.iter().any(|p| p.name == *k));
+            let labelled = inst.label.clone();
+            let shown = match (&labelled, &chosen) {
+                (Some(_), Some(c)) => c.clone(),
+                _ => format!("{} : {}", inst.family, inst.type_name),
+            };
+            let enabled = labelled.is_none();
+            let c = ui.add_enabled_ui(enabled, |ui| {
+                ComboBox::from_id_salt(("nested-type", i)).selected_text(shown).width(width(ui) + 26.0).truncate().show_ui(ui, |ui| {
+                    for (f, ty) in &types {
+                        if ui.selectable_label(*f == inst.family && *ty == inst.type_name, format!("{f} : {ty}")).clicked() {
+                            // Another family's: what it set of the one before that this one hasn't goes.
+                            if *f != inst.family
+                                && let Some(n) = nested::find(&nested, f)
+                            {
+                                inst.params.retain(|k, _| n.family.parameters.iter().any(|p| p.name == *k));
+                            }
+                            (inst.family, inst.type_name) = (f.clone(), ty.clone());
                         }
-                        (inst.family, inst.type_name) = (f.clone(), ty.clone());
                     }
-                }
+                })
             });
-            c.response.labelled_by(l.id);
+            c.inner.response.labelled_by(l.id);
             ui.end_row();
+            if let Some(p) = &labelled {
+                ui.label("");
+                ui.label(RichText::new(tf("Labelled by {}", &[p])).color(pal().muted));
+                ui.end_row();
+            }
             ui.label(t("Work Plane"));
             ui.label(&host);
             ui.end_row();
@@ -324,12 +460,8 @@ impl BimApp {
         if let Some(n) = nested::find(&nested, &inst.family) {
             let own = n.family.values(&inst.type_name, &BTreeMap::new()).unwrap_or_default();
             for g in Under::listed(n.family.parameters.iter().map(|p| p.group())) {
-                let settable: Vec<&Parameter> = n
-                    .family
-                    .parameters
-                    .iter()
-                    .filter(|p| p.group() == g && p.formula.is_none() && !p.reporting && p.kind != Holds::FamilyType)
-                    .collect();
+                let settable: Vec<&Parameter> =
+                    n.family.parameters.iter().filter(|p| p.group() == g && p.formula.is_none() && !p.reporting).collect();
                 if settable.is_empty() {
                     continue;
                 }
@@ -346,7 +478,12 @@ impl BimApp {
                             None => Expr::Number(0.0),
                         });
                         let before = value.clone();
-                        if p.kind.text() {
+                        // A family type is the host's to pick (T24): "=" ties it to one of its category.
+                        if p.kind == Holds::FamilyType {
+                            // Only "=" changes it, through Associate Family Parameter.
+                            rows.choice(ui, &p.name, &mut value, p.of, row);
+                            continue;
+                        } else if p.kind.text() {
                             rows.words(ui, &p.name, &mut value, p.kind, row);
                         } else {
                             rows.number(ui, &p.name, &mut value, p.kind, row, NestedSlot::Param);

@@ -372,6 +372,8 @@ pub(crate) struct Associating {
     pub(crate) label: String,
     pub(crate) chosen: Option<String>,
     pub(crate) new: Option<(String, bool)>,
+    /// A family type's category (T24): only the family's family type parameters of it are offered.
+    pub(crate) of: Option<bimcraft_core::family::Category>,
 }
 
 /// A parameter New Parameter adds to the family: its name, what it holds, whether each instance has its own, and its value
@@ -516,7 +518,7 @@ fn material_row(ui: &mut Ui, material: &mut String, values: &BTreeMap<String, Va
 /// Associate Family Parameter, opening on `field` of `id`: tied already to one of `params`, that one is chosen.
 pub(crate) fn associating(id: &str, field: Field, kind: Holds, label: &str, now: Option<&str>, params: &[(String, Holds)]) -> Associating {
     let chosen = now.filter(|n| params.iter().any(|(p, k)| p == n && *k == kind)).map(String::from);
-    Associating { id: id.to_string(), field, kind, label: label.to_string(), chosen, new: None }
+    Associating { id: id.to_string(), field, kind, label: label.to_string(), chosen, new: None, of: None }
 }
 
 /// The name a measurement's value goes by in Properties, as Revit's.

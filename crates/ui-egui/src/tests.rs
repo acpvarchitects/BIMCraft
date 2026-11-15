@@ -7381,6 +7381,7 @@ mod family_snaps;
 mod family_tabs;
 mod family_tabs_async;
 mod family_temporary_hide;
+mod family_type_params;
 mod family_types_dialog;
 mod family_view_graphics;
 mod family_views;

@@ -308,11 +308,23 @@ const KINDS: [Holds; 11] = [
 /// A stored value, as typed for a parameter of `kind`.
 fn value_text(kind: Holds, v: &Value) -> String {
     match (kind, v) {
+        // A family type (T24): its `{"family", "type"}` as written, so it reads back as it was.
+        (Holds::FamilyType, Value::Object(_)) => v.to_string(),
         (Holds::YesNo, Value::Bool(b)) => (if *b { "1" } else { "0" }).into(),
         (_, Value::Number(n)) => n.as_f64().map(number_text).unwrap_or_default(),
         (_, Value::String(s)) => s.clone(),
         _ => String::new(),
     }
+}
+
+/// A family type parameter's value (T24) as Family Types keeps it typed: `{"family", "type"}` written out, blank for none.
+pub(crate) fn choice_text(v: &Value) -> String {
+    if v.is_object() { v.to_string() } else { String::new() }
+}
+
+/// A family type parameter's value as typed, read back: `{"family", "type"}`, or null for blank or what doesn't read.
+pub(crate) fn text_choice(s: &str) -> Value {
+    serde_json::from_str::<Value>(s.trim()).ok().filter(Value::is_object).unwrap_or(Value::Null)
 }
 
 /// What was typed for a parameter of `kind`, as the value it stores; none for blank, where a type goes by the family's.
@@ -322,7 +334,10 @@ fn text_value(kind: Holds, s: &str, who: &str) -> Result<Option<Value>, String> 
         return Ok(None);
     }
     Ok(Some(match kind {
-        Holds::Material | Holds::Text | Holds::Url | Holds::FamilyType => json!(s),
+        Holds::Material | Holds::Text | Holds::Url => json!(s),
+        Holds::FamilyType => {
+            serde_json::from_str::<Value>(s).ok().filter(Value::is_object).ok_or_else(|| tf("{}: `{}` isn't a family type", &[who, s]))?
+        }
         Holds::YesNo => json!(matches!(s, "1" | "true" | "yes" | "Yes")),
         Holds::Length | Holds::Number | Holds::Angle | Holds::Integer | Holds::Area | Holds::Volume => {
             json!(s.parse::<f64>().ok().filter(|x| x.is_finite()).ok_or_else(|| tf("{}: `{}` isn't a number", &[who, s]))?)
@@ -714,7 +729,12 @@ impl FamilyEditor {
     pub(crate) fn associate_dialog(&mut self, ctx: &Context) {
         use crate::adaptive_editor::{Field, associate};
         let Some(mut a) = self.associating.take() else { return };
-        let (params, values) = (self.parameter_kinds(), self.values());
+        let (mut params, values) = (self.parameter_kinds(), self.values());
+        // A family type ties only to one of its category (T24).
+        if a.kind == Holds::FamilyType {
+            let of: BTreeMap<String, Option<Category>> = self.params.iter().map(|p| (p.name.trim().to_string(), p.original.of)).collect();
+            params.retain(|(n, k)| *k != Holds::FamilyType || of.get(n).copied().flatten() == a.of);
+        }
         let (done, new) = if matches!(a.field, Field::Nested(_)) {
             let mut rows = nested::NestedRows { instances: &mut self.nested_instances };
             associate(ctx, &mut a, &mut rows, &params, &values)
@@ -731,7 +751,7 @@ impl FamilyEditor {
         };
         if let Some(n) = new {
             self.params.push(ParamText {
-                original: Parameter::default(),
+                original: Parameter { of: a.of.filter(|_| n.kind == Holds::FamilyType), ..Parameter::default() },
                 name: n.name,
                 kind: n.kind,
                 instance: n.instance,
