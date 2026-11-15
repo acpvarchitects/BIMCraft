@@ -231,8 +231,13 @@ fn the_keys_work_with_ctrl_held_when_shortcuts_need_it() {
     let (mut h, _) = open(BOX, "Box");
     h.state_mut().shortcuts_need_ctrl = true;
     view(&mut h, Some(Which::Plan));
+    // V with Ctrl held is paste, never a letter: VV and VG can't be typed (Keyboard Shortcuts rebinds them).
     shortcut(&mut h, "VV");
-    assert!(vg_open(&h), "Ctrl+V, Ctrl+V");
+    assert!(!vg_open(&h), "Ctrl+V, Ctrl+V");
+    // Rebound to letters without them, it is typed with Ctrl held.
+    h.state_mut().custom_shortcuts.insert("GR".into(), "Visibility/Graphics".into());
+    shortcut(&mut h, "GR");
+    assert!(vg_open(&h), "Ctrl+G, Ctrl+R");
     press(&mut h, "Cancel");
     shortcut(&mut h, "TL");
     assert!(h.state().thin);

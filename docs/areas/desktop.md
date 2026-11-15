@@ -585,10 +585,12 @@ On, upstream's design (the user chose Ctrl, and the wait, on 2026-11-13): letter
 takes them out of the frame's events), and letters typed without Ctrl are no shortcut (digits and a unit still make a typed length). A letter that
 is a Ctrl key of its own waits for a second letter (`CTRL_WAIT`, half a second): with one it is a shortcut (Ctrl held, S then A: Select All
 Instances); if the two aren't one, the first does its own job and the second waits in its place, so Ctrl held and Z, Z, Z undoes three times; with
-none, or once Ctrl is let go, it does its own job. A real window gets Ctrl+C, Ctrl+X and Ctrl+V as egui's `Copy`, `Cut` and `Paste` events, never
-keys (and Ctrl+V as nothing but its V let go when the system's clipboard holds no text), so `ctrl_letters` takes those as C, X and V too (CO,
-MV, TX, CS can be typed), and `paste_heard` keeps a V's press and its let-go one V; on their own they do their job once, as `family_ctrl_key`
-does in a family (`tests/shortcuts_ctrl.rs`). Either way, in a text field the keys are the field's, but S, O, N, K, P and 1, which act there at
+none, or once Ctrl is let go, it does its own job. Ctrl+C, Ctrl+X and Ctrl+V are never letters, in either mode: they are copy, cut and
+paste, as in every desktop program. A real window gets them as egui's `Copy`, `Cut` and `Paste` events (Ctrl+V as nothing but its V let go when
+the system's clipboard holds no text); `ctrl_letters` leaves those, and C, X and V pressed with Ctrl, in the frame, for whatever owns the
+clipboard: a text field or the note editor, or a family's element clipboard at once, with no wait (`clipboard::key`, FE-14); on the project's
+tab, which has no element clipboard yet, they do nothing. So with Ctrl on, a shortcut with C, X or V (CO, MV, TX, CS) can't be typed: the
+dialog's hint says to rebind it (`tests/shortcuts_ctrl.rs`). Either way, in a text field the keys are the field's, but S, O, N, K, P and 1, which act there at
 once, and no shortcut is typed. Each name in `ACTIONS` is a tool or command the window runs (`execute_shortcut_action`), and a key never
 carries Revit's name for a tool BIMCraft lacks (Sun Settings, Detail and Model Line, Split Face, Brace, Beam System, the duct tools): it waits
 for the tool. The family document's own commands are there too (`FAMILY_ONLY`; a family tab's keys are its own table's: [families](families.md#the-family-documents-keys-fe-13)).

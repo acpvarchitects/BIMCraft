@@ -483,39 +483,23 @@ const SHORTCUTS: [(&str, &str); 58] = [
 pub(crate) const CTRL_WAIT: f64 = 0.5;
 
 /// The letters and digits typed this frame with Ctrl held (Cmd on a Mac) and no other modifier, taken out of the frame's
-/// events, upper case: BIMCraft's shortcuts are two of them, as Revit's are two letters (when Shortcuts need Ctrl is on).
-/// A window gets Ctrl+C, Ctrl+X and Ctrl+V as its Copy, Cut and Paste, never as keys: they are C, X and V here too. Ctrl+V
-/// comes as Paste only when the system's clipboard holds text, and its V let go always comes as a key: `heard` (kept from
-/// frame to frame, as `editor::clipboard::key` keeps it) says a V's press came, so its V let go is not a second V, and a V let
-/// go with no press heard is V.
-pub(crate) fn ctrl_letters(ctx: &Context, heard: &mut bool) -> Vec<char> {
+/// events, upper case: BIMCraft's shortcuts are two of them (when Shortcuts need Ctrl is on). C, X and V never are: Ctrl+C,
+/// Ctrl+X and Ctrl+V are the clipboard's, as in every program, so they (and the window's Copy, Cut and Paste they come as)
+/// are left in the frame for a text field, the note editor or a family's clipboard (`editor::clipboard::key`).
+pub(crate) fn ctrl_letters(ctx: &Context) -> Vec<char> {
     ctx.input_mut(|i| {
         let mut out = Vec::new();
         i.events.retain(|e| {
-            let letter = match e {
-                Event::Key { key, pressed: true, modifiers, .. } if modifiers.command && !modifiers.shift && !modifiers.alt => {
-                    let name = key.name();
-                    let mut chars = name.chars();
-                    match (chars.next(), chars.next()) {
-                        (Some(c), None) if c.is_ascii_alphanumeric() => c.to_ascii_uppercase(),
-                        _ => return true,
-                    }
-                }
-                Event::Copy => 'C',
-                Event::Cut => 'X',
-                Event::Paste(_) => 'V',
-                Event::Key { key: Key::V, pressed: false, modifiers, .. } if modifiers.command => {
-                    if std::mem::take(heard) {
-                        return false;
-                    }
-                    'V'
-                }
-                _ => return true,
-            };
-            if letter == 'V' && !matches!(e, Event::Key { pressed: false, .. }) {
-                *heard = true;
+            let Event::Key { key, pressed: true, modifiers, .. } = e else { return true };
+            if !modifiers.command || modifiers.shift || modifiers.alt || matches!(key, Key::C | Key::X | Key::V) {
+                return true;
             }
-            out.push(letter);
+            let name = key.name();
+            let mut chars = name.chars();
+            match (chars.next(), chars.next()) {
+                (Some(c), None) if c.is_ascii_alphanumeric() => out.push(c.to_ascii_uppercase()),
+                _ => return true,
+            }
             false
         });
         out
@@ -2422,7 +2406,7 @@ impl BimApp {
         }
         if self.shortcuts_need_ctrl {
             // Shortcuts are two letters typed with Ctrl held; a letter that is a Ctrl key of its own waits for a second.
-            for letter in ctrl_letters(ctx, &mut self.paste_heard) {
+            for letter in ctrl_letters(ctx) {
                 self.ctrl_letter(ctx, letter);
             }
             self.ctrl_waited(ctx);
