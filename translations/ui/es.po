@@ -249,7 +249,7 @@ msgstr "Un filtro se crea en Vista > Filtros"
 msgid "A folder. One that isn't absolute is beside the project's file."
 msgstr ""
 
-#: crates/ui-egui/src/editor/views.rs:1442
+#: crates/ui-egui/src/editor/views.rs:1468
 msgid "A form made of a mesh has no faces Align can take: pick a reference plane, an extrusion's end or a line of a form."
 msgstr ""
 
@@ -785,7 +785,7 @@ msgstr ""
 msgid "Align lines up with what a plan shows: in the 3D view, drag a line's end or draw it again."
 msgstr "Alinear se ajusta a lo que muestra una planta: en la vista 3D, arrastre el extremo de una línea o dibújela de nuevo."
 
-#: crates/ui-egui/src/editor/views.rs:1444
+#: crates/ui-egui/src/editor/views.rs:1470
 msgid "Align takes a form's straight edge, a side the view sees edge on, or its end: click on its outline."
 msgstr ""
 
@@ -9928,7 +9928,7 @@ msgstr "Designa un plano de referencia, una línea de referencia o una arista de
 msgid "Pick a reference plane, a reference line or a line, then a line of the sketch."
 msgstr "Designa un plano de referencia, una línea de referencia o una línea y luego una línea del boceto."
 
-#: crates/ui-egui/src/editor/views.rs:1445
+#: crates/ui-egui/src/editor/views.rs:1471
 msgid "Pick a reference plane, an extrusion's end or a line of a form."
 msgstr "Designa un plano de referencia, un extremo de una extrusión o una línea de una forma."
 
@@ -10113,7 +10113,7 @@ msgid "Pick three points: after OK, click three points on the model, each snappi
 msgstr "Designar tres puntos: tras Aceptar, haz clic en tres puntos del modelo; cada uno se ajusta a una esquina cercana al puntero"
 
 #: crates/ui-egui/src/editor/dimensions.rs:1439
-#: crates/ui-egui/src/editor/views.rs:1424
+#: crates/ui-egui/src/editor/views.rs:1450
 msgid "Pick two references or more, then click where the dimension goes."
 msgstr "Designa dos referencias o más y luego haz clic donde va la cota."
 
@@ -13723,7 +13723,7 @@ msgstr "Ese es el máximo de modelos que se guardan: elimine uno primero"
 msgid "That is no IP address: 0.0.0.0 listens on all of this machine's"
 msgstr "Eso no es una dirección IP: 0.0.0.0 escucha en todas las direcciones de esta máquina"
 
-#: crates/ui-egui/src/editor/views.rs:1435
+#: crates/ui-egui/src/editor/views.rs:1461
 msgid "That is the reference: pick what moves onto it."
 msgstr ""
 
@@ -14168,6 +14168,10 @@ msgstr "La parte superior"
 msgid "The topic is about the {} elements selected."
 msgstr ""
 
+#: crates/ui-egui/src/editor/views.rs:1410
+msgid "The two points are the same: pick the second elsewhere."
+msgstr ""
+
 #: crates/ui-egui/src/sketch3d.rs:246
 msgid "The view is edge-on to the sketch's plane: turn it to pick on it."
 msgstr "La vista está de canto respecto al plano del boceto: gírela para elegir en él."
@@ -14180,7 +14184,7 @@ msgstr "La vista mira a lo largo de la cota: gírala para colocar su línea."
 msgid "The view sees it end-on: offset it in a view that sees its trace."
 msgstr ""
 
-#: crates/ui-egui/src/editor/views.rs:1391
+#: crates/ui-egui/src/editor/views.rs:1417
 msgid "The view sees its work plane edge on: set a work plane it sees flat (Work Plane > Set)."
 msgstr ""
 

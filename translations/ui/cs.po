@@ -248,7 +248,7 @@ msgstr "Filtr se vytváří v nabídce Pohled > Filtry"
 msgid "A folder. One that isn't absolute is beside the project's file."
 msgstr ""
 
-#: crates/ui-egui/src/editor/views.rs:1442
+#: crates/ui-egui/src/editor/views.rs:1468
 msgid "A form made of a mesh has no faces Align can take: pick a reference plane, an extrusion's end or a line of a form."
 msgstr ""
 
@@ -784,7 +784,7 @@ msgstr ""
 msgid "Align lines up with what a plan shows: in the 3D view, drag a line's end or draw it again."
 msgstr "Zarovnání čar probíhá podle toho, co ukazuje půdorys: ve 3D pohledu přetáhněte konec čáry nebo ji nakreslete znovu."
 
-#: crates/ui-egui/src/editor/views.rs:1444
+#: crates/ui-egui/src/editor/views.rs:1470
 msgid "Align takes a form's straight edge, a side the view sees edge on, or its end: click on its outline."
 msgstr ""
 
@@ -9927,7 +9927,7 @@ msgstr "Vyberte v pohledu referenční rovinu, referenční čáru nebo hranu tv
 msgid "Pick a reference plane, a reference line or a line, then a line of the sketch."
 msgstr "Vyberte referenční rovinu, referenční čáru nebo čáru a potom čáru skici."
 
-#: crates/ui-egui/src/editor/views.rs:1445
+#: crates/ui-egui/src/editor/views.rs:1471
 msgid "Pick a reference plane, an extrusion's end or a line of a form."
 msgstr "Vyberte referenční rovinu, konec vysunutí nebo čáru tvaru."
 
@@ -10112,7 +10112,7 @@ msgid "Pick three points: after OK, click three points on the model, each snappi
 msgstr "Vybrat tři body: po OK klikněte na tři body modelu, každý se přichytí k rohu poblíž ukazatele"
 
 #: crates/ui-egui/src/editor/dimensions.rs:1439
-#: crates/ui-egui/src/editor/views.rs:1424
+#: crates/ui-egui/src/editor/views.rs:1450
 msgid "Pick two references or more, then click where the dimension goes."
 msgstr "Vyberte dvě nebo více referencí a potom klikněte na místo kóty."
 
@@ -13722,7 +13722,7 @@ msgstr "Je uložen největší možný počet předvoleb: nejprve jednu odstraň
 msgid "That is no IP address: 0.0.0.0 listens on all of this machine's"
 msgstr "To není IP adresa: 0.0.0.0 naslouchá na všech adresách tohoto počítače"
 
-#: crates/ui-egui/src/editor/views.rs:1435
+#: crates/ui-egui/src/editor/views.rs:1461
 msgid "That is the reference: pick what moves onto it."
 msgstr ""
 
@@ -14167,6 +14167,10 @@ msgstr "Horní část"
 msgid "The topic is about the {} elements selected."
 msgstr ""
 
+#: crates/ui-egui/src/editor/views.rs:1410
+msgid "The two points are the same: pick the second elsewhere."
+msgstr ""
+
 #: crates/ui-egui/src/sketch3d.rs:246
 msgid "The view is edge-on to the sketch's plane: turn it to pick on it."
 msgstr "Rovinu náčrtu vidíte z boku: otočte pohled, abyste na ní mohli vybírat."
@@ -14179,7 +14183,7 @@ msgstr "Pohled směřuje podél kóty: otočte jej, abyste mohli umístit její 
 msgid "The view sees it end-on: offset it in a view that sees its trace."
 msgstr ""
 
-#: crates/ui-egui/src/editor/views.rs:1391
+#: crates/ui-egui/src/editor/views.rs:1417
 msgid "The view sees its work plane edge on: set a work plane it sees flat (Work Plane > Set)."
 msgstr ""
 
