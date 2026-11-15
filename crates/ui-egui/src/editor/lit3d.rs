@@ -187,6 +187,16 @@ impl FamilyEditor {
                 part.insert(id, p);
             }
         }
+        // FE-18: a part {3D} overrides, or reveals in magenta, drawn so.
+        let apart = self.apart_forms(None, f, &values, &by_view);
+        let parted: Vec<(bimcraft_core::ids::Guid, bimcraft_core::graphics::Override)> = part
+            .iter()
+            .filter_map(|(id, p)| {
+                let Part::Form(i) = p else { return None };
+                let o = apart.iter().find(|(k, _)| k == i)?.1.clone();
+                Some((s.model.elements.guid(*id)?, o))
+            })
+            .collect();
         let m = s.model_mut();
         // The view it is seen in: the document's Detail Level, the scratch project's levels hidden, and the door's or the window's
         // wall while Temporary Hide/Isolate hides it.
@@ -198,7 +208,7 @@ impl FamilyEditor {
         }
         // {3D}'s own Visibility/Graphics and visual style (FE-18). A door's or a window's parts stand as generic families of their
         // own, so its category's override is theirs.
-        let mut own = self.views.kept.graphics_of(None);
+        let mut own = self.views.kept.drawn_graphics(None);
         if hosted {
             let of = if shown.category == Category::Door { "door" } else { "window" };
             if let Some(o) = own.categories.get(of).cloned() {
@@ -206,6 +216,7 @@ impl FamilyEditor {
             }
         }
         super::view_graphics::lay_over(&mut graphics, &own);
+        graphics.elements.extend(parted);
         m.insert(Element::View3D(View3D {
             name: "{3D}".into(),
             azimuth: AZIMUTH,

@@ -83,6 +83,12 @@ pub(crate) const FAMILY_SHORTCUTS: &[(&str, &str)] = &[
     ("SD", "Shaded"),
     ("GD", "Graphic Display Options"),
     ("VR", "View Range"),
+    ("EH", "Hide Element"),
+    ("VH", "Hide Category"),
+    ("EU", "Unhide Elements"),
+    ("VU", "Unhide Category"),
+    ("RH", "Reveal Hidden Elements"),
+    ("EO", "Override Graphics by Element"),
 ];
 
 /// The family document's commands Revit gives no key: Keyboard Shortcuts lists them, and a key made there works on a family
@@ -284,6 +290,15 @@ impl BimApp {
             }
             "View Range" => {
                 self.family_view_range();
+                return true;
+            }
+            "Hide Element"
+            | "Hide Category"
+            | "Unhide Elements"
+            | "Unhide Category"
+            | "Reveal Hidden Elements"
+            | "Override Graphics by Element" => {
+                self.family_view_element(action);
                 return true;
             }
             "Temporary Hide Element" => Some(Asked::Hide { category: false }),

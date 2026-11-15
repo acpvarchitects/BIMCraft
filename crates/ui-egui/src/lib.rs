@@ -6428,6 +6428,7 @@ impl BimApp {
         self.phasing_window(ctx);
         self.display_window(ctx);
         self.family_range_window(ctx);
+        self.family_override_window(ctx);
         self.project_info_window(ctx);
         self.reinforce_window(ctx);
         self.line_weights_window(ctx);
