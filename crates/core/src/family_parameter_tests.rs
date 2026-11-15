@@ -83,7 +83,7 @@ fn a_family_holds_text_integer_area_volume_url_and_family_type_parameters() {
     assert_eq!(a["Footprint"], json!(1.0e6), "an area in mm², as its lengths are in mm");
     assert_eq!(a["Space"], json!(2.5e8));
     assert_eq!(a["Datasheet"], json!("https://example.org/box"));
-    assert_eq!(a["Handle"], json!(""), "no family type is chosen until nested families exist");
+    assert_eq!(a["Handle"], json!(null), "no family type is chosen: the family nests none");
 }
 
 #[test]
@@ -97,10 +97,13 @@ fn a_formula_reads_no_text_and_text_takes_no_formula() {
     };
     let e = err(&mut s, "family", with(json!({"name": "Odd", "formula": "Width + Maker"})));
     assert!(e.contains("`Maker`") && e.contains("text"), "{e}");
-    for kind in ["text", "url", "familytype"] {
-        let e = err(&mut s, "family", with(json!({"name": "Said", "kind": kind, "of": "furniture", "formula": "Width"})));
+    for kind in ["text", "url"] {
+        let e = err(&mut s, "family", with(json!({"name": "Said", "kind": kind, "formula": "Width"})));
         assert!(e.contains("Said") && e.contains("no formula"), "{kind}: {e}");
     }
+    // A family type's formula picks another family type parameter (T24): a length is none.
+    let e = err(&mut s, "family", with(json!({"name": "Said", "kind": "familytype", "of": "furniture", "formula": "Width"})));
+    assert!(e.contains("Said") && e.contains("family type"), "{e}");
     let e = err(&mut s, "family", with(json!({"name": "Link", "kind": "url", "value": "https://a.b/\nx"})));
     assert!(e.contains("Link"), "{e}");
 }
@@ -322,7 +325,7 @@ fn a_reporting_parameter_is_a_length_or_an_angle_nothing_sets() {
 }
 
 #[test]
-fn a_family_type_parameter_names_a_category_and_holds_no_value_yet() {
+fn a_family_type_parameter_names_a_category_and_its_value_a_family_and_a_type() {
     let mut s = Session::new();
     cabinet(&mut s);
     let e = err(&mut s, "family", json!({"name": "Cabinet", "parameter": {"name": "Handle", "kind": "familytype"}}));

@@ -50,6 +50,13 @@ pub(crate) fn problems(f: &Family, has_material: &dyn Fn(&str) -> bool) -> (Vec<
 /// has no parameter of, and the ones that read words. `Wall Thickness`, the wall's own, counts as one of a door's or a
 /// window's; no other family's formulas may say it.
 fn formulas(f: &Family, out: &mut Vec<String>) {
+    // A family type parameter's formula reads others of its kind (T24): `Family::check` says what it may pick.
+    let choosing: BTreeSet<String> = f
+        .parameters
+        .iter()
+        .filter(|p| p.kind == Kind::FamilyType && p.formula.is_some())
+        .map(|p| format!("parameter `{}`", p.name))
+        .collect();
     for (who, formula) in every_formula(f) {
         // A formula longer than what it may be is `Family::check`'s to count, not read again here.
         if formula.chars().count() > MAX_FORMULA {
@@ -61,7 +68,12 @@ fn formulas(f: &Family, out: &mut Vec<String>) {
                 for n in found {
                     if !known(f, &n) {
                         out.push(format!("{who}: formula `{formula}`: {}", not_a_parameter(&n, &f.parameters)));
-                    } else if let Some(p) = f.parameters.iter().find(|p| p.name == n && p.kind.text() && p.kind != Kind::Material) {
+                    } else if let Some(p) = f
+                        .parameters
+                        .iter()
+                        .find(|p| p.name == n && p.kind.text() && p.kind != Kind::Material)
+                        .filter(|p| !(p.kind == Kind::FamilyType && choosing.contains(&who)))
+                    {
                         // Words a formula can't read; a material's name is refused where it is worked out, as it always was.
                         out.push(format!("{who}: formula `{formula}` reads `{n}`, which is {}: a formula reads numbers", p.kind.said()));
                     }

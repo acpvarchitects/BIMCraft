@@ -239,12 +239,18 @@ pub fn names(family: &Family, p: Picked) -> Option<Names> {
 /// Select All Instances: every nested instance of `family` of the family and type of one of the nested instances in
 /// `picked`, in the order the family holds them. With `shown`, Visible in View: only those it says the view in front
 /// shows, by place ([`super::views::nested_shown`]; one it says nothing of isn't shown); without, all of the family's.
-/// Nothing when `picked` holds no nested instance: a form, a plane or a dimension has no type.
-pub fn instances(family: &Family, picked: &[Picked], shown: Option<&[bool]>) -> Vec<Picked> {
+/// Nothing when `picked` holds no nested instance: a form, a plane or a dimension has no type. An instance's family and type
+/// are what it shows for the type previewed, `values`: a labelled one's, what its label picks (T24, [`Family::chosen`]).
+pub fn instances(
+    family: &Family,
+    values: &std::collections::BTreeMap<String, super::Val>,
+    picked: &[Picked],
+    shown: Option<&[bool]>,
+) -> Vec<Picked> {
     let types: Vec<(&str, &str)> = picked
         .iter()
         .filter_map(|p| match p {
-            Picked::Nested(i) => family.nested_instances.get(*i).map(|n| (n.family.as_str(), n.type_name.as_str())),
+            Picked::Nested(i) => family.nested_instances.get(*i).map(|n| family.chosen(n, values)),
             _ => None,
         })
         .collect();
@@ -252,7 +258,7 @@ pub fn instances(family: &Family, picked: &[Picked], shown: Option<&[bool]>) -> 
         .nested_instances
         .iter()
         .enumerate()
-        .filter(|(_, n)| types.contains(&(n.family.as_str(), n.type_name.as_str())))
+        .filter(|(_, n)| types.contains(&family.chosen(n, values)))
         .filter(|(i, _)| shown.is_none_or(|s| s.get(*i).copied().unwrap_or(false)))
         .map(|(i, _)| Picked::Nested(i))
         .collect()
@@ -461,22 +467,26 @@ mod tests {
         let f = family();
         let values = f.values("T", &std::collections::BTreeMap::new()).unwrap();
         let picked = [Picked::Form(0), Picked::Nested(2)];
-        assert_eq!(instances(&f, &picked, None), [Picked::Nested(0), Picked::Nested(2), Picked::Nested(3)], "all of the family's");
+        assert_eq!(
+            instances(&f, &Default::default(), &picked, None),
+            [Picked::Nested(0), Picked::Nested(2), Picked::Nested(3)],
+            "all of the family's"
+        );
         // Visible in View: what the view in front shows. The one switched off is in none.
         let plan = nested_shown(&f, &values, Some(Which::Plan), Detail::Fine, 1200.0);
         assert_eq!(plan, [true, true, true, false]);
-        assert_eq!(instances(&f, &picked, Some(&plan)), [Picked::Nested(0), Picked::Nested(2)]);
-        assert_eq!(instances(&f, &[Picked::Nested(1)], Some(&plan)), [Picked::Nested(1)], "another type is another");
-        assert_eq!(instances(&f, &[Picked::Nested(1), Picked::Nested(0)], None).len(), 4, "of each type selected");
-        assert!(instances(&f, &[Picked::Form(0), Picked::Plane(g(EDGE))], None).is_empty(), "nothing with a type");
-        assert!(instances(&f, &[Picked::Nested(9)], None).is_empty());
-        assert!(instances(&f, &picked, Some(&[])).is_empty(), "what the view says nothing of isn't shown");
+        assert_eq!(instances(&f, &Default::default(), &picked, Some(&plan)), [Picked::Nested(0), Picked::Nested(2)]);
+        assert_eq!(instances(&f, &Default::default(), &[Picked::Nested(1)], Some(&plan)), [Picked::Nested(1)], "another type is another");
+        assert_eq!(instances(&f, &Default::default(), &[Picked::Nested(1), Picked::Nested(0)], None).len(), 4, "of each type selected");
+        assert!(instances(&f, &Default::default(), &[Picked::Form(0), Picked::Plane(g(EDGE))], None).is_empty(), "nothing with a type");
+        assert!(instances(&f, &Default::default(), &[Picked::Nested(9)], None).is_empty());
+        assert!(instances(&f, &Default::default(), &picked, Some(&[])).is_empty(), "what the view says nothing of isn't shown");
         // One whose Visibility Settings leave it out of Front and Back is shown in the plan, the sides and {3D}, not there.
         let mut f = f;
         f.nested_instances[2].visibility = Some(crate::family::Visibility { front_back: false, ..Default::default() });
         let front = nested_shown(&f, &values, Some(Which::Elevation(Side::Front)), Detail::Fine, 1200.0);
         assert_eq!(front, [true, true, false, false]);
-        assert_eq!(instances(&f, &picked, Some(&front)), [Picked::Nested(0)], "not the one Front and Back leave out");
+        assert_eq!(instances(&f, &Default::default(), &picked, Some(&front)), [Picked::Nested(0)], "not the one Front and Back leave out");
         for which in [Some(Which::Plan), Some(Which::Elevation(Side::Left)), None] {
             assert_eq!(nested_shown(&f, &values, which, Detail::Fine, 1200.0), [true, true, true, false], "{which:?}");
         }
@@ -497,6 +507,10 @@ mod tests {
         assert!(!nested_shown(&f, &values, Some(Which::Elevation(Side::Front)), Detail::Fine, 1200.0)[4]);
         assert!(!nested_shown(&f, &values, None, Detail::Fine, 1200.0)[4]);
         let shown = nested_shown(&f, &values, Some(Which::Plan), Detail::Fine, 1200.0);
-        assert_eq!(instances(&f, &[Picked::Nested(4)], Some(&shown)), [Picked::Nested(4)], "found by what the plan draws of it");
+        assert_eq!(
+            instances(&f, &Default::default(), &[Picked::Nested(4)], Some(&shown)),
+            [Picked::Nested(4)],
+            "found by what the plan draws of it"
+        );
     }
 }

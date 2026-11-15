@@ -213,7 +213,7 @@ impl FamilyEditor {
     fn take_instances(&mut self, picked: &[Picked], shown: bool) {
         let family = self.family().unwrap_or_else(|_| self.parts());
         let in_view = shown.then(|| self.nested_shown(&family));
-        let found = select::instances(&family, picked, in_view.as_deref());
+        let found = select::instances(&family, &self.values(), picked, in_view.as_deref());
         if !found.is_empty() {
             self.selection.apply(&found, How::Replace);
         }

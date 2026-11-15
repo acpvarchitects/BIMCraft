@@ -1690,7 +1690,7 @@ other_files(
          a reply's `options` has them all), rename?, delete?: true, dry_run?, path?, definition?, save?, overwrite?: no|version|version_and_values, \
          shared_nested?: {name: project|family}, nest?: {path | definition, name?, overwrite?, shared_nested?}, nested?: [{name, family}], \
          delete_nested?: [names], nested_instances?: [...], nested_instance?: {id | guid?, family, type, host?, at?: [x, y], offset?, \
-         angle?, visible?, visibility?, params?: {name: number | formula}}, delete_nested_instance?: [ids or GUIDs]} a family of \
+         angle?, visible?, visibility?, params?: {name: number | formula}, label?: parameter | null}, delete_nested_instance?: [ids or GUIDs]} a family of \
          the project's, BIMCraft's own parametric component: created, changed, read, or loaded from the .bimf file (or the .json of earlier versions) at `path` (a \
          family as `inspect` shows it, with its `name`). Without `name` it lists the project's families, each its category and \
          how many types, forms and symbols it has; with only a `name` it reads one — its definition, each of its types' \
@@ -1716,8 +1716,14 @@ other_files(
          takes what its components agree on, refused where they don't). `delete_parameter` takes parameters away, with their \
          values, refused while a formula, form or label names one. A parameter's `kind`: lengths in mm, areas in mm² and \
          volumes in mm³ (schedules and labels show m² and m³), an `integer` whole (its formula rounds), `text` and `url` words \
-         that no formula reads or works out, `familytype` a type of a family of category `of`, for nested families, holding no \
-         value yet. `group` is the heading it is listed under (by default its kind's: Dimensions for lengths, areas, volumes and \
+         that no formula reads or works out, `familytype` a type of a family of category `of` that the family nests (T24): \
+         `{\"family\": nested family, \"type\": its type}` or null for none, in `value`, a type's values and a component's \
+         `params` (`modify`), its formula another family type parameter of its category or `if(condition, one, other)` of \
+         them; a nested instance's `label` names one, and shows the family and type it holds (labelling fills its values that \
+         hold none with the instance's own family and type; unlabelled, the instance shows its own); a labelled instance's \
+         `params` name parameters of any family of that category, and a nested family type parameter is set only by \
+         associating it with one of the host's of its category (`{\"Handle\": \"Handle\"}`), whose every choice the nested \
+         family nests too; a reading of the family says each one's `choices`. `group` is the heading it is listed under (by default its kind's: Dimensions for lengths, areas, volumes and \
          angles, Materials and Finishes for materials, else Other). `shared` makes it a shared parameter, by a GUID that is one \
          name and one kind across the project's families (its name and kind can't change while shared); without it, it is the \
          family's own. `reporting`, a length or an angle, reads a dimension and drives none: no formula, type or component sets \
@@ -14227,6 +14233,7 @@ fn patch_parameter(
                     .map(|v| match v {
                         crate::family::Val::Number(x) => x.to_string(),
                         crate::family::Val::Text(t) => format!("`{t}`"),
+                        v @ crate::family::Val::Choice { .. } => format!("`{}`", crate::family::said_choice(v)),
                     })
                     .collect();
                 return Err(bad(
@@ -14471,21 +14478,31 @@ pub(crate) fn family_reload(mut incoming: crate::family::Family, old: &crate::fa
             }
         }
     }
+    // A family type kept is one the new version still nests, of its category, with that type (T24); else the new version's.
     for (name, values) in &old.types {
         let only_in_project = !incoming.types.contains_key(name);
-        let target = incoming.types.entry(name.clone()).or_default();
+        let mut kept = Vec::new();
         if keep_values || only_in_project {
             for p in incoming.parameters.iter().filter(|p| !p.instance) {
                 if let Some(q) = compatible(p) {
-                    target.insert(p.name.clone(), values.get(&p.name).unwrap_or(&q.value).clone());
+                    let v = values.get(&p.name).unwrap_or(&q.value);
+                    if incoming.choice_ok(p, v).is_ok() {
+                        kept.push((p.name.clone(), v.clone()));
+                    }
                 }
             }
         }
+        incoming.types.entry(name.clone()).or_default().extend(kept);
     }
     if keep_values {
-        for p in &mut incoming.parameters {
-            if let Some(q) = compatible(p) {
-                p.value.clone_from(&q.value);
+        let kept: Vec<Option<Value>> = incoming
+            .parameters
+            .iter()
+            .map(|p| compatible(p).map(|q| q.value.clone()).filter(|v| incoming.choice_ok(p, v).is_ok()))
+            .collect();
+        for (p, v) in incoming.parameters.iter_mut().zip(kept) {
+            if let Some(v) = v {
+                p.value = v;
             }
         }
     }
@@ -15076,6 +15093,9 @@ fn family(s: &mut Session, p: &Value) -> R {
         None => None,
     };
     let to = rename.clone().unwrap_or_else(|| name.clone());
+    // A family type parameter a nested instance is labelled with by this command holds what it showed, where it held none
+    // (T24); later edits leave it as they find it.
+    f.fill_labels(was.as_ref());
     // The instances inside what it nests, each by a GUID of its own, which the elements of shared ones are named by (T6b).
     f.give_inner_guids();
     // Every error of what it comes to, each addressed to what has it, and every warning of it.
@@ -15156,14 +15176,26 @@ fn family_reply(name: &str, f: &crate::family::Family, warnings: &[String]) -> V
         .filter_map(|t| f.values_in(t, &BTreeMap::new(), crate::family::DEFAULT_WALL).ok().map(|v| (t.clone(), v)))
         .map(|(t, v)| (t, Value::Object(v.iter().map(|(k, v)| (k.clone(), val(v))).collect())))
         .collect::<Map<String, Value>>();
-    json!({"name": name, "family": f, "options": f.options_json(), "values": Value::Object(values), "warnings": warnings})
+    // What each family type parameter may pick (T24): a family it nests of its category, and a type of it.
+    let choices = f
+        .parameters
+        .iter()
+        .filter(|p| p.kind == crate::family::Kind::FamilyType)
+        .map(|p| {
+            let all = f.choices(p.of.unwrap_or_default()).into_iter().map(|(fam, t)| json!({"family": fam, "type": t})).collect();
+            (p.name.clone(), Value::Array(all))
+        })
+        .collect::<Map<String, Value>>();
+    json!({"name": name, "family": f, "options": f.options_json(), "values": Value::Object(values), "choices": choices, "warnings": warnings})
 }
 
-/// A parameter's value worked out, as JSON: a number, or a material's name.
+/// A parameter's value worked out, as JSON: a number, a material's name or words, or a family type's
+/// `{"family", "type"}` (null for none).
 fn val(v: &crate::family::Val) -> Value {
     match v {
         crate::family::Val::Number(x) => json!(x),
         crate::family::Val::Text(t) => json!(t),
+        v @ crate::family::Val::Choice { .. } => v.chosen().map_or(Value::Null, |(f, t)| json!({"family": f, "type": t})),
     }
 }
 
@@ -15802,9 +15834,9 @@ fn families(m: &Model) -> Value {
 fn values_json(v: BTreeMap<String, crate::family::Val>) -> Value {
     Value::Object(
         v.into_iter()
-            .map(|(k, v)| match v {
-                crate::family::Val::Number(x) => (k, json!(x)),
-                crate::family::Val::Text(t) => (k, json!(t)),
+            .map(|(k, v)| {
+                let j = val(&v);
+                (k, j)
             })
             .collect::<Map<String, Value>>(),
     )
