@@ -279,7 +279,10 @@ yes or no; or words: a material, `text`, a `url` (`MAX_URL`, one line) or a `fam
 reads them (`Kind::text`; `family/validate.rs` refuses the formula, a material still where it is worked out). A family type
 parameter names the category of the families whose types it picks (`of`), and holds one of them: *Family type parameters*, below.
 `group` is the heading it is listed under (`Group`, 14 of them); none, its kind's (`Parameter::group`: Dimensions for lengths,
-areas, volumes and angles, Materials and Finishes for materials, else Other). `shared` is a shared parameter's GUID, the
+areas, volumes and angles, Materials and Finishes for materials, else Other). A component's Properties list its instance
+parameters under these headings, each heading once: one the element's own fields head already (Other, where it is and its
+rotation) takes them in its own grid (`parameters` in `properties.rs`, through `component_rows`), and `component_parameters`
+heads only the rest (UI-2; `tests/properties_groups.rs`). `shared` is a shared parameter's GUID, the
 same wherever it is used and distinct from the parameter's library-entry GUID (which is per project and per family): two
 families' parameters of one shared GUID are one name and one kind, and one name shared is one GUID
 (`Model::check_shared_parameters`); without it, it is the family's own. Schedules list every family parameter by name either
