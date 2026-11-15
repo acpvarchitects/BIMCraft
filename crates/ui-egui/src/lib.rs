@@ -1010,6 +1010,9 @@ pub struct BimApp {
     collapsed: BTreeSet<&'static str>,
     /// The names of Properties' groups a project's parameters make, kept for `collapsed`.
     collapse_keys: Vec<&'static str>,
+    /// The groups the element's own fields headed in Properties this frame, which a component's instance parameters of Revit's
+    /// group of the name join rather than heading again (UI-2).
+    headed: Vec<&'static str>,
     /// Where views show, last frame.
     view_rect: Rect,
     /// Where the last view drawn showed, whether it was the active view or not.
@@ -1744,6 +1747,7 @@ impl BimApp {
             rotate_after: false,
             collapsed: BTreeSet::new(),
             collapse_keys: Vec::new(),
+            headed: Vec::new(),
             view_rect: Rect::ZERO,
             pane: Rect::ZERO,
             browser_tab: browser::Tab::All,
