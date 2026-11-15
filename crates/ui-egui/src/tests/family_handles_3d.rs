@@ -193,8 +193,8 @@ fn in_3d_a_selected_extrusion_shows_its_sides_and_ends_and_the_top_arrow_drags_i
     let mut h = in_3d("Extrusion");
     let (_, (_, to)) = extent(&h);
     let Expr::Number(top) = to else { panic!("{to:?}") };
-    // Four sides at mid-depth and the End and Start, from the default camera (above, so none is end-on).
-    assert_eq!(editor(&h).views.handles3d_shown.len(), 6, "{:?}", editor(&h).views.handles3d_shown);
+    // The sides facing the default camera (south and east) at mid-depth and the End above; the faces turned away, none.
+    assert_eq!(editor(&h).views.handles3d_shown.len(), 3, "{:?}", editor(&h).views.handles3d_shown);
     let camera = editor(&h).orbit.camera;
     drag_3d(&mut h, [-800.0, -650.0, top], 400.0, false);
     let (_, (from, to)) = extent(&h);
@@ -214,8 +214,8 @@ fn in_3d_a_blends_base_side_drags_its_top_staying() {
     let mut h = in_3d("Blend");
     let top = editor(&h).draft_family().unwrap().forms[1].top.clone();
     assert!(!top.is_empty());
-    // Its base's four sides at its base, its First and Second End.
-    assert_eq!(editor(&h).views.handles3d_shown.len(), 6, "{:?}", editor(&h).views.handles3d_shown);
+    // Its base's sides facing the camera at its base, its Second End.
+    assert_eq!(editor(&h).views.handles3d_shown.len(), 3, "{:?}", editor(&h).views.handles3d_shown);
     drag_3d(&mut h, [-600.0, -650.0, 0.0], 200.0, false);
     assert!(near(extent(&h).0, [-1000.0, -800.0, -400.0, -500.0]), "{:?} {}", extent(&h).0, status(&h));
     assert_eq!(editor(&h).draft_family().unwrap().forms[1].top, top, "the top stays");
@@ -264,7 +264,9 @@ fn in_3d_escape_mid_drag_puts_the_form_back_and_a_drag_is_one_step_undo_takes_ba
     let Expr::Number(top) = before.1.1.clone() else { panic!() };
     // Escape mid-drag: back as it was, the rest of the drag doing nothing.
     let at = drag_3d(&mut h, [-800.0, -650.0, top], 300.0, true);
-    assert_ne!(extent(&h), before, "live");
+    // {3D} writes once the button is up: meanwhile the status bar says where the End would go.
+    assert_eq!(extent(&h), before, "not written mid-drag");
+    assert!(status(&h).contains("Extrusion End"), "{}", status(&h));
     key(&mut h, Key::Escape);
     assert_eq!(extent(&h), before);
     h.event(egui::Event::PointerMoved(at + vec2(0.0, -30.0)));

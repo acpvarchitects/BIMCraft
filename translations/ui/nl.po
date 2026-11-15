@@ -19,10 +19,10 @@ msgstr "(standaard)"
 #: crates/ui-egui/src/editor/connectors.rs:274
 #: crates/ui-egui/src/editor/document.rs:2180
 #: crates/ui-egui/src/editor/document.rs:2182
-#: crates/ui-egui/src/editor/extrusion.rs:239
-#: crates/ui-egui/src/editor/extrusion.rs:242
-#: crates/ui-egui/src/editor/sketch.rs:1922
+#: crates/ui-egui/src/editor/extrusion.rs:245
+#: crates/ui-egui/src/editor/extrusion.rs:248
 #: crates/ui-egui/src/editor/sketch.rs:1925
+#: crates/ui-egui/src/editor/sketch.rs:1928
 #: crates/ui-egui/src/editor/types_dialog.rs:637
 #: crates/ui-egui/src/editor.rs:1043
 #: crates/ui-egui/src/editor.rs:1046
@@ -77,7 +77,7 @@ msgstr "3D-weergave"
 msgid "3D View: {3D}"
 msgstr "3D-weergave: {3D}"
 
-#: crates/ui-egui/src/editor/views.rs:188
+#: crates/ui-egui/src/editor/views.rs:190
 msgid "3D View: {}"
 msgstr ""
 
@@ -111,7 +111,7 @@ msgstr "; en nog {}"
 msgid "<By Category>"
 msgstr "<Per categorie>"
 
-#: crates/ui-egui/src/editor/sketch.rs:1704
+#: crates/ui-egui/src/editor/sketch.rs:1707
 msgid "<By Sketch>"
 msgstr "<Volgens schets>"
 
@@ -197,7 +197,7 @@ msgstr "Het materiaal, de isolatie en de werktemperatuur van een geleider, en he
 msgid "A copy is drawn on a reference plane or a reference line the family no longer has: it can't be pasted."
 msgstr ""
 
-#: crates/ui-egui/src/editor/views.rs:1070
+#: crates/ui-egui/src/editor/views.rs:1072
 msgid "A datum stays where it is: offset a reference plane of the family's own."
 msgstr ""
 
@@ -209,7 +209,7 @@ msgstr ""
 msgid "A dimension has two references at least."
 msgstr ""
 
-#: crates/ui-egui/src/editor/extrusion.rs:133
+#: crates/ui-egui/src/editor/extrusion.rs:139
 msgid "A dimension sets it: unlock it to change it here."
 msgstr "Een maatlijn bepaalt de waarde: ontgrendel ze om de waarde hier te wijzigen."
 
@@ -249,7 +249,7 @@ msgstr "Een filter maak je in Weergave > Filters"
 msgid "A folder. One that isn't absolute is beside the project's file."
 msgstr ""
 
-#: crates/ui-egui/src/editor/views.rs:1493
+#: crates/ui-egui/src/editor/views.rs:1495
 msgid "A form made of a mesh has no faces Align can take: pick a reference plane, an extrusion's end or a line of a form."
 msgstr ""
 
@@ -757,7 +757,7 @@ msgstr "Vangstaven"
 
 #: crates/core/src/commands.rs:1910
 #: crates/ui-egui/src/editor/document.rs:818
-#: crates/ui-egui/src/editor/sketch.rs:1804
+#: crates/ui-egui/src/editor/sketch.rs:1807
 #: crates/ui-egui/src/editor.rs:1183
 #: crates/ui-egui/src/lib.rs:451
 #: crates/ui-egui/src/sketch.rs:738
@@ -769,7 +769,7 @@ msgstr "Uitlijnen"
 msgid "Align (AL): pick a reference line, then what to line up with it"
 msgstr "Uitlijnen (AL): kies een referentielijn, en vervolgens wat je ermee wil uitlijnen"
 
-#: crates/ui-egui/src/editor/sketch.rs:1803
+#: crates/ui-egui/src/editor/sketch.rs:1806
 msgid "Align (AL): pick a reference, then a line of the sketch that moves onto it; its padlock locks them"
 msgstr "Uitlijnen (AL): kies een referentie, en vervolgens een lijn van de schets die erop wordt verplaatst; het slotje vergrendelt ze"
 
@@ -785,7 +785,7 @@ msgstr ""
 msgid "Align lines up with what a plan shows: in the 3D view, drag a line's end or draw it again."
 msgstr "Uitlijnen werkt met wat een plattegrond toont: sleep in de 3D-weergave het einde van een lijn of teken ze opnieuw."
 
-#: crates/ui-egui/src/editor/views.rs:1495
+#: crates/ui-egui/src/editor/views.rs:1497
 msgid "Align takes a form's straight edge, a side the view sees edge on, or its end: click on its outline."
 msgstr ""
 
@@ -1409,11 +1409,11 @@ msgstr "Op de achtergrond automatisch opslaan"
 msgid "Available fields:"
 msgstr "Beschikbare velden:"
 
-#: crates/ui-egui/src/editor/sketch.rs:1750
+#: crates/ui-egui/src/editor/sketch.rs:1753
 msgid "Axis Line"
 msgstr "Aslijn"
 
-#: crates/ui-egui/src/editor/sketch.rs:1749
+#: crates/ui-egui/src/editor/sketch.rs:1752
 msgid "Axis Line: the line the profile turns about, drawn by two clicks or picked"
 msgstr "Aslijn: de lijn waarrond het profiel draait, getekend met twee klikken of gekozen"
 
@@ -1634,8 +1634,8 @@ msgid "Black and white"
 msgstr ""
 
 #: crates/ui-egui/src/editor/document.rs:587
-#: crates/ui-egui/src/editor/sketch.rs:1659
-#: crates/ui-egui/src/editor/sketch.rs:1895
+#: crates/ui-egui/src/editor/sketch.rs:1662
+#: crates/ui-egui/src/editor/sketch.rs:1898
 #: crates/ui-egui/src/editor.rs:225
 msgid "Blend"
 msgstr ""
@@ -1711,7 +1711,7 @@ msgstr "Onderaan, staven langs noord"
 msgid "Boundary"
 msgstr ""
 
-#: crates/ui-egui/src/editor/sketch.rs:1744
+#: crates/ui-egui/src/editor/sketch.rs:1747
 #: crates/ui-egui/src/sketch.rs:882
 msgid "Boundary Line"
 msgstr "Randlijn"
@@ -1728,7 +1728,7 @@ msgstr "Randlijn: schets de projectie van het dak, op het niveau erboven, en eve
 msgid "Boundary Line: sketch the shaft opening's outline"
 msgstr "Randlijn: schets de omtrek van de schachtopening"
 
-#: crates/ui-egui/src/editor/sketch.rs:1743
+#: crates/ui-egui/src/editor/sketch.rs:1746
 msgid "Boundary Line: the lines of the profile"
 msgstr "Randlijn: de lijnen van het profiel"
 
@@ -1907,12 +1907,12 @@ msgstr "Camera: klik waar het oog staat en dan waar het naar kijkt: een 3D-weerg
 msgid "Cancel"
 msgstr "Annuleren"
 
-#: crates/ui-egui/src/editor/sketch.rs:1650
+#: crates/ui-egui/src/editor/sketch.rs:1653
 #: crates/ui-egui/src/shortcuts.rs:150
 msgid "Cancel Edit Mode"
 msgstr "Bewerkmodus annuleren"
 
-#: crates/ui-egui/src/editor/sketch.rs:1650
+#: crates/ui-egui/src/editor/sketch.rs:1653
 msgid "Cancel Edit Mode: drop the lines, keep it as it was"
 msgstr "Bewerkmodus annuleren: de lijnen vallen weg, het blijft zoals het was"
 
@@ -2035,7 +2035,7 @@ msgstr "Plafondplan"
 msgid "Ceiling Plan:"
 msgstr ""
 
-#: crates/ui-egui/src/editor/views.rs:190
+#: crates/ui-egui/src/editor/views.rs:192
 msgid "Ceiling Plan: {}"
 msgstr "Plafondplan: {}"
 
@@ -2104,7 +2104,7 @@ msgstr "Hartlijnen"
 msgid "Ceramic tile"
 msgstr "Keramische tegel"
 
-#: crates/ui-egui/src/editor/sketch.rs:1603
+#: crates/ui-egui/src/editor/sketch.rs:1606
 #: crates/ui-egui/src/lib.rs:5901
 #: crates/ui-egui/src/linestyles.rs:431
 #: crates/ui-egui/src/structure.rs:152
@@ -2324,7 +2324,7 @@ msgstr ""
 msgid "Click a line of the sketch where it is split."
 msgstr ""
 
-#: crates/ui-egui/src/editor/sketch.rs:1555
+#: crates/ui-egui/src/editor/sketch.rs:1558
 msgid "Click a line to pick it, Shift to add; drag a picked line's end; Delete takes the lines picked away."
 msgstr "Klik op een lijn om ze te kiezen, Shift om toe te voegen; sleep het einde van een gekozen lijn; Delete verwijdert de gekozen lijnen."
 
@@ -2380,15 +2380,15 @@ msgstr "Klik op een referentielijn: het werkvlak waarin ze geschetst is. Esc gaa
 msgid "Click a reference plane or a datum for the work plane. Esc goes back to the dialog."
 msgstr "Klik op een referentievlak of een referentie voor het werkvlak. Esc gaat terug naar het dialoogvenster."
 
-#: crates/ui-egui/src/editor/sketch.rs:1558
+#: crates/ui-egui/src/editor/sketch.rs:1561
 msgid "Click a reference plane, a reference line or a form's edge: a line along it, locked to it."
 msgstr "Klik op een referentievlak, een referentielijn of een rand van een vorm: een lijn erlangs, eraan vergrendeld."
 
-#: crates/ui-egui/src/editor/sketch.rs:1560
+#: crates/ui-egui/src/editor/sketch.rs:1563
 msgid "Click a reference plane, a reference line or a form's edge: a line along it."
 msgstr "Klik op een referentievlak, een referentielijn of een rand van een vorm: er komt een lijn langs."
 
-#: crates/ui-egui/src/editor/sketch.rs:1550
+#: crates/ui-egui/src/editor/sketch.rs:1553
 msgid "Click a reference plane, a reference line or a form's edge: a line of the path along it."
 msgstr "Klik op een referentievlak, een referentielijn of een rand van een vorm: er komt een lijn van het pad langs."
 
@@ -2673,7 +2673,7 @@ msgstr ""
 msgid "Click the point the spot coordinate reads; it snaps."
 msgstr ""
 
-#: crates/ui-egui/src/editor/sketch.rs:1562
+#: crates/ui-egui/src/editor/sketch.rs:1565
 msgid "Click the points of the shape; Finish Edit Mode when the lines close into loops."
 msgstr "Klik op de punten van de vorm; Bewerkmodus voltooien als de lijnen zich tot lussen sluiten."
 
@@ -2801,7 +2801,7 @@ msgstr "Klik om te selecteren, sleep een kader om er meerdere te selecteren. Shi
 msgid "Click to size the arc. Esc cancels."
 msgstr "Klik om de boog een grootte te geven. Esc annuleert."
 
-#: crates/ui-egui/src/editor/sketch.rs:1561
+#: crates/ui-egui/src/editor/sketch.rs:1564
 msgid "Click two lines that meet: they are rounded by an arc of the Options Bar's radius."
 msgstr "Klik op twee lijnen die elkaar raken: ze worden afgerond met een boog met de straal van de optiebalk."
 
@@ -2817,7 +2817,7 @@ msgstr ""
 msgid "Click two points: a reference plane through them."
 msgstr "Klik op twee punten: er komt een referentievlak door."
 
-#: crates/ui-egui/src/editor/sketch.rs:1556
+#: crates/ui-egui/src/editor/sketch.rs:1559
 msgid "Click two points: the axis the profile turns about."
 msgstr "Klik op twee punten: de as waarrond het profiel draait."
 
@@ -3285,11 +3285,11 @@ msgstr ""
 #: crates/core/src/family.rs:357
 #: crates/ui-egui/src/adaptive_editor.rs:587
 #: crates/ui-egui/src/editor/connectors.rs:299
-#: crates/ui-egui/src/editor/extrusion.rs:180
+#: crates/ui-egui/src/editor/extrusion.rs:186
 #: crates/ui-egui/src/editor/nested.rs:400
 #: crates/ui-egui/src/editor/pivot.rs:318
 #: crates/ui-egui/src/editor/pivot.rs:338
-#: crates/ui-egui/src/editor/sketch.rs:1907
+#: crates/ui-egui/src/editor/sketch.rs:1910
 #: crates/ui-egui/src/editor.rs:1144
 #: crates/ui-egui/src/properties.rs:141
 msgid "Constraints"
@@ -3299,11 +3299,11 @@ msgstr "Beperkingen"
 msgid "Constraints are not satisfied"
 msgstr "Er wordt niet aan de beperkingen voldaan"
 
-#: crates/ui-egui/src/editor/shape_handles.rs:249
+#: crates/ui-egui/src/editor/shape_handles.rs:253
 msgid "Constraints are not satisfied: a lock or a dimension holds the profile where it is."
 msgstr ""
 
-#: crates/ui-egui/src/editor/handle_params.rs:297
+#: crates/ui-egui/src/editor/handle_params.rs:164
 msgid "Constraints are not satisfied: {} can't put it where the drag takes it."
 msgstr ""
 
@@ -3809,7 +3809,7 @@ msgstr ""
 msgid "Cut with Voids When Loaded"
 msgstr "Bij laden met uitsparingen snijden"
 
-#: crates/ui-egui/src/editor/extrusion.rs:270
+#: crates/ui-egui/src/editor/extrusion.rs:276
 msgid "Cuts"
 msgstr "Snijdt"
 
@@ -3920,7 +3920,7 @@ msgstr "Standaarddikte"
 #: crates/ui-egui/src/editor/document.rs:1404
 #: crates/ui-egui/src/editor/document.rs:1423
 #: crates/ui-egui/src/editor/nested.rs:543
-#: crates/ui-egui/src/editor/sketch.rs:1807
+#: crates/ui-egui/src/editor/sketch.rs:1810
 #: crates/ui-egui/src/electrical.rs:278
 #: crates/ui-egui/src/fillpatterns.rs:398
 #: crates/ui-egui/src/fillpatterns.rs:581
@@ -3942,7 +3942,7 @@ msgstr "Verwijderen"
 msgid "Delete (DE) the selection"
 msgstr "De selectie verwijderen (DE)"
 
-#: crates/ui-egui/src/editor/sketch.rs:1805
+#: crates/ui-egui/src/editor/sketch.rs:1808
 msgid "Delete (DE): the lines picked"
 msgstr "Verwijderen (DE): de gekozen lijnen"
 
@@ -4072,8 +4072,8 @@ msgid "Depends on: {}"
 msgstr ""
 
 #: crates/core/src/family.rs:3463
-#: crates/ui-egui/src/editor/extrusion.rs:328
-#: crates/ui-egui/src/editor/sketch.rs:1580
+#: crates/ui-egui/src/editor/extrusion.rs:334
+#: crates/ui-egui/src/editor/sketch.rs:1583
 #: crates/ui-egui/src/properties.rs:547
 #: crates/ui-egui/src/properties.rs:548
 msgid "Depth"
@@ -4595,7 +4595,7 @@ msgstr ""
 
 #: crates/ui-egui/src/draw.rs:305
 #: crates/ui-egui/src/editor/document.rs:2288
-#: crates/ui-egui/src/editor/sketch.rs:1741
+#: crates/ui-egui/src/editor/sketch.rs:1744
 msgid "Draw"
 msgstr "Tekenen"
 
@@ -4619,7 +4619,7 @@ msgstr ""
 msgid "Draw the 3D view on the graphics card"
 msgstr "De 3D-weergave tekenen met de grafische kaart"
 
-#: crates/ui-egui/src/editor/sketch.rs:1553
+#: crates/ui-egui/src/editor/sketch.rs:1556
 msgid "Draw the path: lines and arcs end to end, open or closed; then Edit Profile."
 msgstr "Teken het pad: lijnen en bogen aaneengesloten, open of gesloten; daarna Profiel bewerken."
 
@@ -4776,20 +4776,20 @@ msgstr "Bewerken"
 msgid "Edit Background Grids"
 msgstr "Achtergrondrasters bewerken"
 
-#: crates/ui-egui/src/editor/sketch.rs:1661
+#: crates/ui-egui/src/editor/sketch.rs:1664
 msgid "Edit Base"
 msgstr "Basis bewerken"
 
-#: crates/ui-egui/src/editor/sketch.rs:1661
+#: crates/ui-egui/src/editor/sketch.rs:1664
 msgid "Edit Base: sketch the blend's base, at its First End"
 msgstr "Basis bewerken: schets de basis van de overgang, aan het eerste uiteinde"
 
-#: crates/ui-egui/src/editor/extrusion.rs:357
-#: crates/ui-egui/src/editor/sketch.rs:1873
+#: crates/ui-egui/src/editor/extrusion.rs:363
+#: crates/ui-egui/src/editor/sketch.rs:1876
 msgid "Edit Blend"
 msgstr "Overgang bewerken"
 
-#: crates/ui-egui/src/editor/sketch.rs:1873
+#: crates/ui-egui/src/editor/sketch.rs:1876
 msgid "Edit Blend: sketch its base and its top again"
 msgstr "Overgang bewerken: schets de basis en de bovenkant opnieuw"
 
@@ -4807,12 +4807,12 @@ msgid "Edit Dimension References: click a picked reference to take it out, anoth
 msgstr ""
 
 #: crates/ui-egui/src/editor/document.rs:1328
-#: crates/ui-egui/src/editor/extrusion.rs:360
-#: crates/ui-egui/src/editor/sketch.rs:1876
+#: crates/ui-egui/src/editor/extrusion.rs:366
+#: crates/ui-egui/src/editor/sketch.rs:1879
 msgid "Edit Extrusion"
 msgstr "Extrusie bewerken"
 
-#: crates/ui-egui/src/editor/sketch.rs:1876
+#: crates/ui-egui/src/editor/sketch.rs:1879
 msgid "Edit Extrusion: sketch its profile again"
 msgstr "Extrusie bewerken: schets het profiel opnieuw"
 
@@ -4852,38 +4852,38 @@ msgstr "Optie bewerken: nieuwe elementen worden in deze optie gemaakt, en de wee
 msgid "Edit Parameter"
 msgstr "Parameter bewerken"
 
-#: crates/ui-egui/src/editor/sketch.rs:1684
+#: crates/ui-egui/src/editor/sketch.rs:1687
 msgid "Edit Profile"
 msgstr "Profiel bewerken"
 
-#: crates/ui-egui/src/editor/sketch.rs:1685
+#: crates/ui-egui/src/editor/sketch.rs:1688
 msgid "Edit Profile: sketch the profile on its plane, square to the path at its first line's middle"
 msgstr "Profiel bewerken: schets het profiel op zijn vlak, haaks op het pad in het midden van de eerste lijn"
 
-#: crates/ui-egui/src/editor/extrusion.rs:356
-#: crates/ui-egui/src/editor/sketch.rs:1872
+#: crates/ui-egui/src/editor/extrusion.rs:362
+#: crates/ui-egui/src/editor/sketch.rs:1875
 msgid "Edit Revolve"
 msgstr "Omwenteling bewerken"
 
-#: crates/ui-egui/src/editor/sketch.rs:1872
+#: crates/ui-egui/src/editor/sketch.rs:1875
 msgid "Edit Revolve: sketch its profile and its axis again"
 msgstr "Omwenteling bewerken: schets het profiel en de as opnieuw"
 
-#: crates/ui-egui/src/editor/extrusion.rs:358
-#: crates/ui-egui/src/editor/sketch.rs:1874
+#: crates/ui-egui/src/editor/extrusion.rs:364
+#: crates/ui-egui/src/editor/sketch.rs:1877
 msgid "Edit Sweep"
 msgstr "Sweep bewerken"
 
-#: crates/ui-egui/src/editor/sketch.rs:1874
+#: crates/ui-egui/src/editor/sketch.rs:1877
 msgid "Edit Sweep: sketch its path and its profile again"
 msgstr "Sweep bewerken: schets het pad en het profiel opnieuw"
 
-#: crates/ui-egui/src/editor/extrusion.rs:359
-#: crates/ui-egui/src/editor/sketch.rs:1875
+#: crates/ui-egui/src/editor/extrusion.rs:365
+#: crates/ui-egui/src/editor/sketch.rs:1878
 msgid "Edit Swept Blend"
 msgstr "Sweep-overgang bewerken"
 
-#: crates/ui-egui/src/editor/sketch.rs:1875
+#: crates/ui-egui/src/editor/sketch.rs:1878
 msgid "Edit Swept Blend: sketch its path and its profiles again"
 msgstr "Sweep-overgang bewerken: schets het pad en de profielen opnieuw"
 
@@ -4896,11 +4896,11 @@ msgstr ""
 msgid "Edit Tools"
 msgstr "Gereedschappen bewerken"
 
-#: crates/ui-egui/src/editor/sketch.rs:1663
+#: crates/ui-egui/src/editor/sketch.rs:1666
 msgid "Edit Top"
 msgstr "Bovenkant bewerken"
 
-#: crates/ui-egui/src/editor/sketch.rs:1663
+#: crates/ui-egui/src/editor/sketch.rs:1666
 msgid "Edit Top: sketch the blend's top, at its Second End"
 msgstr "Bovenkant bewerken: schets de bovenkant van de overgang, aan het tweede uiteinde"
 
@@ -4908,11 +4908,11 @@ msgstr "Bovenkant bewerken: schets de bovenkant van de overgang, aan het tweede 
 msgid "Edit Type"
 msgstr "Type bewerken"
 
-#: crates/ui-egui/src/editor/sketch.rs:1712
+#: crates/ui-egui/src/editor/sketch.rs:1715
 msgid "Edit Vertices"
 msgstr "Hoekpunten bewerken"
 
-#: crates/ui-egui/src/editor/extrusion.rs:317
+#: crates/ui-egui/src/editor/extrusion.rs:323
 #: crates/ui-egui/src/editor/work_plane.rs:190
 #: crates/ui-egui/src/lib.rs:5402
 msgid "Edit Work Plane"
@@ -4922,7 +4922,7 @@ msgstr "Werkvlak bewerken"
 msgid "Edit Work Plane: the components onto a level, a reference plane or a face picked (the Work Plane dialog), keeping their Offset from Host"
 msgstr "Werkvlak bewerken: de onderdelen naar een niveau, een referentievlak of een gekozen vlak (dialoogvenster Werkvlak), met behoud van hun Verschuiving vanaf dragend element"
 
-#: crates/ui-egui/src/editor/extrusion.rs:316
+#: crates/ui-egui/src/editor/extrusion.rs:322
 msgid "Edit Work Plane: the form onto another of the family's planes, moving with it (the Work Plane dialog)"
 msgstr "Werkvlak bewerken: de vorm naar een ander vlak van de familie, waarmee ze meebeweegt (dialoogvenster Werkvlak)"
 
@@ -4945,7 +4945,7 @@ msgstr ""
 msgid "Editing"
 msgstr "Bewerken"
 
-#: crates/ui-egui/src/editor/extrusion.rs:224
+#: crates/ui-egui/src/editor/extrusion.rs:230
 #: crates/ui-egui/src/editor.rs:1221
 #: crates/ui-egui/src/graphics.rs:675
 #: crates/ui-egui/src/graphics.rs:697
@@ -5045,7 +5045,7 @@ msgstr "Hoogte:"
 msgid "Elevation: click a wall, a line or a slab's edge to look at, the project's or a link's"
 msgstr ""
 
-#: crates/ui-egui/src/editor/views.rs:191
+#: crates/ui-egui/src/editor/views.rs:193
 #: crates/ui-egui/src/lib.rs:3717
 msgid "Elevation: {}"
 msgstr "Gevel: {}"
@@ -5082,8 +5082,8 @@ msgstr "Snijden in weergaven inschakelen"
 msgid "End"
 msgstr "Einde"
 
-#: crates/ui-egui/src/editor/extrusion.rs:190
-#: crates/ui-egui/src/editor/sketch.rs:1909
+#: crates/ui-egui/src/editor/extrusion.rs:196
+#: crates/ui-egui/src/editor/sketch.rs:1912
 msgid "End Angle"
 msgstr "Eindhoek"
 
@@ -5262,19 +5262,21 @@ msgid "Extents"
 msgstr "Omvang"
 
 #: crates/ui-egui/src/editor/document.rs:583
-#: crates/ui-egui/src/editor/sketch.rs:1893
+#: crates/ui-egui/src/editor/sketch.rs:1896
 #: crates/ui-egui/src/editor.rs:231
 msgid "Extrusion"
 msgstr "Extrusie"
 
-#: crates/ui-egui/src/editor/extrusion.rs:192
-#: crates/ui-egui/src/editor/sketch.rs:1911
+#: crates/ui-egui/src/editor/extrusion.rs:198
+#: crates/ui-egui/src/editor/handles3d.rs:242
+#: crates/ui-egui/src/editor/sketch.rs:1914
 #: crates/ui-egui/src/properties.rs:384
 msgid "Extrusion End"
 msgstr "Einde extrusie"
 
-#: crates/ui-egui/src/editor/extrusion.rs:192
-#: crates/ui-egui/src/editor/sketch.rs:1911
+#: crates/ui-egui/src/editor/extrusion.rs:198
+#: crates/ui-egui/src/editor/handles3d.rs:243
+#: crates/ui-egui/src/editor/sketch.rs:1914
 #: crates/ui-egui/src/properties.rs:383
 msgid "Extrusion Start"
 msgstr "Begin extrusie"
@@ -5360,7 +5362,7 @@ msgstr "Familie-editor"
 msgid "Family Element Visibility Settings"
 msgstr "Zichtbaarheidsinstellingen familie-elementen"
 
-#: crates/ui-egui/src/editor/extrusion.rs:223
+#: crates/ui-egui/src/editor/extrusion.rs:229
 msgid "Family Element Visibility Settings: the views and detail levels it is drawn in"
 msgstr "Zichtbaarheidsinstellingen familie-elementen: de weergaven en detailniveaus waarin het getekend wordt"
 
@@ -5648,12 +5650,12 @@ msgstr "Afwerking"
 msgid "Finish Drawing"
 msgstr "Tekenen voltooien"
 
-#: crates/ui-egui/src/editor/sketch.rs:1649
+#: crates/ui-egui/src/editor/sketch.rs:1652
 #: crates/ui-egui/src/shortcuts.rs:149
 msgid "Finish Edit Mode"
 msgstr "Bewerkmodus voltooien"
 
-#: crates/ui-egui/src/editor/sketch.rs:1648
+#: crates/ui-egui/src/editor/sketch.rs:1651
 msgid "Finish Edit Mode: the lines, closed into loops, become the form"
 msgstr "Bewerkmodus voltooien: de lijnen, gesloten tot lussen, worden de vorm"
 
@@ -5677,8 +5679,8 @@ msgstr "Voltooi of annuleer de schets voor je het plan verlaat."
 msgid "Finish or cancel the sketch first: a pattern's lines are picked in the plan."
 msgstr "Voltooi of annuleer eerst de schets: de lijnen van een patroon worden in de plattegrond gekozen."
 
-#: crates/ui-egui/src/editor/extrusion.rs:191
-#: crates/ui-egui/src/editor/sketch.rs:1910
+#: crates/ui-egui/src/editor/extrusion.rs:197
+#: crates/ui-egui/src/editor/sketch.rs:1913
 msgid "First End"
 msgstr "Eerste uiteinde"
 
@@ -5771,7 +5773,7 @@ msgstr "Plattegrond"
 msgid "Floor Plan:"
 msgstr ""
 
-#: crates/ui-egui/src/editor/views.rs:189
+#: crates/ui-egui/src/editor/views.rs:191
 #: crates/ui-egui/src/lib.rs:3712
 #: crates/ui-egui/src/lib.rs:3713
 msgid "Floor Plan: {}"
@@ -5889,11 +5891,11 @@ msgstr ""
 
 #: crates/ui-egui/src/editor/document.rs:579
 #: crates/ui-egui/src/editor/document.rs:1364
-#: crates/ui-egui/src/editor/extrusion.rs:274
+#: crates/ui-egui/src/editor/extrusion.rs:280
 msgid "Forms"
 msgstr "Vormen"
 
-#: crates/ui-egui/src/editor/extrusion.rs:272
+#: crates/ui-egui/src/editor/extrusion.rs:278
 msgid "Forms and Host"
 msgstr "Vormen en dragend"
 
@@ -6081,7 +6083,7 @@ msgstr ""
 #: crates/ui-egui/src/adaptive_editor.rs:561
 #: crates/ui-egui/src/adaptive_editor.rs:653
 #: crates/ui-egui/src/editor/document.rs:727
-#: crates/ui-egui/src/editor/extrusion.rs:219
+#: crates/ui-egui/src/editor/extrusion.rs:225
 #: crates/ui-egui/src/editor/nested.rs:439
 #: crates/ui-egui/src/editor.rs:1194
 #: crates/ui-egui/src/graphics.rs:579
@@ -6338,7 +6340,7 @@ msgid "Horizontal"
 msgstr "Horizontaal"
 
 #: crates/ui-egui/src/cowork.rs:490
-#: crates/ui-egui/src/editor/extrusion.rs:273
+#: crates/ui-egui/src/editor/extrusion.rs:279
 #: crates/ui-egui/src/properties.rs:250
 #: crates/ui-egui/src/properties.rs:259
 #: crates/ui-egui/src/properties.rs:4113
@@ -6433,8 +6435,8 @@ msgstr "ISO 7200: 180 mm"
 #: crates/ui-egui/src/editor/connectors.rs:235
 #: crates/ui-egui/src/editor/document.rs:1165
 #: crates/ui-egui/src/editor/document.rs:2362
-#: crates/ui-egui/src/editor/extrusion.rs:253
-#: crates/ui-egui/src/editor/sketch.rs:1933
+#: crates/ui-egui/src/editor/extrusion.rs:259
+#: crates/ui-egui/src/editor/sketch.rs:1936
 #: crates/ui-egui/src/projectinfo.rs:114
 #: crates/ui-egui/src/properties.rs:157
 msgid "Identity Data"
@@ -7469,7 +7471,7 @@ msgstr "{} sneltoetsen uit het bestand geladen."
 msgid "Loaded; nothing taken from it yet"
 msgstr ""
 
-#: crates/ui-egui/src/editor/document.rs:2558
+#: crates/ui-egui/src/editor/document.rs:2560
 #: crates/ui-egui/src/orbit.rs:1751
 msgid "Loading 3D view onto the card…"
 msgstr ""
@@ -7535,7 +7537,7 @@ msgstr ""
 msgid "Locations"
 msgstr ""
 
-#: crates/ui-egui/src/editor/sketch.rs:1631
+#: crates/ui-egui/src/editor/sketch.rs:1634
 #: crates/ui-egui/src/editor/types_dialog.rs:261
 #: crates/ui-egui/src/editor/types_dialog.rs:377
 msgid "Lock"
@@ -7545,7 +7547,7 @@ msgstr "Vergrendelen"
 msgid "Lock alignment"
 msgstr "Uitlijning vergrendelen"
 
-#: crates/ui-egui/src/editor/sketch.rs:1629
+#: crates/ui-egui/src/editor/sketch.rs:1632
 msgid "Lock locks a line picked with no Offset, in a plan or an elevation"
 msgstr "Vergrendelen vergrendelt een lijn gekozen zonder Verschuiving, in een plattegrond of een gevel"
 
@@ -7557,7 +7559,7 @@ msgstr "Segment {} vergrendelen"
 msgid "Lock segment {} at its length, so what it measures to moves together"
 msgstr ""
 
-#: crates/ui-egui/src/editor/sketch.rs:1627
+#: crates/ui-egui/src/editor/sketch.rs:1630
 msgid "Lock: each line picked is locked to what it was picked from, as Align's padlock locks it"
 msgstr "Vergrendelen: elke gekozen lijn wordt vergrendeld aan waaruit ze gekozen is, zoals het slotje van Uitlijnen haar vergrendelt"
 
@@ -7794,8 +7796,8 @@ msgstr "Eigenschappen overgenomen: type '{}' toegepast op {} element(en)"
 #: crates/core/src/schedule.rs:245
 #: crates/ui-egui/src/adaptive_editor.rs:496
 #: crates/ui-egui/src/adaptive_editor.rs:557
-#: crates/ui-egui/src/editor/extrusion.rs:228
-#: crates/ui-egui/src/editor/sketch.rs:1921
+#: crates/ui-egui/src/editor/extrusion.rs:234
+#: crates/ui-egui/src/editor/sketch.rs:1924
 #: crates/ui-egui/src/parameters.rs:49
 #: crates/ui-egui/src/properties.rs:2913
 #: crates/ui-egui/src/properties.rs:3058
@@ -7817,8 +7819,8 @@ msgstr "Materialen"
 
 #: crates/core/src/family.rs:362
 #: crates/ui-egui/src/adaptive_editor.rs:554
-#: crates/ui-egui/src/editor/extrusion.rs:227
-#: crates/ui-egui/src/editor/sketch.rs:1920
+#: crates/ui-egui/src/editor/extrusion.rs:233
+#: crates/ui-egui/src/editor/sketch.rs:1923
 #: crates/ui-egui/src/properties.rs:2892
 msgid "Materials and Finishes"
 msgstr "Materialen en afwerkingen"
@@ -7924,7 +7926,7 @@ msgstr ""
 msgid "Merge File..."
 msgstr ""
 
-#: crates/ui-egui/src/editor/extrusion.rs:182
+#: crates/ui-egui/src/editor/extrusion.rs:188
 #: crates/ui-egui/src/editor.rs:224
 msgid "Mesh"
 msgstr "Net"
@@ -8048,8 +8050,8 @@ msgid "Mirrored"
 msgstr "Gespiegeld"
 
 #: crates/ui-egui/src/editor/nested.rs:505
-#: crates/ui-egui/src/editor/sketch.rs:1647
-#: crates/ui-egui/src/editor/sketch.rs:1870
+#: crates/ui-egui/src/editor/sketch.rs:1650
+#: crates/ui-egui/src/editor/sketch.rs:1873
 msgid "Mode"
 msgstr "Modus"
 
@@ -8108,8 +8110,8 @@ msgstr "Modellen"
 
 #: crates/ui-egui/src/editor/document.rs:812
 #: crates/ui-egui/src/editor/document.rs:1020
-#: crates/ui-egui/src/editor/sketch.rs:1787
-#: crates/ui-egui/src/editor/sketch.rs:1792
+#: crates/ui-egui/src/editor/sketch.rs:1790
+#: crates/ui-egui/src/editor/sketch.rs:1795
 #: crates/ui-egui/src/lib.rs:1904
 #: crates/ui-egui/src/lib.rs:1976
 #: crates/ui-egui/src/lib.rs:1994
@@ -8119,7 +8121,7 @@ msgstr "Modellen"
 msgid "Modify"
 msgstr "Wijzigen"
 
-#: crates/ui-egui/src/editor/sketch.rs:1788
+#: crates/ui-egui/src/editor/sketch.rs:1791
 msgid "Modify (MD): pick lines of the sketch, and drag their ends"
 msgstr "Wijzigen (MD): kies lijnen van de schets en sleep hun uiteinden"
 
@@ -8377,8 +8379,16 @@ msgstr ""
 msgid "Move: click the point to move to (Shift or Constrain keeps it square). Esc picks another start."
 msgstr ""
 
+#: crates/ui-egui/src/editor/handles3d.rs:244
+msgid "Moved {} mm"
+msgstr ""
+
 #: crates/ui-egui/src/editor/document.rs:1779
 msgid "Moving the selection: let go to put it there; Esc gives the move up."
+msgstr ""
+
+#: crates/ui-egui/src/editor/handle_params.rs:297
+msgid "Moving {} leaves this where it is: nothing the family sets places it."
 msgstr ""
 
 #: crates/ui-egui/src/lib.rs:1995
@@ -9107,7 +9117,7 @@ msgstr "Uit: geen enkele agent kan dit venster bereiken"
 
 #: crates/core/src/schedule.rs:202
 #: crates/ui-egui/src/editor/nested.rs:436
-#: crates/ui-egui/src/editor/sketch.rs:1618
+#: crates/ui-egui/src/editor/sketch.rs:1621
 #: crates/ui-egui/src/linestyles/creator.rs:89
 #: crates/ui-egui/src/sketch.rs:758
 #: crates/ui-egui/src/sketch.rs:1029
@@ -9132,7 +9142,7 @@ msgstr "Verschuiving vanaf dragend element"
 msgid "Offset from Surface:"
 msgstr "Verschuiving vanaf oppervlak:"
 
-#: crates/ui-egui/src/editor/views.rs:1075
+#: crates/ui-egui/src/editor/views.rs:1077
 msgid "Offset takes reference planes and reference lines: edit a form's sketch to offset its lines."
 msgstr ""
 
@@ -9643,7 +9653,7 @@ msgstr "Patchpaneel (PB): een paneel op de muur, waar je klikt; met de spatiebal
 msgid "Patch Panels"
 msgstr "Patchpanelen"
 
-#: crates/ui-egui/src/editor/extrusion.rs:199
+#: crates/ui-egui/src/editor/extrusion.rs:205
 msgid "Path"
 msgstr "Pad"
 
@@ -9810,11 +9820,11 @@ msgstr "Lijnen kiezen"
 msgid "Pick Lines: click a line, a wall or a grid to draw along it (beside it, with Offset)"
 msgstr "Lijnen kiezen: klik op een lijn, een muur of een raster om er langs te tekenen (ernaast, met Verschuiving)"
 
-#: crates/ui-egui/src/editor/sketch.rs:1676
+#: crates/ui-egui/src/editor/sketch.rs:1679
 msgid "Pick Path"
 msgstr "Pad kiezen"
 
-#: crates/ui-egui/src/editor/sketch.rs:1675
+#: crates/ui-egui/src/editor/sketch.rs:1678
 msgid "Pick Path: pick reference planes, reference lines or forms' edges: lines of the path along them"
 msgstr "Pad kiezen: kies referentievlakken, referentielijnen of randen van vormen: er komen lijnen van het pad langs"
 
@@ -9946,7 +9956,7 @@ msgstr "Kies een referentievlak, een referentielijn of een rand van een vorm in 
 msgid "Pick a reference plane, a reference line or a line, then a line of the sketch."
 msgstr "Kies een referentievlak, een referentielijn of een lijn, en daarna een lijn van de schets."
 
-#: crates/ui-egui/src/editor/views.rs:1496
+#: crates/ui-egui/src/editor/views.rs:1498
 msgid "Pick a reference plane, an extrusion's end or a line of a form."
 msgstr "Kies een referentievlak, een uiteinde van een extrusie of een lijn van een vorm."
 
@@ -10070,7 +10080,7 @@ msgstr "Kies de gemarkeerde rand van het element om op de referentie te verplaat
 msgid "Pick the first line to round."
 msgstr "Kies de eerste lijn om af te ronden."
 
-#: crates/ui-egui/src/editor/sketch.rs:1544
+#: crates/ui-egui/src/editor/sketch.rs:1547
 msgid "Pick the first line, on the part to keep."
 msgstr "Kies de eerste lijn, op het deel dat blijft."
 
@@ -10122,7 +10132,7 @@ msgstr ""
 msgid "Pick the one it meets, which it cuts; Tab steps through what is there. Esc picks another first."
 msgstr ""
 
-#: crates/ui-egui/src/editor/sketch.rs:1545
+#: crates/ui-egui/src/editor/sketch.rs:1548
 msgid "Pick the second line, on the part to keep."
 msgstr "Kies de tweede lijn, op het deel dat blijft."
 
@@ -10159,7 +10169,7 @@ msgid "Pick three points: after OK, click three points on the model, each snappi
 msgstr "Drie punten kiezen: klik na OK op drie punten van het model, elk springt naar een hoek bij de aanwijzer"
 
 #: crates/ui-egui/src/editor/dimensions.rs:1439
-#: crates/ui-egui/src/editor/views.rs:1475
+#: crates/ui-egui/src/editor/views.rs:1477
 msgid "Pick two references or more, then click where the dimension goes."
 msgstr "Kies twee of meer referenties en klik daarna waar de maatlijn komt."
 
@@ -10732,28 +10742,28 @@ msgid "Print set {} saved."
 msgstr ""
 
 #: crates/core/src/schedule.rs:212
-#: crates/ui-egui/src/editor/extrusion.rs:204
+#: crates/ui-egui/src/editor/extrusion.rs:210
 #: crates/ui-egui/src/settings.rs:568
 msgid "Profile"
 msgstr "Profiel"
 
-#: crates/ui-egui/src/editor/extrusion.rs:201
+#: crates/ui-egui/src/editor/extrusion.rs:207
 #: crates/ui-egui/src/editor/sketch.rs:884
-#: crates/ui-egui/src/editor/sketch.rs:1691
+#: crates/ui-egui/src/editor/sketch.rs:1694
 msgid "Profile 1"
 msgstr "Profiel 1"
 
-#: crates/ui-egui/src/editor/sketch.rs:1692
+#: crates/ui-egui/src/editor/sketch.rs:1695
 msgid "Profile 1: sketch the profile at the path's start, square to it"
 msgstr "Profiel 1: schets het profiel aan het begin van het pad, haaks erop"
 
-#: crates/ui-egui/src/editor/extrusion.rs:202
+#: crates/ui-egui/src/editor/extrusion.rs:208
 #: crates/ui-egui/src/editor/sketch.rs:886
-#: crates/ui-egui/src/editor/sketch.rs:1694
+#: crates/ui-egui/src/editor/sketch.rs:1697
 msgid "Profile 2"
 msgstr "Profiel 2"
 
-#: crates/ui-egui/src/editor/sketch.rs:1694
+#: crates/ui-egui/src/editor/sketch.rs:1697
 msgid "Profile 2: sketch the profile at the path's end, square to it"
 msgstr "Profiel 2: schets het profiel aan het einde van het pad, haaks erop"
 
@@ -11032,7 +11042,7 @@ msgid "Radial Dimension: pick a round column, a curved wall, a circle or an arc,
 msgstr "Straalmaatlijn: kies een ronde kolom, een gebogen muur, een cirkel of een boog en klik waar de straal komt"
 
 #: crates/ui-egui/src/draw.rs:342
-#: crates/ui-egui/src/editor/sketch.rs:1614
+#: crates/ui-egui/src/editor/sketch.rs:1617
 #: crates/ui-egui/src/editor.rs:1158
 msgid "Radius"
 msgstr "Straal"
@@ -11172,8 +11182,8 @@ msgstr "Ref.vlak"
 #: crates/ui-egui/src/editor/view_graphics.rs:370
 #: crates/ui-egui/src/editor/view_graphics.rs:578
 #: crates/ui-egui/src/editor/view_graphics.rs:579
-#: crates/ui-egui/src/editor/views.rs:189
-#: crates/ui-egui/src/editor/views.rs:190
+#: crates/ui-egui/src/editor/views.rs:191
+#: crates/ui-egui/src/editor/views.rs:192
 msgid "Ref. Level"
 msgstr ""
 
@@ -11208,7 +11218,7 @@ msgstr ""
 #: crates/core/src/commands.rs:267
 #: crates/ui-egui/src/editor/document.rs:650
 #: crates/ui-egui/src/editor/document.rs:1161
-#: crates/ui-egui/src/editor/extrusion.rs:84
+#: crates/ui-egui/src/editor/extrusion.rs:90
 #: crates/ui-egui/src/editor/nested.rs:624
 #: crates/ui-egui/src/editor/pivot.rs:296
 #: crates/ui-egui/src/editor/pivot.rs:297
@@ -11621,7 +11631,7 @@ msgid "Revoke file access"
 msgstr ""
 
 #: crates/ui-egui/src/editor/document.rs:591
-#: crates/ui-egui/src/editor/sketch.rs:1894
+#: crates/ui-egui/src/editor/sketch.rs:1897
 #: crates/ui-egui/src/editor.rs:230
 msgid "Revolve"
 msgstr "Omwenteling"
@@ -12118,8 +12128,8 @@ msgstr "Zoeken…"
 msgid "Seat Height"
 msgstr "Zithoogte"
 
-#: crates/ui-egui/src/editor/extrusion.rs:191
-#: crates/ui-egui/src/editor/sketch.rs:1910
+#: crates/ui-egui/src/editor/extrusion.rs:197
+#: crates/ui-egui/src/editor/sketch.rs:1913
 msgid "Second End"
 msgstr "Tweede uiteinde"
 
@@ -12310,6 +12320,10 @@ msgstr "Selecteer de detaillijnen waaruit het patroon bestaat en druk dan op Ent
 msgid "Select the devices of the circuit along with its board."
 msgstr ""
 
+#: crates/ui-egui/src/editor/handles3d.rs:204
+msgid "Select the form whose end to drag."
+msgstr ""
+
 #: crates/ui-egui/src/editor/clipboard.rs:235
 msgid "Select what to copy first."
 msgstr ""
@@ -12347,7 +12361,7 @@ msgstr ""
 #: crates/ui-egui/src/adaptive_editor.rs:122
 #: crates/ui-egui/src/editor/document.rs:2329
 #: crates/ui-egui/src/editor/document.rs:2348
-#: crates/ui-egui/src/editor/sketch.rs:1820
+#: crates/ui-egui/src/editor/sketch.rs:1823
 #: crates/ui-egui/src/workplane.rs:194
 msgid "Set"
 msgstr "Instellen"
@@ -12360,7 +12374,7 @@ msgstr "Werkvlak instellen: het vlak waarop de 3D-weergave schetst, op naam of g
 msgid "Set Work Plane…"
 msgstr "Werkvlak instellen…"
 
-#: crates/ui-egui/src/editor/extrusion.rs:175
+#: crates/ui-egui/src/editor/extrusion.rs:181
 msgid "Set by its dimensions and locks for the type {}: {} or the dimensions change it."
 msgstr "Bepaald door de maatlijnen en vergrendelingen voor het type {}: {} of de maatlijnen wijzigen het."
 
@@ -12372,7 +12386,7 @@ msgstr "Ingesteld door weergavesjabloon {}: wijzig het sjabloon, of volg het nie
 msgid "Set it too"
 msgstr ""
 
-#: crates/ui-egui/src/editor/sketch.rs:1818
+#: crates/ui-egui/src/editor/sketch.rs:1821
 msgid "Set: the plane the sketch is drawn on, by name or picked in the view (the Work Plane dialog); its lines go with it"
 msgstr "Instellen: het vlak waarop de schets getekend wordt, op naam of gekozen in de weergave (dialoogvenster Werkvlak); de lijnen ervan gaan mee"
 
@@ -12559,7 +12573,7 @@ msgstr ""
 #: crates/ui-egui/src/assistant.rs:254
 #: crates/ui-egui/src/editor/document.rs:2334
 #: crates/ui-egui/src/editor/document.rs:2353
-#: crates/ui-egui/src/editor/sketch.rs:1825
+#: crates/ui-egui/src/editor/sketch.rs:1828
 #: crates/ui-egui/src/editor/work_plane.rs:203
 #: crates/ui-egui/src/printsets.rs:196
 #: crates/ui-egui/src/workplane.rs:276
@@ -12672,7 +12686,7 @@ msgid "Show: open the plan they are in, zoomed to them"
 msgstr "Tonen: open de plattegrond waarin ze staan, ingezoomd op hen"
 
 #: crates/ui-egui/src/editor/document.rs:2352
-#: crates/ui-egui/src/editor/sketch.rs:1824
+#: crates/ui-egui/src/editor/sketch.rs:1827
 msgid "Show: the view's work plane, tinted"
 msgstr "Weergeven: het werkvlak van de weergave, ingekleurd"
 
@@ -12696,7 +12710,7 @@ msgstr "Douche"
 msgid "Side"
 msgstr "Zijde"
 
-#: crates/ui-egui/src/editor/sketch.rs:1610
+#: crates/ui-egui/src/editor/sketch.rs:1613
 #: crates/ui-egui/src/reinforce.rs:182
 msgid "Sides"
 msgstr "Zijden"
@@ -12764,11 +12778,11 @@ msgstr "Plafond schetsen"
 msgid "Sketch Ceiling: sketch the ceiling's outline, and any openings in it"
 msgstr "Plafond schetsen: schets de omtrek van het plafond en eventuele openingen erin"
 
-#: crates/ui-egui/src/editor/sketch.rs:1672
+#: crates/ui-egui/src/editor/sketch.rs:1675
 msgid "Sketch Path"
 msgstr "Pad schetsen"
 
-#: crates/ui-egui/src/editor/sketch.rs:1671
+#: crates/ui-egui/src/editor/sketch.rs:1674
 msgid "Sketch Path: draw the path on the work plane, lines and arcs end to end"
 msgstr "Pad schetsen: teken het pad op het werkvlak, lijnen en bogen aaneengesloten"
 
@@ -12776,7 +12790,7 @@ msgstr "Pad schetsen: teken het pad op het werkvlak, lijnen en bogen aaneengeslo
 msgid "Sketch the path first: {}"
 msgstr "Schets eerst het pad: {}"
 
-#: crates/ui-egui/src/editor/extrusion.rs:197
+#: crates/ui-egui/src/editor/extrusion.rs:203
 msgid "Sketch, {} lines and arcs"
 msgstr "Schets, {} lijnen en bogen"
 
@@ -12924,7 +12938,7 @@ msgstr "Zetel"
 msgid "Soft shadows where faces meet inside a corner"
 msgstr "Zachte schaduwen waar vlakken elkaar ontmoeten in een binnenhoek"
 
-#: crates/ui-egui/src/editor/extrusion.rs:255
+#: crates/ui-egui/src/editor/extrusion.rs:261
 #: crates/ui-egui/src/graphics.rs:1536
 msgid "Solid"
 msgstr "Massief"
@@ -12947,8 +12961,8 @@ msgid "Solid fill"
 msgstr "Effen vulling"
 
 #: crates/ui-egui/src/adaptive_editor.rs:571
-#: crates/ui-egui/src/editor/extrusion.rs:254
-#: crates/ui-egui/src/editor/sketch.rs:1934
+#: crates/ui-egui/src/editor/extrusion.rs:260
+#: crates/ui-egui/src/editor/sketch.rs:1937
 msgid "Solid/Void"
 msgstr ""
 
@@ -13151,8 +13165,8 @@ msgstr "Normen in deze voorinstelling:"
 msgid "Start"
 msgstr "Begin"
 
-#: crates/ui-egui/src/editor/extrusion.rs:190
-#: crates/ui-egui/src/editor/sketch.rs:1909
+#: crates/ui-egui/src/editor/extrusion.rs:196
+#: crates/ui-egui/src/editor/sketch.rs:1912
 msgid "Start Angle"
 msgstr "Beginhoek"
 
@@ -13345,8 +13359,8 @@ msgid "Swap"
 msgstr ""
 
 #: crates/ui-egui/src/editor/document.rs:595
-#: crates/ui-egui/src/editor/sketch.rs:1670
-#: crates/ui-egui/src/editor/sketch.rs:1896
+#: crates/ui-egui/src/editor/sketch.rs:1673
+#: crates/ui-egui/src/editor/sketch.rs:1899
 #: crates/ui-egui/src/editor.rs:226
 msgid "Sweep"
 msgstr ""
@@ -13360,8 +13374,8 @@ msgid "Sweeps"
 msgstr ""
 
 #: crates/ui-egui/src/editor/document.rs:599
-#: crates/ui-egui/src/editor/sketch.rs:1670
-#: crates/ui-egui/src/editor/sketch.rs:1897
+#: crates/ui-egui/src/editor/sketch.rs:1673
+#: crates/ui-egui/src/editor/sketch.rs:1900
 #: crates/ui-egui/src/editor.rs:227
 msgid "Swept Blend"
 msgstr ""
@@ -13775,7 +13789,7 @@ msgstr "Dit is het maximum aantal bewaarde voorinstellingen: verwijder er eerst 
 msgid "That is no IP address: 0.0.0.0 listens on all of this machine's"
 msgstr "Dat is geen IP-adres: 0.0.0.0 luistert op alle adressen van deze machine"
 
-#: crates/ui-egui/src/editor/views.rs:1486
+#: crates/ui-egui/src/editor/views.rs:1488
 msgid "That is the reference: pick what moves onto it."
 msgstr ""
 
@@ -13967,6 +13981,11 @@ msgstr "De familie heeft al een type met de naam {}."
 msgid "The family has changes that are not loaded. If you close it without loading, they are lost."
 msgstr "De familie heeft wijzigingen die niet geladen zijn. Als je haar sluit zonder te laden, gaan ze verloren."
 
+#: crates/ui-egui/src/editor/handle_params.rs:277
+#: crates/ui-egui/src/editor/handle_params.rs:356
+msgid "The family has no type for a drag to set a parameter of: make one in Family Types."
+msgstr ""
+
 #: crates/ui-egui/src/editor/exists.rs:206
 msgid "The family it was nested in is closed."
 msgstr "De familie waarin ze genest was, is gesloten."
@@ -14084,6 +14103,7 @@ msgstr ""
 msgid "The profile"
 msgstr "Het profiel"
 
+#: crates/ui-egui/src/editor/handle_params.rs:168
 #: crates/ui-egui/src/editor/shape_handles.rs:66
 msgid "The profile can't take this: its lines would cross, overlap or no longer close."
 msgstr ""
@@ -14228,7 +14248,7 @@ msgstr "De bovenkant"
 msgid "The topic is about the {} elements selected."
 msgstr ""
 
-#: crates/ui-egui/src/editor/views.rs:1435
+#: crates/ui-egui/src/editor/views.rs:1437
 msgid "The two points are the same: pick the second elsewhere."
 msgstr ""
 
@@ -14244,7 +14264,7 @@ msgstr "De weergave loopt langs de maatlijn: draai ze om de lijn ervan te plaats
 msgid "The view sees it end-on: offset it in a view that sees its trace."
 msgstr ""
 
-#: crates/ui-egui/src/editor/views.rs:1442
+#: crates/ui-egui/src/editor/views.rs:1444
 msgid "The view sees its work plane edge on: set a work plane it sees flat (Work Plane > Set)."
 msgstr ""
 
@@ -14385,8 +14405,6 @@ msgstr ""
 msgid "This edge is locked: unlock it to drag it."
 msgstr ""
 
-#: crates/ui-egui/src/editor/handle_params.rs:109
-#: crates/ui-egui/src/editor/handle_params.rs:163
 #: crates/ui-egui/src/editor/shape_handles.rs:65
 msgid "This edge is tied to a parameter or worked out by a formula: change it in Family Types."
 msgstr ""
@@ -14395,9 +14413,9 @@ msgstr ""
 msgid "This end is locked: unlock it to drag it."
 msgstr ""
 
-#: crates/ui-egui/src/editor/handles3d.rs:233
-#: crates/ui-egui/src/editor/sketch.rs:1509
-#: crates/ui-egui/src/editor/sketch.rs:1527
+#: crates/ui-egui/src/editor/handles3d.rs:295
+#: crates/ui-egui/src/editor/sketch.rs:1512
+#: crates/ui-egui/src/editor/sketch.rs:1530
 msgid "This end is tied to a parameter or worked out by a formula: change it in Family Types."
 msgstr "Dit einde is gekoppeld aan een parameter of wordt berekend met een formule: wijzig het in Familietypen."
 
@@ -14718,14 +14736,14 @@ msgstr "Eén element bijsnijden/verlengen: kies de lijn om tot daar bij te snijd
 
 #: crates/core/src/commands.rs:1980
 #: crates/ui-egui/src/editor/document.rs:835
-#: crates/ui-egui/src/editor/sketch.rs:1798
+#: crates/ui-egui/src/editor/sketch.rs:1801
 #: crates/ui-egui/src/sketch.rs:741
 #: crates/ui-egui/src/sketch.rs:1030
 msgid "Trim/Extend to Corner"
 msgstr "Bijsnijden/verlengen tot hoek"
 
 #: crates/ui-egui/src/editor/document.rs:834
-#: crates/ui-egui/src/editor/sketch.rs:1797
+#: crates/ui-egui/src/editor/sketch.rs:1800
 msgid "Trim/Extend to Corner (TR): pick two lines, on the parts to keep"
 msgstr "Bijsnijden/verlengen tot hoek (TR): kies twee lijnen, op de delen die blijven"
 
@@ -14778,23 +14796,23 @@ msgstr "Draai de muur rond zijn {}: {}"
 msgid "Turn the whole model on the plan, say to square the building up with the screen, without changing where it is in the world: true north turns back by the same amount. The window closes and you pick the angle on the plan, as with Rotate; you can also type it."
 msgstr ""
 
-#: crates/ui-egui/src/editor/sketch.rs:1715
+#: crates/ui-egui/src/editor/sketch.rs:1718
 msgid "Twist Left"
 msgstr "Naar links draaien"
 
-#: crates/ui-egui/src/editor/sketch.rs:1714
+#: crates/ui-egui/src/editor/sketch.rs:1717
 msgid "Twist Left: pair the top's vertices with the base's one place on, counter-clockwise"
 msgstr "Naar links draaien: koppel de hoekpunten van de bovenkant aan die van de basis één plaats verder, tegen de klok in"
 
-#: crates/ui-egui/src/editor/sketch.rs:1719
+#: crates/ui-egui/src/editor/sketch.rs:1722
 msgid "Twist Right"
 msgstr "Naar rechts draaien"
 
-#: crates/ui-egui/src/editor/sketch.rs:1718
+#: crates/ui-egui/src/editor/sketch.rs:1721
 msgid "Twist Right: pair the top's vertices with the base's one place back, clockwise"
 msgstr "Naar rechts draaien: koppel de hoekpunten van de bovenkant aan die van de basis één plaats terug, met de klok mee"
 
-#: crates/ui-egui/src/editor/sketch.rs:1722
+#: crates/ui-egui/src/editor/sketch.rs:1725
 msgid "Twist: {}"
 msgstr "Verdraaiing: {}"
 
@@ -15315,7 +15333,7 @@ msgstr ""
 msgid "Visibility/Graphics (VV): what this view hides, and how it draws the rest, by category, filter and element"
 msgstr "Zichtbaarheid/Grafische weergave (VV): wat deze weergave verbergt, en hoe ze de rest tekent, per categorie, filter en element"
 
-#: crates/ui-egui/src/editor/extrusion.rs:222
+#: crates/ui-egui/src/editor/extrusion.rs:228
 #: crates/ui-egui/src/graphics.rs:696
 #: crates/ui-egui/src/graphics.rs:698
 msgid "Visibility/Graphics Overrides"
@@ -15330,8 +15348,8 @@ msgstr "Overschrijvingen van zichtbaarheid/grafische weergave voor {}"
 #: crates/ui-egui/src/adaptive_editor.rs:658
 #: crates/ui-egui/src/adaptive_editor.rs:663
 #: crates/ui-egui/src/cad.rs:104
-#: crates/ui-egui/src/editor/extrusion.rs:220
-#: crates/ui-egui/src/editor/extrusion.rs:292
+#: crates/ui-egui/src/editor/extrusion.rs:226
+#: crates/ui-egui/src/editor/extrusion.rs:298
 #: crates/ui-egui/src/editor/nested.rs:440
 #: crates/ui-egui/src/editor.rs:1080
 #: crates/ui-egui/src/editor.rs:1201
@@ -15373,13 +15391,13 @@ msgid "Voice Outlets"
 msgstr "Telefoonaansluitingen"
 
 #: crates/ui-egui/src/adaptive_editor.rs:902
-#: crates/ui-egui/src/editor/extrusion.rs:255
-#: crates/ui-egui/src/editor/sketch.rs:1935
+#: crates/ui-egui/src/editor/extrusion.rs:261
+#: crates/ui-egui/src/editor/sketch.rs:1938
 msgid "Void"
 msgstr "Uitsparing"
 
 #: crates/ui-egui/src/editor/document.rs:609
-#: crates/ui-egui/src/editor/sketch.rs:1900
+#: crates/ui-egui/src/editor/sketch.rs:1903
 msgid "Void Blend"
 msgstr "Overgangsuitsparing"
 
@@ -15388,7 +15406,7 @@ msgid "Void Blends"
 msgstr ""
 
 #: crates/ui-egui/src/editor/document.rs:608
-#: crates/ui-egui/src/editor/sketch.rs:1898
+#: crates/ui-egui/src/editor/sketch.rs:1901
 msgid "Void Extrusion"
 msgstr "Extrusie-uitsparing"
 
@@ -15409,7 +15427,7 @@ msgid "Void Forms: a void extrusion, blend, revolve, sweep or swept blend, sketc
 msgstr "Uitsparingsvormen: een extrusie-, overgangs-, omwentelings-, sweep- of sweep-overgangsuitsparing, geschetst zoals een massieve, die de massieve vormen ervoor uitsnijdt"
 
 #: crates/ui-egui/src/editor/document.rs:610
-#: crates/ui-egui/src/editor/sketch.rs:1899
+#: crates/ui-egui/src/editor/sketch.rs:1902
 msgid "Void Revolve"
 msgstr "Omwentelingsuitsparing"
 
@@ -15418,7 +15436,7 @@ msgid "Void Revolves"
 msgstr ""
 
 #: crates/ui-egui/src/editor/document.rs:611
-#: crates/ui-egui/src/editor/sketch.rs:1901
+#: crates/ui-egui/src/editor/sketch.rs:1904
 msgid "Void Sweep"
 msgstr "Sweep-uitsparing"
 
@@ -15427,7 +15445,7 @@ msgid "Void Sweeps"
 msgstr ""
 
 #: crates/ui-egui/src/editor/document.rs:612
-#: crates/ui-egui/src/editor/sketch.rs:1902
+#: crates/ui-egui/src/editor/sketch.rs:1905
 msgid "Void Swept Blend"
 msgstr "Sweep-overgangsuitsparing"
 
@@ -15590,7 +15608,7 @@ msgstr "Wat er vóór de werken stond: de eerste fase van het project"
 msgid "What the views are drawn on; the drawing's lines turn light on a dark one and dark on a light one"
 msgstr "Waarop de weergaven getekend worden; de lijnen van de tekening worden licht op een donkere ondergrond en donker op een lichte"
 
-#: crates/ui-egui/src/editor/extrusion.rs:277
+#: crates/ui-egui/src/editor/extrusion.rs:283
 msgid "What the void cuts: the solid forms listed before it, and the wall the door or window stands in"
 msgstr "Wat de uitsparing snijdt: de massieve vormen die ervoor staan, en de muur waarin de deur of het raam staat"
 
@@ -15772,10 +15790,10 @@ msgstr "Overschrijding van de hulplijn:"
 #: crates/ui-egui/src/adaptive_editor.rs:589
 #: crates/ui-egui/src/editor/document.rs:2327
 #: crates/ui-egui/src/editor/document.rs:2345
-#: crates/ui-egui/src/editor/extrusion.rs:215
-#: crates/ui-egui/src/editor/extrusion.rs:315
+#: crates/ui-egui/src/editor/extrusion.rs:221
+#: crates/ui-egui/src/editor/extrusion.rs:321
 #: crates/ui-egui/src/editor/nested.rs:430
-#: crates/ui-egui/src/editor/sketch.rs:1816
+#: crates/ui-egui/src/editor/sketch.rs:1819
 #: crates/ui-egui/src/editor/work_plane.rs:190
 #: crates/ui-egui/src/lib.rs:5398
 #: crates/ui-egui/src/shortcuts.rs:145
@@ -16036,7 +16054,7 @@ msgstr ""
 msgid "`{}` isn't an angle"
 msgstr "`{}` is geen hoek"
 
-#: crates/ui-egui/src/editor/views.rs:371
+#: crates/ui-egui/src/editor/views.rs:373
 msgid "a datum stays: it can't be deleted"
 msgstr "een referentie blijft: ze kan niet verwijderd worden"
 
@@ -16296,6 +16314,10 @@ msgstr "is kleiner dan of gelijk aan"
 msgid "its active one"
 msgstr ""
 
+#: crates/ui-egui/src/editor/handle_params.rs:296
+msgid "its formulas"
+msgstr ""
+
 #: crates/ui-egui/src/lib.rs:5965
 msgid "level: `{}` is not an elevation"
 msgstr "niveau: `{}` is geen hoogte"
@@ -16539,7 +16561,7 @@ msgstr "de verbinding met de host is weg"
 msgid "the connector is gone"
 msgstr ""
 
-#: crates/ui-egui/src/editor/extrusion.rs:68
+#: crates/ui-egui/src/editor/extrusion.rs:74
 msgid "the family has no form {}"
 msgstr "de familie heeft geen vorm {}"
 
@@ -16572,7 +16594,7 @@ msgstr "de volgende vrije naam"
 msgid "the opening has to stay on its wall"
 msgstr "de opening moet op haar muur blijven"
 
-#: crates/ui-egui/src/editor/views.rs:375
+#: crates/ui-egui/src/editor/views.rs:377
 msgid "the plane can't go while {} is drawn on it"
 msgstr "het vlak kan niet weg zolang {} erop getekend is"
 
@@ -16716,7 +16738,10 @@ msgstr "{} / {}"
 msgid "{} : {} plane"
 msgstr ""
 
-#: crates/ui-egui/src/editor/handle_params.rs:278
+#: crates/ui-egui/src/editor/handle_params.rs:548
+#: crates/ui-egui/src/editor/handle_params.rs:563
+#: crates/ui-egui/src/editor/handles3d.rs:242
+#: crates/ui-egui/src/editor/handles3d.rs:243
 msgid "{} = {}"
 msgstr ""
 
@@ -16889,7 +16914,7 @@ msgstr ""
 msgid "{} is a file's triangles: it has no sketch to move."
 msgstr ""
 
-#: crates/ui-egui/src/editor/handle_params.rs:115
+#: crates/ui-egui/src/editor/handle_params.rs:186
 msgid "{} is a reporting parameter: it reads a dimension and never drives one."
 msgstr ""
 
@@ -16913,7 +16938,11 @@ msgstr "{} is niet {}: `{}`"
 msgid "{} is pinned: unpin it (UP) to change where it is."
 msgstr ""
 
-#: crates/ui-egui/src/editor/handle_params.rs:118
+#: crates/ui-egui/src/editor/handle_params.rs:192
+msgid "{} is set by the family's types, and it has none: make one in Family Types."
+msgstr ""
+
+#: crates/ui-egui/src/editor/handle_params.rs:189
 msgid "{} is set by the instance previewed: change it there."
 msgstr ""
 
@@ -16921,12 +16950,16 @@ msgstr ""
 msgid "{} is still being asked to lend their key: ask again"
 msgstr "{} wordt nog gevraagd de sleutel uit te lenen: vraag het opnieuw"
 
-#: crates/ui-egui/src/editor/handle_params.rs:112
+#: crates/ui-egui/src/editor/handle_params.rs:183
 msgid "{} is worked out by a formula: change the formula in Family Types."
 msgstr ""
 
 #: crates/ui-egui/src/publisher.rs:785
 msgid "{} isn't a format"
+msgstr ""
+
+#: crates/ui-egui/src/editor/handle_params.rs:180
+msgid "{} isn't a parameter of the family: no drag sets it."
 msgstr ""
 
 #: crates/ui-egui/src/editor/work_plane.rs:273
@@ -17082,7 +17115,7 @@ msgstr ""
 msgid "{} takes forms, reference planes, reference lines and dimensions: take symbols, connectors and nested instances out of the selection, or move them."
 msgstr ""
 
-#: crates/ui-egui/src/editor/extrusion.rs:183
+#: crates/ui-egui/src/editor/extrusion.rs:189
 msgid "{} triangles, from a file"
 msgstr "{} driehoeken, uit een bestand"
 
@@ -17117,10 +17150,6 @@ msgstr ""
 
 #: crates/ui-egui/src/editor/modify.rs:488
 msgid "{} works on a sketch's lines: edit a form's sketch (double-click the form) first."
-msgstr ""
-
-#: crates/ui-egui/src/editor/handle_params.rs:258
-msgid "{} would be {}: a length must be above zero."
 msgstr ""
 
 #: crates/ui-egui/src/editor/drag_move.rs:187
@@ -18504,4 +18533,7 @@ msgstr "Boven"
 #~ msgstr ""
 #: crates/ui-egui/src/editor/view_graphics.rs:168
 #~ msgid "a view range is a plan's: open a floor or ceiling plan"
+#~ msgstr ""
+#: crates/ui-egui/src/editor/handle_params.rs:258
+#~ msgid "{} would be {}: a length must be above zero."
 #~ msgstr ""

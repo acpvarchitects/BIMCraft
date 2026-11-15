@@ -2476,7 +2476,7 @@ impl BimApp {
         // drag is the handle's, not the view's.
         ed.keep_3d(ui.ctx().cumulative_pass_nr());
         let before = on_pane(cam, [w, h], pane);
-        let handles = ed.handles_3d_on(&before, cam.scale);
+        let handles = ed.handles_3d_on(&before, &cam);
         let on_handle = |p: egui::Pos2| {
             handles
                 .iter()
@@ -2486,8 +2486,8 @@ impl BimApp {
         if response.drag_started_by(egui::PointerButton::Primary)
             && !ed.sketching()
             && let Some(press) = ui.input(|i| i.pointer.press_origin()).filter(|p| !crate::orbit::Orbit::on_cube(pane, *p))
-            && let Some((_, per_mm, h)) = on_handle(press)
-            && let Err(e) = ed.grab_3d(h, press, *per_mm, ui.ctx().cumulative_pass_nr())
+            && let Some((from, per_mm, h)) = on_handle(press)
+            && let Err(e) = ed.grab_3d(h, (press, *from), *per_mm, ui.ctx().cumulative_pass_nr())
             && !e.is_empty()
         {
             self.status = Status { text: e, error: true };
@@ -2543,8 +2543,10 @@ impl BimApp {
         {
             self.status = Status { text: e, error: true };
         }
-        if response.drag_stopped() || !ui.input(|i| i.pointer.primary_down()) {
-            ed.let_go_3d();
+        if (response.drag_stopped() || !ui.input(|i| i.pointer.primary_down()))
+            && let Err(e) = ed.let_go_3d()
+        {
+            self.status = Status { text: e, error: true };
         }
         // The parameter a handle drags, at its value now (FE-25).
         if let Some(text) = ed.views.said.take() {
@@ -2588,9 +2590,10 @@ impl BimApp {
             .collect();
         super::connector_marks::paint(&p, &marks, &project, &chosen, ed.connector_hover, lit);
         // The selected form's handles over it, where the view shows them now: blue, or grey where they can't be dragged.
-        let shown = ed.handles_3d_on(&project, cam.scale);
-        // The one under the pointer a drag takes, lit; a greyed one never is.
-        let lit = input.hover.filter(|_| !ed.holding_3d() || ed.dragging_param() || ed.views.edge_drag.is_some()).and_then(|p| {
+        let shown = ed.handles_3d_on(&project, &cam);
+        // The one under the pointer a drag takes, lit; a greyed one never is. One held is drawn where the hand has it, lit.
+        let held = ed.held_3d();
+        let lit = input.hover.filter(|_| held.is_none()).and_then(|p| {
             shown
                 .iter()
                 .filter(|(at, _, h)| h.blocked.is_none() && at.distance(p) <= super::handles3d::REACH)
@@ -2600,6 +2603,9 @@ impl BimApp {
         ed.views.lit_handle = lit;
         for (at, along, h) in &shown {
             super::handles3d::paint_arrow(&p, *at, along.normalized(), h.blocked.is_none(), lit == Some(*at));
+        }
+        if let Some((at, way)) = held {
+            super::handles3d::paint_arrow(&p, at, way, true, true);
         }
         ed.views.handles3d_shown = shown.into_iter().map(|(at, _, h)| (at, h)).collect();
         // A form being sketched on its plane, over the picture (F5), with its padlocks.

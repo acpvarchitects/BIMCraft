@@ -1,18 +1,27 @@
 //! FE-25: a shape handle tied to a parameter drags it. A side or an end whose place a labelled dimension sets, or whose numbers
 //! are formulas of parameters (the starter box's `Width / 2`, an End associated with `Height`), is dragged by changing that
 //! parameter for the type previewed (an instance parameter's own value, its default in the family): the value that puts the side
-//! or end where the hand is, worked out by the flexed family (the dimension's length after the drag, the End's new number),
-//! written as a dimension's drag through its label writes it (`Edit::Parameter`), live and one step of the history. Refused,
-//! the draft as it was and the status bar saying why: a parameter worked out by a formula or a reporting one (both greyed, and
-//! never lit), one the instance previewed sets, a value no length can be (zero or below), one the constraints can't reach, and
-//! one a type can't build with. A lock, an Align lock or EQ holding a side or an end is no parameter: its handle isn't drawn.
+//! or end where the hand is, found on the flexed family (the dimension's length after the drag, the End's new number) and
+//! written as a dimension's drag through its label writes it (`Edit::Parameter`), one step of the history.
+//!
+//! Which parameter is found by moving each (`drive`): of those the side's or end's formulas name (or the label on it), the ones
+//! that move it, a label's first, then a size (one that leaves the far side where it is or moves it the other way) before a
+//! position (one that moves both one way), then as the family lists them. None that moves it, or no type to set it for, and
+//! the handle is greyed saying why; so is one whose parameter is worked out by a formula, is a reporting one or is set by the
+//! instance previewed. The value is searched for (`solve`): secant steps from where the last frame left it, then, where they
+//! don't land, a bracket widened outward from the value it began at and halved, so a nonlinear formula, an `if()` and one flat
+//! where it starts are reached; an Integer takes the nearest whole number, the rest a hundredth of a millimetre.
+//!
+//! Refused, the draft as it was and the status bar saying why: a value that turns the profile inside out, leaves it nothing or
+//! the form no depth (whatever the parameter's kind), one the drag can't reach, and one a type that built can't build with. A
+//! lock, an Align lock or EQ holding a side or an end with no label is no parameter: its handle isn't drawn.
 use super::document::Draft;
 use super::sketch::reader;
 use super::*;
-use bimcraft_core::family::Form;
 use bimcraft_core::family::constraints::Edit;
 use bimcraft_core::family::handles::{self as hs, Held};
-use bimcraft_core::family::sketch::FormLine;
+use bimcraft_core::family::sketch::{FormCurve, FormLine};
+use bimcraft_core::family::{Form, Kind, Val};
 use bimcraft_core::geom::P2;
 use bimcraft_core::ids::Guid;
 
@@ -23,8 +32,8 @@ pub(crate) enum Target {
     End(bool),
 }
 
-/// How a handle's drag works: on the numbers themselves, through one of these parameters (the first a drag moves it by), or
-/// refused, why; or the handle isn't drawn.
+/// How a handle's drag works: on the numbers themselves, through one of these parameters (the first it tries), or refused, why;
+/// or the handle isn't drawn.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum Drive {
     Free,
@@ -33,23 +42,46 @@ pub(crate) enum Drive {
     Hidden,
 }
 
+/// The drives worked out for the draft as it was (`key`), by form and side (a line, or the End and Start as -1 and -2).
+#[derive(Default)]
+pub(crate) struct Drives {
+    key: u64,
+    by: std::collections::HashMap<(usize, i64), Drive>,
+}
+
+/// Where a side or an end stands along its handle's way (`m`), the far side of the form that way (`far`), and the profile's
+/// signed area or the form's depth (`body`): what turns inside out changes its sign.
+#[derive(Clone, Copy, Debug)]
+struct Probe {
+    m: f64,
+    far: f64,
+    body: f64,
+}
+
 /// A parameter being dragged by a handle: the draft and the family as the drag began (what Escape and a refusal put back),
-/// the form's GUID and place, what moves, the parameter, its value and where the side or end stood, and how far the drag has
-/// gone (an elevation's End reads it step by step).
+/// the type, which types built then, the form's GUID and place, what moves, the parameter, its kind, its value and where the
+/// side or end stood, a value it moves it at, the last value found, how far the drag has gone, whether it is written as it
+/// goes (a plan or an elevation) or once the button is up ({3D}, the value found waiting).
 #[derive(Clone)]
 pub(crate) struct ParamDrag {
     kept: Draft,
     family: Family,
+    ty: String,
+    built: Vec<(String, bool)>,
     form: (Guid, usize),
     target: Target,
     name: String,
+    integer: bool,
     v0: f64,
-    m0: f64,
-    slope: f64,
+    start: Probe,
+    moved: (f64, f64),
+    last: Option<(f64, f64)>,
     total: f64,
+    live: bool,
+    pending: Option<f64>,
 }
 
-/// The parameters named in `formulas`, as `f` lists them, the longest names first where one holds another.
+/// The parameters named in `formulas`, as `f` lists them, the longest names matched first where one holds another.
 fn named(f: &Family, formulas: &[&str]) -> Vec<String> {
     let mut names: Vec<&str> = f.parameters.iter().map(|p| p.name.as_str()).filter(|n| !n.is_empty()).collect();
     names.sort_by_key(|n| std::cmp::Reverse(n.len()));
@@ -97,6 +129,45 @@ fn form_of(f: &Family, (guid, i): (Guid, usize)) -> Option<&Form> {
     if guid.is_nil() { f.forms.get(i) } else { f.forms.iter().find(|x| x.guid == guid) }
 }
 
+/// The points of `lines` (their ends, a circle's centre) but line `skip`'s, read by `num`.
+fn points(lines: &[FormLine], skip: Option<usize>, num: &mut dyn FnMut(&Expr) -> Result<f64, String>) -> Option<Vec<P2>> {
+    let mut out = Vec::new();
+    for (_, l) in lines.iter().enumerate().filter(|(k, l)| Some(*k) != skip && !l.axis) {
+        match &l.curve {
+            FormCurve::Line { start, end, .. } => {
+                out.push(P2(num(&start[0]).ok()?, num(&start[1]).ok()?));
+                out.push(P2(num(&end[0]).ok()?, num(&end[1]).ok()?));
+            }
+            FormCurve::Circle { centre, .. } => out.push(P2(num(&centre[0]).ok()?, num(&centre[1]).ok()?)),
+        }
+    }
+    Some(out)
+}
+
+/// The signed area the starts of `lines` go round, in order: what a profile turned inside out changes the sign of.
+fn swept(lines: &[FormLine], num: &mut dyn FnMut(&Expr) -> Result<f64, String>) -> Option<f64> {
+    let mut a = 0.0;
+    for l in lines.iter().filter(|l| !l.axis) {
+        match &l.curve {
+            FormCurve::Line { start, end, .. } => {
+                let (p, q) = (P2(num(&start[0]).ok()?, num(&start[1]).ok()?), P2(num(&end[0]).ok()?, num(&end[1]).ok()?));
+                a += p.0 * q.1 - q.0 * p.1;
+            }
+            FormCurve::Circle { radius, .. } => a += num(radius).ok()?.powi(2),
+        }
+    }
+    Some(a / 2.0)
+}
+
+/// Why no parameter can move a handle's side or end where the drag takes it.
+fn said_unreachable(names: &[String]) -> String {
+    tf("Constraints are not satisfied: {} can't put it where the drag takes it.", &[&names.join(", ")])
+}
+
+fn turned() -> String {
+    t("The profile can't take this: its lines would cross, overlap or no longer close.").to_string()
+}
+
 impl FamilyEditor {
     /// The name of the type previewed.
     fn type_previewed(&self) -> Option<String> {
@@ -106,7 +177,7 @@ impl FamilyEditor {
     /// Why parameter `name` of `f` can't be set by a drag, if it can't.
     fn unsettable(&self, f: &Family, name: &str) -> Option<String> {
         let Some(p) = f.parameters.iter().find(|p| p.name == name) else {
-            return Some(t("This edge is tied to a parameter or worked out by a formula: change it in Family Types.").to_string());
+            return Some(tf("{} isn't a parameter of the family: no drag sets it.", &[name]));
         };
         if p.formula.is_some() {
             return Some(tf("{} is worked out by a formula: change the formula in Family Types.", &[name]));
@@ -117,11 +188,53 @@ impl FamilyEditor {
         if p.instance && self.preview_params.contains_key(name) {
             return Some(tf("{} is set by the instance previewed: change it there.", &[name]));
         }
+        if !p.instance && self.types.is_empty() {
+            return Some(tf("{} is set by the family's types, and it has none: make one in Family Types.", &[name]));
+        }
         None
     }
 
-    /// How a drag of form `i`'s handle on `target` works, in the family `drawn` (as typed).
+    /// How a drag of form `i`'s handle on `target` works, in the family `drawn` (as typed): worked out once for the draft as
+    /// it is, and kept while something is being dragged.
     pub(crate) fn drive(&self, drawn: &Family, i: usize, target: Target) -> Drive {
+        let side = (
+            i,
+            match target {
+                Target::Edge(k, _) => k as i64,
+                Target::End(true) => -1,
+                Target::End(false) => -2,
+            },
+        );
+        let key = {
+            use std::hash::{Hash, Hasher};
+            let mut h = std::collections::hash_map::DefaultHasher::new();
+            (serde_json::to_string(drawn).unwrap_or_default(), serde_json::to_string(&self.preview_params).unwrap_or_default())
+                .hash(&mut h);
+            self.picked.hash(&mut h);
+            h.finish()
+        };
+        let busy = self.views.param_drag.is_some()
+            || self.views.edge_drag.is_some()
+            || self.views.end_drag.is_some()
+            || self.views.drag3d.is_some();
+        {
+            let kept = self.views.drives.borrow();
+            if (kept.key == key || busy)
+                && let Some(d) = kept.by.get(&side)
+            {
+                return d.clone();
+            }
+        }
+        let d = self.drive_now(drawn, i, target);
+        let mut kept = self.views.drives.borrow_mut();
+        if kept.key != key && !busy {
+            *kept = Drives { key, by: Default::default() };
+        }
+        kept.by.insert(side, d.clone());
+        d
+    }
+
+    fn drive_now(&self, drawn: &Family, i: usize, target: Target) -> Drive {
         let Some(form) = drawn.forms.get(i) else { return Drive::Hidden };
         if self.pinned_refusal(&[super::select_box::Picked::Form(i)]).is_some() {
             return Drive::Hidden;
@@ -150,61 +263,131 @@ impl FamilyEditor {
                 (held, vec![e])
             }
         };
-        let names = match held {
-            Some(Held::Label(p)) => vec![p],
+        let (names, label) = match held {
+            Some(Held::Label(p)) => (vec![p.clone()], Some(p)),
             Some(Held::Locked | Held::Equal) => return Drive::Hidden,
-            None => named(drawn, &formulas(exprs)),
+            None => (named(drawn, &formulas(exprs)), None),
         };
-        let free: Vec<String> = names.iter().filter(|n| self.unsettable(drawn, n).is_none()).cloned().collect();
-        match (free.is_empty(), names.first()) {
-            (false, _) => Drive::Param(free),
-            (true, Some(n)) => Drive::Refused(self.unsettable(drawn, n).unwrap_or_default()),
-            (true, None) => {
-                Drive::Refused(t("This edge is tied to a parameter or worked out by a formula: change it in Family Types.").to_string())
-            }
+        // Named and none settable: greyed, the first's reason.
+        if !names.is_empty() && names.iter().all(|n| self.unsettable(drawn, n).is_some()) {
+            return Drive::Refused(names.iter().find_map(|n| self.unsettable(drawn, n)).unwrap_or_default());
         }
+        // Each settable one moved: those that move it, a label's first, then sizes, then positions, as the family lists them.
+        let Some(ty) = self.type_previewed() else {
+            return Drive::Refused(t("The family has no type for a drag to set a parameter of: make one in Family Types.").to_string());
+        };
+        let form_id = (form.guid, i);
+        let Some(start) = self.probe(drawn, &ty, form_id, target) else { return Drive::Hidden };
+        let order = |n: &str| drawn.parameters.iter().position(|p| p.name == n).unwrap_or(usize::MAX);
+        let mut moving: Vec<(u8, usize, String)> = Vec::new();
+        for n in names.iter().filter(|n| self.unsettable(drawn, n).is_none()) {
+            let Some((_, p)) = self.moves(drawn, &ty, form_id, target, n, start) else { continue };
+            let (dm, dfar) = (p.m - start.m, p.far - start.far);
+            let rank = if label.as_deref() == Some(n.as_str()) {
+                0
+            } else if dfar.abs() < 1e-6 || dfar * dm < 0.0 {
+                1
+            } else {
+                2
+            };
+            moving.push((rank, order(n), n.clone()));
+        }
+        if moving.is_empty() {
+            let named = if names.is_empty() { t("its formulas").to_string() } else { names.join(", ") };
+            return Drive::Refused(tf("Moving {} leaves this where it is: nothing the family sets places it.", &[&named]));
+        }
+        moving.sort();
+        Drive::Param(moving.into_iter().map(|(_, _, n)| n).collect())
     }
 
-    /// Where `target` of the form `form` stands in `f` as type `ty` flexes it, along the handle's way: a side's middle along its
-    /// way out, the End's number, the Start's less.
-    fn measure(&self, f: &Family, ty: &str, form: (Guid, usize), target: Target) -> Option<f64> {
+    /// Where `target` of form `form` stands in `f` as type `ty` flexes it (`Probe`): none where it can't be built or read.
+    fn probe(&self, f: &Family, ty: &str, form: (Guid, usize), target: Target) -> Option<Probe> {
         let values = f.values(ty, &self.preview_params).ok()?;
         let flexed = f.flexed(&values).ok()?;
         let x = form_of(&flexed, form)?;
         let mut num = reader(&values);
-        let m = match target {
+        let p = match target {
             Target::Edge(k, out) => {
+                x.loops(&mut num).ok()?;
                 let h = hs::edge_handles(&x.sketch, &mut num).into_iter().find(|h| h.line == k)?;
-                h.at.0 * out.0 + h.at.1 * out.1
+                let along = |q: P2| q.0 * out.0 + q.1 * out.1;
+                let far = points(&x.sketch, Some(k), &mut num)?.into_iter().map(along).fold(f64::INFINITY, f64::min);
+                Probe { m: along(h.at), far: if far.is_finite() { far } else { 0.0 }, body: swept(&x.sketch, &mut num)? }
             }
-            Target::End(true) => num(&x.to).ok()?,
-            Target::End(false) => -num(&x.from).ok()?,
+            Target::End(end) => {
+                let (from, to) = (num(&x.from).ok()?, num(&x.to).ok()?);
+                if end { Probe { m: to, far: from, body: to - from } } else { Probe { m: -from, far: -to, body: to - from } }
+            }
         };
-        m.is_finite().then_some(m)
+        (p.m.is_finite() && p.far.is_finite() && p.body.is_finite()).then_some(p)
     }
 
-    /// A drag of form `i`'s `target` through one of `names` begun: the first parameter that moves it, or why none can.
-    pub(crate) fn start_param_drag(&mut self, i: usize, target: Target, names: &[String]) -> Result<(), String> {
-        let f = self.family()?;
-        let ty = self.type_previewed().ok_or_else(String::new)?;
-        let form = (f.forms.get(i).map(|x| x.guid).unwrap_or_default(), i);
-        let values = self.values();
-        let m0 = self.measure(&f, &ty, form, target).ok_or_else(|| said_unreachable(names))?;
-        for name in names {
-            let Some(v0) = values.get(name).and_then(|v| match v {
-                bimcraft_core::family::Val::Number(x) => Some(*x),
-                _ => None,
-            }) else {
-                continue;
-            };
-            let step = (v0.abs() * 0.01).max(1.0);
-            let Some(m1) = self.measure(&with_param(&f, &ty, name, v0 + step), &ty, form, target) else { continue };
-            let slope = (m1 - m0) / step;
-            if slope.abs() > 1e-6 {
-                self.views.param_drag =
-                    Some(ParamDrag { kept: self.draft(), family: f, form, target, name: name.clone(), v0, m0, slope, total: 0.0 });
-                return Ok(());
+    /// The first value of `name`, from its own outward over a widening range, that moves `target` from `start`: it and where it
+    /// puts it. None where none does.
+    fn moves(&self, f: &Family, ty: &str, form: (Guid, usize), target: Target, name: &str, start: Probe) -> Option<(f64, Probe)> {
+        let v0 = self.value_in(f, ty, name)?;
+        let base = v0.abs().max(100.0);
+        for k in [0.01, 0.1, 0.5, 1.0, 2.0, 5.0] {
+            for s in [1.0, -1.0] {
+                let v = v0 + s * k * base;
+                if let Some(p) = self.probe(&with_param(f, ty, name, v), ty, form, target)
+                    && (p.m - start.m).abs() > 1e-6
+                {
+                    return Some((v, p));
+                }
             }
+        }
+        None
+    }
+
+    /// Parameter `name`'s number in `f` for type `ty`.
+    fn value_in(&self, f: &Family, ty: &str, name: &str) -> Option<f64> {
+        match f.values(ty, &self.preview_params).ok()?.get(name)? {
+            Val::Number(x) => Some(*x),
+            _ => None,
+        }
+    }
+
+    /// A drag of form `i`'s `target` through `names` begun (the first that moves it), written as it goes when `live`: why
+    /// none can be, where none can.
+    pub(crate) fn start_param_drag(&mut self, i: usize, target: Target, names: &[String], live: bool) -> Result<(), String> {
+        let f = self.family()?;
+        let Some(ty) = self.type_previewed() else {
+            return Err(t("The family has no type for a drag to set a parameter of: make one in Family Types.").to_string());
+        };
+        let form = (f.forms.get(i).map(|x| x.guid).unwrap_or_default(), i);
+        let start = self.probe(&f, &ty, form, target).ok_or_else(|| said_unreachable(names))?;
+        let built = |f: &Family, name: &str| {
+            f.values(name, &BTreeMap::new())
+                .and_then(|values| {
+                    f.solve(&values).map_err(|e| e.to_string())?;
+                    f.pieces(&values).map(|_| ())
+                })
+                .is_ok()
+        };
+        for name in names {
+            let Some(v0) = self.value_in(&f, &ty, name) else { continue };
+            let Some((v, p)) = self.moves(&f, &ty, form, target, name, start) else { continue };
+            let integer = f.parameters.iter().any(|x| x.name == *name && x.kind == Kind::Integer);
+            let built = f.types.keys().map(|n| (n.clone(), built(&f, n))).collect();
+            self.views.param_drag = Some(ParamDrag {
+                kept: self.draft(),
+                family: f,
+                ty,
+                built,
+                form,
+                target,
+                name: name.clone(),
+                integer,
+                v0,
+                start,
+                moved: (v, p.m),
+                last: None,
+                total: 0.0,
+                live,
+                pending: None,
+            });
+            return Ok(());
         }
         Err(said_unreachable(names))
     }
@@ -220,79 +403,173 @@ impl FamilyEditor {
         self.param_to(total)
     }
 
-    /// The parameter dragged so its side or end stands `d` along the handle's way from where it began: the value worked out
-    /// and written for the type previewed, live; refused, the draft as the drag began, saying why.
+    /// The value of the dragged parameter that puts its side or end at `want`: secant steps from the last two places known,
+    /// then a bracket widened outward from where the drag began and halved. None where it can't be reached.
+    fn solve(&self, p: &ParamDrag, want: f64) -> Option<f64> {
+        // A whole number's parameter is tried at whole numbers only.
+        let whole = |v: f64| if p.integer { v.round() } else { v };
+        let m = |v: f64| self.probe(&with_param(&p.family, &p.ty, &p.name, whole(v)), &p.ty, p.form, p.target).map(|x| x.m - want);
+        const TOL: f64 = 1e-4;
+        let g0 = p.start.m - want;
+        if g0.abs() <= TOL {
+            return Some(p.v0);
+        }
+        let mut known: Vec<(f64, f64)> = vec![(p.v0, g0), (p.moved.0, p.moved.1 - want)];
+        if let Some((v, at)) = p.last {
+            known.push((v, at - want));
+        }
+        // Secant, from the two nearest.
+        known.sort_by(|a, b| a.1.abs().total_cmp(&b.1.abs()));
+        let (mut a, mut b) = (known[1], known[0]);
+        for _ in 0..8 {
+            let den = b.1 - a.1;
+            if den.abs() < 1e-12 {
+                break;
+            }
+            let v = whole(b.0 - b.1 * (b.0 - a.0) / den);
+            if known.iter().any(|k| k.0 == v) {
+                break;
+            }
+            let Some(g) = v.is_finite().then(|| m(v)).flatten() else { break };
+            known.push((v, g));
+            if g.abs() <= TOL {
+                return Some(v);
+            }
+            (a, b) = (b, (v, g));
+        }
+        // A bracket: two values either side of it, else widened outward from the start, both ways, then halved.
+        let mut bracket = None;
+        for x in &known {
+            if let Some(y) = known.iter().find(|y| y.1.signum() != x.1.signum()) {
+                bracket = Some((*x, *y));
+                break;
+            }
+        }
+        if bracket.is_none() {
+            let base = p.v0.abs().max(100.0);
+            let mut step = base * 0.01;
+            'widen: for _ in 0..24 {
+                for s in [1.0, -1.0] {
+                    let v = p.v0 + s * step;
+                    if v.abs() > 1e7 {
+                        continue;
+                    }
+                    if let Some(g) = m(v)
+                        && g.signum() != g0.signum()
+                    {
+                        bracket = Some(((p.v0, g0), (v, g)));
+                        break 'widen;
+                    }
+                }
+                step *= 2.0;
+            }
+        }
+        let ((mut lo, mut glo), (mut hi, mut ghi)) = bracket?;
+        for _ in 0..60 {
+            // Whole numbers a step apart: the nearer.
+            if p.integer && (hi - lo).abs() <= 1.0 {
+                return Some(if ghi.abs() < glo.abs() { hi } else { lo });
+            }
+            let mid = whole((lo + hi) / 2.0);
+            let g = m(mid)?;
+            if g.abs() <= TOL || (hi - lo).abs() < 1e-6 {
+                return Some(mid);
+            }
+            if g.signum() == glo.signum() {
+                (lo, glo) = (mid, g);
+            } else {
+                (hi, ghi) = (mid, g);
+            }
+        }
+        None
+    }
+
+    /// The parameter dragged so its side or end stands `d` along the handle's way from where it began: the value found (written
+    /// as the drag goes in a plan or an elevation, waiting for the button in {3D}), said in the status bar; refused, the draft
+    /// as the drag began, saying why.
     pub(crate) fn param_to(&mut self, d: f64) -> Result<(), String> {
         let Some(p) = self.views.param_drag.as_mut() else { return Ok(()) };
         if !d.is_finite() {
             return Ok(());
         }
         p.total = d;
+        p.pending = None;
         let p = p.clone();
-        let ty = self.type_previewed().unwrap_or_default();
-        self.put_back(p.kept.clone());
+        if p.live {
+            self.put_back(p.kept.clone());
+        }
         if d.abs() < 1e-9 {
             return Ok(());
         }
-        // Where the side or end goes, by the parameter: a step along the slope, then one more from where it lands.
-        let want = p.m0 + d;
-        let mut v = p.v0 + d / p.slope;
-        if let Some(m) = self.measure(&with_param(&p.family, &ty, &p.name, v), &ty, p.form, p.target)
-            && (m - want).abs() > 0.1
-        {
-            v += (want - m) / p.slope;
-        }
         let refuse = |me: &mut FamilyEditor, why: String| {
-            me.put_back(p.kept.clone());
+            if p.live {
+                me.put_back(p.kept.clone());
+            }
             Err(why)
         };
-        // To a hundredth of a millimetre, as a value is typed.
-        let v = (v * 100.0).round() / 100.0;
-        if !v.is_finite() {
-            return refuse(self, said_unreachable(std::slice::from_ref(&p.name)));
-        }
-        let length = p.family.parameters.iter().find(|x| x.name == p.name).is_some_and(|x| {
-            matches!(x.kind, bimcraft_core::family::Kind::Length | bimcraft_core::family::Kind::Area | bimcraft_core::family::Kind::Volume)
-        });
-        if length && v <= 1e-6 {
-            return refuse(self, tf("{} would be {}: a length must be above zero.", &[&p.name, &number_text(v)]));
-        }
-        let g = with_param(&p.family, &ty, &p.name, v);
-        match self.measure(&g, &ty, p.form, p.target) {
-            Some(m) if (m - want).abs() <= 0.5 => {}
-            _ => return refuse(self, said_unreachable(std::slice::from_ref(&p.name))),
-        }
-        // Every type that built before still built with it, as Finish builds a form.
-        let built = |f: &Family, name: &str| {
-            f.values(name, &BTreeMap::new()).and_then(|values| {
-                f.solve(&values).map_err(|e| e.to_string())?;
-                f.pieces(&values).map(|_| ())
-            })
+        let want = p.start.m + d;
+        let Some(v) = self.solve(&p, want) else { return refuse(self, said_unreachable(std::slice::from_ref(&p.name))) };
+        // A whole number where the parameter is one (the nearer of the two either side), else to a hundredth.
+        let v = if p.integer {
+            let near = |v: f64| self.probe(&with_param(&p.family, &p.ty, &p.name, v), &p.ty, p.form, p.target).map(|x| (x.m - want).abs());
+            let (lo, hi) = (v.floor(), v.ceil());
+            match (near(lo), near(hi)) {
+                (Some(a), Some(b)) if b < a => hi,
+                (Some(_), _) => lo,
+                (None, Some(_)) => hi,
+                (None, None) => return refuse(self, said_unreachable(std::slice::from_ref(&p.name))),
+            }
+        } else {
+            (v * 100.0).round() / 100.0
         };
-        for name in g.types.keys() {
-            if let (Ok(()), Err(e)) = (built(&p.family, name), built(&g, name)) {
+        let g = with_param(&p.family, &p.ty, &p.name, v);
+        // The profile not turned inside out nor left nothing, the form not left without depth.
+        let at = match self.probe(&g, &p.ty, p.form, p.target) {
+            Some(x) if x.body.signum() == p.start.body.signum() && x.body.abs() > 1e-6 => x.m,
+            _ => return refuse(self, turned()),
+        };
+        // Every type that built as the drag began still builds with it, as Finish builds a form.
+        for (name, before) in &p.built {
+            let after = g.values(name, &BTreeMap::new()).and_then(|values| {
+                g.solve(&values).map_err(|e| e.to_string())?;
+                g.pieces(&values).map(|_| ())
+            });
+            if let (true, Err(e)) = (before, after) {
                 return refuse(self, format!("{name}: {e}"));
             }
         }
-        self.apply_edits(vec![Edit::Parameter(p.name.clone(), v)]);
+        if let Some(q) = self.views.param_drag.as_mut() {
+            q.last = Some((v, at));
+            q.pending = Some(v);
+        }
+        if p.live {
+            self.write_param(&p.name, v);
+        }
         self.views.said = Some(tf("{} = {}", &[&p.name, &number_text(v)]));
         Ok(())
     }
 
-    /// The parameter's drag let go: the value stays, a step of the history once the button is up.
+    fn write_param(&mut self, name: &str, v: f64) {
+        self.apply_edits(vec![Edit::Parameter(name.to_string(), v)]);
+    }
+
+    /// The parameter's drag let go: written as it was found ({3D}'s, now), a step of the history once the button is up.
     pub(crate) fn let_param_go(&mut self) {
-        self.views.param_drag = None;
+        if let Some(p) = self.views.param_drag.take()
+            && !p.live
+            && let Some(v) = p.pending
+        {
+            self.write_param(&p.name, v);
+            self.views.said = Some(tf("{} = {}", &[&p.name, &number_text(v)]));
+        }
     }
 
     /// The parameter's drag given up: the draft as it began. Whether there was one.
     pub(super) fn cancel_param(&mut self) -> bool {
         let Some(p) = self.views.param_drag.take() else { return false };
-        self.put_back(p.kept);
+        if p.live {
+            self.put_back(p.kept);
+        }
         true
     }
-}
-
-/// Why none of `names` can move the handle's side or end where the drag takes it.
-fn said_unreachable(names: &[String]) -> String {
-    tf("Constraints are not satisfied: {} can't put it where the drag takes it.", &[&names.join(", ")])
 }

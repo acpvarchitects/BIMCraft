@@ -65,6 +65,8 @@ pub(crate) struct Views {
     pub(super) drag3d: Option<super::handles3d::Drag3d>,
     /// A parameter being dragged by a handle tied to it (FE-25, `handle_params.rs`), in any view.
     pub(super) param_drag: Option<super::handle_params::ParamDrag>,
+    /// How each handle of the selected form drags, worked out once for the draft as it is (FE-25).
+    pub(super) drives: std::cell::RefCell<super::handle_params::Drives>,
     /// The handle the pointer is over, lit, where it was last drawn: a greyed one never is.
     pub(crate) lit_handle: Option<egui::Pos2>,
     /// Where the selected form's handles were last shown in {3D} (FE-25).
@@ -1705,7 +1707,7 @@ impl FamilyEditor {
         self.zoom_and_pan(ui, &response, which, view.scale);
         // A handle's drag through a parameter begun (FE-25); none can move it: the drag given up, saying why.
         if let Some((i, target, names)) = begin_param
-            && let Err(e) = self.start_param_drag(i, target, &names)
+            && let Err(e) = self.start_param_drag(i, target, &names, true)
         {
             self.views.edge_drag = None;
             self.views.end_drag = None;

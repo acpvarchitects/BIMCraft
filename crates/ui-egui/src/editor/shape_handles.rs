@@ -112,6 +112,10 @@ impl FamilyEditor {
             return Vec::new();
         }
         let Some(i) = self.selected_form() else { return Vec::new() };
+        // A form the view hides (Hide in View, Temporary Hide/Isolate): no handles.
+        if self.temp_hidden_form(i) {
+            return Vec::new();
+        }
         let Some(form) = drawn.forms.get(i) else { return Vec::new() };
         let kind = form.kind();
         if !matches!(kind, FormKind::Extrusion | FormKind::Blend) || !form.mesh.is_empty() {

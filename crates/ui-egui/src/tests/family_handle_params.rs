@@ -12,7 +12,12 @@ use bimcraft_core::family::views::{Side, Which};
 const STARTER: &str = r#"family {"name": "Starter", "category": "generic", "parameters": [{"name": "Width", "value": 1000}, {"name": "Depth", "value": 600}, {"name": "Height", "value": 750}, {"name": "Twice", "formula": "Width * 2"}], "types": {"1000 x 600": {}, "Wide": {"Width": 1400}}, "forms": [{"profile": [["-Width / 2", "-Depth / 2"], ["Width / 2", "-Depth / 2"], ["Width / 2", "Depth / 2"], ["-Width / 2", "Depth / 2"]], "from": 0, "to": "Height"}, {"profile": [[3000, 0], ["3000 + Twice / 4", 0], ["3000 + Twice / 4", 400], [3000, 400]], "from": 0, "to": 300}]}"#;
 
 fn opened(which: Option<Which>) -> Harness<'static, BimApp> {
-    let (mut h, _) = open(STARTER, "Starter");
+    opened_on(STARTER, "Starter", which)
+}
+
+/// Family `name` of `script` open in view `which` ({3D} fitted to it), its first form selected.
+pub(super) fn opened_on(script: &str, name: &str, which: Option<Which>) -> Harness<'static, BimApp> {
+    let (mut h, _) = open(script, name);
     view(&mut h, which);
     if which.is_none() {
         // The default camera, fitted to the family.
@@ -26,15 +31,15 @@ fn opened(which: Option<Which>) -> Harness<'static, BimApp> {
 }
 
 /// Parameter `name`'s value in type `ty`, as the draft holds it (none where the type leaves it to the parameter).
-fn value(h: &Harness<BimApp>, ty: &str, name: &str) -> Option<f64> {
+pub(super) fn value(h: &Harness<BimApp>, ty: &str, name: &str) -> Option<f64> {
     editor(h).draft_family().unwrap().types.get(ty)?.get(name)?.as_f64()
 }
 
-fn status(h: &Harness<BimApp>) -> (String, bool) {
+pub(super) fn status(h: &Harness<BimApp>) -> (String, bool) {
     (h.state().status.text.clone(), h.state().status.error)
 }
 
-fn press_move(h: &mut Harness<BimApp>, a: egui::Pos2, b: egui::Pos2) {
+pub(super) fn press_move(h: &mut Harness<BimApp>, a: egui::Pos2, b: egui::Pos2) {
     h.hover_at(a);
     h.run();
     h.event(egui::Event::PointerButton { pos: a, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::NONE });
@@ -45,14 +50,14 @@ fn press_move(h: &mut Harness<BimApp>, a: egui::Pos2, b: egui::Pos2) {
     }
 }
 
-fn release(h: &mut Harness<BimApp>, b: egui::Pos2) {
+pub(super) fn release(h: &mut Harness<BimApp>, b: egui::Pos2) {
     h.event(egui::Event::PointerButton { pos: b, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE });
     h.run();
     h.run();
 }
 
 /// Where family point `p` shows in the view shown.
-fn screen(h: &Harness<BimApp>, p: [f64; 3]) -> egui::Pos2 {
+pub(super) fn screen(h: &Harness<BimApp>, p: [f64; 3]) -> egui::Pos2 {
     match editor(h).views.shown {
         Some(_) => editor(h).views.screen_of(p).unwrap(),
         None => editor(h).drawn_3d().expect("{3D} drawn").screen(h.state().view_rect, p),
@@ -60,7 +65,7 @@ fn screen(h: &Harness<BimApp>, p: [f64; 3]) -> egui::Pos2 {
 }
 
 /// The handle shown nearest family point `p` (within a few points): where it shows and whether it can be dragged.
-fn handle(h: &Harness<BimApp>, p: [f64; 3]) -> (egui::Pos2, bool) {
+pub(super) fn handle(h: &Harness<BimApp>, p: [f64; 3]) -> (egui::Pos2, bool) {
     let ed = editor(h);
     let want = screen(h, p);
     let all: Vec<(egui::Pos2, bool)> = match ed.views.shown {
@@ -75,7 +80,7 @@ fn handle(h: &Harness<BimApp>, p: [f64; 3]) -> (egui::Pos2, bool) {
 }
 
 /// A drag of the handle at family point `p` by `by` mm, as a mouse makes it; the button held at the end when `hold`.
-fn drag(h: &mut Harness<BimApp>, p: [f64; 3], by: [f64; 3], hold: bool) -> egui::Pos2 {
+pub(super) fn drag(h: &mut Harness<BimApp>, p: [f64; 3], by: [f64; 3], hold: bool) -> egui::Pos2 {
     let (a, free) = handle(h, p);
     assert!(free, "the handle at {p:?} drags");
     let b = a + (screen(h, [p[0] + by[0], p[1] + by[1], p[2] + by[2]]) - screen(h, p));
@@ -116,7 +121,8 @@ fn the_starter_boxs_side_drags_width_in_plan_for_the_type_previewed_alone() {
 #[test]
 fn the_starter_boxs_side_and_top_drag_width_and_height_in_3d() {
     let mut h = opened(None);
-    assert_eq!(editor(&h).views.handles3d_shown.len(), 6, "{:?}", editor(&h).views.handles3d_shown);
+    // The faces toward the camera: south, east and the top.
+    assert_eq!(editor(&h).views.handles3d_shown.len(), 3, "{:?}", editor(&h).views.handles3d_shown);
     let camera = editor(&h).orbit.camera.map(|c| (c.azimuth, c.elevation));
     drag(&mut h, [500.0, 0.0, 375.0], [100.0, 0.0, 0.0], false);
     let w = value(&h, "1000 x 600", "Width").expect("the type's Width set");
@@ -154,7 +160,8 @@ fn a_side_a_formula_drives_is_greyed_never_lit_and_refuses_saying_why() {
         h.run();
         assert_eq!(editor(&h).views.lit_handle, None, "never lit");
         // A free one is lit under the pointer.
-        let (west, ok) = handle(&h, [3000.0, 200.0, if which.is_none() { 150.0 } else { 0.0 }]);
+        // The south side, free, faces the camera in both.
+        let (west, ok) = handle(&h, [3250.0, 0.0, if which.is_none() { 150.0 } else { 0.0 }]);
         assert!(ok);
         h.hover_at(west);
         h.run();
@@ -177,7 +184,8 @@ fn escape_mid_drag_puts_the_parameter_back() {
         let steps = editor(&h).steps();
         let z = if which.is_none() { 375.0 } else { 0.0 };
         let at = drag(&mut h, [500.0, 0.0, z], [100.0, 0.0, 0.0], true);
-        assert!(value(&h, "1000 x 600", "Width").is_some(), "live");
+        // Written as it goes in plan; {3D} writes once the button is up.
+        assert_eq!(value(&h, "1000 x 600", "Width").is_some(), which.is_some(), "live in plan alone");
         key(&mut h, Key::Escape);
         assert_eq!(value(&h, "1000 x 600", "Width"), None);
         release(&mut h, at);
@@ -205,7 +213,10 @@ fn family_handle_params_screenshots() {
         h.state_mut().active_family_mut().unwrap().select_form(0);
         h.run();
         h.run();
-        drag(&mut h, [500.0, 0.0, 375.0], [200.0, 0.0, 0.0], false);
+        // Mid-drag: the arrow where the hand has it, the value the status bar says; then let go.
+        let at = drag(&mut h, [500.0, 0.0, 375.0], [200.0, 0.0, 0.0], true);
+        h.render().unwrap().save(std::path::Path::new(&folder).join(format!("fe25-param-3d-mid-{look}.png"))).unwrap();
+        release(&mut h, at);
         h.run();
         h.render().unwrap().save(std::path::Path::new(&folder).join(format!("fe25-param-3d-{look}.png"))).unwrap();
         h.get_by_role_and_label(egui::accesskit::Role::Button, "Family Types").click();

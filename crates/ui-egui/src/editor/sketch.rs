@@ -1469,6 +1469,9 @@ impl FamilyEditor {
             return Vec::new();
         }
         let Some(i) = self.selected_form() else { return Vec::new() };
+        if self.temp_hidden_form(i) {
+            return Vec::new();
+        }
         let Some(ft) = self.forms.get(i) else { return Vec::new() };
         let Ok(f) = ft.form() else { return Vec::new() };
         if !matches!(f.kind(), FormKind::Extrusion | FormKind::Blend) || !f.mesh.is_empty() {

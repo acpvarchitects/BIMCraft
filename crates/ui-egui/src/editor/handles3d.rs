@@ -20,7 +20,7 @@ use bimcraft_core::geom::P2;
 /// How near a handle, in points, a press takes it: the plans' reach.
 pub(crate) const REACH: f32 = 10.0;
 /// How long an arrow is on screen, in points.
-pub(crate) const ARROW: f32 = 9.0;
+pub(crate) const ARROW: f32 = 11.0;
 /// The least an arrow's way may show on screen, against a way across the view: less, and the view sees it end-on.
 const SEEN: f32 = 0.25;
 
@@ -49,6 +49,8 @@ pub(crate) struct Handle3d {
 #[derive(Clone)]
 pub(crate) struct Drag3d {
     press: egui::Pos2,
+    /// Where the handle showed as the button went down.
+    from: egui::Pos2,
     per_mm: egui::Vec2,
     end: Option<(bool, String, u64)>,
     live: bool,
@@ -81,6 +83,10 @@ impl FamilyEditor {
             return Vec::new();
         }
         let Some(i) = self.selected_form() else { return Vec::new() };
+        // A form the view hides (Hide in View, Temporary Hide/Isolate): no handles.
+        if self.temp_hidden_form(i) {
+            return Vec::new();
+        }
         let Ok(drawn) = self.family() else { return Vec::new() };
         let Some(form) = drawn.forms.get(i) else { return Vec::new() };
         let kind = form.kind();
@@ -123,17 +129,23 @@ impl FamilyEditor {
         out
     }
 
-    /// The handles in {3D} where `project` shows them, with the way each points on screen; those the view sees end-on left out.
+    /// The handles in {3D} where `project` shows them (through `cam`), with the way each points on screen; those the view sees
+    /// end-on, or on a face turned away from it, left out.
     pub(crate) fn handles_3d_on(
         &self,
         project: &dyn Fn([f64; 3]) -> Option<egui::Pos2>,
-        scale: f64,
+        cam: &bimcraft_core::view3d::Camera,
     ) -> Vec<(egui::Pos2, egui::Vec2, Handle3d)> {
         // A millimetre, as the view is scaled: what a way across the view shows as.
-        let k = 40.0 / scale.max(1e-9);
+        let k = 40.0 / cam.scale.max(1e-9);
         self.handles_3d()
             .into_iter()
             .filter_map(|h| {
+                // Its face turned away: the way out goes further from the eye (the projection's depth grows toward it).
+                let depth = |q: [f64; 3]| cam.project(q).2;
+                if depth(add(h.at, h.way, k)) < depth(h.at) {
+                    return None;
+                }
                 let at = project(h.at)?;
                 let along = project(add(h.at, h.way, k))? - at;
                 // Across: the longer of two ways square to the arrow, as the view shows them.
@@ -155,8 +167,14 @@ impl FamilyEditor {
 
     /// A press at `press` on handle `h`, which `per_mm` (points on screen a millimetre along it makes) says how to read the
     /// pointer along, in the pass `seen`: held. A greyed one is held doing nothing, saying why.
-    pub(crate) fn grab_3d(&mut self, h: &Handle3d, press: egui::Pos2, per_mm: egui::Vec2, seen: u64) -> Result<(), String> {
-        let mut drag = Drag3d { press, per_mm, end: None, live: false, last: 0.0, seen };
+    pub(crate) fn grab_3d(
+        &mut self,
+        h: &Handle3d,
+        (press, from): (egui::Pos2, egui::Pos2),
+        per_mm: egui::Vec2,
+        seen: u64,
+    ) -> Result<(), String> {
+        let mut drag = Drag3d { press, from, per_mm, end: None, live: false, last: 0.0, seen };
         let result = match (&h.blocked, &h.grab) {
             (Some(why), _) => Err(why.clone()),
             (None, Grab::Edge(sh)) => {
@@ -167,7 +185,7 @@ impl FamilyEditor {
                         self.views.edge_drag = Some(d);
                         // Through a parameter: its drag begun, else why none can move the side.
                         let through = match (&sh.param, self.selected_form()) {
-                            (Some(names), Some(i)) => self.start_param_drag(i, Target::Edge(sh.line, sh.out), names),
+                            (Some(names), Some(i)) => self.start_param_drag(i, Target::Edge(sh.line, sh.out), names, false),
                             _ => Ok(()),
                         };
                         if through.is_err() {
@@ -182,8 +200,8 @@ impl FamilyEditor {
             (None, Grab::End(end)) if h.param.is_some() => {
                 let names = h.param.clone().unwrap_or_default();
                 let started = match self.selected_form() {
-                    Some(i) => self.start_param_drag(i, Target::End(*end), &names),
-                    None => Err(String::new()),
+                    Some(i) => self.start_param_drag(i, Target::End(*end), &names, false),
+                    None => Err(t("Select the form whose end to drag.").to_string()),
                 };
                 drag.live = started.is_ok();
                 started
@@ -201,8 +219,9 @@ impl FamilyEditor {
         result
     }
 
-    /// The handle held in {3D}, the pointer at `now`: the side or the end that far along its arrow, live; a refusal leaves the
-    /// form as it was, saying why.
+    /// The handle held in {3D}, the pointer at `now`: how far along its arrow it has gone, kept, and what the drag would make
+    /// said in the status bar (a parameter's value found as it goes); nothing is written until the button is up, so the view
+    /// isn't made again under the hand. A parameter's value refused says why.
     pub(crate) fn drag_3d_to(&mut self, now: egui::Pos2) -> Result<(), String> {
         let param = self.dragging_param();
         let Some(drag) = self.views.drag3d.as_mut().filter(|d| d.live) else { return Ok(()) };
@@ -215,48 +234,76 @@ impl FamilyEditor {
             return Ok(());
         }
         drag.last = d;
-        // Through a parameter: the value that puts the side or end there.
+        let end = drag.end.clone();
         if param {
             return self.param_to(d);
         }
-        match drag.end.clone() {
-            None => {
-                let Some(way) = self.views.edge_drag.as_ref().map(super::shape_handles::EdgeDrag::way) else { return Ok(()) };
-                self.drag_edge_to(way.map(|w| w * d))
-            }
-            Some((end, before, tag)) => {
-                let Some(ft) = self.forms.iter_mut().find(|f| f.tag == tag) else {
-                    self.views.drag3d = None;
-                    return Ok(());
-                };
-                let Some(x) = before.trim().parse::<f64>().ok().filter(|x| x.is_finite()) else {
-                    return Err(t("This end is tied to a parameter or worked out by a formula: change it in Family Types.").to_string());
-                };
-                // The Start's arrow points back along the normal.
-                let text = if end { &mut ft.to } else { &mut ft.from };
-                *text = if d.abs() < 1e-9 { before } else { number_text(x + if end { d } else { -d }) };
-                Ok(())
-            }
-        }
+        self.views.said = Some(match end {
+            Some((true, ..)) => tf("{} = {}", &[t("Extrusion End"), &number_text(self.end_after(true, d).unwrap_or(d))]),
+            Some((false, ..)) => tf("{} = {}", &[t("Extrusion Start"), &number_text(self.end_after(false, d).unwrap_or(d))]),
+            None => tf("Moved {} mm", &[&number_text(d)]),
+        });
+        Ok(())
     }
 
-    /// The handle held in {3D} let go: it stays where the drag left it.
-    pub(crate) fn let_go_3d(&mut self) {
-        if self.views.drag3d.take().is_some() {
+    /// The End's (or Start's) number held in {3D} after a drag `d` along its arrow.
+    fn end_after(&self, end: bool, d: f64) -> Option<f64> {
+        let (_, before, _) = self.views.drag3d.as_ref()?.end.clone()?;
+        let x = before.trim().parse::<f64>().ok().filter(|x| x.is_finite())?;
+        Some(x + if end { d } else { -d })
+    }
+
+    /// Where the handle held in {3D} has been dragged to on screen, and the way it points: what the view draws following the
+    /// pointer.
+    pub(crate) fn held_3d(&self) -> Option<(egui::Pos2, egui::Vec2)> {
+        let d = self.views.drag3d.as_ref().filter(|d| d.live)?;
+        Some((d.from + d.per_mm * d.last as f32, d.per_mm.normalized()))
+    }
+
+    /// The handle held in {3D} let go: the drag written, the side, the end or the parameter where the hand left it, one step of
+    /// the history; refused, as it was, saying why.
+    pub(crate) fn let_go_3d(&mut self) -> Result<(), String> {
+        let Some(d) = self.views.drag3d.take() else { return Ok(()) };
+        if !d.live {
+            self.views.edge_drag = None;
+            return Ok(());
+        }
+        if self.views.param_drag.is_some() {
             self.views.edge_drag = None;
             self.let_param_go();
+            return Ok(());
         }
+        let done = match d.end.clone() {
+            None => {
+                let way = self.views.edge_drag.as_ref().map(super::shape_handles::EdgeDrag::way);
+                match way {
+                    Some(way) if d.last.abs() > 1e-9 => self.drag_edge_to(way.map(|w| w * d.last)),
+                    _ => Ok(()),
+                }
+            }
+            Some((end, before, tag)) => {
+                let after = before.trim().parse::<f64>().ok().filter(|x| x.is_finite()).map(|x| x + if end { d.last } else { -d.last });
+                match (after, self.forms.iter_mut().find(|f| f.tag == tag)) {
+                    (_, None) => Ok(()),
+                    (Some(x), Some(ft)) => {
+                        if d.last.abs() > 1e-9 {
+                            *(if end { &mut ft.to } else { &mut ft.from }) = number_text(x);
+                        }
+                        Ok(())
+                    }
+                    (None, Some(_)) => {
+                        Err(t("This end is tied to a parameter or worked out by a formula: change it in Family Types.").to_string())
+                    }
+                }
+            }
+        };
+        self.views.edge_drag = None;
+        done
     }
 
-    /// The End or Start being dragged in {3D} given up, its number put back. Whether there was a drag in {3D}.
+    /// The handle held in {3D} given up: nothing was written. Whether there was one.
     pub(super) fn cancel_3d(&mut self) -> bool {
-        let Some(d) = self.views.drag3d.take() else { return false };
-        if let Some((end, before, tag)) = d.end
-            && let Some(f) = self.forms.iter_mut().find(|f| f.tag == tag)
-        {
-            *(if end { &mut f.to } else { &mut f.from }) = before;
-        }
-        true
+        self.views.drag3d.take().is_some()
     }
 
     /// Whether a handle is held in {3D}, and so the view doesn't turn.
@@ -284,11 +331,18 @@ impl FamilyEditor {
 pub(crate) fn paint_arrow(painter: &egui::Painter, centre: egui::Pos2, way: egui::Vec2, free: bool, lit: bool) {
     let k = if lit { 1.4 } else { 1.0 };
     let side = egui::vec2(-way.y, way.x);
-    let tip = vec![centre + way * ARROW * k, centre + side * 6.0 * k, centre - side * 6.0 * k];
+    let tip = |grow: f32| {
+        let back = centre - way * grow;
+        vec![centre + way * (ARROW * k + grow * 1.6), back + side * (7.0 * k + grow * 1.6), back - side * (7.0 * k + grow * 1.6)]
+    };
     let colour = match (free, lit) {
         (true, true) => crate::style::canvas_pal().hover,
         (true, false) => super::views::PICKED,
         (false, _) => pal().muted,
     };
-    painter.add(egui::Shape::convex_polygon(tip, colour, egui::Stroke::new(1.0, Color32::WHITE)));
+    // A rim of the canvas's opposite under it, so it reads over a shaded form as over paper: dark on a light canvas, light
+    // on a dark one.
+    let rim = if crate::style::canvas_dark() { Color32::from_gray(235) } else { Color32::from_gray(25) };
+    painter.add(egui::Shape::convex_polygon(tip(1.5), rim, egui::Stroke::NONE));
+    painter.add(egui::Shape::convex_polygon(tip(0.0), colour, egui::Stroke::new(1.0, Color32::WHITE)));
 }
