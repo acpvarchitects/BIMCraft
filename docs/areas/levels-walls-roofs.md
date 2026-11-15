@@ -30,6 +30,21 @@ neighbour nor stretches with one whose end is dragged (`walls::arms` leaves it o
 footing under such a wall stops at its face as if it were a wall too. The desktop's right-click menu offers Disallow Join and
 Allow Join for the walls and runs selected (`context::Action`, a `modify {join}` command).
 
+Join Geometry (T23) is another thing: two of the walls, floors, roofs and ceilings that meet are joined by `join_geometry
+{first, second}`, and the first cuts the second, which loses what the first's own solids take of it in section and in 3D
+(`view3d::join_voids`, through the same cut as a hosted void's; plans are as they were). The second names the first in its
+`joined_by` (FORMAT 21, with Cut Geometry's `void_cuts`). To join, they must meet: one's own solids, as they are or moved a
+millimetre along an axis, take more than 100 mm³ of the other's (`view3d::meets`), so a floor under a wall's foot, sharing a
+face, joins and cuts nothing. A pair is joined one way at a time: `switch_join_order` flips it and `unjoin_geometry` takes it
+off. Joins never go round in a loop: each is cut by the others' solids as they are before anything cuts them, so a loop would
+take what they all share out of every one of them; a join or a switch that would close one is refused, naming it. A pair an
+edit parts stays joined, cutting nothing, and `Model::warnings` says so; the check refuses only what can't be (itself, an
+element of another kind, a pair joined both ways, more than `MAX_JOINS`, the other's list read only within the cap). Copy and Insert from File keep a join when both of
+the pair come along and drop it when one comes alone; deleting either takes it off. IFC writes an IfcRelConnectsElements for
+each pair, the cutter relating, and both bodies whole: that relation clips neither. Open: a cutter wall cuts with its prisms
+round its doors' and windows' rectangles, so what it cuts keeps its own material inside those openings; and `join_voids` doesn't look at phases
+and design options, as Cut Geometry's `void_cuts` doesn't.
+
 At a square corner of two compound walls, one core runs through and the other stops on it (`walls/compound.rs`). It takes
 two walls and nothing else joined there, ending at the same point square to each other, straight, on their centre lines,
 unattached, with the same base and top; each type three layers, finish, structure and finish, each with a material and a

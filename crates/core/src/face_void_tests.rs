@@ -92,12 +92,12 @@ pub(crate) fn section_pixel(s: &mut Session, start: [f64; 2], end: [f64; 2]) -> 
 }
 
 /// `owner`'s triangles in 3D, as its solids make them.
-fn triangles(s: &Session, owner: Id) -> Vec<[[f64; 3]; 3]> {
+pub(crate) fn triangles(s: &Session, owner: Id) -> Vec<[[f64; 3]; 3]> {
     crate::view3d::solids(&s.model).iter().filter(|x| x.owner() == owner).flat_map(|x| x.triangles()).collect()
 }
 
 /// Where a plumb line through (x, y) crosses `owner`'s triangles, a little off so it runs down no edge.
-fn plumb(s: &Session, owner: Id, x: f64, y: f64) -> Vec<f64> {
+pub(crate) fn plumb(s: &Session, owner: Id, x: f64, y: f64) -> Vec<f64> {
     let q = P2(x + 0.37, y + 0.13);
     let mut hits: Vec<f64> = triangles(s, owner)
         .iter()

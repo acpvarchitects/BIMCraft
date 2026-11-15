@@ -66,6 +66,8 @@ pub const MAX_BALUSTERS: f64 = 10_000.0;
 pub const MAX_TEXT: usize = 256;
 /// Points one command or floor outline may carry.
 pub const MAX_POINTS: usize = 10_000;
+/// The most elements Join Geometry may cut one with (`joined_by`): more is a hostile file, and would make the check slow.
+pub const MAX_JOINS: usize = 100;
 /// Height of a reflected ceiling plan's cut plane above its level: it looks up from there.
 pub const CEILING_CUT: f64 = 2300.0;
 /// Height of a ceiling's underside above its level, unless told otherwise.
@@ -173,7 +175,7 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// (`library`), and what names a library entry holds its GUID. 1: elements have GUIDs, ids six digits, and what points at
 /// an element holds its GUID. None (0): a file from before.
 /// 20 (0.12's, which every change since 19 shares; the Family Editor's unreleased builds wrote 20 to 32 too, and a file of
-/// theirs stamped 20 opens as one of 0.12's, 21 and up as newer): rooms have types (`types.room`), which may name a floor type and a ceiling type, and a room holds the floor and the
+/// theirs stamped 20 opens as one of 0.12's; none stamped 21 to 32 is kept, so 21 is the next step's and 22 up are newer): rooms have types (`types.room`), which may name a floor type and a ceiling type, and a room holds the floor and the
 /// ceiling made for it (`floor`, `ceiling`); a build that reads up to 19 would lose the links and leave the finishes behind. And
 /// project parameters may be of kinds 19 doesn't know (`integer`, `area`, `volume`, `angle`), a type's (`scope`, `type_values`),
 /// from a `.bimparams` dictionary (`dictionaries`), grouped under a heading of the project's own, and the project's information
@@ -185,7 +187,12 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// georeference and lose where the project stands; and it would read spot coordinates (a spot's `coordinate`, `type`, `origin`,
 /// `leader`, `shoulder` and `end`) and a level's `elevation_base` as spot elevations from the Project Base Point. A file of 19
 /// needs no step: its georeference is the active site, both points at the internal origin.
-pub const FORMAT: u32 = 20;
+///
+/// 21: what cuts what in the project (T23). A wall names the components Cut Geometry ties to it (`void_cuts`), and a wall, a
+/// floor, a roof or a ceiling the elements Join Geometry cuts it with (`joined_by`); a build that reads up to 20 (0.12) would
+/// leave both out of a file and open the walls and slabs whole, not "saved by a newer BIMCraft". A file of 20 needs no step:
+/// 0.12's hold neither, and one the unreleased Family Editor saved at 18 to 20 with `void_cuts` reads them as written.
+pub const FORMAT: u32 = 21;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -374,6 +381,10 @@ pub struct Wall {
     /// Cut with Voids When Loaded and a void of it reaches the wall, and is kept, cutting nothing, while it doesn't.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub void_cuts: Vec<Guid>,
+    /// The walls, floors, roofs and ceilings that cut it, as Join Geometry made them (T23): each takes its own solids out of
+    /// this one's where they meet, and is kept, cutting nothing, after an edit parts them (`Model::warnings` says so).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub joined_by: Vec<Guid>,
 }
 
 /// A room's Limit Offset unless it says: its top 2500 mm over its own level.
@@ -682,6 +693,10 @@ pub struct Floor {
     /// Its values of the project's parameters, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
+    /// The walls, floors, roofs and ceilings that cut it, as Join Geometry made them (T23): each takes its own solids out of
+    /// this one's where they meet, and is kept, cutting nothing, after an edit parts them (`Model::warnings` says so).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub joined_by: Vec<Guid>,
 }
 
 /// A floor's top folded into planes: points raised or lowered on it, and split lines it folds along. Between them it's
@@ -828,6 +843,10 @@ pub struct Ceiling {
     /// Its values of the project's parameters, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
+    /// The walls, floors, roofs and ceilings that cut it, as Join Geometry made them (T23): each takes its own solids out of
+    /// this one's where they meet, and is kept, cutting nothing, after an edit parts them (`Model::warnings` says so).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub joined_by: Vec<Guid>,
 }
 
 /// A shaft opening: a hole along `boundary` through the floors, ceilings and roofs it passes
@@ -2024,6 +2043,10 @@ pub struct Roof {
     /// Its values of the project's parameters, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
+    /// The walls, floors, roofs and ceilings that cut it, as Join Geometry made them (T23): each takes its own solids out of
+    /// this one's where they meet, and is kept, cutting nothing, after an edit parts them (`Model::warnings` says so).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub joined_by: Vec<Guid>,
 }
 
 impl Element {
@@ -2328,8 +2351,12 @@ macro_rules! visit_refs {
                 if let Some(g) = & $($m)? w.attach_top { f(g) }
                 if let Some(g) = & $($m)? w.attach_base { f(g) }
                 for g in & $($m)? w.void_cuts { f(g) }
+                for g in & $($m)? w.joined_by { f(g) }
             }
-            Element::Floor(Floor { level, .. }) | Element::Ceiling(Ceiling { level, .. }) => f(level),
+            Element::Floor(Floor { level, joined_by, .. }) | Element::Ceiling(Ceiling { level, joined_by, .. }) => {
+                f(level);
+                for g in joined_by { f(g) }
+            }
             Element::Room(Room { level, top_level, floor, ceiling, .. }) => {
                 f(level);
                 if let Some(g) = top_level { f(g) }
@@ -2387,6 +2414,7 @@ macro_rules! visit_refs {
             Element::Roof(r) => {
                 f(& $($m)? r.level);
                 if let Some(g) = & $($m)? r.join { f(g) }
+                for g in & $($m)? r.joined_by { f(g) }
             }
             Element::Text(n) => f(& $($m)? n.view),
             Element::DetailLine(l) => f(& $($m)? l.view),
@@ -2527,6 +2555,33 @@ impl Element {
             Element::Nested(crate::nested_elements::NestedElement { params, .. }) => Some(params),
             _ => None,
         }
+    }
+
+    /// The walls, floors, roofs and ceilings Join Geometry cuts it with (T23); none for another kind of element.
+    pub fn joined_by(&self) -> &[Guid] {
+        match self {
+            Element::Wall(Wall { joined_by, .. })
+            | Element::Floor(Floor { joined_by, .. })
+            | Element::Ceiling(Ceiling { joined_by, .. })
+            | Element::Roof(Roof { joined_by, .. }) => joined_by,
+            _ => &[],
+        }
+    }
+
+    /// [`Element::joined_by`], to change: none for an element Join Geometry doesn't join.
+    pub fn joined_by_mut(&mut self) -> Option<&mut Vec<Guid>> {
+        match self {
+            Element::Wall(Wall { joined_by, .. })
+            | Element::Floor(Floor { joined_by, .. })
+            | Element::Ceiling(Ceiling { joined_by, .. })
+            | Element::Roof(Roof { joined_by, .. }) => Some(joined_by),
+            _ => None,
+        }
+    }
+
+    /// Whether Join Geometry joins it: a wall, a floor, a roof or a ceiling.
+    pub fn joinable(&self) -> bool {
+        matches!(self, Element::Wall(_) | Element::Floor(_) | Element::Ceiling(_) | Element::Roof(_))
     }
 
     /// Its own values of parameters, to change.
@@ -4355,6 +4410,8 @@ impl Model {
                 }
             }
         }
+        // 20 to 21 (Cut Geometry's `void_cuts` and Join Geometry's `joined_by`) has no step: 0.12's files of 20 hold neither,
+        // and a file of 20 with `void_cuts` (the Family Editor's, before this step) reads them as written.
         self.format = FORMAT;
     }
 
@@ -5387,6 +5444,7 @@ impl Model {
             sketch: Vec::new(),
             shape: r.shape.clone(),
             params: BTreeMap::new(),
+            joined_by: Vec::new(),
         }
     }
 
@@ -7135,7 +7193,7 @@ impl Model {
     }
 
     /// What is amiss in the model but doesn't make it wrong: soft issues, said so they can be fixed. `check` refuses a model;
-    /// these it accepts. A room the walls no longer close; a component off the face it is hosted on; a family of lighting, outlets or switches in use that holds no
+    /// these it accepts. A room the walls no longer close; two elements Join Geometry joined that no longer meet; a component off the face it is hosted on; a family of lighting, outlets or switches in use that holds no
     /// connector, so its devices count as a load of zero (a family of plan symbols alone, a symbol set's, is no device).
     pub fn warnings(&self) -> Vec<String> {
         let rooms = crate::rooms::Rooms::new(self);
@@ -7185,6 +7243,21 @@ impl Model {
                  face, or put it on another work plane with `edit_work_plane`"
             )
         }));
+        // A pair Join Geometry joined that an edit has parted (T23): kept, cutting nothing. Walls found through one index.
+        let index = self.elements.values().any(|e| !e.joined_by().is_empty()).then(|| crate::walls::Index::new(self));
+        for (id, e) in self.elements.iter() {
+            for g in e.joined_by() {
+                let Some(by) = self.elements.id(*g) else { continue };
+                if !crate::view3d::meets(self, by, *id, index.as_ref()) {
+                    out.push(format!(
+                        "{} and {} are joined but no longer meet, so the join cuts nothing: move them back together, or take the \
+                         join off with `unjoin_geometry`",
+                        self.shown(by),
+                        self.shown(*id)
+                    ));
+                }
+            }
+        }
         out.extend(crate::electrical::circuit_warnings(self));
         out
     }
@@ -7716,6 +7789,37 @@ impl Model {
             project_info,
         } = t;
         let who = format!("{} {id}", e.category());
+        // What Join Geometry cuts it with (T23): walls, floors, roofs and ceilings, never itself, none twice, none it cuts back;
+        // no more than `MAX_JOINS`. A pair an edit parted is no error: it cuts nothing, and `warnings` says so.
+        let joins = e.joined_by();
+        if joins.len() > MAX_JOINS {
+            return Err(format!("{who}: joined_by names {} elements; no more than {MAX_JOINS} may cut one", joins.len()));
+        }
+        if !joins.is_empty() {
+            let me = self.elements.guid(id);
+            for (i, g) in joins.iter().enumerate() {
+                let Some(other) = self.elements.get(*g).filter(|o| o.joinable()) else {
+                    return Err(format!(
+                        "{who}: joined_by names {}, which isn't a wall, a floor, a roof or a ceiling; unjoin_geometry takes it off",
+                        self.shown(*g)
+                    ));
+                };
+                if Some(*g) == me {
+                    return Err(format!("{who}: joined_by names itself"));
+                }
+                if joins[..i].contains(g) {
+                    return Err(format!("{who}: joined_by names {} twice", self.shown(*g)));
+                }
+                // The other's list is read only when it's within the cap (its own check refuses it otherwise), so a file's
+                // long lists cost no more than MAX_JOINS² for each element.
+                if other.joined_by().len() <= MAX_JOINS && me.is_some_and(|me| other.joined_by().contains(&me)) {
+                    return Err(format!(
+                        "{who} and {} are joined both ways round, each cutting the other: unjoin_geometry, then join them again",
+                        self.shown(*g)
+                    ));
+                }
+            }
+        }
         let level_ok = |l: Guid| self.level(l).map(|_| ()).ok_or(format!("{who}: level {} doesn't exist", self.shown(l)));
         // A view annotation is drawn in: a plan, a section or an elevation, or with `sheets`, a sheet.
         let view_ok = |v: Guid, sheets: bool| match self.elements.get(v) {
@@ -9475,6 +9579,7 @@ mod tests {
             attach_base: None,
             room_bounding: true,
             join: true,
+            joined_by: Vec::new(),
         })
     }
 

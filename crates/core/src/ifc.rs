@@ -101,6 +101,7 @@ const MAP: u64 = 86;
 const MAP_DEFINES: u64 = 87;
 const CRS: u64 = 88;
 const CRS_DEFINES: u64 = 89;
+const JOINS: u64 = 90;
 
 /// Site footprint metadata in curve order: Names, Guids and Levels (native GUIDs).
 pub const PROPERTY_LINES: &str = "BIMCraft_PropertyLines";
@@ -2442,6 +2443,16 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
                 w.guid(SPACES, m.elements.id(*level).unwrap_or_default()),
                 refs(items)
             ));
+        }
+    }
+    // Join Geometry (T23): each pair said to be joined, the element that cuts relating, the one it cuts related. Neither body
+    // is clipped: each goes out whole, for IfcRelConnectsElements connects two elements and changes neither's shape.
+    for (&id, e) in &m.elements {
+        let Some(&cut) = products.get(&id) else { continue };
+        for g in e.joined_by() {
+            let Some(&cutter) = m.elements.id(*g).and_then(|by| products.get(&by)) else { continue };
+            let key = mix(m.elements.id(*g).unwrap_or_default()) ^ id;
+            w.add(format!("IFCRELCONNECTSELEMENTS({},$,$,$,$,#{cutter},#{cut})", w.guid(JOINS, key)));
         }
     }
     // Each element's values of the project's parameters: in the set its parameter names for its category, else a property set

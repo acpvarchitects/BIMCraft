@@ -2709,6 +2709,11 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"target": 100002, "cutter": 100002}),
         json!({"target": 100002, "cutter": u64::MAX, "extra": []}),
         json!({"target": "x", "cutter": 1e300}),
+        // Join Geometry's pair: an element joined to itself, to nothing, to what isn't an element.
+        json!({"first": 100002, "second": 100002}),
+        json!({"first": 100002, "second": u64::MAX, "extra": []}),
+        json!({"first": "x", "second": 1e300}),
+        json!({"first": 100002, "second": 100003}),
     ];
     let mut base = Session::new();
     house(&mut base);
@@ -6528,21 +6533,22 @@ fn a_file_from_before_guids_opens_with_guids_and_six_digit_ids() {
 }
 
 #[test]
-fn a_file_of_the_family_editors_unreleased_formats_21_to_32_is_refused_as_newer() {
+fn a_file_of_the_family_editors_unreleased_formats_22_to_32_is_refused_as_newer() {
     // The Family Editor took the format from 17 to 32 a step at a time before it was released, and none of that was. 0.12's
-    // format is 20, which every change since 0.11 shares, so a file of those builds stamped 20 opens as one of 0.12's, and 21
-    // to 32 are refused as any newer file is.
+    // format is 20, which every change since 0.11 shares, so a file of those builds stamped 20 opens as one of 0.12's. No
+    // file of theirs stamped 21 to 32 is kept, so 21 is the step after 20 (what cuts what, T23), and 22 to 32 are refused as
+    // any newer file is.
     use crate::model::{FORMAT, Model};
-    assert_eq!(FORMAT, 20);
+    assert_eq!(FORMAT, 21);
     let mut s = Session::new();
     house(&mut s);
     let v = serde_json::to_value(&*s.model).unwrap();
-    for old in 21..=32 {
+    for old in 22..=32 {
         let mut was = v.clone();
         was["format"] = json!(old);
         let e = Model::read(&was.to_string()).unwrap_err();
         assert!(
-            e.contains("saved by a newer BIMCraft") && e.contains(&format!("file format {old}")) && e.contains("reads up to 20"),
+            e.contains("saved by a newer BIMCraft") && e.contains(&format!("file format {old}")) && e.contains("reads up to 21"),
             "{old}: {e}"
         );
     }
@@ -6555,7 +6561,7 @@ fn a_project_is_saved_in_the_current_format_and_one_of_format_4_up_opens_as_it_i
     // repeating details, line and fill styles); 7 its CAD drawings and the imports that place them; 8 text types; 9 graphic line patterns; 10 dimensions to points and linear ones; 11 and 12 the project languages Swedish, Czech and French, and Dutch;
     // 13 floors' and flat roofs' shapes; 14 the categories of family components, which the starter view templates name; 15 a roof's slope for each
     // edge and a wall's top offset; 16 dimensions in 3D views and the locks Align leaves; 17 multi-category schedules and Italian projects; 18 a wall or a run
-    // that refuses to join, circuits and panel schedules; 19 a sheet list. Nothing in a file of 4
+    // that refuses to join, circuits and panel schedules; 19 a sheet list; 20 rooms' types; 21 what cuts what (T23). Nothing in a file of 4
     // to 7 that holds no notes changes.
     let mut s = Session::new();
     let empty = serde_json::to_value(&*s.model).unwrap();
