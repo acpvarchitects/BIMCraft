@@ -133,11 +133,11 @@ fn what_a_view_hides_is_no_snap_target() {
     click(&mut h, 1620.0, 700.0);
     let p = editor(&h).planes.last().unwrap().clone();
     assert!(near(p.start, [1020.0, 400.0]), "Edge hidden, nothing to snap to: {:?}", p.start);
-    // A model line hidden for now likewise.
+    // A model line the view leaves out for now likewise: box A isolated (HI), which the view draws alone.
     let mut h = plan();
-    let line = model_line(&mut h, [1700.0, -1000.0], [1700.0, 1000.0]);
-    pick(&mut h, &[Picked::ModelLine(line)]);
-    shortcut(&mut h, "HH");
+    model_line(&mut h, [1700.0, -1000.0], [1700.0, 1000.0]);
+    pick(&mut h, &[Picked::Form(0)]);
+    shortcut(&mut h, "HI");
     shortcut(&mut h, "RP");
     click(&mut h, 1720.0, 300.0);
     click(&mut h, 2300.0, 900.0);
