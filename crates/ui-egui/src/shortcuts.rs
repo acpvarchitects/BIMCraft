@@ -516,6 +516,11 @@ impl BimApp {
                     t("Shortcuts are typed as two plain letters, as in Revit: W, then A for Wall.")
                 };
                 ui.label(RichText::new(how).color(pal().muted));
+                if self.shortcuts_need_ctrl {
+                    // Ctrl+C, Ctrl+X and Ctrl+V are the clipboard's, never letters: CO, MV, TX… can't be typed with Ctrl.
+                    let clip = t("Ctrl+C, Ctrl+X and Ctrl+V stay copy, cut and paste: rebind a shortcut that has C, X or V.");
+                    ui.label(RichText::new(clip).color(pal().muted));
+                }
                 ui.add_space(4.0);
 
                 // Controls toolbar: Search, Load File, Add Shortcut, Restore Defaults
