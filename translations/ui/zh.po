@@ -249,7 +249,7 @@ msgstr "过滤器在“视图”>“过滤器”中创建"
 msgid "A folder. One that isn't absolute is beside the project's file."
 msgstr ""
 
-#: crates/ui-egui/src/editor/views.rs:1451
+#: crates/ui-egui/src/editor/views.rs:1468
 msgid "A form made of a mesh has no faces Align can take: pick a reference plane, an extrusion's end or a line of a form."
 msgstr ""
 
@@ -785,7 +785,7 @@ msgstr ""
 msgid "Align lines up with what a plan shows: in the 3D view, drag a line's end or draw it again."
 msgstr "对齐依据平面视图中显示的内容：在三维视图中，请拖动线的端点或重新绘制。"
 
-#: crates/ui-egui/src/editor/views.rs:1453
+#: crates/ui-egui/src/editor/views.rs:1470
 msgid "Align takes a form's straight edge, a side the view sees edge on, or its end: click on its outline."
 msgstr ""
 
@@ -9928,7 +9928,7 @@ msgstr "在视图中拾取参照平面、参照线或形状的边。"
 msgid "Pick a reference plane, a reference line or a line, then a line of the sketch."
 msgstr "拾取参照平面、参照线或线，再拾取一条草图线。"
 
-#: crates/ui-egui/src/editor/views.rs:1454
+#: crates/ui-egui/src/editor/views.rs:1471
 msgid "Pick a reference plane, an extrusion's end or a line of a form."
 msgstr "拾取参照平面、拉伸的端面或形状的线。"
 
@@ -10113,7 +10113,7 @@ msgid "Pick three points: after OK, click three points on the model, each snappi
 msgstr "拾取三个点：单击“确定”后，在模型上单击三个点，每个点捕捉到指针附近的角点"
 
 #: crates/ui-egui/src/editor/dimensions.rs:1439
-#: crates/ui-egui/src/editor/views.rs:1433
+#: crates/ui-egui/src/editor/views.rs:1450
 msgid "Pick two references or more, then click where the dimension goes."
 msgstr "拾取两个或更多参照，然后单击尺寸标注的放置位置。"
 
@@ -13723,7 +13723,7 @@ msgstr "已达到可保存的预设数量上限：请先删除一个"
 msgid "That is no IP address: 0.0.0.0 listens on all of this machine's"
 msgstr "这不是 IP 地址：0.0.0.0 会监听本机的所有地址"
 
-#: crates/ui-egui/src/editor/views.rs:1444
+#: crates/ui-egui/src/editor/views.rs:1461
 msgid "That is the reference: pick what moves onto it."
 msgstr ""
 
@@ -14168,6 +14168,10 @@ msgstr "顶部"
 msgid "The topic is about the {} elements selected."
 msgstr ""
 
+#: crates/ui-egui/src/editor/views.rs:1410
+msgid "The two points are the same: pick the second elsewhere."
+msgstr ""
+
 #: crates/ui-egui/src/sketch3d.rs:246
 msgid "The view is edge-on to the sketch's plane: turn it to pick on it."
 msgstr "视图与草图平面平行：请旋转视图后再在其上拾取。"
@@ -14180,7 +14184,7 @@ msgstr "视图与尺寸标注方向一致：请先旋转视图，再放置尺寸
 msgid "The view sees it end-on: offset it in a view that sees its trace."
 msgstr ""
 
-#: crates/ui-egui/src/editor/views.rs:1400
+#: crates/ui-egui/src/editor/views.rs:1417
 msgid "The view sees its work plane edge on: set a work plane it sees flat (Work Plane > Set)."
 msgstr ""
 
