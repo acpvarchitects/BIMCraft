@@ -1059,7 +1059,7 @@ fn ks_lists_every_shortcut_and_every_one_it_lists_works() {
     }
     use crate::lang::Lang;
     // Names the catalogs don't have yet: KS shows them in English until a translator gives them, as any missing translation.
-    let awaiting = ["Graphic Display Options", "Pin", "Unpin", "Co-Work", "Cut Geometry", "Uncut Geometry"];
+    let awaiting = ["Graphic Display Options", "Pin", "Unpin", "Co-Work", "Cut Geometry", "Uncut Geometry", "Join Geometry"];
     for (_, name) in crate::shortcuts().into_iter().filter(|(_, name)| !awaiting.contains(name)) {
         for l in [Lang::Portuguese, Lang::Spanish] {
             assert!(crate::lang::translated_in(l, name).is_some(), "{name} in {l:?}");
@@ -2142,8 +2142,8 @@ fn the_elevation_tool_looks_at_the_wall_clicked_and_turns_round_when_dragged_pas
     let mut h = app(BOX);
     press(&mut h, "View");
     press(&mut h, "Elevation");
-    // Beside the building there is nothing to look at: no elevation.
-    click(&mut h, P2(4000.0, 9000.0));
+    // Beside the building there is nothing to look at: no elevation. (A point on the canvas: 9000 north is up in the ribbon.)
+    click(&mut h, P2(4000.0, 7500.0));
     assert!(ids(&h, "elevation").is_empty());
     // The north wall, clicked on its outer half: the mark stands 1.5 m outside its centre line, looking south at it.
     click(&mut h, P2(4000.0, 6050.0));
@@ -6301,6 +6301,7 @@ mod gpu;
 mod graphics;
 mod groups;
 mod inspector;
+mod join_geometry;
 mod korean;
 mod light_canvas;
 mod lines;

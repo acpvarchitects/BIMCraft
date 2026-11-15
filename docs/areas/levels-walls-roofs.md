@@ -45,6 +45,23 @@ each pair, the cutter relating, and both bodies whole: that relation clips neith
 round its doors' and windows' rectangles, so what it cuts keeps its own material inside those openings; and `join_voids` doesn't look at phases
 and design options, as Cut Geometry's `void_cuts` doesn't.
 
+In the desktop, Modify > Geometry's Join button, beside Cut, drops down Join Geometry (JO), Switch Join Order and Unjoin
+Geometry (`Tool::JoinGeometry`, its `JoinMode` the command; one button, as Cut is, with the icon of the one in hand; its
+name is translated as geometry's, `msg!("geometry", "Join")`, since Co-Work joins a session by the same word). In a plan,
+pick one of the pair, then the other: only a wall, a floor, a roof or a ceiling is taken, and not the first again. With Join
+the first picked cuts the second; Switch and Unjoin take the pair either way round. Tab steps through what is under the
+cursor (`join_under` in `canvas.rs`), and the second pick takes another kind than the first before its own: a floor drawn
+on its walls' centre lines has a wall at every edge, so the wall is picked first there, the floor second at the same place,
+and Tab picks the floor first. The first stays lit, and is its plan's: Esc lets go of it and then of the tool, and so does
+another plan, or an undo or a delete that takes the element (Cut Geometry's wall too; `first_in`). After each pair the tool
+asks for the next, and the status bar says what was done ("Joined: Wall 100002 cuts Floor 100003."), since a plan shows
+nothing of a join. A refusal says there what to do at the window (`canvas::join_refusal`): two that don't meet, a pair
+joined already or not joined, a loop of joins named, a list that is full. The prompt names what the plan shows: walls,
+floors and roofs in a floor plan, walls and ceilings in a ceiling plan. Open: the picks are a plan's, so a floor and a
+ceiling, which no plan shows together, can't be joined in the desktop until the 3D view or a section picks for it (a
+script, or an agent, joins them with `join_geometry`); and a section and a plan still draw the line between two joined
+elements of one material.
+
 At a square corner of two compound walls, one core runs through and the other stops on it (`walls/compound.rs`). It takes
 two walls and nothing else joined there, ending at the same point square to each other, straight, on their centre lines,
 unattached, with the same base and top; each type three layers, finish, structure and finish, each with a material and a
