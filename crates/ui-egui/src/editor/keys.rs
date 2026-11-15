@@ -13,7 +13,7 @@ use bimcraft_core::family::DimKind;
 /// Revit's default keys for the family editor's commands, each to the name of its action in `shortcuts::ACTIONS`. A key the
 /// project has too means the same command here (`the_family_table_gives_no_project_key_another_meaning`); the others (DD, AN,
 /// WP, WW, FA, AA, PL, FG, CG, ZX, FE-3's ZR, ZZ, ZO, ZV, ZP, ZC, FE-8's RE, FE-20's FF, PR, ID, SV, BF, and FE-18's VR) are the family's
-/// alone. Trim/Extend Single and Multiple Elements have no key, as in Revit: Keyboard Shortcuts gives them one; nor has
+/// alone; FE-21's snap overrides are the project's. Trim/Extend Single and Multiple Elements have no key, as in Revit: Keyboard Shortcuts gives them one; nor has
 /// Drag Elements on Selection ([`FAMILY_KEYLESS`]).
 pub(crate) const FAMILY_SHORTCUTS: &[(&str, &str)] = &[
     ("MD", "Modify"),
@@ -89,6 +89,18 @@ pub(crate) const FAMILY_SHORTCUTS: &[(&str, &str)] = &[
     ("VU", "Unhide Category"),
     ("RH", "Reveal Hidden Elements"),
     ("EO", "Override Graphics by Element"),
+    // FE-21: the snap overrides, the project's, for the next point picked (`BimApp::snap_override`). SX and SW are no keys here:
+    // a family has no points and no work plane grid to snap to.
+    ("SE", "Snap to Endpoints"),
+    ("SM", "Snap to Midpoints"),
+    ("SI", "Snap to Intersections"),
+    ("SC", "Snap to Centres"),
+    ("SP", "Snap to Perpendiculars"),
+    ("SQ", "Snap to Quadrants"),
+    ("ST", "Snap to Tangents"),
+    ("SN", "Snap to Nearest"),
+    ("SO", "Snaps Off"),
+    ("SS", "Turn Snap Override Off"),
 ];
 
 /// The family document's commands Revit gives no key: Keyboard Shortcuts lists them, and a key made there works on a family
@@ -235,6 +247,10 @@ impl BimApp {
     /// `action` (a name of `shortcuts::ACTIONS`) in the active family document: what its ribbon button does there, where the
     /// button is enabled, else nothing. Whether the family has the command at all.
     pub(crate) fn family_action(&mut self, action: &str) -> bool {
+        // FE-21: the snap overrides, the window's as the project's, which the document's views and sketch read (`snaps_now`).
+        if self.snap_override(action) {
+            return true;
+        }
         // What the window does for the document: its palettes, dialogs and the view's Temporary Hide/Isolate.
         let asked = match action {
             "Properties" => {
