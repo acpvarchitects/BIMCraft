@@ -45,6 +45,14 @@ each pair, the cutter relating, and both bodies whole: that relation clips neith
 round its doors' and windows' rectangles, so what it cuts keeps its own material inside those openings; and `join_voids` doesn't look at phases
 and design options, as Cut Geometry's `void_cuts` doesn't.
 
+In the desktop, Modify > Geometry's Join button, beside Cut, drops down Join Geometry (JO), Switch Join Order and Unjoin
+Geometry (`Tool::JoinGeometry`, its `JoinMode` the command; one button, as Cut is, with the icon of the one in hand). In a
+plan, pick one of the pair, then the other: only a wall, a floor, a roof or a ceiling is taken, and not the first again. With
+Join the first picked cuts the second; Switch and Unjoin take the pair either way round. The first stays lit, Esc lets go of
+it and then of the tool, and after each pair the tool asks for the next. A refusal says in the status bar what to do at the
+window (`canvas::join_refusal`): two that don't meet, a pair joined already or not joined, a loop of joins, a list that is
+full. Open: the picks are a plan's, so a floor is picked by its edge, and the 3D view and sections don't pick for it yet.
+
 At a square corner of two compound walls, one core runs through and the other stops on it (`walls/compound.rs`). It takes
 two walls and nothing else joined there, ending at the same point square to each other, straight, on their centre lines,
 unattached, with the same base and top; each type three layers, finish, structure and finish, each with a material and a

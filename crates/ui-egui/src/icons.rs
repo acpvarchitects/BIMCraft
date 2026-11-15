@@ -65,6 +65,9 @@ icon_names! {
     Split,
     CutGeometry,
     UncutGeometry,
+    JoinGeometry,
+    SwitchJoinOrder,
+    UnjoinGeometry,
     Dimension,
     Tag,
     TagAll,
@@ -648,6 +651,32 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             // The block whole again, the box lifted clear of it.
             g.closed(&[(3.0, 11.0), (21.0, 11.0), (21.0, 21.0), (3.0, 21.0)]);
             g.closed(&[(9.0, 2.0), (15.0, 2.0), (15.0, 7.0), (9.0, 7.0)]);
+        }
+        Icon::JoinGeometry | Icon::SwitchJoinOrder | Icon::UnjoinGeometry => {
+            // An upright block through a level one, drawn as one outline. Joined, the upright one runs whole through the
+            // crossing and the level one stops at it; switched, the level one runs whole; unjoined, each is drawn whole.
+            g.closed(&[
+                (9.0, 3.0),
+                (15.0, 3.0),
+                (15.0, 10.0),
+                (21.0, 10.0),
+                (21.0, 16.0),
+                (15.0, 16.0),
+                (15.0, 21.0),
+                (9.0, 21.0),
+                (9.0, 16.0),
+                (3.0, 16.0),
+                (3.0, 10.0),
+                (9.0, 10.0),
+            ]);
+            if icon != Icon::SwitchJoinOrder {
+                g.line(&[(9.0, 10.0), (9.0, 16.0)]);
+                g.line(&[(15.0, 10.0), (15.0, 16.0)]);
+            }
+            if icon != Icon::JoinGeometry {
+                g.line(&[(9.0, 10.0), (15.0, 10.0)]);
+                g.line(&[(9.0, 16.0), (15.0, 16.0)]);
+            }
         }
         Icon::Split => {
             // Two separated segments with a narrow cut mark.

@@ -1630,6 +1630,10 @@ impl BimApp {
             Tool::CutGeometry { wall: Some(_), .. } => {
                 bimcraft_core::project_geometry::pick(&cut_candidates, view.mm(q), f64::from(PICK) / view.scale)
             }
+            // Join Geometry and its two: one of what joins, then another.
+            Tool::JoinGeometry { first, .. } => {
+                d.pick_all(q, PICK).into_iter().find(|id| Some(*id) != *first && model.elements.get(id).is_some_and(Element::joinable))
+            }
             Tool::Trim(_) | Tool::Offset => {
                 d.pick_all(q, PICK).into_iter().find(|id| matches!(model.elements.get(id), Some(Element::Wall(_) | Element::DetailLine(_))))
             }
@@ -1828,8 +1832,10 @@ impl BimApp {
         // The floor or roof being shaped is drawn as it is, not in the selection's colour: edit mode's marks are what's lit.
         let shaped = self.shaping();
         let mut marked: Vec<Id> = self.selection.iter().copied().filter(|id| Some(*id) != shaped).collect();
-        if let Tool::Trim(Some((first, _))) | Tool::TrimTo { boundary: Some(first), .. } | Tool::CutGeometry { wall: Some(first), .. } =
-            self.tool
+        if let Tool::Trim(Some((first, _)))
+        | Tool::TrimTo { boundary: Some(first), .. }
+        | Tool::CutGeometry { wall: Some(first), .. }
+        | Tool::JoinGeometry { first: Some(first), .. } = self.tool
         {
             marked.push(first);
         }
@@ -2405,6 +2411,16 @@ impl BimApp {
                         self.status.text = cut_refusal(&self.status.text, &family);
                     }
                     self.tool = Tool::CutGeometry { uncut, wall: None };
+                }
+                _ => {}
+            },
+            &Tool::JoinGeometry { mode, first } => match (first, hovered) {
+                (None, Some(a)) => self.tool = Tool::JoinGeometry { mode, first: Some(a) },
+                (Some(a), Some(b)) => {
+                    if self.run(mode.command(), json!({"first": m.guid(a), "second": m.guid(b)})).is_none() {
+                        self.status.text = join_refusal(&self.status.text, m);
+                    }
+                    self.tool = Tool::JoinGeometry { mode, first: None };
                 }
                 _ => {}
             },
@@ -5162,6 +5178,35 @@ pub(crate) fn snap_mark(p: &Painter, at: Pos2, from: Option<Pos2>, kind: Kind, n
     }
     if !matches!(kind, Kind::Free | Kind::Angle) {
         tag(p, at + vec2(12.0, 14.0), Align2::LEFT_TOP, name);
+    }
+}
+
+/// What Join Geometry's, Switch Join Order's or Unjoin Geometry's refusal `error` (the core's, written for agents) says to
+/// someone at the window, about the model `m`; any other error as it is.
+fn join_refusal(error: &str, m: &Model) -> String {
+    if error.contains("don't meet") {
+        t("These two don't meet. Move one so they overlap or share a face, then join them.").to_string()
+    } else if error.contains("already joined") {
+        t("These two are joined already. Switch Join Order changes which cuts which.").to_string()
+    } else if error.contains("aren't joined") {
+        t("These two aren't joined.").to_string()
+    } else if let Some((chain, _)) = error.split_once("would close a loop of joins (").and_then(|(_, rest)| rest.split_once(')')) {
+        // The loop as the core names it, each cutting the next round to the first, with what each is before its id.
+        let named: Vec<String> = chain
+            .split(" cuts ")
+            .map(|s| match s.parse::<Id>().ok().and_then(|id| m.elements.get(id).map(|e| (id, e))) {
+                Some((id, e)) => format!("{} {id}", crate::lang::category(e.category(), false)),
+                None => s.to_string(),
+            })
+            .collect();
+        tf(
+            "That would close a loop of joins, each cutting the next: {}. Join these two the other way round, or unjoin one of the loop first.",
+            &[&named.join(" → ")],
+        )
+    } else if error.contains("joined elements already") {
+        t("The one to cut is cut by as many joined elements as one may be. Unjoin one of them first.").to_string()
+    } else {
+        error.to_string()
     }
 }
 
