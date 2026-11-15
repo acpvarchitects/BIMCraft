@@ -1,5 +1,7 @@
-//! The ribbon's panels: each panel's tools over its name, and the name a button that lists them all. A tab too wide for the window makes room from the right: a panel hands its last tools over to its list,
-//! and when one tool isn't room enough it folds to one button that lists them; what still doesn't fit scrolls sideways.
+//! The ribbon's panels: each panel's tools over its name. A tab too wide for the window makes room from the right: a panel
+//! hands its last tools over to its list, its name then a button that lists them all, and when one tool isn't room enough
+//! it folds to one button that lists them; what still doesn't fit scrolls sideways. A panel with every tool in sight has no
+//! list: its name is its name and no more (UI-5).
 
 use std::cell::{Cell, RefCell};
 
@@ -264,7 +266,7 @@ pub(crate) fn full_height(ui: &mut Ui) {
     }
 }
 
-/// A ribbon panel: its tools over its name, which lists them; or, folded, one button that does.
+/// A ribbon panel: its tools over its name, which lists them while some are handed over; or, folded, one button that does.
 pub(crate) fn panel(ui: &mut Ui, title: &str, mut add: impl FnMut(&mut Ui)) {
     let (kept, yields) = (KEEP.with(Cell::take), YIELD.with(Cell::take));
     // A panel the project's scale leaves out: not drawn, on the ribbon or in the Tools palette.
@@ -311,7 +313,21 @@ pub(crate) fn panel(ui: &mut Ui, title: &str, mut add: impl FnMut(&mut Ui)) {
             });
             let font = FontId::proportional(11.5);
             let text = ui.painter().layout_no_wrap(name.to_string(), font.clone(), pal().muted).size().x;
-            let (r, title_row) = ui.allocate_exact_size(vec2(row.response.rect.width().max(text + 24.0), 16.0), Sense::click());
+            // As wide either way, so that the tab's fit doesn't shift when a panel's name gains or loses its caret.
+            let size = vec2(row.response.rect.width().max(text + 24.0), 16.0);
+            // Tools handed over to its list: the name is the button that lists them all. With every tool in sight a list
+            // would only say again what stands over it, so the name is painted, and is no button (UI-5).
+            if TOOLS.with(Cell::get).0 <= shows {
+                let (r, _) = ui.allocate_exact_size(size, Sense::hover());
+                ui.painter().text(r.center(), Align2::CENTER_CENTER, name, font, pal().muted);
+                OPEN_LIST.with(Cell::take);
+                #[cfg(test)]
+                ui.ctx().data_mut(|d| d.insert_temp(name_id(title), r));
+                return;
+            }
+            let (r, title_row) = ui.allocate_exact_size(size, Sense::click());
+            #[cfg(test)]
+            ui.ctx().data_mut(|d| d.insert_temp(name_id(title), r));
             if title_row.hovered() {
                 ui.painter().rect_filled(Rect::from_center_size(r.center(), vec2(text + 22.0, 16.0)), 4.0, pal().hover_fill);
             }
@@ -339,6 +355,18 @@ pub(crate) fn panel(ui: &mut Ui, title: &str, mut add: impl FnMut(&mut Ui)) {
     let (rule, _) = ui.allocate_exact_size(vec2(RULE, ui.available_height().max(70.0)), Sense::hover());
     ui.painter().vline(rule.center().x, rule.y_range().shrink(4.0), Stroke::new(1.0, pal().border));
     END.with(|e| e.set(rule.right()));
+}
+
+/// Where the name of the panel titled `title` was last drawn under its tools, a button or not: a painted name is no widget
+/// a test could ask for.
+#[cfg(test)]
+pub(crate) fn name_rect(ctx: &egui::Context, title: &str) -> Option<Rect> {
+    ctx.data(|d| d.get_temp::<Rect>(name_id(title)))
+}
+
+#[cfg(test)]
+fn name_id(title: &str) -> Id {
+    Id::new(("ribbon-panel-name", title))
 }
 
 /// Opens the list under `r`, the name of the panel just drawn, when a tool of it asked for its choices and had no button to show them.
