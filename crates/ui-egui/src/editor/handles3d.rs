@@ -8,11 +8,10 @@
 //! An arrow the view sees end-on (its way within about 75 degrees of the way the view looks) can't be dragged along: it isn't
 //! drawn, as a plan draws no handle on a side it sees flat. Revolves, sweeps and swept blends have no handles in any view:
 //! their shapes are their profiles' and paths', changed by sketching them again.
-use super::select_box::Picked;
+use super::handle_params::{Drive, Target};
 use super::shape_handles::ShapeHandle;
 use super::sketch::reader;
 use super::*;
-use bimcraft_core::family::Extent;
 use bimcraft_core::family::forms::FormKind;
 use bimcraft_core::family::handles as hs;
 use bimcraft_core::family::sketch::{FormCurve, FormLine};
@@ -40,6 +39,8 @@ pub(crate) struct Handle3d {
     pub(crate) way: [f64; 3],
     pub(crate) grab: Grab,
     pub(crate) blocked: Option<String>,
+    /// The parameters its drag goes through, where its place is theirs (`handle_params.rs`).
+    pub(crate) param: Option<Vec<String>>,
 }
 
 /// A handle held in {3D}: where the button went down, the points on screen one millimetre along the handle's way makes as the
@@ -93,35 +94,31 @@ impl FamilyEditor {
         let Ok(frame) = shown.frame(&flexed.host) else { return Vec::new() };
         let mut num = reader(&values);
         let (Ok(from), Ok(to)) = (num(&flexed.from), num(&flexed.to)) else { return Vec::new() };
-        let pinned = self.pinned_refusal(&[Picked::Form(i)]);
         let mut out = Vec::new();
+        // Tied to a parameter, a drag goes through it; a lock or EQ holding it, or the form pinned, no handle.
+        let drive = |target| match self.drive(&drawn, i, target) {
+            Drive::Free => Some((None, None)),
+            Drive::Param(names) => Some((None, Some(names))),
+            Drive::Refused(why) => Some((Some(why), None)),
+            Drive::Hidden => None,
+        };
         // The sides: an extrusion's at mid-depth, a Blend's base's at its base.
         let depth = if kind == FormKind::Extrusion { (from + to) / 2.0 } else { from };
         for h in hs::edge_handles(&flexed.sketch, &mut num) {
             let way: [f64; 3] = std::array::from_fn(|k| frame.x[k] * h.out.0 + frame.y[k] * h.out.1);
-            let blocked = pinned.clone().or_else(|| match form.sketch.get(h.line).map(|l| drawn.edge_held(form.guid, l.guid)) {
-                Some(Some(held)) => Some(super::shape_handles::held_said(&held, false)),
-                Some(None) => super::shape_handles::greyed(&form.sketch, h.line, h.out, &mut num),
-                None => Some(t("The profile can't take this: its lines would cross, overlap or no longer close.").to_string()),
-            });
+            let Some((blocked, param)) = drive(Target::Edge(h.line, h.out)) else { continue };
             let at = frame.point(h.at, depth);
-            out.push(Handle3d {
-                at,
-                way,
-                grab: Grab::Edge(ShapeHandle { at: h.at, way, line: h.line, out: h.out, blocked: blocked.clone() }),
-                blocked,
-            });
+            let edge = ShapeHandle { at: h.at, way, line: h.line, out: h.out, blocked: blocked.clone(), param: param.clone() };
+            out.push(Handle3d { at, way, grab: Grab::Edge(edge), blocked, param });
         }
         // The End and the Start, at the middle of the profile there (a Blend's top at its End).
         let base = middle(&flexed.sketch, &mut num);
         let top = if flexed.top.is_empty() { base } else { middle(&flexed.top, &mut num) };
-        let Some(ft) = self.forms.get(i) else { return out };
         for (end, at, mid) in [(false, from, base), (true, to, top)] {
             let Some(mid) = mid else { continue };
-            let (text, extent) = if end { (&ft.to, Extent::End) } else { (&ft.from, Extent::Start) };
-            let blocked = pinned.clone().or_else(|| self.end_blocked(Some(&drawn), form.guid, text, extent));
+            let Some((blocked, param)) = drive(Target::End(end)) else { continue };
             let k = if end { 1.0 } else { -1.0 };
-            out.push(Handle3d { at: frame.point(mid, at), way: frame.z.map(|z| z * k), grab: Grab::End(end), blocked });
+            out.push(Handle3d { at: frame.point(mid, at), way: frame.z.map(|z| z * k), grab: Grab::End(end), blocked, param });
         }
         out
     }
@@ -168,11 +165,28 @@ impl FamilyEditor {
                 match shown.and_then(|f| self.edge_drag(sh, (None, None, seen), &f)) {
                     Ok(d) => {
                         self.views.edge_drag = Some(d);
-                        drag.live = true;
-                        Ok(())
+                        // Through a parameter: its drag begun, else why none can move the side.
+                        let through = match (&sh.param, self.selected_form()) {
+                            (Some(names), Some(i)) => self.start_param_drag(i, Target::Edge(sh.line, sh.out), names),
+                            _ => Ok(()),
+                        };
+                        if through.is_err() {
+                            self.views.edge_drag = None;
+                        }
+                        drag.live = through.is_ok();
+                        through
                     }
                     Err(e) => Err(e),
                 }
+            }
+            (None, Grab::End(end)) if h.param.is_some() => {
+                let names = h.param.clone().unwrap_or_default();
+                let started = match self.selected_form() {
+                    Some(i) => self.start_param_drag(i, Target::End(*end), &names),
+                    None => Err(String::new()),
+                };
+                drag.live = started.is_ok();
+                started
             }
             (None, Grab::End(end)) => match self.selected_form().and_then(|i| self.forms.get(i)) {
                 Some(ft) => {
@@ -190,6 +204,7 @@ impl FamilyEditor {
     /// The handle held in {3D}, the pointer at `now`: the side or the end that far along its arrow, live; a refusal leaves the
     /// form as it was, saying why.
     pub(crate) fn drag_3d_to(&mut self, now: egui::Pos2) -> Result<(), String> {
+        let param = self.dragging_param();
         let Some(drag) = self.views.drag3d.as_mut().filter(|d| d.live) else { return Ok(()) };
         let n = drag.per_mm.length_sq();
         if n <= 1e-12 {
@@ -200,6 +215,10 @@ impl FamilyEditor {
             return Ok(());
         }
         drag.last = d;
+        // Through a parameter: the value that puts the side or end there.
+        if param {
+            return self.param_to(d);
+        }
         match drag.end.clone() {
             None => {
                 let Some(way) = self.views.edge_drag.as_ref().map(super::shape_handles::EdgeDrag::way) else { return Ok(()) };
@@ -225,6 +244,7 @@ impl FamilyEditor {
     pub(crate) fn let_go_3d(&mut self) {
         if self.views.drag3d.take().is_some() {
             self.views.edge_drag = None;
+            self.let_param_go();
         }
     }
 
@@ -257,4 +277,18 @@ impl FamilyEditor {
             d.seen = pass;
         }
     }
+}
+
+/// A handle's arrow at `centre` pointing `way` (on screen, a unit): blue where it can be dragged, grey where it can't, and lit
+/// (larger, the hover colour) under the pointer that would take it.
+pub(crate) fn paint_arrow(painter: &egui::Painter, centre: egui::Pos2, way: egui::Vec2, free: bool, lit: bool) {
+    let k = if lit { 1.4 } else { 1.0 };
+    let side = egui::vec2(-way.y, way.x);
+    let tip = vec![centre + way * ARROW * k, centre + side * 6.0 * k, centre - side * 6.0 * k];
+    let colour = match (free, lit) {
+        (true, true) => crate::style::canvas_pal().hover,
+        (true, false) => super::views::PICKED,
+        (false, _) => pal().muted,
+    };
+    painter.add(egui::Shape::convex_polygon(tip, colour, egui::Stroke::new(1.0, Color32::WHITE)));
 }

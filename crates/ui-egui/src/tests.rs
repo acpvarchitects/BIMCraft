@@ -7363,6 +7363,7 @@ mod family_drag_move;
 mod family_draw_snaps;
 mod family_edges_not_hull;
 mod family_exit;
+mod family_handle_params;
 mod family_handles_3d;
 mod family_hide_override;
 mod family_keys;

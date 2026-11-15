@@ -1,7 +1,7 @@
 //! FE-25: a selected form's shape handles, dragged as a mouse drags them (the button down on the arrow, several frames of
 //! moves with it held, then up) on a form just sketched in a new family: each side in plan, Extrusion End in an elevation, and
 //! in {3D} with the default camera its sides and its End and Start, a blend's base. A greyed handle refuses saying why, the view
-//! not turning; Escape mid-drag puts the form back; a drag is one step Undo takes back. A sweep has no handles.
+//! not turning (`family_handle_params.rs`); Escape mid-drag puts the form back; a drag is one step Undo takes back. A sweep has no handles.
 use super::family_views::{editor, view};
 use super::*;
 use bimcraft_core::family::forms::FormKind;
@@ -254,29 +254,6 @@ fn a_sweep_has_no_handles_in_plan_or_3d() {
     h.run();
     assert_eq!(editor(&h).selected_form(), Some(1));
     assert!(editor(&h).views.handles3d_shown.is_empty());
-}
-
-#[test]
-fn in_3d_a_greyed_handle_refuses_saying_why_and_the_view_stays() {
-    let mut h = in_3d("Extrusion");
-    // The starter box: its sides are Width's and Depth's, its End a formula's.
-    h.state_mut().active_family_mut().unwrap().select_form(0);
-    h.run();
-    h.run();
-    let shown = editor(&h).views.handles3d_shown.clone();
-    // Its Start (0) is free; the sides and the End are greyed.
-    assert_eq!(shown.iter().filter(|s| s.1.blocked.is_some()).count(), 5, "{shown:?}");
-    let shown: Vec<_> = shown.into_iter().filter(|s| s.1.blocked.is_some()).collect();
-    let before = editor(&h).draft_family().unwrap().forms[0].clone();
-    let steps = editor(&h).steps();
-    let camera = editor(&h).orbit.camera;
-    let (a, hd) = shown[0].clone();
-    let b = a + (screen3(&h, [hd.at[0] + hd.way[0] * 300.0, hd.at[1] + hd.way[1] * 300.0, hd.at[2] + hd.way[2] * 300.0]) - a);
-    mouse_drag(&mut h, a, b);
-    assert!(h.state().status.error && status(&h).contains("Family Types"), "{}", status(&h));
-    assert_eq!(editor(&h).draft_family().unwrap().forms[0], before);
-    assert_eq!(editor(&h).orbit.camera.map(|c| (c.azimuth, c.elevation)), camera.map(|c| (c.azimuth, c.elevation)), "the view didn't turn");
-    assert_eq!(editor(&h).steps(), steps, "no step");
 }
 
 #[test]

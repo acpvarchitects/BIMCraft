@@ -1174,8 +1174,8 @@ the draft (and so its Unsaved mark) as it was. A selected form's contextual tab 
 out for the type shown, in the view shown if it sees the plane flat, else {3D}; a line that keeps its GUID and comes to where it
 was keeps its formulas (`family::sketch::kept`), one moved holds numbers. A selected extrusion's Start and End show shape handles
 in a plan or an elevation that sees its plane edge-on; dragged, they move along the normal, a step of the history; an end tied to a
-parameter or a formula, or held by a dimension's label, lock or EQ (`Family::end_held`), is greyed and a drag on it is refused,
-saying why.
+parameter (a formula of one, or a dimension's label) drags that parameter, and one a lock or EQ holds (`Family::end_held`) has no
+handle (FE-25, below).
 
 FE-5 (`family/handles.rs`, `editor/shape_handles.rs`): with one extrusion selected, solid or void, a plan or an elevation that
 sees its plane flat shows a handle at the middle of each edge of its profile, outlines and holes alike, pointing out of the solid
@@ -1192,8 +1192,8 @@ began, so the view refitting what it frames doesn't move the drag under the hand
 step, nothing unsaved); Escape, Undo, Redo and another view or tab shown give it up, the form put back as it was (the Start and
 End drag too); the form is followed by what it is known by while the document is open, never by its place. A click on an arrow
 keeps the selection. Refused, the form left as it was and the status
-bar saying why: an edge a dimension's label, lock, Align lock or EQ measures to (`Family::edge_held`), greyed, as one whose numbers a drag
-would move are formulas is (`shape_handles::greyed`: by what ties it alone, never by where a drag would take the profile); a drag that leaves
+bar saying why (an edge a dimension's label measures to, or whose numbers a drag would move are formulas, `shape_handles::greyed`,
+drags its parameter instead, and one a lock, an Align lock or EQ holds has no handle: FE-25, below): a drag that leaves
 no profile (a line turned back or of no length, or what `finish_check` refuses: lines crossing, overlapping, a loop open); one
 the constraints would undo (where a family is constrained, the type previewed must flex the edge to where the drag put it, the
 handles sitting where that type shows the outline, F10); and one a type can't build, as Finish checks. No snapping: the
@@ -1213,6 +1213,22 @@ looks, `handles3d::SEEN`) can't be dragged along: it isn't drawn, as a plan draw
 view brings it back. Revolves, sweeps and swept blends have no handles in any view: their shapes are their profiles' and paths',
 changed by sketching them again (Edit Revolve, Edit Sweep). In every view the drag reads the pointer where the button comes up
 too, so a hand quicker than the frames still lands where it let go.
+
+Wherever a handle shows, it drags (FE-25, `editor/handle_params.rs`). A side or an end whose place is a parameter's, through a
+labelled dimension (`Family::edge_held`, `end_held`) or because its numbers are formulas naming parameters (the starter box's
+`Width / 2` and `Depth / 2` either way of its centre, an End associated with `Height`), is dragged by changing that parameter: the
+value that puts the side or end where the hand is, as the flexed family has it (a labelled dimension's length after the drag, an
+End's new number), worked out from how far the parameter moves it (a step, then one more from where it lands) and kept to a
+hundredth of a millimetre. A centred box's side lands under the hand, so its Width changes by twice the drag. The value is written
+as a labelled dimension's drag writes it (`Edit::Parameter`): a type parameter for the type previewed alone, other types keeping
+theirs; an instance parameter its own value, the family's default for it. It is live, the status bar showing the value, one step
+of the history once the button is up, and Escape, Undo, Redo and another view put the draft back as the drag began. Of the
+parameters a handle names, the first that moves it is dragged. Refused, the draft as it was and the status bar saying why: a
+parameter worked out by a formula, a reporting one, one the instance previewed sets (these handles are greyed), a value no length
+can be (zero or below), one the constraints can't reach, and one a type that built before can't build with. Greyed handles are the
+only ones never lit; the handle under the pointer that a drag takes is drawn larger in the hover colour (`handles3d::paint_arrow`,
+in every view). A lock, an Align lock or EQ holding a side or an end isn't a parameter, and its handle isn't drawn, nor any on a
+pinned form.
 
 ## Blends, sweeps and swept blends
 
@@ -1948,7 +1964,7 @@ In `crates/ui-egui`, the Family Editor:
   Display Options, View Range.
 - `editor/keys.rs`: the document's two-letter keys (`FAMILY_SHORTCUTS`) and what each does (`BimApp::family_action`).
 - `editor/zoom.rs`: the zoom commands in the document's views and their Previous Pan/Zoom history, over the window's `zoom.rs`.
-- `editor/sketch.rs`: sketch mode. `editor/sketch_dims.rs`: the dimensions while a form is sketched (FE-12). `editor/shape_handles.rs`: a selected form's profile handles; `editor/handles3d.rs`: the same and its ends in {3D} (FE-25). `editor/dimensions.rs`: their dimensions and Align.
+- `editor/sketch.rs`: sketch mode. `editor/sketch_dims.rs`: the dimensions while a form is sketched (FE-12). `editor/shape_handles.rs`: a selected form's profile handles; `editor/handles3d.rs`: the same and its ends in {3D} (FE-25); `editor/handle_params.rs`: a handle's drag through the parameter its place is. `editor/dimensions.rs`: their dimensions and Align.
 - `editor/work_plane.rs`: its Work Plane dialog and Go To View.
 - `editor/options.rs`: the family's options (Family Category and Parameters, Properties' Other).
 - `editor/nested.rs`: its nested families (Load Family, Component, Edit Family). `editor/pivot.rs`: its pivots and grips.

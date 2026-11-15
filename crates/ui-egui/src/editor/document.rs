@@ -2546,6 +2546,10 @@ impl BimApp {
         if response.drag_stopped() || !ui.input(|i| i.pointer.primary_down()) {
             ed.let_go_3d();
         }
+        // The parameter a handle drags, at its value now (FE-25).
+        if let Some(text) = ed.views.said.take() {
+            self.status = Status { text, error: false };
+        }
         // The picture: what is selected and under the pointer tinted, the work plane and a datum selected laid over it.
         let tints = ed.scene3d.as_ref().map(|s| s.tints(&ed.lit_3d())).unwrap_or_default();
         let plane_marks = ed.marks_3d(&cam);
@@ -2585,12 +2589,17 @@ impl BimApp {
         super::connector_marks::paint(&p, &marks, &project, &chosen, ed.connector_hover, lit);
         // The selected form's handles over it, where the view shows them now: blue, or grey where they can't be dragged.
         let shown = ed.handles_3d_on(&project, cam.scale);
+        // The one under the pointer a drag takes, lit; a greyed one never is.
+        let lit = input.hover.filter(|_| !ed.holding_3d() || ed.dragging_param() || ed.views.edge_drag.is_some()).and_then(|p| {
+            shown
+                .iter()
+                .filter(|(at, _, h)| h.blocked.is_none() && at.distance(p) <= super::handles3d::REACH)
+                .min_by(|a, b| a.0.distance(p).total_cmp(&b.0.distance(p)))
+                .map(|(at, ..)| *at)
+        });
+        ed.views.lit_handle = lit;
         for (at, along, h) in &shown {
-            let way = along.normalized();
-            let side = egui::vec2(-way.y, way.x);
-            let tip = vec![*at + way * super::handles3d::ARROW, *at + side * 6.0, *at - side * 6.0];
-            let colour = if h.blocked.is_none() { super::views::PICKED } else { pal().muted };
-            p.add(egui::Shape::convex_polygon(tip, colour, Stroke::new(1.0, Color32::WHITE)));
+            super::handles3d::paint_arrow(&p, *at, along.normalized(), h.blocked.is_none(), lit == Some(*at));
         }
         ed.views.handles3d_shown = shown.into_iter().map(|(at, _, h)| (at, h)).collect();
         // A form being sketched on its plane, over the picture (F5), with its padlocks.

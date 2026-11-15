@@ -63,6 +63,10 @@ pub(crate) struct Views {
     pub(super) edge_drag: Option<super::shape_handles::EdgeDrag>,
     /// A handle being dragged in {3D} (FE-25, `handles3d.rs`): how the pointer is read along it, and an end's number before.
     pub(super) drag3d: Option<super::handles3d::Drag3d>,
+    /// A parameter being dragged by a handle tied to it (FE-25, `handle_params.rs`), in any view.
+    pub(super) param_drag: Option<super::handle_params::ParamDrag>,
+    /// The handle the pointer is over, lit, where it was last drawn: a greyed one never is.
+    pub(crate) lit_handle: Option<egui::Pos2>,
     /// Where the selected form's handles were last shown in {3D} (FE-25).
     pub(crate) handles3d_shown: Vec<(egui::Pos2, super::handles3d::Handle3d)>,
     /// The selection being dragged to move it (FE-7, `drag_move.rs`).
@@ -1253,16 +1257,22 @@ impl FamilyEditor {
             (Some(d), Some(f)) if editable => self.shape_handles(d, f, &c.staged, which),
             _ => Vec::new(),
         };
+        // The handle under the pointer that a drag takes, lit (FE-25); a greyed one never is.
+        let hover = response.hover_pos();
+        let lit = hover.and_then(|p| {
+            let free = handles.iter().filter(|h| h.2.is_none()).map(|h| screen(h.0));
+            let free = free.chain(shapes.iter().filter(|h| h.blocked.is_none()).map(|h| screen(h.at)));
+            free.filter(|at| at.distance(p) <= HANDLE).min_by(|a, b| a.distance(p).total_cmp(&b.distance(p)))
+        });
+        let lit = lit.filter(|_| self.views.moving.is_none() && self.views.grip.is_none());
+        self.views.lit_handle = lit;
         let arrow = |at: P2, way: [f64; 3], free: bool| {
             let centre = screen(at);
             let towards = c.staged.to_view(which, way) - c.staged.to_view(which, [0.0; 3]);
             let way = egui::vec2(towards.0 as f32, -towards.1 as f32).normalized();
-            let side = egui::vec2(-way.y, way.x);
-            let tip = [centre + way * 9.0, centre + side * 6.0, centre - side * 6.0];
-            let colour = if free { PICKED } else { pal().muted };
-            painter.add(egui::Shape::convex_polygon(tip.to_vec(), colour, Stroke::new(1.0, Color32::WHITE)));
+            super::handles3d::paint_arrow(&painter, centre, way, free, lit == Some(centre));
         };
-        for (at, end, blocked, n) in &handles {
+        for (at, end, blocked, n, _) in &handles {
             let k = if *end { 1.0 } else { -1.0 };
             arrow(*at, [n[0] * k, n[1] * k, n[2] * k], blocked.is_none());
         }
@@ -1277,12 +1287,17 @@ impl FamilyEditor {
         let mut problem = None;
         let mut end_moved: Option<(bool, f64)> = None;
         let mut edge_moved: Option<[f64; 3]> = None;
+        let mut begin_param: Option<(usize, super::handle_params::Target, Vec<String>)> = None;
         if response.drag_started_by(PointerButton::Primary)
             && let Some(p) = ui.input(|i| i.pointer.press_origin())
         {
-            if let Some((_, end, blocked, n)) = handles.iter().find(|h| screen(h.0).distance(p) <= HANDLE) {
+            if let Some((_, end, blocked, n, param)) = handles.iter().find(|h| screen(h.0).distance(p) <= HANDLE) {
                 match blocked {
                     None => {
+                        // Through a parameter (FE-25): its drag begun below, once the view is drawn.
+                        if let (Some(names), Some(i)) = (param, self.selected_form()) {
+                            begin_param = Some((i, super::handle_params::Target::End(*end), names.clone()));
+                        }
                         if let Some(ft) = self.selected_form().and_then(|i| self.forms.get(i)) {
                             let before = if *end { ft.to.clone() } else { ft.from.clone() };
                             let (last, n, tag, end) = (at_view(p), *n, ft.tag, *end);
@@ -1298,7 +1313,12 @@ impl FamilyEditor {
                 && let Some(f) = family.as_ref()
             {
                 match self.edge_drag(h, (Some((at_view(p), view)), Some(which), pass), f) {
-                    Ok(d) => self.views.edge_drag = Some(d),
+                    Ok(d) => {
+                        self.views.edge_drag = Some(d);
+                        if let (Some(names), Some(i)) = (&h.param, self.selected_form()) {
+                            begin_param = Some((i, super::handle_params::Target::Edge(h.line, h.out), names.clone()));
+                        }
+                    }
                     Err(e) => problem = Some(e),
                 }
             }
@@ -1681,10 +1701,20 @@ impl FamilyEditor {
             self.views.end_drag = None;
             self.views.grip = None;
         }
+        let param_let_go = response.drag_stopped() || !ui.input(|i| i.pointer.primary_down());
         self.zoom_and_pan(ui, &response, which, view.scale);
+        // A handle's drag through a parameter begun (FE-25); none can move it: the drag given up, saying why.
+        if let Some((i, target, names)) = begin_param
+            && let Err(e) = self.start_param_drag(i, target, &names)
+        {
+            self.views.edge_drag = None;
+            self.views.end_drag = None;
+            (end_moved, edge_moved) = (None, None);
+            problem = Some(e);
+        }
         if let Some((end, d)) = end_moved
             && d != 0.0
-            && let Err(e) = self.drag_end(end, d)
+            && let Err(e) = if self.dragging_param() { self.param_by(if end { d } else { -d }) } else { self.drag_end(end, d) }
         {
             problem = Some(e);
         }
@@ -1709,6 +1739,10 @@ impl FamilyEditor {
             }
             self.views.edge_drag = None;
             self.views.moving = None;
+        }
+        // A parameter dragged by a handle: written as the drag left it (FE-25).
+        if param_let_go && self.views.end_drag.is_none() {
+            self.let_param_go();
         }
         if let Some(i) = edit
             && let Err(e) = self.edit_form_sketch(i)

@@ -5,7 +5,6 @@
 //! one step of the document's history. An edge a lock, a labelled dimension or EQ holds, or whose numbers are formulas, is
 //! greyed and refuses a drag, saying why; so does a drag that would leave no profile, or that the constraints would undo,
 //! and the form is left as it was.
-use super::select_box::Picked;
 use super::sketch::{edge_on, flat, looking, reader};
 use super::*;
 use bimcraft_core::family::forms::FormKind;
@@ -26,6 +25,8 @@ pub(crate) struct ShapeHandle {
     pub(crate) out: P2,
     /// Why it can't be dragged, if it can't: it is drawn greyed.
     pub(crate) blocked: Option<String>,
+    /// The parameters its drag goes through, where its place is theirs (FE-25): the first that moves it.
+    pub(crate) param: Option<Vec<String>>,
 }
 
 /// A profile edge being dragged by its handle: the form, its line, the way out (the plane's axes and the family's), where the
@@ -127,7 +128,6 @@ impl FamilyEditor {
         }
         let (Ok(from), Ok(to)) = (num(&flexed.from), num(&flexed.to)) else { return Vec::new() };
         let look = looking(which);
-        let pinned = self.pinned_refusal(&[Picked::Form(i)]);
         let mut out: Vec<ShapeHandle> = Vec::new();
         for h in hs::edge_handles(&flexed.sketch, &mut num) {
             let way: [f64; 3] = std::array::from_fn(|k| frame.x[k] * h.out.0 + frame.y[k] * h.out.1);
@@ -146,12 +146,14 @@ impl FamilyEditor {
             if out.iter().any(|o| (o.at.0 - at.0).hypot(o.at.1 - at.1) < 1e-6) {
                 continue;
             }
-            let blocked = pinned.clone().or_else(|| match form.sketch.get(h.line).map(|l| drawn.edge_held(form.guid, l.guid)) {
-                Some(Some(held)) => Some(held_said(&held, false)),
-                Some(None) => greyed(&form.sketch, h.line, h.out, &mut num),
-                None => Some(said(Refused::Invalid)),
-            });
-            out.push(ShapeHandle { at, way, line: h.line, out: h.out, blocked });
+            // Tied to a parameter, its drag goes through it; a lock or EQ holding it, or the form pinned, no handle (FE-25).
+            let (blocked, param) = match self.drive(drawn, i, super::handle_params::Target::Edge(h.line, h.out)) {
+                super::handle_params::Drive::Free => (None, None),
+                super::handle_params::Drive::Param(names) => (None, Some(names)),
+                super::handle_params::Drive::Refused(why) => (Some(why), None),
+                super::handle_params::Drive::Hidden => continue,
+            };
+            out.push(ShapeHandle { at, way, line: h.line, out: h.out, blocked, param });
         }
         out
     }
@@ -181,6 +183,9 @@ impl FamilyEditor {
     pub(crate) fn drag_edge_to(&mut self, moved: [f64; 3]) -> Result<(), String> {
         let Some(drag) = self.views.edge_drag.as_mut() else { return Ok(()) };
         let d = dot3(moved, drag.way);
+        if self.views.param_drag.is_some() {
+            return self.param_to(d);
+        }
         if !d.is_finite() || (d - drag.last).abs() < 1e-9 {
             return Ok(());
         }
@@ -222,6 +227,8 @@ impl FamilyEditor {
             }
             any = true;
         }
+        // A parameter dragged by a handle: the draft as the drag began (FE-25).
+        any |= self.cancel_param();
         any
     }
 
