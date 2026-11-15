@@ -65,6 +65,9 @@ pub(crate) struct Views {
     pub(super) moving: Option<super::drag_move::MoveDrag>,
     /// A Modify tool in hand (FE-8, `modify.rs`): Move, Copy, Rotate, Mirror, Scale or Offset, with what has been clicked.
     pub(crate) modify: Option<super::modify::Modifying>,
+    /// Where a Modify tool in hand in {3D} would put the forms it takes (FE-24): their boxes, for the picture to draw with
+    /// its depth in the next frame.
+    pub(crate) ghost_3d: Vec<bimcraft_core::view3d::PlaneMark>,
     /// The Modify tools' Options Bar, kept for the session.
     pub(crate) modify_options: super::modify::Options,
     /// Whether the pointer was last over something selected that a drag would move, with no tool in hand: what the status

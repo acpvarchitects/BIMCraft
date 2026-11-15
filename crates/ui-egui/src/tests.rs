@@ -7371,6 +7371,7 @@ mod family_model_line;
 mod family_model_line_refs;
 mod family_modify;
 mod family_modify_3d;
+mod family_modify_3d_probes;
 mod family_nav3d;
 mod family_open;
 mod family_pin;

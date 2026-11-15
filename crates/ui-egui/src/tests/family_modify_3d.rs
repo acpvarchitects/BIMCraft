@@ -253,3 +253,65 @@ fn modify_in_3d_screenshots() {
         }
     }
 }
+
+/// The Movers family in {3D} in the ribbon's harness, whose renderer draws (the family's own keeps pictures and draws none).
+fn drawn_3d() -> Harness<'static, BimApp> {
+    let mut h = app(&family_with(""));
+    h.set_size(vec2(1400.0, 900.0));
+    h.state_mut().edit_family("Movers");
+    for _ in 0..4 {
+        h.run();
+    }
+    view(&mut h, None);
+    for _ in 0..4 {
+        h.run();
+    }
+    h
+}
+
+/// The colours drawn round family point `p` in {3D}: five pixels square, since a line is a pixel or two wide.
+fn round(h: &mut Harness<BimApp>, p: [f64; 3]) -> Vec<[u8; 4]> {
+    for _ in 0..3 {
+        h.run();
+    }
+    let at = h.state().family_screen3(p).expect("{3D} drawn");
+    let image = h.render().unwrap();
+    let (x, y) = (at.x.round() as u32, at.y.round() as u32);
+    (0..25).map(|k| image.get_pixel(x + k % 5 - 2, y + k / 5 - 2).0).collect()
+}
+
+#[test]
+fn the_work_plane_shows_while_a_tool_is_in_hand_in_3d() {
+    let mut h = drawn_3d();
+    pick(&mut h, &[Picked::Form(0)]);
+    // Bare ground on Ref. Level, clear of both boxes and of the grid lines through the origin.
+    let ground = [-200.0, -200.0, 0.0];
+    let bare = round(&mut h, ground);
+    shortcut(&mut h, "MV");
+    let tinted = round(&mut h, ground);
+    assert_ne!(tinted, bare, "the work plane is laid over the ground");
+    // Put down, the plane goes: Work Plane > Show is off.
+    key(&mut h, Key::Escape);
+    assert_eq!(tool(&h), None);
+    assert_eq!(round(&mut h, ground), bare);
+}
+
+#[test]
+fn the_box_of_what_a_move_takes_is_drawn_where_the_click_would_put_it() {
+    let mut h = drawn_3d();
+    pick(&mut h, &[Picked::Form(0)]);
+    shortcut(&mut h, "MV");
+    click3(&mut h, [0.0, 0.0, 0.0]);
+    // Box A's top front edge runs from (100, 100, 300) to (500, 100, 300): moved by (-400, 500), its middle is here.
+    let edge = [-100.0, 600.0, 300.0];
+    let hover = |h: &mut Harness<BimApp>, p: [f64; 3]| {
+        let at = h.state().family_screen3(p).expect("{3D} drawn");
+        h.hover_at(at);
+    };
+    // The pointer elsewhere on the plane: the box is drawn elsewhere, and nothing here.
+    hover(&mut h, [200.0, -200.0, 0.0]);
+    let empty = round(&mut h, edge);
+    hover(&mut h, [-400.0, 500.0, 0.0]);
+    let boxed = round(&mut h, edge);
+    assert_ne!(boxed, empty, "the box's edge where the move would put it");
+}
