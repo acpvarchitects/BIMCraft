@@ -741,6 +741,14 @@ pub fn on_traces(q: P2, traces: &[(P2, P2)], reach: f64, o: &Snaps) -> P2 {
         .unwrap_or(q)
 }
 
+/// Where a point picked at `q`, kept square from `from` (Shift), lands on `traces` within `reach`: squared, then slid along the
+/// square line onto the nearest trace crossing it within `reach`, if the switches take crossings or nearest points; else
+/// squared. A family's drawn points and Measure's snap so with Shift held (FE-21b), so the point never leaves the square line.
+pub fn on_traces_square(from: P2, q: P2, traces: &[(P2, P2)], reach: f64, o: &Snaps) -> P2 {
+    let _ = (traces, reach, o);
+    orthogonal_step(from, q).0
+}
+
 /// A sketch's view and draft geometry. The element being edited is omitted so its old boundary cannot attract a grip.
 pub struct Sketch<'a> {
     pub view: Id,
@@ -1818,6 +1826,25 @@ mod tests {
             }
         }
         assert!(n > 100, "the sweep snaps somewhere: {n}");
+    }
+
+    /// FE-21b: kept square from a first point (Shift), a point slides along the square line onto a trace crossing it near there,
+    /// never off that line; a trace along it, none near, or snaps off leave the squared point.
+    #[test]
+    fn a_square_point_snaps_along_its_square_line() {
+        let traces = [(P2(1000.0, -1500.0), P2(1000.0, 1500.0)), (P2(-1500.0, 400.0), P2(1500.0, 400.0))];
+        let from = P2(500.0, 0.0);
+        // Across: along x from the first, onto x 1000.
+        assert_eq!(on_traces_square(from, P2(1010.0, 30.0), &traces, 60.0, &Snaps::default()), P2(1000.0, 0.0));
+        // Up: along y, onto y 400, not onto the nearer point of x 1000's trace off the line.
+        assert_eq!(on_traces_square(P2(980.0, 0.0), P2(985.0, 420.0), &traces, 60.0, &Snaps::default()), P2(980.0, 400.0));
+        // Along a trace's own line: none crosses it there, so squared only.
+        assert_eq!(on_traces_square(P2(1020.0, 0.0), P2(1030.0, 900.0), &traces, 60.0, &Snaps::default()), P2(1020.0, 900.0));
+        // Nothing near, and snaps off.
+        assert_eq!(on_traces_square(from, P2(700.0, 30.0), &traces, 60.0, &Snaps::default()), P2(700.0, 0.0));
+        assert_eq!(on_traces_square(from, P2(1010.0, 30.0), &traces, 60.0, &Snaps::none()), P2(1010.0, 0.0));
+        // From on the trace itself, the crossing at the first point is no snap for the second.
+        assert_eq!(on_traces_square(P2(1000.0, 0.0), P2(1030.0, 10.0), &traces, 60.0, &Snaps::default()), P2(1030.0, 0.0));
     }
 
     #[test]

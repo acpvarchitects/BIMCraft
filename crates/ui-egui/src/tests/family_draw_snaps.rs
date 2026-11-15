@@ -95,3 +95,103 @@ fn model_line_points_snap_to_a_reference_line() {
     assert!(near(l.start, [0.0, 1200.0]), "on the reference line, where it crosses Center (Left/Right): {:?}", l.start);
     assert!(near(l.end, [-400.0, 1800.0]), "{:?}", l.end);
 }
+
+/// A model line of the family's own from `a` to `b` on Ref. Level, put straight into the editor; its GUID.
+fn model_line(h: &mut Harness<BimApp>, a: [f64; 2], b: [f64; 2]) -> bimcraft_core::ids::Guid {
+    let guid = bimcraft_core::ids::Guid::new();
+    ed(h).model_lines.push(bimcraft_core::family::ModelLine {
+        guid,
+        start: [a[0], a[1], 0.0],
+        end: [b[0], b[1], 0.0],
+        ..Default::default()
+    });
+    h.run();
+    guid
+}
+
+#[test]
+fn reference_plane_points_snap_onto_a_model_line() {
+    let mut h = plan();
+    model_line(&mut h, [1700.0, -1000.0], [1700.0, 1000.0]);
+    shortcut(&mut h, "RP");
+    click(&mut h, 1720.0, 300.0);
+    click(&mut h, 2300.0, 900.0);
+    let p = editor(&h).planes.last().unwrap().clone();
+    assert!(near(p.start, [1700.0, 300.0]), "onto the model line: {:?}", p.start);
+}
+
+#[test]
+fn what_a_view_hides_is_no_snap_target() {
+    use super::family_drag_move::{EDGE, g, pick};
+    use crate::editor::select_box::Picked;
+    // Edge hidden for now (HH): the point stays as clicked, 20 mm east of where Edge runs.
+    let mut h = plan();
+    pick(&mut h, &[Picked::Plane(g(EDGE))]);
+    shortcut(&mut h, "HH");
+    shortcut(&mut h, "RP");
+    click(&mut h, 1020.0, 400.0);
+    click(&mut h, 1620.0, 700.0);
+    let p = editor(&h).planes.last().unwrap().clone();
+    assert!(near(p.start, [1020.0, 400.0]), "Edge hidden, nothing to snap to: {:?}", p.start);
+    // A model line hidden for now likewise.
+    let mut h = plan();
+    let line = model_line(&mut h, [1700.0, -1000.0], [1700.0, 1000.0]);
+    pick(&mut h, &[Picked::ModelLine(line)]);
+    shortcut(&mut h, "HH");
+    shortcut(&mut h, "RP");
+    click(&mut h, 1720.0, 300.0);
+    click(&mut h, 2300.0, 900.0);
+    let p = editor(&h).planes.iter().rev().find(|p| near(p.end, [2300.0, 900.0])).cloned().expect("a plane drawn");
+    assert!(near(p.start, [1720.0, 300.0]), "the hidden model line pulls nothing: {:?}", p.start);
+}
+
+#[test]
+fn measure_in_an_elevation_snaps_to_a_plane_seen_edge_on() {
+    use super::family_views::view;
+    use bimcraft_core::family::views::{Side, Which};
+    // Front sees Edge (x 1000) edge on: 20 mm off it, onto it; the second point, free, as clicked.
+    let mut h = plan();
+    view(&mut h, Some(Which::Elevation(Side::Front)));
+    shortcut(&mut h, "ME");
+    click_family(&mut h, [1020.0, 0.0, 500.0]);
+    h.run();
+    click_family(&mut h, [1300.0, 0.0, 1500.0]);
+    h.run();
+    let r = editor(&h).measured().expect("a ruler laid");
+    assert!((r.dx.abs() - 300.0).abs() < 1e-2 && (r.dy.abs() - 1000.0).abs() < 1e-2, "from Edge: {r:?}");
+}
+
+#[test]
+fn with_shift_a_point_is_squared_then_snapped_along_its_square_line() {
+    // An oblique model line through (1850, 300). From (2500, 300), Shift near it: along y 300 onto it, at (1850, 300), not
+    // onto its nearest point and then squared off it.
+    let mut h = plan();
+    model_line(&mut h, [1200.0, -1000.0], [2200.0, 1000.0]);
+    shortcut(&mut h, "RP");
+    click(&mut h, 2500.0, 300.0);
+    let pos = editor(&h).views.screen_of([1860.0, 310.0, 0.0]).unwrap();
+    h.event(egui::Event::ModifiersChanged(Modifiers::SHIFT));
+    h.hover_at(pos);
+    h.run();
+    for pressed in [true, false] {
+        h.event(egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed, modifiers: Modifiers::SHIFT });
+    }
+    h.run();
+    h.event(egui::Event::ModifiersChanged(Modifiers::NONE));
+    let p = editor(&h).planes.last().unwrap().clone();
+    assert!(near(p.end, [1850.0, 300.0]), "on the line and on the square: {:?}", p.end);
+}
+
+#[test]
+fn two_clicks_that_snap_to_one_point_keep_the_first_and_say_so() {
+    let mut h = plan();
+    shortcut(&mut h, "RP");
+    let before = editor(&h).planes.len();
+    // Both near where Edge crosses Center (Front/Back): both onto (1000, 0).
+    click(&mut h, 1015.0, 15.0);
+    click(&mut h, 1010.0, -10.0);
+    assert_eq!(editor(&h).planes.len(), before, "no plane of no length");
+    assert!(matches!(editor(&h).views.drawing, Some(Some(q)) if (q.0 - 1000.0).abs() < 1e-6 && q.1.abs() < 1e-6), "the first kept");
+    let said = format!("{:?} {}", editor(&h).views.status, h.state().status.text);
+    assert!(said.contains("same"), "{said}");
+}
