@@ -150,6 +150,28 @@ pub enum Sheet {
     Family(editor::tabs::DocId, Option<bimcraft_core::family::views::Which>),
 }
 
+/// Which of Modify > Geometry > Join's three the Join tool does with the pair picked (T23).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum JoinMode {
+    /// Join Geometry: the first picked cuts the second.
+    Join,
+    /// Switch Join Order: the one that was cut cuts the other.
+    Switch,
+    /// Unjoin Geometry: neither cuts the other.
+    Unjoin,
+}
+
+impl JoinMode {
+    /// The command that does it.
+    pub(crate) fn command(self) -> &'static str {
+        match self {
+            JoinMode::Join => "join_geometry",
+            JoinMode::Switch => "switch_join_order",
+            JoinMode::Unjoin => "unjoin_geometry",
+        }
+    }
+}
+
 /// What clicks on the plan do.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Tool {
@@ -220,6 +242,12 @@ pub enum Tool {
     CutGeometry {
         uncut: bool,
         wall: Option<Id>,
+    },
+    /// Join Geometry, Switch Join Order or Unjoin Geometry in the project (T23), as `mode` says: the first of the pair (a wall,
+    /// a floor, a roof or a ceiling), once picked; then the other, which a join's first cuts.
+    JoinGeometry {
+        mode: JoinMode,
+        first: Option<Id>,
     },
     /// Copy (or move) the wall picked to the cursor's side, by the Options Bar's distance.
     Offset,
@@ -1097,13 +1125,19 @@ fn top_params(m: &Model, level: Id, top: Option<Option<Id>>, height: &str) -> Re
 /// A ribbon button: an icon over its label, tinted while its tool is on; as wide as its label, which breaks over two lines
 /// when one would make it wider than `WIDE`.
 fn big_button(ui: &mut Ui, icon: Icon, label: &str, active: bool, tip: &str) -> Response {
-    ribbon_button(ui, icon, label, active, tip, true, None)
+    ribbon_button(ui, icon, label, active, tip, "", None)
+}
+
+/// A big ribbon button whose name is translated in `context` (`msg!(context, label)`), for a word that says something else
+/// elsewhere in the window: until its own translation is given it shows in English, not as the other.
+fn big_button_in(ui: &mut Ui, icon: Icon, context: &str, label: &str, active: bool, tip: &str) -> Response {
+    ribbon_button(ui, icon, label, active, tip, context, None)
 }
 
 /// A big ribbon button, or its row in a list, whose icon and name are in `own` rather than the theme's ink: Finish Edit Mode's
 /// green and Cancel Edit Mode's red.
 fn inked_button(ui: &mut Ui, icon: Icon, label: &str, active: bool, tip: &str, own: Option<Color32>) -> Response {
-    ribbon_button(ui, icon, label, active, tip, true, own)
+    ribbon_button(ui, icon, label, active, tip, "", own)
 }
 
 /// A ribbon button whose label is a plugin's data: it isn't translated, as its manifest wrote it, and it has no icon
@@ -1161,19 +1195,20 @@ fn plugin_row(ui: &mut Ui, label: &str, tip: &str) -> Response {
     r.on_hover_text(t(tip))
 }
 
-fn ribbon_button(ui: &mut Ui, icon: Icon, label: &str, active: bool, tip: &str, translate: bool, own: Option<Color32>) -> Response {
+/// A ribbon button named `label` in English, shown translated: in `context` when it has one, else as the word is anywhere.
+fn ribbon_button(ui: &mut Ui, icon: Icon, label: &str, active: bool, tip: &str, context: &str, own: Option<Color32>) -> Response {
     const WIDE: f32 = 78.0;
     if ribbon::left_out(label) {
         return ui.allocate_response(egui::Vec2::ZERO, Sense::hover());
     }
     let name = label;
     if ribbon::listing() {
-        return list_row_in(ui, icon, label, active, tip, translate, own);
+        return list_row_in(ui, icon, label, active, tip, context, own);
     }
     if let Some(r) = ribbon::handed_over(ui) {
         return r;
     }
-    let (label, tip) = if translate { (t(label).to_string(), t(tip)) } else { (label.to_string(), t(tip)) };
+    let (label, tip) = (if context.is_empty() { t(label) } else { lang::tc(context, label) }.to_string(), t(tip));
     let font = FontId::proportional(12.0);
     let wide = |s: &str| ui.painter().layout_no_wrap(s.to_string(), font.clone(), pal().text).size().x;
     let one = wide(&label);
@@ -1246,16 +1281,16 @@ pub(crate) fn small_button(ui: &mut Ui, icon: Icon, label: &str, active: bool, t
 
 /// A ribbon button in its panel's list: a row of its icon and its name.
 fn list_row(ui: &mut Ui, icon: Icon, label: &str, active: bool, tip: &str) -> Response {
-    list_row_in(ui, icon, label, active, tip, true, None)
+    list_row_in(ui, icon, label, active, tip, "", None)
 }
 
 /// [`list_row`], its icon and name in `own` where it has an ink of its own ([`inked_button`]).
-fn list_row_in(ui: &mut Ui, icon: Icon, label: &str, active: bool, tip: &str, translate: bool, own: Option<Color32>) -> Response {
+fn list_row_in(ui: &mut Ui, icon: Icon, label: &str, active: bool, tip: &str, context: &str, own: Option<Color32>) -> Response {
     if ribbon::left_out(label) {
         return ui.allocate_response(egui::Vec2::ZERO, Sense::hover());
     }
     let name = label;
-    let (label, tip) = if translate { (t(label).to_string(), t(tip)) } else { (label.to_string(), t(tip)) };
+    let (label, tip) = (if context.is_empty() { t(label) } else { lang::tc(context, label) }.to_string(), t(tip));
     // A panel's list is at least a menu wide; the Tools palette's rows are as wide as its column.
     let width = if ribbon::in_palette() { ui.available_width() } else { ui.available_width().max(200.0) };
     let (rect, r) = ui.allocate_exact_size(vec2(width, 30.0), Sense::click());
@@ -1881,6 +1916,7 @@ impl BimApp {
             | Tool::Vertex { .. }
             | Tool::Split
             | Tool::CutGeometry { .. }
+            | Tool::JoinGeometry { .. }
             | Tool::Offset
             | Tool::Demolish
             | Tool::Linework
@@ -2822,6 +2858,7 @@ impl BimApp {
                 }
                 Some("component") => Tool::Component,
                 Some("cut_geometry") => Tool::CutGeometry { uncut: false, wall: None },
+                Some("join_geometry") => Tool::JoinGeometry { mode: JoinMode::Join, first: None },
                 Some("section") => Tool::Section(None),
                 Some("measure") => Tool::Measure(None),
                 Some("paint") => Tool::Paint,
@@ -3090,6 +3127,7 @@ impl BimApp {
                 | Tool::Vertex { .. }
                 | Tool::Split
                 | Tool::CutGeometry { .. }
+                | Tool::JoinGeometry { .. }
                 | Tool::Offset
                 | Tool::Demolish
                 | Tool::Linework
@@ -3463,6 +3501,7 @@ impl BimApp {
             }
             Tool::Trim(Some(_)) => Tool::Trim(None),
             Tool::CutGeometry { uncut, wall: Some(_) } => Tool::CutGeometry { uncut, wall: None },
+            Tool::JoinGeometry { mode, first: Some(_) } => Tool::JoinGeometry { mode, first: None },
             Tool::TrimTo { boundary: Some(_), many } => Tool::TrimTo { boundary: None, many },
             Tool::Dimension(mode, refs) if !refs.is_empty() => Tool::Dimension(mode, Vec::new()),
             Tool::Angular(refs) if !refs.is_empty() => Tool::Angular(Vec::new()),
@@ -5430,6 +5469,33 @@ impl BimApp {
                     }
                 }
             });
+            // Join beside it, the same way: Join Geometry, Switch Join Order and Unjoin Geometry.
+            let tip = msg!(
+                "Join Geometry (JO): pick a wall, a floor, a roof or a ceiling, then another it meets, which it cuts; Switch Join Order flips which cuts which, and Unjoin Geometry takes the join back"
+            );
+            let mode = match self.tool {
+                Tool::JoinGeometry { mode, .. } => Some(mode),
+                _ => None,
+            };
+            let icon = match mode {
+                Some(JoinMode::Switch) => Icon::SwitchJoinOrder,
+                Some(JoinMode::Unjoin) => Icon::UnjoinGeometry,
+                _ => Icon::JoinGeometry,
+            };
+            // "Join" is Co-Work's word too, for joining a session: geometry's has its own translation.
+            let r = big_button_in(ui, icon, "geometry", msg!("geometry", "Join"), mode.is_some(), tip);
+            ribbon::choices(ui, &r, false, |ui| {
+                let items = [
+                    (JoinMode::Join, msg!("Join Geometry")),
+                    (JoinMode::Switch, msg!("Switch Join Order")),
+                    (JoinMode::Unjoin, msg!("Unjoin Geometry")),
+                ];
+                for (mode, label) in items {
+                    if ui.button(t(label)).clicked() {
+                        self.set_tool(Tool::JoinGeometry { mode, first: None });
+                    }
+                }
+            });
             let tip = msg!("Paint (PT): lay a material, and its texture, over the face you click in the 3D view");
             if big_button(ui, Icon::Paint, "Paint", self.tool == Tool::Paint, tip).clicked() {
                 self.set_tool(Tool::Paint);
@@ -6028,6 +6094,22 @@ impl BimApp {
             Tool::CutGeometry { uncut: true, wall: None } => msg!("Pick the wall to uncut."),
             Tool::CutGeometry { uncut: true, wall: Some(_) } => {
                 msg!("Pick the component that no longer cuts the wall. Esc picks another wall.")
+            }
+            // A plan shows walls with floors and roofs, a ceiling plan walls with ceilings: the prompt names what can be picked.
+            Tool::JoinGeometry { mode: JoinMode::Join, first: None } => match self.sheet {
+                Sheet::Ceiling(_) => msg!("Pick the first to join: a wall or a ceiling. Tab steps through what is under the cursor."),
+                _ => msg!("Pick the first to join: a wall, a floor or a roof. Tab steps through what is under the cursor."),
+            },
+            Tool::JoinGeometry { mode: JoinMode::Join, first: Some(_) } => {
+                msg!("Pick the one it meets, which it cuts; Tab steps through what is there. Esc picks another first.")
+            }
+            Tool::JoinGeometry { mode: JoinMode::Switch, first: None } => msg!("Pick one of a joined pair, to switch which cuts which."),
+            Tool::JoinGeometry { mode: JoinMode::Switch, first: Some(_) } => {
+                msg!("Pick the one it is joined to: the one that was cut cuts the other. Esc picks another.")
+            }
+            Tool::JoinGeometry { mode: JoinMode::Unjoin, first: None } => msg!("Pick one of a joined pair, to unjoin them."),
+            Tool::JoinGeometry { mode: JoinMode::Unjoin, first: Some(_) } => {
+                msg!("Pick the one it is joined to: neither cuts the other from then on. Esc picks another.")
             }
             Tool::Offset => msg!("Point to a wall or a line: the offset goes to the cursor's side. Click to place it."),
             Tool::Demolish => msg!("Click an element to take it down in the view's phase; click it again to take it back."),

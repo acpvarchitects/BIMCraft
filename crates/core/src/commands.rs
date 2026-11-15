@@ -296,7 +296,7 @@ other_files(
     edit(
         "join_geometry",
         ui_msg!("Join Geometry"),
-        &[],
+        &["JO"],
         "{first, second} (each a wall, floor, roof or ceiling, by id or GUID) Join Geometry: `first` cuts `second` from now on, \
          which loses what `first`'s own solids take of it, in section and in 3D (plans are as they were). They must meet: overlap, \
          or share a face. `second` lists `first` in its `joined_by`; the join is kept while both stand, cutting nothing after an \
