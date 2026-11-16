@@ -58,7 +58,8 @@ layer patterns aren't drawn across a shaped wall yet. Plans cut the outline and 
 centre lines nothing changes). `walls::volume` measures the shaped solid; `elements` gives every wall `volume_m3` and
 `thickness_min`, `thickness_max`, `thickness_avg` (`shape::thickness_range`). IFC writes a shaped wall as an `IfcWall`
 whose body is closed `IfcTriangulatedFaceSet`s (IFC2x3: faceted B-reps), its quantities from the shaped solid, its openings'
-boxes deep enough for its lean (`shape::reach`); an unshaped wall is written as before. `Model::check` refuses a batter that
+boxes deep enough for its lean (`shape::reach`), its shape as JSON in BIMCraft's wall property set (`Shape`), which IFC import
+reads back (the type as thick as the body at its base); an unshaped wall is written as before. `Model::check` refuses a batter that
 isn't one of the three ways, in range, or that leaves the core thinner than nothing anywhere up the wall, at its profile's
 points and its ends. Tests: `wall_shape_tests.rs`.
 

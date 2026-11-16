@@ -224,7 +224,7 @@ pub fn volume(m: &Model, id: Id, openings: bool) -> f64 {
     let ps = prisms(m, id, openings);
     match shaped_meshes(m, id, &ps, None) {
         Some(meshes) => meshes.iter().map(|t| shape::volume(t)).sum(),
-        None => ps.iter().map(|p| prism_volume(p)).sum(),
+        None => ps.iter().map(prism_volume).sum(),
     }
 }
 

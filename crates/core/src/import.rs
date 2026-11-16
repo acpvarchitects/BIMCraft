@@ -1504,12 +1504,17 @@ fn highest(pts: &[P3]) -> P3 {
     pts.iter().copied().max_by(|a, b| a[2].total_cmp(&b[2])).unwrap_or_default()
 }
 
-/// The three authored wall fields, fixed-size even when a property set has many unknown values or targets.
-#[derive(Clone, Copy, Default)]
+/// The longest wall shape a file's text may hold: a profile of the most points, written out.
+const MAX_SHAPE_TEXT: usize = 16 * 1024;
+
+/// The authored wall fields, bounded even when a property set has many unknown values or targets.
+#[derive(Clone, Default)]
 struct WallProps<'a> {
     location: Option<Location>,
     attach_top: Option<&'a str>,
     attach_base: Option<&'a str>,
+    /// Its faces' shapes (a batter), as BIMCraft wrote them: the body is triangles that say no more.
+    shape: Option<crate::walls::shape::WallShape>,
 }
 
 /// A wall as the file has it, before walls that nearly meet are made to meet.
@@ -1526,6 +1531,8 @@ struct RawWall {
     type_name: String,
     /// With an authored location line, the axis endpoints stay where they were drawn.
     location: Option<Location>,
+    /// Its faces' batter, where they lean or curve up it.
+    shape: crate::walls::shape::WallShape,
 }
 
 /// Walls that nearly meet, made to meet: an end within a wall's thickness of another wall's centre
@@ -1998,14 +2005,21 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
                 Some("Location") => said.location = Location::from_name(value),
                 Some("AttachTop") => said.attach_top = Some(value),
                 Some("AttachBase") => said.attach_base = Some(value),
+                Some("Shape") if value.len() <= MAX_SHAPE_TEXT => {
+                    said.shape = serde_json::from_str::<crate::walls::shape::WallShape>(value).ok().filter(|sh| {
+                        [&sh.exterior, &sh.interior].into_iter().flatten().all(|f| match f {
+                            crate::walls::shape::FaceShape::Batter(b) => b.check().is_ok(),
+                        })
+                    })
+                }
                 _ => {}
             }
         }
         for product in refs(rel.args.get(4)).into_iter().filter(|id| e(*id).is_some_and(|x| WALLS.contains(&x.name.as_str()))) {
-            wall_props.insert(product, said);
+            wall_props.insert(product, said.clone());
         }
     }
-    let located = |id: u64| wall_props.get(&id)?.location;
+    let located = |id: u64| wall_props.get(&id).and_then(|p| p.location);
 
     // What BIMCraft's property set on a run says: its justification and its category, by product.
     let mut run_props: HashMap<u64, (Option<Justify>, Option<String>)> = HashMap::new();
@@ -2158,6 +2172,7 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
                 peak: r.flat(highest(&pts)),
                 level: level_for(id, z0),
                 type_name,
+                shape: Default::default(),
             });
             continue;
         }
@@ -2183,6 +2198,12 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
             leave(&mut skipped, &mut seen, id, "it has no length or thickness BIMCraft can read");
             continue;
         }
+        // Its faces where they lean or curve up it (a battered wall): as thick as its base, each face a profile.
+        let shape = wall_props.get(&id).and_then(|p| p.shape.clone()).unwrap_or_default();
+        let (c0, c1) = match shape.is_empty() {
+            true => (c0, c1),
+            false => span(pts.iter().filter(|p| (p[2] - z0).abs() <= 0.5).map(|p| (r.flat(*p) - a).dot(n))).unwrap_or((c0, c1)),
+        };
         // A location choice only describes the authored axis in its original direction. A reversed layer usage, or
         // an absent axis, keeps the generic centre-line reconstruction.
         let location = located(id).filter(|_| {
@@ -2213,6 +2234,7 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
             peak: r.flat(highest(&pts)),
             level: level_for(id, z0),
             type_name,
+            shape,
         });
     }
     meet(&mut raw);
@@ -2237,7 +2259,7 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
             attach_base: None,
             room_bounding: true,
             join: true,
-            shape: Default::default(),
+            shape: w.shape,
         };
         let id = m.insert(Element::Wall(wall));
         from.insert(id, who(w.ifc));

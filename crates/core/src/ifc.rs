@@ -1513,6 +1513,12 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
                 ));
                 contained.entry(wl.level).or_default().push(ent);
                 let mut props = vec![w.text_property("Location", None, wl.location.name())];
+                // A shaped wall's faces, which its triangles can't say, for BIMCraft to read back.
+                if !wl.shape.is_empty()
+                    && let Ok(shape) = serde_json::to_string(&wl.shape)
+                {
+                    props.push(w.text_property("Shape", None, &shape));
+                }
                 for (name, to) in [("AttachTop", wl.attach_top), ("AttachBase", wl.attach_base)] {
                     if let Some(to) = to.and_then(|g| m.elements.id(g)) {
                         let global = w.guid(ELEMENT, to);

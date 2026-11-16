@@ -6999,7 +6999,7 @@ impl Model {
     pub(crate) fn face_lines_in(&self, level: impl Key, index: Option<&walls::Index>, rooms: bool) -> Vec<(P2, P2)> {
         let keep = |w: &Wall| self.bounding(w, level) && (!rooms || w.room_bounding);
         // A shaped wall's faces where the level's rooms are computed.
-        let z = self.elevation(&level) + self.level(&level).map_or(CUT_HEIGHT, |l| l.computation_height);
+        let z = self.elevation(level) + self.level(level).map_or(CUT_HEIGHT, |l| l.computation_height);
         self.bounding_walls(&level, rooms)
             .flat_map(|id| {
                 geom::ring_edges(&walls::at_height(self, id, walls::outline_filtered(self, id, index, &keep), z, index)).collect::<Vec<_>>()

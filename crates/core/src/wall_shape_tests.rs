@@ -261,7 +261,7 @@ fn a_shaped_wall_round_trips_through_its_file_and_an_unshaped_one_is_written_as_
     let mut s = Session::new();
     s.script(crate::sample::SAMPLE).unwrap();
     let before = s.model.to_json().unwrap();
-    let ifc_before = crate::ifc::export(&s.model);
+    let ifc_before: String = crate::ifc::export(&s.model);
     assert!(!before.contains("\"batter\""));
     let id = s.model.elements.iter().find(|(_, e)| matches!(e, Element::Wall(_))).map(|(id, _)| *id).unwrap();
     run(&mut s, "batter", json!({"id": id, "face": "exterior", "profile": [[600, -40], [1200, -60]]}));
@@ -274,7 +274,9 @@ fn a_shaped_wall_round_trips_through_its_file_and_an_unshaped_one_is_written_as_
     // Taken off again, the file and its IFC are byte for byte what they were.
     run(&mut s, "reset_wall_shape", json!({"id": id, "face": "exterior"}));
     assert_eq!(s.model.to_json().unwrap(), before);
-    assert_eq!(crate::ifc::export(&s.model), ifc_before);
+    // (but for the time it was written, in its header)
+    let timeless = |f: String| f.lines().filter(|l| !l.starts_with("FILE_NAME(")).collect::<Vec<_>>().join("\n");
+    assert_eq!(timeless(crate::ifc::export(&s.model)), timeless(ifc_before));
     // Unshaped, no wall's solid is bent.
     let walls: Vec<u64> = s.model.elements.iter().filter(|(_, e)| matches!(e, Element::Wall(_))).map(|(id, _)| *id).collect();
     assert!(walls.iter().all(|w| crate::walls::shaped_meshes(&s.model, *w, &[], None).is_none()));
@@ -330,4 +332,37 @@ fn a_section_across_a_battered_wall_shows_its_true_profile() {
         at.iter().copied().fold(f64::NEG_INFINITY, f64::max) - at.iter().copied().fold(f64::INFINITY, f64::min)
     };
     assert!(near(width(0.0), 300.0, 5.0) && near(width(3000.0), 200.0, 5.0), "{} {} {pts:?}", width(0.0), width(3000.0));
+}
+
+#[test]
+fn a_battered_wall_exported_to_ifc_and_imported_comes_back_battered() {
+    let mut s = session();
+    let id = wall(&mut s, [0.0, 0.0], [4000.0, 0.0]);
+    run(&mut s, "batter", json!({"id": id, "face": "exterior", "profile": [[1000, -60], [2000, -80]]}));
+    run(&mut s, "batter", json!({"id": id, "face": "interior", "top": 30}));
+    let file = crate::ifc::export(&s.model);
+    let i = crate::import::ifc(file.as_bytes(), "x").unwrap();
+    assert_eq!(i.skipped, Vec::<String>::new());
+    let (back, w) = i
+        .model
+        .elements
+        .iter()
+        .find_map(|(id, e)| match e {
+            Element::Wall(w) => Some((*id, w.clone())),
+            _ => None,
+        })
+        .expect("a wall");
+    assert_eq!(i.model.thickness(&w), 300.0, "as thick as at its base");
+    let profile = |f: &Option<crate::walls::shape::FaceShape>| match f {
+        Some(crate::walls::shape::FaceShape::Batter(b)) => b.profile.clone(),
+        None => Vec::new(),
+    };
+    assert_eq!(profile(&w.shape.exterior), vec![[1000.0, -60.0], [2000.0, -80.0]]);
+    assert!(matches!(&w.shape.interior, Some(crate::walls::shape::FaceShape::Batter(b)) if b.top == Some(30.0)));
+    assert!(near(crate::walls::volume(&i.model, back, false), volume(&s, id, false), 1e3));
+    // A plumb wall comes back plumb.
+    let mut plain = session();
+    wall(&mut plain, [0.0, 0.0], [4000.0, 0.0]);
+    let i = crate::import::ifc(crate::ifc::export(&plain.model).as_bytes(), "x").unwrap();
+    assert!(i.model.elements.values().all(|e| !matches!(e, Element::Wall(w) if !w.shape.is_empty())));
 }
