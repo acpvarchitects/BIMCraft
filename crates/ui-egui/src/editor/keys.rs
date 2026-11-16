@@ -252,10 +252,9 @@ impl BimApp {
             "Repeat Last Command" => {
                 if !self.keys_taken(&Context::default())
                     && let Some(ed) = self.active_family_mut().filter(|ed| ed.sketch.is_none() && !ed.modal())
+                    && let Err(text) = ed.repeat_last_tool()
                 {
-                    if let Err(text) = ed.repeat_last_tool() {
-                        self.status = Status { text, error: true };
-                    }
+                    self.status = Status { text, error: true };
                 }
                 return true;
             }

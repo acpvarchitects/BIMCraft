@@ -2008,12 +2008,10 @@ impl BimApp {
             && !egui::Popup::is_any_open(ctx)
             && self.active_family().is_some_and(FamilyEditor::repeat_idle)
             && ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Enter))
+            && let Some(ed) = self.active_family_mut()
+            && let Err(text) = ed.repeat_last_tool()
         {
-            if let Some(ed) = self.active_family_mut() {
-                if let Err(text) = ed.repeat_last_tool() {
-                    self.status = Status { text, error: true };
-                }
-            }
+            self.status = Status { text, error: true };
         }
         // FE-14: the window's Copy, Cut and Paste (Ctrl+C, Ctrl+X and Ctrl+V), in a family that isn't adaptive, at once and
         // whatever Shortcuts need Ctrl says: they are the clipboard's, never letters of a shortcut (`crate::ctrl_letters`).
