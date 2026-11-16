@@ -457,10 +457,10 @@ fn a_handle_is_never_greyed_by_where_a_probe_would_take_it() {
         Expr::Number(x) => Ok(*x),
         Expr::Formula(_) => Ok(200.9),
     };
+    // The arc's radius 0.9 out to 5.9 about its centre (200, 200): its start from y 200.9 to 205.9, W kept with the 5 added.
     let moved = hs::offset_lines(&tied, 1, out, -5.0, &mut num).expect("taken");
-    assert!(
-        matches!(&moved[1].curve, FormCurve::Line { start, .. } if matches!(&start[1], Expr::Formula(s) if s.starts_with("(W) "))),
-        "{:?}",
-        moved[1].curve
-    );
+    match &moved[1].curve {
+        FormCurve::Line { start, .. } => assert_eq!(start, &[n(200.0), Expr::Formula("(W) + 5".into())]),
+        other => panic!("{other:?}"),
+    }
 }

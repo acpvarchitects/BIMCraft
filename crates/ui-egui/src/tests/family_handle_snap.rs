@@ -235,3 +235,47 @@ fn a_face_aligned_and_locked_lets_its_corners_slide_along_it() {
         assert_eq!(f.dimensions.iter().filter(|d| d.alignment).count(), 1, "{name}: still locked");
     }
 }
+
+/// A snap the profile can't take: the side refused where it would line up, the form as it was, and no padlock offered nor
+/// "Aligned" said, though the hand let go within reach of the target.
+#[test]
+fn a_snap_the_profile_refuses_offers_no_padlock() {
+    let mut h = opened_on(&beside(), "Beside", Some(Which::Plan));
+    // The slab's west side (x -500) out past its east side, to a few points short of Right (x 800): it would turn the slab
+    // inside out.
+    let at = drag(&mut h, [-500.0, 0.0, 0.0], [1288.0, 0.0, 0.0], true);
+    assert!(!status(&h).0.contains("padlock"), "{:?}", status(&h));
+    release(&mut h, at);
+    assert_eq!(span(&h, "T", 0, 0), (-500.0, 500.0), "as it was: {:?}", status(&h));
+    assert!(editor(&h).views.align_lock.is_none(), "no padlock beside a side that isn't there");
+    assert!(status(&h).1, "said why: {:?}", status(&h));
+}
+
+/// A corner whose two ends are written differently (a number and a formula that come to one place in every type) stays one
+/// corner when a side dragged moves it: the number takes the place, the formula the move added, and each type builds.
+#[test]
+fn a_corner_written_two_ways_stays_closed_in_every_type() {
+    let line = |a: [&str; 2], b: [&str; 2]| format!(r#"{{"start": [{}, {}], "end": [{}, {}]}}"#, a[0], a[1], b[0], b[1]);
+    let w = r#""Width / 2""#;
+    let sketch = [
+        line(["-500", "-300"], ["500", "-300"]),
+        line([w, "-300"], [w, "300"]),
+        line(["500", "300"], ["-500", "300"]),
+        line(["-500", "300"], ["-500", "-300"]),
+    ]
+    .join(", ");
+    let script = format!(
+        r#"family {{"name": "Mixed", "category": "generic", "parameters": [{{"name": "Width", "value": 1000}}], "types": {{"A": {{}}, "B": {{"Width": 1000}}}}, "forms": [{{"sketch": [{sketch}], "from": 0, "to": 200}}]}}"#
+    );
+    let mut h = opened_on(&script, "Mixed", Some(Which::Plan));
+    drag(&mut h, [500.0, 0.0, 0.0], [40.0, 0.0, 0.0], false);
+    for ty in ["A", "B"] {
+        let (west, east) = span(&h, ty, 0, 0);
+        assert!(west == -500.0 && (east - 540.0).abs() < 2.0, "{ty}: {west} {east} {:?}", status(&h));
+    }
+    let f = editor(&h).draft_family().unwrap();
+    for ty in ["A", "B"] {
+        let values = f.values(ty, &BTreeMap::new()).unwrap();
+        assert!(f.pieces(&values).is_ok(), "{ty} builds");
+    }
+}

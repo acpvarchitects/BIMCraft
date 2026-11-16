@@ -873,11 +873,11 @@ msgstr ""
 msgid "Aligned to Selected Views: dimensions copied alone, drawn in the views picked"
 msgstr ""
 
-#: crates/ui-egui/src/editor/handles3d.rs:259
+#: crates/ui-egui/src/editor/handles3d.rs:263
 msgid "Aligned."
 msgstr ""
 
-#: crates/ui-egui/src/editor/views.rs:1827
+#: crates/ui-egui/src/editor/views.rs:1829
 msgid "Aligned: let go, then click the padlock to lock it there."
 msgstr ""
 
@@ -1024,11 +1024,11 @@ msgstr ""
 msgid "An empty project to model in."
 msgstr "Un projet vide pour modéliser."
 
-#: crates/ui-egui/src/editor/shape_handles.rs:119
+#: crates/ui-egui/src/editor/shape_handles.rs:115
 msgid "An equality (EQ) holds this edge: take it off to drag it."
 msgstr ""
 
-#: crates/ui-egui/src/editor/shape_handles.rs:120
+#: crates/ui-egui/src/editor/shape_handles.rs:116
 msgid "An equality (EQ) holds this end: take it off to drag it."
 msgstr ""
 
@@ -3317,11 +3317,11 @@ msgstr "Contraintes"
 msgid "Constraints are not satisfied"
 msgstr "Les contraintes ne sont pas respectées"
 
-#: crates/ui-egui/src/editor/shape_handles.rs:345
+#: crates/ui-egui/src/editor/shape_handles.rs:365
 msgid "Constraints are not satisfied: a lock or a dimension holds the profile where it is."
 msgstr ""
 
-#: crates/ui-egui/src/editor/handle_params.rs:165
+#: crates/ui-egui/src/editor/handle_params.rs:166
 msgid "Constraints are not satisfied: {} can't put it where the drag takes it."
 msgstr ""
 
@@ -4311,11 +4311,11 @@ msgstr "Position du texte de cote:"
 msgid "Dimension Value"
 msgstr "Valeur de cote"
 
-#: crates/ui-egui/src/editor/shape_handles.rs:115
+#: crates/ui-egui/src/editor/shape_handles.rs:111
 msgid "Dimension label {} sets this edge: change it in Family Types."
 msgstr ""
 
-#: crates/ui-egui/src/editor/shape_handles.rs:116
+#: crates/ui-egui/src/editor/shape_handles.rs:112
 msgid "Dimension label {} sets this end: change it in Family Types."
 msgstr ""
 
@@ -5286,14 +5286,14 @@ msgid "Extrusion"
 msgstr "Extrusion"
 
 #: crates/ui-egui/src/editor/extrusion.rs:198
-#: crates/ui-egui/src/editor/handles3d.rs:255
+#: crates/ui-egui/src/editor/handles3d.rs:259
 #: crates/ui-egui/src/editor/sketch.rs:1915
 #: crates/ui-egui/src/properties.rs:384
 msgid "Extrusion End"
 msgstr "Fin d'extrusion"
 
 #: crates/ui-egui/src/editor/extrusion.rs:198
-#: crates/ui-egui/src/editor/handles3d.rs:256
+#: crates/ui-egui/src/editor/handles3d.rs:260
 #: crates/ui-egui/src/editor/sketch.rs:1915
 #: crates/ui-egui/src/properties.rs:383
 msgid "Extrusion Start"
@@ -8397,7 +8397,7 @@ msgstr ""
 msgid "Move: click the point to move to (Shift or Constrain keeps it square). Esc picks another start."
 msgstr ""
 
-#: crates/ui-egui/src/editor/handles3d.rs:257
+#: crates/ui-egui/src/editor/handles3d.rs:261
 msgid "Moved {} mm"
 msgstr ""
 
@@ -8405,7 +8405,7 @@ msgstr ""
 msgid "Moving the selection: let go to put it there; Esc gives the move up."
 msgstr ""
 
-#: crates/ui-egui/src/editor/handle_params.rs:294
+#: crates/ui-egui/src/editor/handle_params.rs:295
 msgid "Moving {} leaves this where it is: nothing the family sets places it."
 msgstr ""
 
@@ -14020,8 +14020,8 @@ msgstr "La famille a déjà un type nommé {}."
 msgid "The family has changes that are not loaded. If you close it without loading, they are lost."
 msgstr "La famille a des modifications qui ne sont pas chargées. Si vous la fermez sans la charger, elles sont perdues."
 
-#: crates/ui-egui/src/editor/handle_params.rs:274
-#: crates/ui-egui/src/editor/handle_params.rs:353
+#: crates/ui-egui/src/editor/handle_params.rs:275
+#: crates/ui-egui/src/editor/handle_params.rs:354
 msgid "The family has no type for a drag to set a parameter of: make one in Family Types."
 msgstr ""
 
@@ -14142,8 +14142,8 @@ msgstr ""
 msgid "The profile"
 msgstr "Le profil"
 
-#: crates/ui-egui/src/editor/handle_params.rs:169
-#: crates/ui-egui/src/editor/shape_handles.rs:108
+#: crates/ui-egui/src/editor/handle_params.rs:170
+#: crates/ui-egui/src/editor/shape_handles.rs:104
 msgid "The profile can't take this: its lines would cross, overlap or no longer close."
 msgstr ""
 
@@ -14449,19 +14449,15 @@ msgstr "Cette copie n'a pas de carte graphique sur laquelle dessiner la vue 3D"
 msgid "This dimension measures to a line that is gone: draw the line again (Ctrl+Z) or delete the dimension."
 msgstr ""
 
-#: crates/ui-egui/src/editor/shape_handles.rs:117
+#: crates/ui-egui/src/editor/shape_handles.rs:113
 msgid "This edge is locked: unlock it to drag it."
 msgstr ""
 
-#: crates/ui-egui/src/editor/shape_handles.rs:107
-msgid "This edge is tied to a parameter or worked out by a formula: change it in Family Types."
-msgstr ""
-
-#: crates/ui-egui/src/editor/shape_handles.rs:118
+#: crates/ui-egui/src/editor/shape_handles.rs:114
 msgid "This end is locked: unlock it to drag it."
 msgstr ""
 
-#: crates/ui-egui/src/editor/handles3d.rs:311
+#: crates/ui-egui/src/editor/handles3d.rs:315
 #: crates/ui-egui/src/editor/sketch.rs:1513
 #: crates/ui-egui/src/editor/sketch.rs:1531
 msgid "This end is tied to a parameter or worked out by a formula: change it in Family Types."
@@ -16362,7 +16358,7 @@ msgstr "est inférieur ou égal à"
 msgid "its active one"
 msgstr ""
 
-#: crates/ui-egui/src/editor/handle_params.rs:293
+#: crates/ui-egui/src/editor/handle_params.rs:294
 msgid "its formulas"
 msgstr ""
 
@@ -16786,10 +16782,10 @@ msgstr "{} / {}"
 msgid "{} : {} plane"
 msgstr ""
 
-#: crates/ui-egui/src/editor/handle_params.rs:545
-#: crates/ui-egui/src/editor/handle_params.rs:560
-#: crates/ui-egui/src/editor/handles3d.rs:255
-#: crates/ui-egui/src/editor/handles3d.rs:256
+#: crates/ui-egui/src/editor/handle_params.rs:546
+#: crates/ui-egui/src/editor/handle_params.rs:561
+#: crates/ui-egui/src/editor/handles3d.rs:259
+#: crates/ui-egui/src/editor/handles3d.rs:260
 msgid "{} = {}"
 msgstr ""
 
@@ -16962,7 +16958,7 @@ msgstr ""
 msgid "{} is a file's triangles: it has no sketch to move."
 msgstr ""
 
-#: crates/ui-egui/src/editor/handle_params.rs:187
+#: crates/ui-egui/src/editor/handle_params.rs:188
 msgid "{} is a reporting parameter: it reads a dimension and never drives one."
 msgstr ""
 
@@ -16986,11 +16982,11 @@ msgstr "{} n'est pas {}: `{}`"
 msgid "{} is pinned: unpin it (UP) to change where it is."
 msgstr ""
 
-#: crates/ui-egui/src/editor/handle_params.rs:193
+#: crates/ui-egui/src/editor/handle_params.rs:194
 msgid "{} is set by the family's types, and it has none: make one in Family Types."
 msgstr ""
 
-#: crates/ui-egui/src/editor/handle_params.rs:190
+#: crates/ui-egui/src/editor/handle_params.rs:191
 msgid "{} is set by the instance previewed: change it there."
 msgstr ""
 
@@ -16998,7 +16994,7 @@ msgstr ""
 msgid "{} is still being asked to lend their key: ask again"
 msgstr "On demande encore à {} de prêter sa clé: redemandez"
 
-#: crates/ui-egui/src/editor/handle_params.rs:184
+#: crates/ui-egui/src/editor/handle_params.rs:185
 msgid "{} is worked out by a formula: change the formula in Family Types."
 msgstr ""
 
@@ -17006,7 +17002,7 @@ msgstr ""
 msgid "{} isn't a format"
 msgstr ""
 
-#: crates/ui-egui/src/editor/handle_params.rs:181
+#: crates/ui-egui/src/editor/handle_params.rs:182
 msgid "{} isn't a parameter of the family: no drag sets it."
 msgstr ""
 
@@ -18587,4 +18583,7 @@ msgstr "Dessus"
 #~ msgstr ""
 #: crates/ui-egui/src/editor/modify.rs:555
 #~ msgid "{} picks from the view, which {3D} can't do yet: use it in a plan or an elevation."
+#~ msgstr ""
+#: crates/ui-egui/src/editor/shape_handles.rs:107
+#~ msgid "This edge is tied to a parameter or worked out by a formula: change it in Family Types."
 #~ msgstr ""

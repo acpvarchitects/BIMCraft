@@ -1810,6 +1810,7 @@ impl FamilyEditor {
             && d != 0.0
             && let Err(e) = if self.dragging_param() { self.param_by(if end { d } else { -d }) } else { self.drag_end(end, d) }
         {
+            self.snap_refused();
             problem = Some(e);
         }
         if let Some(moved) = edge_moved
@@ -1823,14 +1824,15 @@ impl FamilyEditor {
             problem = Some(e);
         }
         // Lined up with something a padlock can lock it to (FE-26): said, while it is held there.
-        if self.views.handle_snap.as_ref().is_some_and(|s| s.lock().is_some()) {
+        let lock = self.snap_lock();
+        if lock.is_some() {
             self.views.said = Some(t("Aligned: let go, then click the padlock to lock it there.").to_string());
         }
         // The edge or the selection let go: they stay as the drag left them, a step of the history once the button is up.
         if response.drag_stopped() || !ui.input(|i| i.pointer.primary_down()) {
             // Let go lined up with something: Align's padlock, open, where the hand left it; the next click locks the two
             // or lets it go.
-            if let Some((on, own)) = self.views.handle_snap.take().and_then(|s| s.lock())
+            if let Some((on, own)) = lock.filter(|_| self.views.handle_snap.take().is_some())
                 && problem.is_none()
                 && let Some(p) = response.interact_pointer_pos().or(hover)
             {

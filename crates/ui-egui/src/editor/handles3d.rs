@@ -249,7 +249,11 @@ impl FamilyEditor {
         drag.last = d;
         let end = drag.end.clone();
         if param {
-            return self.param_to(d);
+            let done = self.param_to(d);
+            if done.is_err() {
+                self.snap_refused();
+            }
+            return done;
         }
         let said = match end {
             Some((true, ..)) => tf("{} = {}", &[t("Extrusion End"), &number_text(self.end_after(true, d).unwrap_or(d))]),

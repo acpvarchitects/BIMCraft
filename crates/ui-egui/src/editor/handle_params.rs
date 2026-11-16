@@ -1,9 +1,10 @@
 //! FE-25: a shape handle tied to a parameter drags it. A side or an end whose place a labelled dimension sets, or an end whose
 //! number is a formula of parameters (an End associated with `Height`), is dragged by changing that parameter for the type
-//! previewed. A side whose numbers are formulas and that no label sets moves alone, its formulas kept with the move added
-//! (FE-26, `handles::shifted`): the starter box's `Width / 2` side dragged 40 out is `(Width / 2) + 40`. The parameter is set (an instance parameter's own value, its default in the family): the value that puts the side
-//! or end where the hand is, found on the flexed family (the dimension's length after the drag, the End's new number) and
-//! written as a dimension's drag through its label writes it (`Edit::Parameter`), one step of the history.
+//! previewed (an instance parameter's own value, its default in the family): the value that puts the side or end where the
+//! hand is, found on the flexed family (the dimension's length after the drag, the End's new number) and written as a
+//! dimension's drag through its label writes it (`Edit::Parameter`), one step of the history. A side whose numbers are
+//! formulas and that no label sets has no parameter dragged: it moves alone, its formulas kept with the move added (FE-26,
+//! `handles::shifted`; the starter box's `Width / 2` side dragged 40 out is `(Width / 2) + 40`).
 //!
 //! Which parameter is found by moving each (`drive`): of those the side's or end's formulas name (or the label on it), the ones
 //! that move it, a label's first, then a size (one that leaves the far side where it is or moves it the other way) before a

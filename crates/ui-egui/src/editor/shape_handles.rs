@@ -76,21 +76,18 @@ pub(crate) const SNAP: f32 = 8.0;
 #[derive(Clone, Debug)]
 pub(crate) struct HandleSnap {
     own: DimRef,
+    way: [f64; 3],
     from: f64,
     reach: f64,
     targets: Vec<(DimRef, f64)>,
     raw: f64,
     done: f64,
-    on: Option<DimRef>,
+    /// What it is lined up with now, and where that is along its way.
+    on: Option<(DimRef, f64)>,
     free: bool,
 }
 
 impl HandleSnap {
-    /// The reference it is lined up with and itself, where a padlock may lock the two.
-    pub(super) fn lock(&self) -> Option<(DimRef, DimRef)> {
-        self.on.filter(|_| self.free).map(|on| (on, self.own))
-    }
-
     /// Whether it is lined up with something now.
     pub(super) fn on(&self) -> bool {
         self.on.is_some()
@@ -104,7 +101,6 @@ fn dot3(a: [f64; 3], b: [f64; 3]) -> f64 {
 /// What a refused drag says.
 fn said(r: Refused) -> String {
     match r {
-        Refused::Tied => t("This edge is tied to a parameter or worked out by a formula: change it in Family Types.").to_string(),
         Refused::Invalid => t("The profile can't take this: its lines would cross, overlap or no longer close.").to_string(),
     }
 }
@@ -219,10 +215,14 @@ impl FamilyEditor {
     /// was, saying why.
     pub(crate) fn drag_edge_to(&mut self, moved: [f64; 3]) -> Result<(), String> {
         let Some(way) = self.views.edge_drag.as_ref().map(|d| d.way) else { return Ok(()) };
-        // Up to something that faces its way, it lines up with it (FE-26).
+        // Up to something that faces its way, it lines up with it (FE-26); refused there, it lines up with nothing.
         let d = self.snap_to(dot3(moved, way));
         if self.views.param_drag.is_some() {
-            return self.param_to(d);
+            let done = self.param_to(d);
+            if done.is_err() {
+                self.snap_refused();
+            }
+            return done;
         }
         let Some(drag) = self.views.edge_drag.as_mut() else { return Ok(()) };
         if !d.is_finite() || (d - drag.last).abs() < 1e-9 {
@@ -243,6 +243,7 @@ impl FamilyEditor {
         let done = self.offset_edge(&drag, i, d);
         if done.is_err() {
             self.forms[i] = drag.before.clone();
+            self.snap_refused();
         }
         done
     }
@@ -299,15 +300,34 @@ impl FamilyEditor {
             _ => true,
         };
         let targets = f.handle_targets(&values, way, form.guid, &shown);
-        (reach.is_finite() && reach > 0.0).then_some(HandleSnap { own, from, reach, targets, raw: 0.0, done: 0.0, on: None, free })
+        let snap = HandleSnap { own, way, from, reach, targets, raw: 0.0, done: 0.0, on: None, free };
+        (reach.is_finite() && reach > 0.0).then_some(snap)
     }
 
     /// The side or end dragged `d` mm along its way: as far as takes it onto what it lines up with there, else `d`.
     pub(crate) fn snap_to(&mut self, d: f64) -> f64 {
         let Some(s) = self.views.handle_snap.as_mut() else { return d };
-        let hit = hs::snapped(&s.targets, s.from + d, s.reach);
-        s.on = hit.map(|(r, _)| r);
-        hit.map_or(d, |(_, at)| at - s.from)
+        s.on = hs::snapped(&s.targets, s.from + d, s.reach);
+        s.on.map_or(d, |(_, at)| at - s.from)
+    }
+
+    /// The drag refused where it would have lined up: lined up with nothing, so no padlock is offered and nothing says so.
+    pub(crate) fn snap_refused(&mut self) {
+        if let Some(s) = self.views.handle_snap.as_mut() {
+            s.on = None;
+        }
+    }
+
+    /// What a padlock would lock, the reference first: what the side or end is lined up with, where no parameter is dragged
+    /// and the form, as the type previewed builds it, stands there now.
+    pub(crate) fn snap_lock(&self) -> Option<(DimRef, DimRef)> {
+        let s = self.views.handle_snap.as_ref().filter(|s| s.free)?;
+        let (on, at) = s.on?;
+        let f = self.family().ok()?;
+        let values = self.values();
+        let flexed = f.flexed(&values).ok()?;
+        let now = bimcraft_core::family::constraints::place(&flexed, &s.own, &values, s.way).ok()?;
+        ((now - at).abs() <= 1e-3).then_some((on, s.own))
     }
 
     /// The side or end dragged a step `d` further (an End's drag in a plan or an elevation comes a step at a time): the step

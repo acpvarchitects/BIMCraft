@@ -39,8 +39,6 @@ pub struct EdgeHandle {
 /// Why an edge can't be moved so.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Refused {
-    /// A number it would move is a formula, or tied to a parameter.
-    Tied,
     /// The profile it would leave isn't one: lines crossing or overlapping, one of no length or turned back on itself, a loop
     /// no longer closed, an arc of no radius.
     Invalid,
