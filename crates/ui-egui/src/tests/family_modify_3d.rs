@@ -140,7 +140,7 @@ fn what_picks_from_the_view_stays_greyed_in_3d_and_says_why() {
         let why = editor(&h).modify_blocked(&t).expect("greyed in {3D}");
         assert!(why.contains("{3D}") && why.contains("plan or an elevation"), "{t:?}: {why}");
     }
-    assert!(!editor(&h).editing_2d(), "Align is a plan's and an elevation's still");
+    assert!(!editor(&h).editing_2d() && editor(&h).aligns_in_3d(), "Align works in {{3D}} too (FE-24b)");
     // In a plan they all work, as before.
     view(&mut h, Some(Which::Plan));
     pick(&mut h, &[Picked::Form(0)]);

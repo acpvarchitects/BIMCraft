@@ -208,3 +208,50 @@ fn offset_in_3d_refuses_a_forms_edge_saying_what_it_takes() {
     assert!(about(extent(&h, 0), before));
     assert!(status(&h).contains("Offset takes reference planes and reference lines"), "{}", status(&h));
 }
+
+/// Align in hand in {3D}.
+fn aligning() -> Harness<'static, BimApp> {
+    let mut h = zoomed();
+    shortcut(&mut h, "AL");
+    assert!(super::family_views::editor(&h).views.aligning.is_some(), "Align in hand in {{3D}}: {}", status(&h));
+    h
+}
+
+#[test]
+fn align_in_3d_moves_what_is_picked_second_onto_the_reference_and_its_padlock_locks_them() {
+    use super::family_views::editor;
+    let mut h = aligning();
+    assert!(h.state().prompt().contains("reference to align to"), "{}", h.state().prompt());
+    // Edge (x 1000), then box A's east side by its top edge: the side goes onto Edge, the lines joined to it stretched to
+    // it, as a plan's Align moves it; box A runs from x 100 to 1000.
+    click_off(&mut h, [1000.0, 600.0, 0.0]);
+    assert!(h.state().prompt().contains("moves onto it"), "{}", h.state().prompt());
+    click_off(&mut h, [500.0, 300.0, 300.0]);
+    assert!(about(extent(&h, 0), [100.0, 1000.0, 100.0, 500.0]), "{:?}: {}", extent(&h, 0), status(&h));
+    assert_eq!(editor(&h).steps(), 1, "one step");
+    // Its padlock, open where the second click was: a click locks the two.
+    let dims = editor(&h).dimensions.len();
+    let lock = editor(&h).views.align_lock_3d.as_ref().map(|l| l.2).expect("a padlock offered");
+    let (dx, dy) = crate::editor::modify::PADLOCK_3D;
+    let at = h.state().family_screen3(lock).expect("on screen") + egui::vec2(dx, dy);
+    click_at(&mut h, at);
+    assert_eq!(editor(&h).dimensions.len(), dims + 1, "{}", status(&h));
+    let d = editor(&h).dimensions.last().unwrap().clone();
+    assert!(d.alignment && d.is_locked(0), "{d:?}");
+}
+
+#[test]
+fn align_in_3d_says_why_where_it_takes_nothing() {
+    // The reference twice.
+    let mut h = aligning();
+    click_off(&mut h, [1000.0, 600.0, 0.0]);
+    click_off(&mut h, [1000.0, 600.0, 0.0]);
+    assert!(status(&h).contains("That is the reference"), "{}", status(&h));
+    // An upright edge has no face square to Ref. Level through it but two, and runs along what the plane faces.
+    let mut h = aligning();
+    click_off(&mut h, [1000.0, 600.0, 0.0]);
+    let before = extent(&h, 0);
+    click_on(&mut h, [500.0, 100.0, 150.0]);
+    assert!(about(extent(&h, 0), before), "nothing moved");
+    assert!(status(&h).contains("square to the work plane"), "{}", status(&h));
+}

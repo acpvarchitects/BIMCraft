@@ -416,7 +416,7 @@ fn context(ed: &FamilyEditor) -> Option<&'static str> {
         if ed.editing_2d() && ed.views.dimensioning.is_some() {
             return Some(msg!("Modify | Place Dimensions"));
         }
-        if ed.editing_2d() && ed.views.aligning.is_some() {
+        if (ed.editing_2d() || ed.aligns_in_3d()) && ed.views.aligning.is_some() {
             return Some(msg!("Modify | Align"));
         }
         if ed.selected_dimension().is_some() {
@@ -816,7 +816,7 @@ impl BimApp {
                     let some = !ed.modeller.selection.is_empty();
                     // Align, in a plan or an elevation of a family that isn't adaptive (F7): what is picked second onto what is
                     // picked first, and a padlock that locks them.
-                    if ed.editing_2d() {
+                    if ed.editing_2d() || ed.aligns_in_3d() {
                         let tip = msg!("Align (AL): pick a reference, then what moves onto it; its padlock locks them");
                         if crate::small_button(ui, Icon::Align, "Align", ed.views.aligning.is_some(), tip).clicked() {
                             ed.align_tool();
@@ -1774,8 +1774,8 @@ impl BimApp {
             }
             (Some(_), false) if ed.views.drawing.is_some() => msg!("Click two points: a reference plane through them."),
             (Some(_), false) if ed.views.dimensioning.is_some() => dimension_prompt(ed.views.dim_kind),
-            (Some(_), false) if ed.views.aligning.as_ref().is_some_and(Option::is_none) => msg!("Click the reference to align to."),
-            (Some(_), false) if ed.views.aligning.is_some() => msg!("Click what moves onto it."),
+            (_, false) if ed.views.aligning.as_ref().is_some_and(Option::is_none) => msg!("Click the reference to align to."),
+            (_, false) if ed.views.aligning.is_some() => msg!("Click what moves onto it."),
             (Some(_), false) if ed.placing.is_some() => msg!("Click where the component goes, on the view's work plane."),
             (Some(_), false) if ed.views.measuring.as_ref().is_some_and(|m| m.first.is_some()) => {
                 msg!("Measure: click the second point; Esc lets the first go.")
@@ -2528,7 +2528,7 @@ impl BimApp {
         if ed.sketching() {
             ed.views.hover3d = None;
             ed.connector_hover = None;
-        } else if ed.views.modify.is_some() {
+        } else if ed.views.modify.is_some() || ed.views.aligning.is_some() {
             ed.views.hover3d = None;
             ed.connector_hover = None;
             let click = response.clicked().then(|| response.interact_pointer_pos()).flatten().or(self.canvas.quick_press());
@@ -2637,6 +2637,12 @@ impl BimApp {
         // A Modify tool in hand, on the work plane (FE-24).
         if !ed.sketching()
             && let Some(e) = ed.modify_3d(ui, &response, &p, &cam, size, pane, tool_click)
+        {
+            self.status = Status { text: e, error: true };
+        }
+        // Align, on what the picture shows (FE-24b).
+        if !ed.sketching()
+            && let Some(e) = ed.align_3d(&response, &p, &cam, size, pane, tool_click)
         {
             self.status = Status { text: e, error: true };
         }

@@ -315,6 +315,9 @@ fn boxed(space: &Space, points: &[[f64; 3]]) -> Option<[(P2, f64); 8]> {
     Some(std::array::from_fn(|i| (P2(pick(i & 1, 0), pick((i >> 1) & 1, 1)), pick((i >> 2) & 1, 2))))
 }
 
+/// Where Align's padlock stands in {3D} from the point the second reference was picked at, in pixels (FE-24b).
+pub(crate) const PADLOCK_3D: (f32, f32) = (16.0, -16.0);
+
 /// How far from a trace, in pixels, a Modify tool's point in {3D} snaps onto it, as a plan's (FE-24b).
 const SNAP_REACH: f32 = 6.0;
 
@@ -826,6 +829,105 @@ impl FamilyEditor {
             }
         }
         said
+    }
+
+    /// Whether Align works in {3D} now (FE-24b): it is shown, in a family that isn't adaptive, no form sketched.
+    pub(crate) fn aligns_in_3d(&self) -> bool {
+        self.views.shown.is_none() && self.adaptive.is_none() && self.sketch.is_none()
+    }
+
+    /// Align in {3D} (FE-24b): the reference clicked in the picture to align to, then what moves onto it, each taken as a plan
+    /// or an elevation takes what it sees edge on (`constraints::align_ref_3d`), so the move is a plan's (`align_through`).
+    /// The padlock is offered where the second click was, while the work plane is one a plan or an elevation sees flat, whose
+    /// lock it makes. `click`, where one landed. What went wrong, if anything.
+    pub(super) fn align_3d(
+        &mut self,
+        response: &egui::Response,
+        painter: &egui::Painter,
+        cam: &bimcraft_core::view3d::Camera,
+        size: [u32; 2],
+        pane: egui::Rect,
+        click: Option<Pos2>,
+    ) -> Option<String> {
+        use bimcraft_core::family::constraints::{DimView, align_ref_3d};
+        if self.views.aligning.is_none() || !self.aligns_in_3d() {
+            self.views.align_lock_3d = None;
+            return None;
+        }
+        let frame = match self.work_frame_3d() {
+            Ok(f) => f,
+            Err(e) => {
+                self.views.aligning = None;
+                return Some(e);
+            }
+        };
+        // The view that sees the work plane flat, whose lock the padlock makes.
+        let flat = |v: [f64; 3]| (frame.z[0] * v[0] + frame.z[1] * v[1] + frame.z[2] * v[2]).abs() > 1.0 - 1e-9;
+        let lock_view = if flat([0.0, 0.0, 1.0]) {
+            Some((Which::Plan, DimView::Plan))
+        } else if flat([0.0, 1.0, 0.0]) {
+            Some((Which::Elevation(bimcraft_core::family::views::Side::Front), DimView::Front))
+        } else if flat([1.0, 0.0, 0.0]) {
+            Some((Which::Elevation(bimcraft_core::family::views::Side::Left), DimView::Left))
+        } else {
+            None
+        };
+        let (sx, sy) = (pane.width() / size[0].max(1) as f32, pane.height() / size[1].max(1) as f32);
+        let pixel = |p: Pos2| (f64::from((p.x - pane.min.x) / sx), f64::from((p.y - pane.min.y) / sy));
+        let reach_px = f64::from(SNAP_REACH / sx.max(1e-6));
+        let project = |p: [f64; 3]| {
+            let (x, y, _) = cam.project(p);
+            (x.is_finite() && y.is_finite()).then(|| pane.min + egui::vec2(x as f32 * sx, y as f32 * sy))
+        };
+        // An align a plan's padlock would lock, made here (or after Remove Constraints): offered here, where it was picked.
+        if let Some((a, b, _, _)) = self.views.align_lock.take() {
+            self.views.align_lock_3d = self.views.align_point_3d.zip(lock_view).map(|(at, (_, view))| (a, b, at, view));
+        }
+        let accent = crate::style::canvas_pal().accent;
+        let lock_at = self.views.align_lock_3d.and_then(|(.., at, _)| project(at)).map(|c| c + egui::vec2(PADLOCK_3D.0, PADLOCK_3D.1));
+        if let Some(at) = lock_at {
+            super::dimensions::padlock(painter, at, false, accent);
+        }
+        // The reference under the pointer, lit as a click would pick it.
+        if let Some((_, (a, b))) =
+            response.hover_pos().filter(|p| pane.contains(*p)).and_then(|p| self.reference_3d(cam, pixel(p), reach_px))
+            && let (Some(a), Some(b)) = (project(a), project(b))
+        {
+            painter.line_segment([a, b], egui::Stroke::new(3.0, crate::style::canvas_pal().hover));
+        }
+        let p = click?;
+        // The padlock clicked locks; any other click lets it go.
+        if lock_at.is_some_and(|at| super::dimensions::lock_rect(at).contains(p)) {
+            self.lock_alignment_3d();
+            return self.views.status.take();
+        }
+        self.views.align_lock_3d = None;
+        let Some((r, e)) = self.reference_3d(cam, pixel(p), reach_px) else {
+            return Some(t("Pick a reference plane, a reference line, a model line or a form's edge.").to_string());
+        };
+        let f = self.family().ok()?;
+        let r = match align_ref_3d(&f, &self.values(), &frame, r, e) {
+            Ok(r) => r,
+            Err(why) => return Some(tf("Align can't take that: {}.", &[&why])),
+        };
+        match self.views.aligning {
+            Some(Some(a)) if a == r => Some(t("That is the reference: pick what moves onto it.").to_string()),
+            Some(Some(a)) => {
+                self.views.aligning = Some(None);
+                let at: [f64; 3] = std::array::from_fn(|k| (e.0[k] + e.1[k]) / 2.0);
+                self.views.align_point_3d = Some(at);
+                let (which, _) = lock_view.unwrap_or((Which::Plan, DimView::Plan));
+                self.align_through(a, r, P2(0.0, 0.0), which);
+                if let Some((a, b, _, _)) = self.views.align_lock.take() {
+                    self.views.align_lock_3d = lock_view.map(|(_, view)| (a, b, at, view));
+                }
+                self.views.status.take()
+            }
+            _ => {
+                self.views.aligning = Some(Some(r));
+                None
+            }
+        }
     }
 
     /// What {3D} leaves out of `f` for now or for good, as a Modify tool sees it (FE-24b): the planes, reference lines and

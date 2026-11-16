@@ -105,6 +105,11 @@ pub(crate) struct Views {
     pub(crate) aligning: Option<Option<DimRef>>,
     /// The padlock Align leaves until the next click: the two references, where it shows (the view's mm), in which view.
     pub(crate) align_lock: Option<(DimRef, DimRef, P2, Which)>,
+    /// Align's padlock in {3D} (FE-24b): the two references aligned, where the second was picked (the family's axes) and the
+    /// view whose lock it makes, until the next click.
+    pub(crate) align_lock_3d: Option<(DimRef, DimRef, [f64; 3], bimcraft_core::family::constraints::DimView)>,
+    /// Where Align's second pick in {3D} was, for a padlock offered after Remove Constraints.
+    pub(crate) align_point_3d: Option<[f64; 3]>,
     /// Where each Align padlock was last shown on screen, by its dimension's place (the one Align offers, past the last).
     pub(crate) locks_shown: Vec<(usize, egui::Pos2)>,
     /// Where Align's offered padlock was last shown on screen.
