@@ -2216,7 +2216,8 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
                     items.push(set);
                 }
                 let rep = w.add(format!("IFCSHAPEREPRESENTATION(#{},'Body',{},({}))", w.body, w.meshed(), refs(&items)));
-                (at, w.add(format!("IFCPRODUCTDEFINITIONSHAPE($,$,(#{rep}))")))
+                // Its own placement, at the opening's: one placement places one product.
+                (w.place(Some(at), (0.0, 0.0, 0.0), None), w.add(format!("IFCPRODUCTDEFINITIONSHAPE($,$,(#{rep}))")))
             }
             (None, Some((pieces, _))) => {
                 let mut items = Vec::new();
