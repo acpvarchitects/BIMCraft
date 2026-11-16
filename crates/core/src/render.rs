@@ -2814,6 +2814,8 @@ type Trace = (Id, (f32, f32), (f32, f32));
 
 /// How many steps along its trace a crowded reference plane's name is tried at, beside it, by each end and on each side.
 const NAME_STEPS: usize = 3;
+/// How many steps in along its trace a reference plane's name is slid from beyond an end an elevation mark stands at.
+const SLIDE_STEPS: usize = 8;
 
 /// A reference plane's name, in the planes' green, lettered just beyond the end of its trace (pixels): `ends[0]` the end it
 /// goes by alone, `ends[1]` the other, each as (from, to), lettered beyond `to`. Where it would overlap a name `lettered`
@@ -2852,7 +2854,23 @@ fn plane_name_px(d: &mut Drawing, ends: [((f32, f32), (f32, f32)); 2], name: &st
         let back = along + (2.0 * along + gap) * n as f32;
         boxed((b.0 - dir.0 * back + across.0 * off, b.1 - dir.1 * back + across.1 * off))
     };
-    let mut places = vec![beyond(0), beyond(1)];
+    // On the trace by end `e`, slid `n` steps back along it from beyond the end (UI-3: in from an elevation mark beyond it);
+    // the trace is cut under it, as beyond its end.
+    let slid = |e: usize, n: usize| {
+        let ((at, _), dir) = (beyond(e), axes(e).1);
+        let step = (w / 4.0 + gap) * dir.0.abs() + (h / 2.0 + gap) * dir.1.abs();
+        boxed((at.0 - dir.0 * step * n as f32, at.1 - dir.1 * step * n as f32))
+    };
+    let marked = |r: &[f32; 4]| lettered.marks.iter().any(|o| !(r[2] <= o[0] || o[2] <= r[0] || r[3] <= o[1] || o[3] <= r[1]));
+    let mut places = vec![beyond(0)];
+    // Only a mark in the way beyond the end: in from it along the trace, before the other end.
+    if marked(&beyond(0).1) {
+        places.extend((1..=SLIDE_STEPS).map(|n| slid(0, n)));
+    }
+    places.push(beyond(1));
+    if marked(&beyond(1).1) {
+        places.extend((1..=SLIDE_STEPS).map(|n| slid(1, n)));
+    }
     for n in 0..NAME_STEPS {
         for e in 0..2 {
             places.extend([beside(e, 1.0, n), beside(e, -1.0, n)]);
