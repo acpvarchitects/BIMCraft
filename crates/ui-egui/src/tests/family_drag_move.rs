@@ -302,7 +302,7 @@ fn a_press_on_a_form_not_selected_selects_it_and_moves_it_and_ctrl_adds_it() {
     sel.sort();
     assert_eq!(sel, [Picked::Form(0), Picked::Form(1)]);
     let (da, db) = (shift(&a0, &points(&h, 0)), shift(&b1, &points(&h, 1)));
-    assert!(near(da[0], 100.0) && da == db, "{da:?} {db:?} {}", status(&h));
+    assert!(near(da[0], 100.0) && da.iter().zip(&db).all(|(a, b)| (a - b).abs() < 1e-6), "{da:?} {db:?} {}", status(&h));
 }
 
 #[test]
@@ -683,7 +683,7 @@ fn with_drag_elements_on_selection_a_drag_from_a_face_not_selected_selects_and_m
     sel.sort();
     assert_eq!(sel, [Picked::Form(0), Picked::Form(1)]);
     let (da, db) = (shift(&a0, &points(&h, 0)), shift(&b1, &points(&h, 1)));
-    assert!(near(da[0], 100.0) && da == db, "{da:?} {db:?} {}", status(&h));
+    assert!(near(da[0], 100.0) && da.iter().zip(&db).all(|(a, b)| (a - b).abs() < 1e-6), "{da:?} {db:?} {}", status(&h));
     // Shift on A's face, B alone selected: nothing moves and no box is drawn.
     pick(&mut h, &[Picked::Form(1)]);
     let (a, b) = (points(&h, 0), points(&h, 1));

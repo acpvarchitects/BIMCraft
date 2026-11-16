@@ -88,6 +88,9 @@ pub(crate) struct Views {
     pub(crate) ends_shown: Vec<(egui::Pos2, bool)>,
     /// The picture shown, and what it was drawn of.
     pub(super) cache: Option<Cached>,
+    /// The view shown fitted (UI-1: what it draws, inside its picture), and what it was fitted for: kept while only the zoom
+    /// and the pan change, as the fit draws the view again a few times.
+    fitted: Option<(u64, View)>,
     /// Aligned Dimension (DI): on, with the references picked so far; Radial or Diameter Dimension too (`dim_kind`), its
     /// circle picked once it is.
     pub(crate) dimensioning: Option<Vec<DimRef>>,
@@ -111,6 +114,10 @@ pub(crate) struct Views {
     pub(crate) status: Option<String>,
     /// Where on screen the view was last shown.
     pub(super) pane: Option<Rect>,
+    /// Where the view shown, a plan, an elevation or {3D}, was last drawn, as `view_2d` and `family_3d` were given it: what a test
+    /// reads to see it clear of the tabs (UI-1).
+    #[cfg(test)]
+    pub(crate) drawn: Option<Rect>,
     /// Where the pointer was last over {3D} and the camera {3D} was seen through, and the form or nested instance under it
     /// there (T11's hover).
     pub(crate) hover3d: Option<(egui::Pos2, bimcraft_core::view3d::Camera, Option<bimcraft_core::family::views::Part>)>,
@@ -309,6 +316,25 @@ impl Views {
         let (x, y) = self.pixel_of(p)?;
         Some(self.pane?.min + vec2(x, y))
     }
+
+    /// Every point the drawing of the plan or elevation shown paints, its lettering's included, on screen: each elevation mark's
+    /// (with its name) apart, then the rest.
+    pub(crate) fn ink_on_screen(&self) -> (Vec<Vec<egui::Pos2>>, Vec<egui::Pos2>) {
+        let (Some(c), Some(pane)) = (self.cache.as_ref(), self.pane) else { return Default::default() };
+        let mut marks: std::collections::BTreeMap<bimcraft_core::ids::Id, Vec<egui::Pos2>> = Default::default();
+        let mut rest = Vec::new();
+        for (p, o) in c.drawing.prims.iter().zip(&c.drawing.owners) {
+            if matches!(p, bimcraft_core::render::Prim::Image { .. }) {
+                continue;
+            }
+            let pts = p.points().into_iter().map(|(x, y)| pane.min + vec2(x, y));
+            match o.filter(|id| matches!(c.staged.model.elements.get(*id), Some(Element::Elevation(_)))) {
+                Some(id) => marks.entry(id).or_default().extend(pts),
+                None => rest.extend(pts),
+            }
+        }
+        (marks.into_values().collect(), rest)
+    }
 }
 
 #[cfg(test)]
@@ -494,9 +520,6 @@ impl FamilyEditor {
                 self.name.trim(),
                 which,
                 size,
-                zoom.to_bits(),
-                pan.0.to_bits(),
-                pan.1.to_bits(),
                 self.document.preview_visibility,
                 self.temporary(),
                 self.views.detail,
@@ -508,17 +531,32 @@ impl FamilyEditor {
             (base.materials.len(), base.images.len()).hash(&mut h);
             // The form being sketched again, which the view leaves out.
             self.sketch.as_ref().and_then(|s| s.index).hash(&mut h);
+            (zoom.to_bits(), pan.0.to_bits(), pan.1.to_bits()).hash(&mut h);
             h.finish()
         };
         if self.views.cache.as_ref().is_some_and(|c| c.key == key) {
             return;
         }
+        let kept = self.views.fitted;
+        let graphics = self.views.kept.key(Some(which));
         let drawn = self.staged(base, which).and_then(|mut st| {
-            let shown = st.draw_lines(which, size[0], size[1], zoom, P2(pan.0, pan.1))?;
-            Ok((st, shown))
+            // What the fit depends on, the room the view frames (the marks stand round it), the view, its size and its graphics,
+            // and not the rest of the family: an edit inside the room, a drag's every frame, keeps the frame it had.
+            let fit_key = {
+                let mut h = DefaultHasher::new();
+                (st.room.0.map(f64::to_bits), st.room.1.map(f64::to_bits), which, size, &graphics).hash(&mut h);
+                h.finish()
+            };
+            let fitted = match kept {
+                Some((k, v)) if k == fit_key => v,
+                _ => st.fitted(which, size[0], size[1]),
+            };
+            let shown = st.draw_lines_at(which, fitted, zoom, P2(pan.0, pan.1))?;
+            Ok((st, shown, (fit_key, fitted)))
         });
         match drawn {
-            Ok((staged, mut shown)) => {
+            Ok((staged, mut shown, fitted)) => {
+                self.views.fitted = Some(fitted);
                 // A plane the view hides, revealed (FE-18): its trace in magenta, as a form is (the drawing draws every plane in
                 // the one colour, whatever its graphics).
                 for (prim, owner) in shown.drawing.prims.iter_mut().zip(&shown.drawing.owners) {
@@ -595,6 +633,10 @@ impl FamilyEditor {
         self.refresh_view(ui.ctx(), base, which, size);
         let response = ui.interact(pane, UiId::new("family-view-2d"), Sense::click_and_drag());
         self.views.pane = Some(pane);
+        #[cfg(test)]
+        {
+            self.views.drawn = Some(pane);
+        }
         let c = self.views.cache.as_ref().filter(|c| c.which == which)?;
         let view = c.view;
         let painter = ui.painter_at(pane);

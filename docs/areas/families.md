@@ -1926,6 +1926,17 @@ left by each of those commands and none by the wheel or the middle button. Previ
 Fit. Their names are in `shortcuts::ACTIONS` and `FAMILY_ONLY` (the project has no such commands yet). Tests:
 `tests/family_zoom.rs`.
 
+What a fit shows (UI-1): the document's plan, elevation and {3D} are drawn in the view's pane below the tabs that float over its
+top (`family_central`, from where the tabs were last drawn, on a whole pixel; the canvas above; the window's `view_rect` is that
+pane), so an elevation's plane names, which run along its picture's top, and the top of {3D}'s box are never under them. A plan
+or the ceiling plan keeps the room's frame unless it cuts an elevation mark at its edge, its name with it (a narrow view's, the
+BIMCraft profile's between its palettes): then it shrinks about the room and the marks it shows a part of until none is cut
+(`Staged::fitted`, a few passes, as lettering keeps its size on paper as the frame shrinks); a mark wholly outside stays out,
+so a wide view is framed as before. An elevation keeps the room's frame, with room for its levels' names, as its planes run
+from edge to edge whatever the frame. The editor keeps the fitted frame while only the zoom and the pan change
+(`Staged::draw_lines_at` draws from it). Tests: `tests/family_canvas_clear.rs`, and
+`a_fitted_view_cuts_no_elevation_mark_at_its_edge` in `family/views.rs`.
+
 ## Imported 3D models
 
 `import_mesh` (Insert > Import 3D Model) brings in the models other programs make: an OBJ, with the colours of the MTL it

@@ -1471,14 +1471,21 @@ impl BimApp {
         (ed.selecting.by_face, ed.selecting.drag_faces) = (self.select_by_face, self.drag_on_selection);
         ed.selecting.pins = self.select_pinned;
         let pane = ui.available_rect_before_wrap();
-        self.view_rect = pane;
         self.pane = pane;
+        // A plan, an elevation and {3D} are drawn below the tabs that float over the view's top (UI-1: as they were last drawn),
+        // so a plane's name along an elevation's top and the top of what {3D} fits show; above, the canvas.
+        // On a whole pixel, as the pane's own top is, so a point on screen stands for the same millimetres as before.
+        let drawn = pane.with_min_y(self.tabs_foot.ceil().clamp(pane.top(), (pane.bottom() - 64.0).max(pane.top())));
+        self.view_rect = drawn;
+        if ed.adaptive.is_none() {
+            ui.painter().rect_filled(pane.with_max_y(drawn.top()), 0.0, crate::canvas::color(bimcraft_core::render::PAPER));
+        }
         let values = ed.values();
         let hidden = ed.adaptive.as_ref().map(|d| ed.temp_hidden(d)).unwrap_or_default();
         if let Some(which) = ed.views.shown {
             // A plan or an elevation (F4): the project's own drawing of the family in a scratch model.
             let base = Arc::clone(&self.session.model);
-            if let Some(e) = ed.view_2d(ui, &base, which, pane, self.thin) {
+            if let Some(e) = ed.view_2d(ui, &base, which, drawn, self.thin) {
                 self.status = Status { text: e, error: true };
             }
             if let Some(text) = ed.views.said.take() {
@@ -1494,7 +1501,7 @@ impl BimApp {
                 self.status = Status { text: e, error: true };
             }
         } else {
-            self.family_3d(ui, &mut ed, pane);
+            self.family_3d(ui, &mut ed, drawn);
         }
         // The point a snap override waited for, picked: it is done.
         if std::mem::take(&mut ed.took_point) {
@@ -2427,6 +2434,10 @@ impl BimApp {
     /// over it), and on nothing lets the selection go, as in Revit and the project's 3D view; the pointer over one lights it
     /// first (T11). A double click on a form sketches it again, as Edit Extrusion or Edit Revolve does (F5).
     fn family_3d(&mut self, ui: &mut Ui, ed: &mut FamilyEditor, pane: Rect) {
+        #[cfg(test)]
+        {
+            ed.views.drawn = Some(pane);
+        }
         let response = ui.interact(pane, UiId::new("family-preview"), Sense::click_and_drag());
         self.canvas.track(ui, &response);
         // The triad stands left of the ViewCube, which is in the top right corner; both are laid over the view, so a click on

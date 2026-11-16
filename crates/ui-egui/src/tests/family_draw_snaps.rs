@@ -24,7 +24,8 @@ fn measure_in_a_family_plan_snaps_to_a_plane_and_to_where_two_cross() {
     click(&mut h, 1020.0, 400.0);
     click(&mut h, 1015.0, 15.0);
     let r = editor(&h).measured().expect("a ruler laid");
-    assert!(r.dx.abs() < 1e-6 && (r.dy + 400.0).abs() < 1e-6 && (r.length - 400.0).abs() < 1e-6, "{r:?}");
+    // Across exactly, as snapped onto Edge; up within a thousandth of a mm, the first point's height a pixel's.
+    assert!(r.dx.abs() < 1e-6 && (r.dy + 400.0).abs() < 1e-3 && (r.length - 400.0).abs() < 1e-3, "{r:?}");
     // SO: the first point as clicked.
     let mut h = plan();
     shortcut(&mut h, "ME");
