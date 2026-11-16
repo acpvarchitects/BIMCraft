@@ -563,3 +563,42 @@ fn a_reference_is_picked_in_3d_where_it_shows_and_never_behind_a_solid() {
         Some((Reference3d::Edge(_), _))
     ));
 }
+
+#[test]
+fn what_align_takes_of_a_reference_picked_in_3d_is_its_face_square_to_the_work_plane() {
+    use crate::family::constraints::{DimRef, Extent};
+    use crate::family::views::Reference3d;
+    use crate::family::{Face, PlaneRef, REF_LEVEL};
+    let (mut s, r) = sketched(json!([{"sketch": rect(500.0, 300.0, 1000.0, 600.0), "to": 200}]));
+    r.unwrap();
+    run(&mut s, "family", json!({"name": "S", "ref_lines": [{"start": [-200, 1200, 0], "end": [200, 1200, 0]}]}));
+    let f = family(&s).clone();
+    let values = f.values("A", &BTreeMap::new()).unwrap();
+    let frame = f.frame(&PlaneRef::Plane(REF_LEVEL)).unwrap();
+    let take = |r: Reference3d, e: (P3, P3)| crate::family::constraints::align_ref_3d(&f, &values, &frame, r, e);
+    let form = f.forms[0].guid;
+    // The box's top east edge: its east side, which stands square to Ref. Level; not its top, which lies level with it.
+    let east = f.forms[0].sketch[1].guid;
+    assert_eq!(take(Reference3d::Edge(0), ([1000.0, 300.0, 200.0], [1000.0, 600.0, 200.0])), Ok(DimRef::Sketch(form, east)));
+    // An upright edge runs along what the plane faces: refused.
+    let e = take(Reference3d::Edge(0), ([1000.0, 300.0, 0.0], [1000.0, 300.0, 200.0])).unwrap_err();
+    assert!(e.contains("square to the work plane"), "{e}");
+    // A reference line on Ref. Level: its upright face.
+    let line = f.lines[0].guid;
+    assert_eq!(take(Reference3d::Line(line), ([-200.0, 1200.0, 0.0], [200.0, 1200.0, 0.0])), Ok(DimRef::Line(line, Face::Vertical)));
+    // A plane is itself.
+    let g = f.planes[0].guid;
+    assert_eq!(take(Reference3d::Plane(g), (f.planes[0].start, f.planes[0].end)), Ok(DimRef::Plane(g)));
+    // Seen on an upright work plane (Center (Front/Back)), the top edge's top is what stands square to it.
+    let upright = f.frame(&PlaneRef::Plane(crate::family::CENTER_FRONT_BACK)).unwrap();
+    assert_eq!(
+        crate::family::constraints::align_ref_3d(
+            &f,
+            &values,
+            &upright,
+            Reference3d::Edge(0),
+            ([1000.0, 300.0, 200.0], [500.0, 300.0, 200.0])
+        ),
+        Ok(DimRef::Form(form, Extent::End))
+    );
+}

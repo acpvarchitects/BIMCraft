@@ -3499,6 +3499,47 @@ pub fn view_way(flexed: &Family, r: &DimRef, values: &BTreeMap<String, Val>, vie
     Ok(P2(w.0.v, w.1.v))
 }
 
+/// What Align takes of reference `r` picked in {3D} (FE-24b), its ends `e` there, with the view's work plane `frame`: as a plan
+/// or an elevation takes what it sees edge on, the face through it that stands square to the plane. A plane, a model line
+/// (the plane through it square to its host) are themselves; a reference line, its face square to the plane; a form's
+/// edge, the face of the form through it square to the plane (a sketch line's side, an extrusion's end). Why there is none:
+/// a line along what the plane faces, or no face of it through the edge square to the plane.
+pub fn align_ref_3d(
+    f: &Family,
+    values: &BTreeMap<String, Val>,
+    frame: &Frame,
+    r: views::Reference3d,
+    e: (P3, P3),
+) -> Result<DimRef, String> {
+    use views::Reference3d;
+    let along: P3 = sub(e.1, e.0);
+    let len = dot(along, along).sqrt();
+    if len > TOL && dot(along, frame.z).abs() > len * (1.0 - 1e-9) {
+        return Err("it runs square to the work plane, so no face of it stands square to the plane there".into());
+    }
+    let flexed = f.flexed(values).map_err(|u| u.message)?;
+    // The first of `candidates` facing square to the plane, through both ends of the edge.
+    let square = |candidates: Vec<DimRef>| {
+        candidates.into_iter().find(|c| {
+            let Ok(Some(n)) = direction(&flexed, c, values) else { return false };
+            let Ok(at) = place(&flexed, c, values, n) else { return false };
+            dot(n, frame.z).abs() < 1e-6 && [e.0, e.1].iter().all(|p| (dot(n, *p) - at).abs() < 0.5)
+        })
+    };
+    let none = || "no face of it through there stands square to the work plane: pick another, or set another work plane".to_string();
+    match r {
+        Reference3d::Plane(g) => Ok(DimRef::Plane(g)),
+        Reference3d::ModelLine(g) => Ok(DimRef::ModelLine(g)),
+        Reference3d::Line(g) => square(vec![DimRef::Line(g, Face::Vertical), DimRef::Line(g, Face::Horizontal)]).ok_or_else(none),
+        Reference3d::Edge(i) => {
+            let form = flexed.forms.get(i).ok_or_else(none)?;
+            let mut candidates: Vec<DimRef> = form.sketch.iter().map(|l| DimRef::Sketch(form.guid, l.guid)).collect();
+            candidates.extend([DimRef::Form(form.guid, Extent::Start), DimRef::Form(form.guid, Extent::End)]);
+            square(candidates).ok_or_else(none)
+        }
+    }
+}
+
 /// Align (AL): `target` moved onto `reference` (parallel to it), as Revit's Align moves it, for `values`: the edits that
 /// do it. A plane is dragged ([`Family::drag_plane`]); an extrusion end the constraints don't set takes the new value; a
 /// sketch's line or circle centre moves there and the lines joined to it follow, through the constraints (refused where they
