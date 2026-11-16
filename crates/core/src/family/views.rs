@@ -1897,4 +1897,54 @@ mod tests {
             }
         }
     }
+
+    /// UI-3: in a plan, no reference plane's name runs into an elevation mark (its ring, its arrow or its name): the datums'
+    /// at a family's default views, and a plane's drawn close to a mark, across pane sizes.
+    #[test]
+    fn no_plane_name_runs_into_an_elevation_mark() {
+        use crate::render::{Part, Prim};
+        let mut f = boxed(0.0, 900.0);
+        f.planes.retain(|p| p.datum());
+        let near: crate::family::RefPlane = serde_json::from_value(serde_json::json!({
+            "guid": Guid::new(), "name": "Near", "start": [-2000.0, 150.0, 0.0], "end": [2000.0, 150.0, 0.0], "up": [0.0, 0.0, 1.0]
+        }))
+        .unwrap();
+        for planes in [Vec::new(), vec![near]] {
+            let mut g = f.clone();
+            g.planes.extend(planes);
+            let mut st = staged(&g);
+            for (w, h) in [(1290, 740), (1090, 640), (900, 900), (1600, 1000)] {
+                let shown = st.draw(Which::Plan, w, h, 1.0, P2(0.0, 0.0)).unwrap();
+                let d = &shown.drawing;
+                let mut names: BTreeMap<Id, [f32; 4]> = BTreeMap::new();
+                let mut marks: BTreeMap<Id, [f32; 4]> = BTreeMap::new();
+                let grow = |b: &mut [f32; 4], pts: &[(f32, f32)]| {
+                    for &(x, y) in pts {
+                        *b = [b[0].min(x), b[1].min(y), b[2].max(x), b[3].max(y)];
+                    }
+                };
+                for ((prim, o), part) in d.prims.iter().zip(&d.owners).zip(&d.parts) {
+                    let Some(id) = o else { continue };
+                    let pts: Vec<(f32, f32)> = match prim {
+                        Prim::Line { pts, .. } => pts.clone(),
+                        Prim::Fill { rings, .. } => rings.iter().flatten().copied().collect(),
+                        _ => continue,
+                    };
+                    let empty = [f32::MAX, f32::MAX, f32::MIN, f32::MIN];
+                    match st.model.elements.get(*id) {
+                        Some(Element::Elevation(_)) => grow(marks.entry(*id).or_insert(empty), &pts),
+                        Some(Element::RefPlane(_)) if *part == Part::Text => grow(names.entry(*id).or_insert(empty), &pts),
+                        _ => {}
+                    }
+                }
+                assert!(names.len() >= 2 && !marks.is_empty(), "{w}x{h}: names {} marks {}", names.len(), marks.len());
+                for (n, r) in &names {
+                    for (m, b) in &marks {
+                        let apart = r[2] <= b[0] || b[2] <= r[0] || r[3] <= b[1] || b[3] <= r[1];
+                        assert!(apart, "{w}x{h}: the name of {n} at {r:?} runs into the mark {m} at {b:?}");
+                    }
+                }
+            }
+        }
+    }
 }

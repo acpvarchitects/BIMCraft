@@ -2805,6 +2805,8 @@ pub(crate) fn family_model_lines(d: &mut Drawing, lines: &[(P2, P2)]) {
 struct Lettered {
     boxes: Vec<[f32; 4]>,
     traces: Vec<Trace>,
+    /// What else a name keeps off, which cuts no trace: the elevation marks (UI-3).
+    marks: Vec<[f32; 4]>,
 }
 
 /// A reference plane's trace in a drawing: the plane, and its ends in pixels.
@@ -2856,7 +2858,8 @@ fn plane_name_px(d: &mut Drawing, ends: [((f32, f32), (f32, f32)); 2], name: &st
             places.extend([beside(e, 1.0, n), beside(e, -1.0, n)]);
         }
     }
-    let clear = |r: &[f32; 4]| lettered.boxes.iter().all(|o| r[2] <= o[0] || o[2] <= r[0] || r[3] <= o[1] || o[3] <= r[1]);
+    let clear =
+        |r: &[f32; 4]| lettered.boxes.iter().chain(&lettered.marks).all(|o| r[2] <= o[0] || o[2] <= r[0] || r[3] <= o[1] || o[3] <= r[1]);
     // Moved, a name also keeps off every other plane's trace, so it can't be read as that one's.
     let own = d.owner;
     let apart =
@@ -3570,6 +3573,10 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
     // The reference planes' names lettered so far, among every upright plane's trace: one crowded goes elsewhere.
     let mut lettered = Lettered::default();
     for (&id, e) in all().filter(|(id, _)| shown(**id)) {
+        // An elevation mark is in a name's way as another name is (UI-3).
+        if let Element::Elevation(v) = e {
+            lettered.marks.push(elevation_mark_box(&d.view, v));
+        }
         if let Element::RefPlane(rp) = e
             && rp.upright()
         {
@@ -5461,6 +5468,24 @@ fn section_mark(d: &mut Drawing, v: &Section) {
 
 /// An elevation's marker in plan, where its mark stands (its line's middle unless it was moved apart): a circle with a flag pointing the way it
 /// looks, and its name behind it.
+/// The box an elevation mark takes in pixels (`[left, top, right, bottom]`), its ring, its arrow and its name, a gap round it.
+fn elevation_mark_box(view: &View, v: &Section) -> [f32; 4] {
+    const R: f32 = 9.0;
+    let c = view.px(crate::elevation::mark(v));
+    let (lx, ly) = looking_px(view, v);
+    let (w, h) = (font::width(&v.name, 10.0), 10.0);
+    let back = R + 6.0 + w / 2.0 * lx.abs() + 6.0 * ly.abs();
+    let name = (c.0 - lx * back, c.1 - ly * back);
+    let reach = R + 7.0;
+    let gap = 4.0;
+    [
+        (c.0 - reach).min(name.0 - w / 2.0) - gap,
+        (c.1 - reach).min(name.1 - h / 2.0) - gap,
+        (c.0 + reach).max(name.0 + w / 2.0) + gap,
+        (c.1 + reach).max(name.1 + h / 2.0) + gap,
+    ]
+}
+
 fn elevation_mark(d: &mut Drawing, v: &Section) {
     const R: f32 = 9.0;
     let c = d.view.px(crate::elevation::mark(v));
