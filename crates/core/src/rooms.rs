@@ -67,7 +67,10 @@ impl<'a> Rooms<'a> {
                 .map(|id| {
                     // A shaped wall's faces where the level's rooms are computed.
                     let z = m.elevation(level) + m.level(level).map_or(crate::model::CUT_HEIGHT, |l| l.computation_height);
-                    (id, walls::at_height(m, id, walls::outline_filtered(m, id, index, &|w| m.room_bounding(w, level)), z, index))
+                    {
+                        let keep = |w: &crate::model::Wall| m.room_bounding(w, level);
+                        (id, walls::at_height_filtered(m, id, walls::outline_filtered(m, id, index, &keep), z, index, &keep))
+                    }
                 })
                 .collect(),
             RoomArea::Centre => Vec::new(),
@@ -497,8 +500,9 @@ mod tests {
         if at == RoomArea::Finish {
             let inside = m.elements.iter().filter(|(_, e)| matches!(e, Element::Wall(w) if m.room_bounding(w, r.level))).any(|(id, _)| {
                 let z = m.elevation(r.level) + m.level(r.level).map_or(crate::model::CUT_HEIGHT, |l| l.computation_height);
-                let ring = walls::outline_filtered(m, *id, None, &|w| m.room_bounding(w, r.level));
-                geom::contains(&walls::at_height(m, *id, ring, z, None), r.point)
+                let keep = |w: &crate::model::Wall| m.room_bounding(w, r.level);
+                let ring = walls::outline_filtered(m, *id, None, &keep);
+                geom::contains(&walls::at_height_filtered(m, *id, ring, z, None, &keep), r.point)
             });
             if inside {
                 return Err(Unbound::NotEnclosed);

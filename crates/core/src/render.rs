@@ -3418,9 +3418,14 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
         }
         d.owner = Some(id);
         let geometry = walls::layer_geometry(m, id, index);
+        // A shaped wall (or one ending on one) cut where the plan cuts it: its deformation made once.
+        let shaper = walls::shaper(m, id, index, &|_| true);
         let along = (w.end - w.start).unit();
         for (k, layer) in layers.iter().enumerate() {
-            let ring = walls::at_height(m, id, geometry.band(k), range.cut, index);
+            let ring = match &shaper {
+                Some(sh) => sh.ring(&geometry.band(k), range.cut),
+                None => geometry.band(k),
+            };
             let room = layer.thickness * d.view.scale;
             for piece in outside_columns(vec![ring], &columns) {
                 cut_layer(&mut d, m, layer, &piece, along, room);
@@ -3429,7 +3434,10 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
         // The lines between the layers are detail, as the hatching is: a cut's weight is its outline's.
         d.part(Part::Pattern);
         for line in geometry.interfaces() {
-            let line = walls::at_height(m, id, line.to_vec(), range.cut, index);
+            let line = match &shaper {
+                Some(sh) => sh.ring_at(line, range.cut, false),
+                None => line.to_vec(),
+            };
             for part in lines_outside_columns(&line, &columns) {
                 d.line(&part, Pen::PROJECTION, INK, false);
             }

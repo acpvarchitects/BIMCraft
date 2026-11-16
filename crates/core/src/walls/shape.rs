@@ -88,7 +88,8 @@ impl FaceShape {
 }
 
 /// A battered face: by one of an `angle` from plumb (degrees, positive leaning out as it rises), an offset at the wall's
-/// `top` (mm along the outward normal, in between in proportion to the height), or a `profile` of `[height, offset]`
+/// `top` (mm along the outward normal, in between in proportion to the height; the top its constraint gives it, which an
+/// attached top doesn't change: under a roof the face leans on at that rate), or a `profile` of `[height, offset]`
 /// points (mm over the base), straight between them from no offset at the base and plumb past the last: a scarp is one
 /// point, a curved batter several.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -104,6 +105,10 @@ pub struct Batter {
 
 impl Batter {
     pub fn offset(&self, h: f64, height: f64) -> f64 {
+        // Below its base (what a wall's base attached lower reaches), plumb.
+        if h <= 0.0 {
+            return 0.0;
+        }
         if let Some(a) = self.angle {
             return h * a.to_radians().tan();
         }
@@ -168,7 +173,8 @@ pub fn variable_layer(layers: &[Layer]) -> usize {
     thickest(&|l| l.function == Function::Structure).or_else(|| thickest(&|_| true)).unwrap_or(0)
 }
 
-/// A shaped wall's deformation: where a point of its unshaped solid goes at a height.
+/// A shaped wall's deformation: where a point of its unshaped solid goes at a height. Of a plumb wall ending on a shaped
+/// one's face, only its end, which follows that face.
 pub(crate) struct Shaper {
     axis: Axis,
     base: f64,
@@ -179,19 +185,42 @@ pub(crate) struct Shaper {
     bounds: Vec<f64>,
     /// The band of `bounds` that stretches.
     var: usize,
-    /// Its caps, start and end: points on them slide along them.
-    caps: [Vec<P2>; 2],
+    /// Its caps, start and end: points on them slide along them, or follow the face of the wall they end on.
+    caps: [Cap; 2],
+}
+
+/// A wall's cap, as a shaped wall's deformation reads it.
+#[derive(Default)]
+struct Cap {
+    ring: Vec<P2>,
+    /// The neighbours' face lines at its first and last corners (a point, a way): a face moved past its corner ends there.
+    lines: [Option<(P2, P2)>; 2],
+    /// The shaped wall it ends on, through its face: that wall's deformation, and its face's offset.
+    host: Option<(Box<Shaper>, f64)>,
+}
+
+/// What a point of a ring is to the deformation: any point; or at a cap's corner where a neighbour's face line runs on,
+/// the end of the face there (which ends on that line once moved past the corner) or the corner itself (which then stays).
+#[derive(Clone, Copy, PartialEq)]
+enum Role {
+    Any,
+    Face,
+    Corner,
 }
 
 impl Shaper {
-    /// Wall `w`'s, if it is shaped; its caps not yet known (a point slides square to it).
+    /// Wall `w`'s own, if it is shaped; its caps not known (a point slides square to it).
     pub(crate) fn of(m: &Model, w: &Wall) -> Option<Shaper> {
         if w.shape.is_empty() {
             return None;
         }
+        Some(Shaper::own(m, w))
+    }
+
+    fn own(m: &Model, w: &Wall) -> Shaper {
         let layers = m.type_layers("wall", &w.type_name);
         let base = m.own_base(w);
-        Some(Shaper {
+        Shaper {
             axis: Axis::of(w),
             base,
             height: m.own_top(w) - base,
@@ -199,14 +228,28 @@ impl Shaper {
             interior: w.shape.interior.clone(),
             bounds: super::boundaries(m, w),
             var: if layers.is_empty() { 0 } else { variable_layer(layers) },
-            caps: [Vec::new(), Vec::new()],
-        })
+            caps: Default::default(),
+        }
     }
 
-    /// Wall `id`'s, with its caps, if it is shaped.
-    pub(crate) fn of_id(m: &Model, id: Id, index: Option<&super::Index>) -> Option<Shaper> {
-        let mut s = Shaper::of(m, m.wall(id)?)?;
-        s.caps = [super::cap_in(m, id, false, index), super::cap_in(m, id, true, index)];
+    /// Wall `id`'s, with its caps joined to the walls `keep` keeps: if it is shaped, or ends on the face of one that is.
+    pub(crate) fn of_id(m: &Model, id: Id, index: Option<&super::Index>, keep: &impl Fn(&Wall) -> bool) -> Option<Shaper> {
+        let w = m.wall(id)?;
+        let caps = [false, true].map(|at_end| {
+            let (ring, lines, on) = super::cap_info(m, id, at_end, index, keep);
+            let host = on.and_then(|(other, left)| {
+                let o = m.wall(other)?;
+                let s = Shaper::of(m, o)?;
+                let (ext, int) = super::faces(m, o);
+                Some((Box::new(s), if left { ext } else { int }))
+            });
+            Cap { ring, lines, host }
+        });
+        if w.shape.is_empty() && caps.iter().all(|c| c.host.is_none()) {
+            return None;
+        }
+        let mut s = Shaper::own(m, w);
+        s.caps = caps;
         Some(s)
     }
 
@@ -217,10 +260,15 @@ impl Shaper {
         (at(&self.exterior), at(&self.interior))
     }
 
-    /// The heights where either face's offset bends, absolute.
+    /// The heights where its faces' offsets bend, or those of the face it ends on, absolute.
     pub(crate) fn knots(&self) -> Vec<f64> {
         let mut out: Vec<f64> =
             [&self.exterior, &self.interior].into_iter().flatten().flat_map(FaceShape::knots).map(|h| self.base + h).collect();
+        for c in &self.caps {
+            if let Some((host, _)) = &c.host {
+                out.extend(host.knots());
+            }
+        }
         out.sort_by(f64::total_cmp);
         out.dedup_by(|a, b| (*a - *b).abs() < 1e-6);
         out
@@ -240,44 +288,132 @@ impl Shaper {
         }
     }
 
-    /// Where the point `p` of the unshaped wall in plan lies at height `z`: moved square to the wall, or along its cap.
-    pub(crate) fn point(&self, p: P2, z: f64) -> P2 {
+    /// How a face at `z` stands, the exterior's (or the interior's) offset to the left of the location line and how it
+    /// leans: mm it moves out along its outward normal for each mm up.
+    pub(crate) fn face(&self, exterior: bool, z: f64) -> (f64, f64) {
+        let (Some(&ext), Some(&int)) = (self.bounds.first(), self.bounds.last()) else { return (0.0, 0.0) };
+        let off = if exterior { ext } else { int };
+        let lean = |z: f64| {
+            let (de, di) = self.shifts(z);
+            if exterior { de } else { di }
+        };
+        (self.offset(off, z), (lean(z + 0.5) - lean(z - 0.5)).clamp(-1e6, 1e6))
+    }
+
+    /// `ring` (closed, or a line), each corner of a cap where a neighbour's face line runs on given twice: the face's end and
+    /// the corner, in the order the ring passes them.
+    fn expand(&self, ring: &[P2], closed: bool) -> Vec<(P2, Role)> {
+        let on_cap = |c: &Cap, q: P2| c.ring.windows(2).any(|w| geom::dist_to_segment(q, w[0], w[1]) <= 1e-6);
+        let n = ring.len();
+        let mut out = Vec::with_capacity(n + 4);
+        for (i, p) in ring.iter().enumerate() {
+            let corner = self.caps.iter().find(|c| {
+                c.host.is_none()
+                    && [(c.ring.first(), c.lines[0]), (c.ring.last(), c.lines[1])]
+                        .iter()
+                        .any(|(q, line)| line.is_some() && q.is_some_and(|q| q.dist(*p) <= 1e-6))
+            });
+            let Some(cap) = corner else {
+                out.push((*p, Role::Any));
+                continue;
+            };
+            // The side the ring comes from: along the cap, the corner first; along the face, the face's end first.
+            let before = if closed { Some(ring[(i + n - 1) % n]) } else { i.checked_sub(1).and_then(|k| ring.get(k).copied()) };
+            let after = if closed { Some(ring[(i + 1) % n]) } else { ring.get(i + 1).copied() };
+            let along = |q: Option<P2>| q.is_some_and(|q| q.dist(*p) > 1e-6 && on_cap(cap, q));
+            let cap_first = if before.is_some() { along(before) } else { !along(after) };
+            if cap_first {
+                out.push((*p, Role::Corner));
+                out.push((*p, Role::Face));
+            } else {
+                out.push((*p, Role::Face));
+                out.push((*p, Role::Corner));
+            }
+        }
+        out
+    }
+
+    /// Where the point `p` of the unshaped wall in plan lies at height `z`: moved square to the wall, along its cap, or
+    /// onto the face it ends on.
+    fn place(&self, p: P2, role: Role, z: f64) -> P2 {
         let (s, off) = self.axis.project(p);
         let to = self.offset(off, z);
-        if (to - off).abs() < 1e-9 {
-            return p;
-        }
+        let (a, t) = (self.axis.at(s, to), self.axis.tangent(s));
         for cap in &self.caps {
-            let n = cap.len();
-            if n < 2 || !cap.windows(2).any(|w| geom::dist_to_segment(p, w[0], w[1]) <= 1e-6) {
+            let n = cap.ring.len();
+            if n < 2 || !cap.ring.windows(2).any(|w| geom::dist_to_segment(p, w[0], w[1]) <= 1e-6) {
                 continue;
             }
-            // A corner inside the cap is the node its neighbours share: it stays.
-            if cap[1..n - 1].iter().any(|c| c.dist(p) <= 1e-6) {
+            // On the face of a shaped wall it ends on: where that face is at this height.
+            if let Some((host, face)) = &cap.host {
+                let (hs, _) = host.axis.project(p);
+                let moved = host.offset(*face, z);
+                let (q, way) = (host.axis.at(hs, moved), host.axis.tangent(hs));
+                return geom::line_intersection(a, a + t, q, q + way).unwrap_or(a);
+            }
+            if (to - off).abs() < 1e-9 {
                 return p;
             }
-            let (a, t) = (self.axis.at(s, to), self.axis.tangent(s));
-            let mut best: Option<P2> = None;
-            for (i, w) in cap.windows(2).enumerate() {
+            // A corner inside the cap is the node its neighbours share: it stays.
+            if cap.ring[1..n - 1].iter().any(|c| c.dist(p) <= 1e-6) {
+                return p;
+            }
+            let mut best: Option<(P2, Option<usize>)> = None;
+            for (i, w) in cap.ring.windows(2).enumerate() {
                 let (c, d) = (w[0], w[1]);
                 let Some(x) = geom::line_intersection(a, a + t, c, d) else { continue };
                 let len2 = (d - c).dot(d - c);
                 let along = if len2 > 0.0 { (x - c).dot(d - c) / len2 } else { 0.0 };
-                // The cap's first and last edges run on past its corners: a face leaning out goes past them.
-                if (along >= -1e-9 || i == 0) && (along <= 1.0 + 1e-9 || i == n - 2) && best.is_none_or(|b| x.dist(p) < b.dist(p)) {
-                    best = Some(x);
+                // The cap's first and last edges run on past its corners; which corner it passed, if it did.
+                let past = if i == 0 && along < -1e-9 {
+                    Some(0)
+                } else if i == n - 2 && along > 1.0 + 1e-9 {
+                    Some(1)
+                } else {
+                    None
+                };
+                if (along >= -1e-9 || i == 0) && (along <= 1.0 + 1e-9 || i == n - 2) && best.is_none_or(|(b, _)| x.dist(p) < b.dist(p)) {
+                    best = Some((x, past));
                 }
             }
-            if let Some(x) = best {
-                return x;
-            }
+            return match best {
+                // Past a corner a neighbour's face made: the face ends on that face's line, the corner staying.
+                Some((x, Some(k))) => match (cap.lines[k], role) {
+                    (Some(_), Role::Corner) => {
+                        if k == 0 {
+                            cap.ring[0]
+                        } else {
+                            cap.ring[n - 1]
+                        }
+                    }
+                    (Some((q, way)), _) => geom::line_intersection(a, a + t, q, q + way).unwrap_or(x),
+                    (None, _) => x,
+                },
+                Some((x, None)) => x,
+                None => a,
+            };
         }
-        self.axis.at(s, to)
+        if (to - off).abs() < 1e-9 { p } else { a }
     }
 
-    /// A ring or a line in plan as it lies at height `z`.
+    /// Where the point `p` of the unshaped wall in plan lies at height `z`.
+    pub(crate) fn point(&self, p: P2, z: f64) -> P2 {
+        self.place(p, Role::Any, z)
+    }
+
+    /// A ring (`closed`) or a line in plan as it lies at height `z`: a corner a face may move past given twice.
+    pub(crate) fn ring_at(&self, ring: &[P2], z: f64, closed: bool) -> Vec<P2> {
+        let mut out: Vec<P2> = self.expand(ring, closed).into_iter().map(|(p, role)| self.place(p, role, z)).collect();
+        out.dedup_by(|a, b| a.dist(*b) < 1e-9);
+        if closed && out.len() > 1 && out.first().zip(out.last()).is_some_and(|(a, b)| a.dist(*b) < 1e-9) {
+            out.pop();
+        }
+        out
+    }
+
+    /// A ring in plan as it lies at height `z`.
     pub(crate) fn ring(&self, ring: &[P2], z: f64) -> Vec<P2> {
-        ring.iter().map(|p| self.point(*p, z)).collect()
+        self.ring_at(ring, z, true)
     }
 
     /// The prism `ring` from `bottom` up to `top` as closed triangles, outward: each corner's edge bent at the knots.
@@ -294,20 +430,22 @@ impl Shaper {
             ring.reverse();
         }
         let knots = self.knots();
-        let lift = |p: P2, z: f64| {
-            let q = self.point(p, z);
-            [q.0, q.1, z]
-        };
-        let columns: Vec<Vec<[f64; 3]>> = ring
+        let corners = self.expand(&ring, true);
+        let columns: Vec<Vec<[f64; 3]>> = corners
             .iter()
-            .map(|p| {
-                let (z0, z1) = (bottom.at(*p), top.at(*p));
+            .map(|&(p, role)| {
+                let (z0, z1) = (bottom.at(p), top.at(p));
                 let mut zs = vec![z0];
                 zs.extend(knots.iter().copied().filter(|k| *k > z0 + 1e-6 && *k < z1 - 1e-6));
                 if z1 > z0 + 1e-6 {
                     zs.push(z1);
                 }
-                zs.into_iter().map(|z| lift(*p, z)).collect()
+                zs.into_iter()
+                    .map(|z| {
+                        let q = self.place(p, role, z);
+                        [q.0, q.1, z]
+                    })
+                    .collect()
             })
             .collect();
         let mut out = Vec::new();
@@ -318,7 +456,7 @@ impl Shaper {
                 out.push(t);
             }
         };
-        let n = ring.len();
+        let n = columns.len();
         for i in 0..n {
             let (a, b) = (&columns[i], &columns[(i + 1) % n]);
             let (mut x, mut y) = (0, 0);
@@ -333,17 +471,23 @@ impl Shaper {
                 }
             }
         }
-        for t in geom::triangulate(&ring) {
-            let [i, j, k] = t;
-            let (Some(ci), Some(cj), Some(ck)) = (columns.get(i), columns.get(j), columns.get(k)) else { continue };
-            let ccw = (ring[j] - ring[i]).cross(ring[k] - ring[i]) > 0.0;
-            let (lo, hi) = (|c: &Vec<[f64; 3]>| c[0], |c: &Vec<[f64; 3]>| c[c.len() - 1]);
-            if ccw {
-                push([hi(ci), hi(cj), hi(ck)]);
-                push([lo(ci), lo(ck), lo(cj)]);
-            } else {
-                push([hi(ci), hi(ck), hi(cj)]);
-                push([lo(ci), lo(cj), lo(ck)]);
+        // Its bottom and its top: the ring as it lies there, each triangled (repeated corners are passed over).
+        for top_side in [false, true] {
+            let end = |c: &Vec<[f64; 3]>| if top_side { c.last().copied() } else { c.first().copied() };
+            let pts: Vec<[f64; 3]> = columns.iter().filter_map(end).collect();
+            if pts.len() != n {
+                continue;
+            }
+            let plan: Vec<P2> = pts.iter().map(|q| P2(q[0], q[1])).collect();
+            for [i, j, k] in geom::triangulate(&plan) {
+                let (Some(&a), Some(&b), Some(&c)) = (pts.get(i), pts.get(j), pts.get(k)) else { continue };
+                let ccw = (plan[j] - plan[i]).cross(plan[k] - plan[i]) > 0.0;
+                // Up on top, down underneath, whichever way the triangulation turned it.
+                if ccw == top_side {
+                    push([a, b, c]);
+                } else {
+                    push([a, c, b]);
+                }
             }
         }
         out

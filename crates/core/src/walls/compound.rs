@@ -79,5 +79,7 @@ pub(super) fn corner(m: &Model, me: &Arm, other: &Arm) -> Option<WallEnd> {
     Some(WallEnd {
         outline: vec![cw, core_cw, elbow, core_ccw, ccw],
         butt: Some(Butt { turns, core, draw_seam: !through && mine[1].material != theirs[1].material }),
+        lines: [None, None],
+        on: None,
     })
 }
