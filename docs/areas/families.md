@@ -1078,9 +1078,25 @@ a waiting snap override; a drag still turns the view. While a tool is in hand th
 go the tool's marks, its rubber band and the box of each form taken where the click would put it (`boxed`, from
 `family::views::form_corners`). The tool takes what {3D} draws of the selection, so a form hidden in the view stays, and
 planes and lines selected in a plan before. A tool taken in another view starts again in {3D}, its points let go, or is
-put down there, saying why, where {3D} can't work with it. Mirror - Pick Axis, Offset, Scale and Align, which pick
-something of the view or lean on its depth, are greyed in {3D} with that reason until it picks references and snaps on its
-work plane (part 2). Tests: `tests/family_modify_3d.rs`.
+put down there, saying why, where {3D} can't work with it. Scale, which leans on the view's depth, is greyed in {3D},
+saying so. Tests: `tests/family_modify_3d.rs`.
+
+FE-24, part 2: {3D} snaps and picks references. A tool's point snaps on the work plane, 6 pixels about the pointer as a
+plan's, to what the view shows crossing it: each reference plane's trace (the datums' too) and where two cross, and the
+reference lines, model lines and forms' edges seen square on to it (`Family::work_plane_traces`, found again only when the
+family, its values, the plane or what is hidden changes); what Temporary Hide/Isolate or the view hides is none, and a
+snap override governs the point. Mirror - Pick Axis, Offset and Align pick in the picture
+(`family::views::reference_at_3d`): a reference plane by the line it was drawn as, a reference line, a model line or a
+form's edge as drawn, nearest the pointer, never one a solid stands in front of there nor a datum, which {3D} doesn't draw;
+the one a click would take is lit. Mirror's axis is a plane's trace across the work plane, kept to the line it was drawn as,
+or a line or an edge seen square on to it; a plane parallel to the work plane and a line along what it faces are refused,
+saying why, and a line lying on it is an axis. Offset takes a reference plane or a reference line, its trace on the plane,
+toward the side clicked; a form's edge or a model line says what Offset takes. Align (AL, and the ribbon's) takes of each
+pick what a plan or an elevation would see edge on through it (`constraints::align_ref_3d`): a plane and a model line
+themselves, a reference line its face square to the plane, a form's edge the side or end through it square to the plane,
+so the move is the plan's (`align_through`: a side moved stretches the lines joined to it). Its padlock is offered where
+the second pick was while a plan or an elevation sees the work plane flat, and locks the two with that view's dimension.
+Tests: `tests/family_modify_3d_refs.rs`, `family_sketch_tests.rs`.
 
 FE-14 (`editor/clipboard.rs`, `family/clipboard.rs`): the Clipboard panel in a family that isn't adaptive, as Revit's family
 editor has it, on the Modify tab and the contextual tab (a sketch's contextual tab has no room for it at 1600 pixels without
