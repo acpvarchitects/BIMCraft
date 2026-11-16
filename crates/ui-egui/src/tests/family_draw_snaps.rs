@@ -97,7 +97,8 @@ fn model_line_points_snap_to_a_reference_line() {
     assert!(near(l.end, [-400.0, 1800.0]), "{:?}", l.end);
 }
 
-/// A model line of the family's own from `a` to `b` on Ref. Level, put straight into the editor; its GUID.
+/// A model line of the family's own from `a` to `b` on Ref. Level, put straight into the editor, the view fitted to take it in
+/// (Zoom to Fit: an edit keeps the frame the view had, FE-26); its GUID.
 fn model_line(h: &mut Harness<BimApp>, a: [f64; 2], b: [f64; 2]) -> bimcraft_core::ids::Guid {
     let guid = bimcraft_core::ids::Guid::new();
     ed(h).model_lines.push(bimcraft_core::family::ModelLine {
@@ -106,6 +107,8 @@ fn model_line(h: &mut Harness<BimApp>, a: [f64; 2], b: [f64; 2]) -> bimcraft_cor
         end: [b[0], b[1], 0.0],
         ..Default::default()
     });
+    ed(h).zoom_to_fit();
+    h.run();
     h.run();
     guid
 }
