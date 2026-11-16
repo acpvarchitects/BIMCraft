@@ -588,7 +588,8 @@ impl BimApp {
                 self.session.model.materials.len(),
                 self.session.model.images.len(),
                 crate::style::canvas_dark(),
-            ).hash(&mut h);
+            )
+                .hash(&mut h);
             serde_json::to_string(&ed.preview_params).unwrap_or_default().hash(&mut h);
             (azimuth.to_bits(), elevation.to_bits()).hash(&mut h);
             let key = (h.finish(), size);
@@ -599,8 +600,15 @@ impl BimApp {
                 let look = Look::of_3d(&staged.model);
                 let cam = scene.fit_in(azimuth, elevation, size[0], size[1], &look);
                 let image = scene.render_in(&cam, &[], &look);
-                let pixels = image.rgba.as_chunks::<4>().0.iter().map(|p| crate::canvas::color(bimcraft_core::render::Rgb(p[0], p[1], p[2]))).collect();
-                let picture = egui::ColorImage { size: [image.width as usize, image.height as usize], pixels, source_size: Default::default() };
+                let pixels = image
+                    .rgba
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
+                    .map(|p| crate::canvas::color(bimcraft_core::render::Rgb(p[0], p[1], p[2])))
+                    .collect();
+                let picture =
+                    egui::ColorImage { size: [image.width as usize, image.height as usize], pixels, source_size: Default::default() };
                 let texture = ui.ctx().load_texture("family-tile-3d", picture, egui::TextureOptions::NEAREST);
                 ed.views.tile_3d = Some(super::views::Tile3d { key, texture });
             }
@@ -1648,7 +1656,16 @@ impl BimApp {
         let hidden = ed.adaptive.as_ref().map(|d| ed.temp_hidden(d)).unwrap_or_default();
         let tabs = self.active_doc().map(|id| self.doc_tabs(id)).unwrap_or_default();
         let tiled = ed.adaptive.is_none() && ed.views.tiled && tabs.len() > 1;
-        let open: Vec<Option<bimcraft_core::family::views::Which>> = if tiled { tabs.iter().filter_map(|s| match s { Sheet::Family(_, view) => Some(*view), _ => None }).collect() } else { Vec::new() };
+        let open: Vec<Option<bimcraft_core::family::views::Which>> = if tiled {
+            tabs.iter()
+                .filter_map(|s| match s {
+                    Sheet::Family(_, view) => Some(*view),
+                    _ => None,
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
         ed.views.retain_tiles(&open);
         let area = if ed.adaptive.is_some() { pane } else { drawn };
         let panes = if tiled { family_tile_rects(area, tabs.len()) } else { vec![area] };

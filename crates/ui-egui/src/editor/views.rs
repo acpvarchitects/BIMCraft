@@ -172,7 +172,9 @@ impl Views {
 
     /// When a tile becomes active, exchange its picture and fit with the active view's.
     pub(crate) fn activate_tile(&mut self, old: Option<Which>, new: Option<Which>) {
-        if old == new || !self.tiled { return }
+        if old == new || !self.tiled {
+            return;
+        }
         if let Some(which) = old {
             self.tiles_2d.insert(which, Tile2d { cache: self.cache.take(), fitted: self.fitted.take() });
         } else {
