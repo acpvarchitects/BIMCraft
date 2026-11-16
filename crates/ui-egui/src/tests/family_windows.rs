@@ -26,7 +26,7 @@ fn close_inactive_keeps_the_active_view_and_one_tab_per_other_document() {
     super::family_views::view(&mut h, Some(Which::Plan));
     h.state_mut().open_sheet(Sheet::Family(box_doc, Some(Which::Plan)));
     h.run();
-    let draft = h.state().active_family().unwrap().draft();
+    let draft = h.state().active_family().unwrap().draft_family().unwrap();
     assert_eq!(h.state().doc_tabs(box_doc).len(), 2);
     assert_eq!(h.state().doc_tabs(crate_doc).len(), 2);
     shortcut(&mut h, "CH");
@@ -35,7 +35,7 @@ fn close_inactive_keeps_the_active_view_and_one_tab_per_other_document() {
     assert_eq!(h.state().doc_tabs(crate_doc).len(), 1);
     assert_eq!(h.state().doc_tabs(crate_doc), vec![Sheet::Family(crate_doc, Some(Which::Plan))]);
     assert_eq!(h.state().families.len(), 2);
-    assert!(h.state().active_family().unwrap().draft() == draft);
+    assert!(h.state().active_family().unwrap().draft_family().unwrap() == draft);
     assert_eq!(h.state().session.model.to_json().unwrap(), project);
     assert!(h.state().doc_closing.is_none());
 }
@@ -43,14 +43,14 @@ fn close_inactive_keeps_the_active_view_and_one_tab_per_other_document() {
 #[test]
 fn repeat_last_command_rearms_a_tool_without_replaying_an_edit() {
     let mut h = open();
-    let before = h.state().active_family().unwrap().draft();
+    let before = h.state().active_family().unwrap().draft_family().unwrap();
     shortcut(&mut h, "RP");
     assert!(h.state().active_family().unwrap().views.drawing.is_some());
     shortcut(&mut h, "MD");
     assert!(h.state().active_family().unwrap().views.drawing.is_none());
     shortcut(&mut h, "RC");
     assert!(h.state().active_family().unwrap().views.drawing.is_some());
-    assert!(h.state().active_family().unwrap().draft() == before);
+    assert!(h.state().active_family().unwrap().draft_family().unwrap() == before);
     shortcut(&mut h, "MD");
     key(&mut h, Key::Enter);
     assert!(h.state().active_family().unwrap().views.drawing.is_some(), "Enter repeats on an idle canvas");
@@ -73,10 +73,10 @@ fn repeat_last_command_is_document_local_and_ignores_mutations() {
     assert!(h.state().active_family().unwrap().views.drawing.is_some(), "Box remembers its own tool");
     shortcut(&mut h, "MD");
     shortcut(&mut h, "TX");
-    let edited = h.state().active_family().unwrap().draft();
+    let edited = h.state().active_family().unwrap().draft_family().unwrap();
     shortcut(&mut h, "RC");
     assert!(h.state().active_family().unwrap().views.drawing.is_none(), "Text was an edit, not a repeatable tool");
-    assert!(h.state().active_family().unwrap().draft() == edited, "RC does not replay the edit");
+    assert!(h.state().active_family().unwrap().draft_family().unwrap() == edited, "RC does not replay the edit");
 }
 
 #[test]
