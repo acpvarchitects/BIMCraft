@@ -1982,13 +1982,13 @@ Fit. Their names are in `shortcuts::ACTIONS` and `FAMILY_ONLY` (the project has 
 What a fit shows (UI-1): the document's plan, elevation and {3D} are drawn in the view's pane below the tabs that float over its
 top (`family_central`, from where the tabs were last drawn, on a whole pixel; the canvas above; the window's `view_rect` is that
 pane), so an elevation's plane names, which run along its picture's top, and the top of {3D}'s box are never under them. A plan
-or the ceiling plan keeps the room's frame unless it cuts an elevation mark at its edge, its name with it (a narrow view's, the
-BIMCraft profile's between its palettes): then it shrinks about the room and the marks it shows a part of until none is cut
-(`Staged::fitted`, a few passes, as lettering keeps its size on paper as the frame shrinks); a mark wholly outside stays out,
-so a wide view is framed as before. An elevation keeps the room's frame, with room for its levels' names, as its planes run
+or the ceiling plan keeps the room's frame unless it leaves out an elevation mark or cuts one at its edge, its name with it (a
+narrow view's, the BIMCraft profile's between its palettes): then it shrinks about the room and all four marks until each is
+wholly in (`Staged::fitted`, a few passes, as lettering keeps its size on paper as the frame shrinks), so a default plan shows
+FRONT, BACK, LEFT and RIGHT as Revit's template does (UI-3b). An elevation keeps the room's frame, with room for its levels' names, as its planes run
 from edge to edge whatever the frame. The editor keeps the fitted frame while only the zoom and the pan change
 (`Staged::draw_lines_at` draws from it). Tests: `tests/family_canvas_clear.rs`, and
-`a_fitted_view_cuts_no_elevation_mark_at_its_edge` in `family/views.rs`.
+`a_fitted_view_shows_every_elevation_mark_whole` in `family/views.rs`.
 
 What floats over a view keeps clear (UI-3). A family view is drawn between the Options Bar's row and its view-control bar:
 the row (`OPTIONS_CARD` and the gap above it) is kept under the tabs whether or not a tool's card is on it, so the view never
@@ -1998,9 +1998,10 @@ Options Bar's card is drawn only round something: a tool with no name and no opt
 shows none. The Error/Note card at the view's corner stands above the view-control bar, a family's or, where it floats over
 the view, the project's. In a plan an elevation mark is in a reference plane's name's way as another name is: a name it
 blocks beyond the trace's end slides in along its own trace, which is cut under it, before trying the other end or beside
-it, so CENTER (FRONT/BACK) stops short of RIGHT and a plane drawn close to a mark is named clear of it. Tests:
-`tests/canvas_overlaps.rs` (with before/after screenshots, `BIMCRAFT_UI3_DUMP`) and `no_plane_name_runs_into_an_elevation_mark`
-in `family/views.rs`.
+it, so CENTER (FRONT/BACK) stops short of RIGHT and a plane drawn close to a mark is named clear of it; a form's outline is
+in its way too (UI-3b), so a name never lies over a form's lines, in a narrow plan or a tile. Tests:
+`tests/canvas_overlaps.rs` (with before/after screenshots, `BIMCRAFT_UI3_DUMP`), `no_plane_name_runs_into_an_elevation_mark` and
+`no_plane_name_lies_over_a_forms_lines_in_a_narrow_plan` in `family/views.rs`.
 
 ## Imported 3D models
 
