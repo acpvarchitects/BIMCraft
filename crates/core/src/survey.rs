@@ -274,26 +274,54 @@ fn check_ring(who: &str, what: &str, ring: &[P2]) -> Result<(), String> {
     if ring.iter().any(|q| !q.is_finite() || q.0.abs() > MAX_COORD || q.1.abs() > MAX_COORD) {
         return Err(format!("{who}: its {what}'s points are numbers within {MAX_COORD} mm"));
     }
-    // Edges that cross, compared pairwise: an outline drawn by hand has few points.
-    let edges: Vec<(P2, P2)> = geom::ring_edges(ring).collect();
-    let n = edges.len();
-    if n <= 512 {
-        for i in 0..n {
-            for j in i + 2..n {
-                if i == 0 && j == n - 1 {
-                    continue;
-                }
-                let ((a, b), (c, d)) = (edges[i], edges[j]);
-                if crosses(a, b, c, d) {
-                    return Err(format!("{who}: its {what} crosses itself (edges {i} and {j}); draw it as a ring that doesn't"));
-                }
-            }
-        }
+    if let Some((_, i, _, j)) = first_crossing(&[ring]) {
+        return Err(format!("{who}: its {what} crosses itself (edges {i} and {j}); draw it as a ring that doesn't"));
     }
     if geom::area(ring).abs() < 1.0 {
         return Err(format!("{who}: its {what} has no area (its points lie on a line or on one another)"));
     }
     Ok(())
+}
+
+/// The first two edges of `rings` that cross or touch, other than neighbours in one ring: each as its ring and its edge's
+/// number. A sweep along x: each edge is compared with those whose span in x reaches into its own.
+fn first_crossing(rings: &[&[P2]]) -> Option<(usize, usize, usize, usize)> {
+    struct Edge {
+        ring: usize,
+        k: usize,
+        a: P2,
+        b: P2,
+        x0: f64,
+        x1: f64,
+    }
+    let mut edges: Vec<Edge> = rings
+        .iter()
+        .enumerate()
+        .flat_map(|(ring, r)| {
+            geom::ring_edges(r).enumerate().map(move |(k, (a, b))| Edge { ring, k, a, b, x0: a.0.min(b.0), x1: a.0.max(b.0) })
+        })
+        .collect();
+    edges.sort_by(|p, q| p.x0.total_cmp(&q.x0));
+    for (n, e) in edges.iter().enumerate() {
+        for f in edges.iter().skip(n + 1).take_while(|f| f.x0 <= e.x1) {
+            if e.ring == f.ring {
+                let len = rings.get(e.ring).map_or(0, |r| r.len());
+                let (lo, hi) = (e.k.min(f.k), e.k.max(f.k));
+                if hi - lo == 1 || (lo == 0 && hi + 1 == len) {
+                    continue;
+                }
+            }
+            if e.a.1.max(e.b.1) < f.a.1.min(f.b.1) || f.a.1.max(f.b.1) < e.a.1.min(e.b.1) {
+                continue;
+            }
+            if crosses(e.a, e.b, f.a, f.b) {
+                let ((r1, k1), (r2, k2)) =
+                    if (e.ring, e.k) <= (f.ring, f.k) { ((e.ring, e.k), (f.ring, f.k)) } else { ((f.ring, f.k), (e.ring, e.k)) };
+                return Some((r1, k1, r2, k2));
+            }
+        }
+    }
+    None
 }
 
 /// Whether segments `a`–`b` and `c`–`d` cross or touch.
@@ -328,14 +356,32 @@ pub fn check(m: &Model, who: &str, a: &SurveyArea) -> Result<(), String> {
     if a.holes.len() > MAX_POINTS {
         return Err(format!("{who}: up to {MAX_POINTS} holes"));
     }
+    if a.outline.len() + a.holes.iter().map(Vec::len).sum::<usize>() > MAX_POINTS {
+        return Err(format!("{who}: its outline and holes have up to {MAX_POINTS} points in all"));
+    }
     for (i, h) in a.holes.iter().enumerate() {
         check_ring(who, &format!("hole {i}"), h)?;
-        if !h.iter().all(|q| {
-            geom::contains(&a.outline, *q)
-                || a.outline.iter().zip(a.outline.iter().cycle().skip(1)).any(|(p, r)| geom::dist_to_segment(*q, *p, *r) < 1e-6)
-        }) {
+        if !h.first().is_some_and(|q| geom::contains(&a.outline, *q)) {
             return Err(format!("{who}: its hole {i} isn't inside its outline"));
         }
+        if let Some(j) = (0..i).find(|j| {
+            a.holes
+                .get(*j)
+                .is_some_and(|o| h.first().is_some_and(|q| geom::contains(o, *q)) || o.first().is_some_and(|q| geom::contains(h, *q)))
+        }) {
+            return Err(format!("{who}: its holes {j} and {i} overlap; make them one"));
+        }
+    }
+    // No edge of a hole meets the outline's or another hole's.
+    let rings: Vec<&[P2]> = std::iter::once(a.outline.as_slice()).chain(a.holes.iter().map(Vec::as_slice)).collect();
+    if !a.holes.is_empty()
+        && let Some((r1, _, r2, _)) = first_crossing(&rings)
+    {
+        return Err(if r1 == 0 {
+            format!("{who}: its hole {} isn't inside its outline (an edge of it crosses the outline)", r2 - 1)
+        } else {
+            format!("{who}: its holes {} and {} overlap; make them one", r1 - 1, r2 - 1)
+        });
     }
     if let SurveyKind::Item(c) = &a.kind
         && (c.trim().is_empty() || !one_line(c, MAX_TEXT))

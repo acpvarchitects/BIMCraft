@@ -470,3 +470,31 @@ fn an_area_copied_with_its_host_is_on_the_copy() {
     let moved: Vec<[i64; 3]> = points_of(&s, a).iter().map(|p| [p[0], p[1] + 5_000_000, p[2]]).collect();
     assert_eq!(points_of(&s, copy), moved);
 }
+
+#[test]
+fn an_outline_of_many_points_crossing_itself_and_holes_that_overlap_or_leave_it_are_refused() {
+    let (mut s, w, _) = crusted();
+    // A circle of 2000 points, its last two swapped: a bow tie at the end of a long ring.
+    let mut ring: Vec<[f64; 2]> = (0..2000)
+        .map(|i| {
+            let a = std::f64::consts::TAU * f64::from(i) / 2000.0;
+            [3000.0 + 1000.0 * a.cos(), 1500.0 + 1000.0 * a.sin()]
+        })
+        .collect();
+    ring.swap(1997, 1998);
+    let e = err(&mut s, "survey_area", json!({"host": w, "face": "exterior", "outline": ring}));
+    assert!(e.contains("crosses itself"), "{e}");
+    let outline = json!([[0, 0], [2000, 0], [2000, 2000], [0, 2000]]);
+    let a = json!([[100, 100], [600, 100], [600, 600], [100, 600]]);
+    let b = json!([[500, 500], [900, 500], [900, 900], [500, 900]]);
+    let e = err(&mut s, "survey_area", json!({"host": w, "face": "exterior", "outline": outline, "holes": [a, b]}));
+    assert!(e.contains("overlap"), "{e}");
+    // An L whose hole's corners are all in it, but whose edge crosses its notch.
+    let ell = json!([[0, 0], [2000, 0], [2000, 1000], [1000, 1000], [1000, 2000], [0, 2000]]);
+    let across = json!([[1500, 500], [1800, 500], [500, 1800], [500, 1500]]);
+    let e = err(&mut s, "survey_area", json!({"host": w, "face": "exterior", "outline": ell, "holes": [across]}));
+    assert!(e.contains("inside its outline"), "{e}");
+    // Holes apart, inside it: fine.
+    let c = json!([[1200, 1200], [1500, 1200], [1500, 1500], [1200, 1500]]);
+    run(&mut s, "survey_area", json!({"host": w, "face": "exterior", "outline": outline, "holes": [a, c]}));
+}
