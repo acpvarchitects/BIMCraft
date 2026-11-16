@@ -480,3 +480,44 @@ fn a_form_is_picked_in_3d_where_it_shows_nearest_the_eye() {
     assert_eq!(form_at_3d(f, &values, &cam, (x, y)), Some(1), "the upper one, nearer the eye looking down");
     assert_eq!(form_at_3d(f, &values, &cam, (1.0, 1.0)), None);
 }
+
+#[test]
+fn a_point_on_the_3d_work_plane_snaps_to_what_the_view_shows_on_it() {
+    use crate::family::{ModelLine, PlaneRef, REF_LEVEL};
+    use crate::geom::P2;
+    use crate::ids::Guid;
+    use crate::snap::{Snaps, on_traces};
+    let (mut s, r) = sketched(json!([{"sketch": rect(500.0, 300.0, 1000.0, 600.0), "to": 200}]));
+    r.unwrap();
+    run(
+        &mut s,
+        "family",
+        json!({"name": "S", "ref_planes": [{"name": "Edge", "start": [-400, -2000, 0], "end": [-400, 2000, 0], "up": [0, 0, 1]}],
+               "ref_lines": [{"start": [-200, 1200, 0], "end": [200, 1200, 0]}]}),
+    );
+    let mut f = family(&s).clone();
+    let ml = Guid::new();
+    f.model_lines.push(ModelLine { guid: ml, start: [1500.0, -300.0, 0.0], end: [1500.0, 300.0, 0.0], ..Default::default() });
+    let values = f.values("A", &BTreeMap::new()).unwrap();
+    let o = Snaps::default();
+    let near = |a: P2, b: P2| a.dist(b) < 1e-6;
+    // On Ref. Level, {3D}'s work plane: where Edge crosses Center (Front/Back), onto the reference line, onto the model line
+    // and onto the box's edge, each seen square on to it.
+    let t = f.work_plane_traces(&values, &PlaneRef::Plane(REF_LEVEL), &|_| true, &|_| true);
+    for (from, to) in [
+        (P2(-404.0, 3.0), P2(-400.0, 0.0)),
+        (P2(100.0, 1204.0), P2(100.0, 1200.0)),
+        (P2(1504.0, 100.0), P2(1500.0, 100.0)),
+        (P2(997.0, 450.0), P2(1000.0, 450.0)),
+    ] {
+        let at = on_traces(from, &t, 10.0, &o);
+        assert!(near(at, to), "{from:?} to {at:?}, not {to:?}");
+    }
+    // What the view hides is none: Edge and the model line hidden, the box out of view.
+    let edge = f.planes.iter().find(|p| p.name == "Edge").unwrap().guid;
+    let t = f.work_plane_traces(&values, &PlaneRef::Plane(REF_LEVEL), &|g| g != edge && g != ml, &|_| false);
+    for (from, to) in [(P2(-404.0, 3.0), P2(-404.0, 0.0)), (P2(1504.0, 100.0), P2(1504.0, 100.0)), (P2(997.0, 450.0), P2(997.0, 450.0))] {
+        let at = on_traces(from, &t, 10.0, &o);
+        assert!(near(at, to), "{from:?} to {at:?}, not {to:?}");
+    }
+}
