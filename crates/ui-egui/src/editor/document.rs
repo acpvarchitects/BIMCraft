@@ -6,12 +6,12 @@
 //! Family Types and Family Category and Parameters are dialogs, as Revit's. The document has its own Undo and Redo, through
 //! the draft's history (`Draft`): the project's is never touched until the family is loaded into it.
 use super::*;
+use crate::Sheet;
 use crate::adaptive_view::{self, Draw};
 use crate::dock::Palette;
 use crate::icons::Icon;
 use crate::properties::group_header;
 use crate::ribbon;
-use crate::Sheet;
 use crate::{big_button, icon_button, tab_button};
 use bimcraft_core::adaptive::{Definition, Evaluated, Plane, PointType, WorkPlane};
 use bimcraft_core::units::Units;
@@ -41,6 +41,8 @@ pub(crate) fn family_tile_rects(area: Rect, count: usize) -> Vec<Rect> {
 /// What the family document keeps of its own: its history.
 #[derive(Default)]
 pub(crate) struct State {
+    /// Committed draft generation for passive tile pictures; in-progress edits wait for release.
+    pub(super) revision: u64,
     /// The draft before each step, newest last, and the steps undone.
     undo: Vec<Draft>,
     redo: Vec<Draft>,
@@ -178,6 +180,14 @@ fn followed<T: PartialEq>(before: &[T], after: &[T], i: usize, guid: impl Fn(&T)
 }
 
 impl FamilyEditor {
+    /// A passive pane may stage a different view, but cannot replace the active pane's error.
+    pub(crate) fn passive_picture<T>(&mut self, paint: impl FnOnce(&mut Self) -> T) -> T {
+        let problem = self.problem.take();
+        let painted = paint(self);
+        self.problem = problem;
+        painted
+    }
+
     /// Enter repeats only on an idle family canvas; an in-progress pick or draw keeps Enter for itself.
     pub(crate) fn repeat_idle(&self) -> bool {
         self.sketch.is_none()
@@ -332,6 +342,8 @@ impl FamilyEditor {
     pub(super) fn history(&mut self, ctx: &Context, ask: &Asked) {
         // Undo and Redo give up a handle being dragged, the form put back as it was before it (FE-5).
         if ask.undo || ask.redo {
+            self.document.revision = self.document.revision.wrapping_add(1);
+            ctx.request_repaint();
             self.cancel_drags();
             self.modify_fresh();
         }
@@ -371,6 +383,8 @@ impl FamilyEditor {
             return;
         }
         if mark != now {
+            self.document.revision = self.document.revision.wrapping_add(1);
+            ctx.request_repaint();
             // What was refused is no longer what is there.
             self.document.refused = None;
             if self.document.undo.len() >= STEPS {
@@ -554,31 +568,42 @@ pub(crate) const VIEW: &str = "{3D}";
 
 impl BimApp {
     /// A tiled {3D} that is not active is a cached processor picture, with no orbit or pick input.
-    fn family_tile_3d(&mut self, ui: &Ui, ed: &mut FamilyEditor, pane: Rect) {
+    fn family_tile_3d(&mut self, ui: &Ui, ed: &mut FamilyEditor, pane: Rect, freeze: bool) {
         use bimcraft_core::graphics::Look;
         use bimcraft_core::view3d::{AZIMUTH, ELEVATION, Scene};
         let painter = ui.painter_at(pane);
         painter.rect_filled(pane, 0.0, crate::canvas::color(bimcraft_core::render::PAPER));
-        ed.stage_3d(&self.session.model);
-        let Some(staged) = ed.scene3d.as_ref() else { return };
-        let size = [pane.width().clamp(64.0, 2400.0) as u32, pane.height().clamp(64.0, 1600.0) as u32];
-        let (azimuth, elevation) = ed.orbit.camera.map(|c| (c.azimuth, c.elevation)).unwrap_or((AZIMUTH, ELEVATION));
-        let orientation = {
+        if !(freeze && ed.views.tile_3d.is_some()) {
+            let size = [pane.width().clamp(64.0, 2400.0) as u32, pane.height().clamp(64.0, 1600.0) as u32];
+            let (azimuth, elevation) = ed.orbit.camera.map(|c| (c.azimuth, c.elevation)).unwrap_or((AZIMUTH, ELEVATION));
             let mut h = std::collections::hash_map::DefaultHasher::new();
-            (azimuth.to_bits(), elevation.to_bits(), crate::style::canvas_dark()).hash(&mut h);
-            h.finish()
-        };
-        let key = (staged.key, size, orientation);
-        if ed.views.tile_3d.as_ref().is_none_or(|c| c.key != key) {
-            let scene = Scene::new(&staged.model);
-            let look = Look::of_3d(&staged.model);
-            let cam = scene.fit_in(azimuth, elevation, size[0], size[1], &look);
-            let image = scene.render_in(&cam, &[], &look);
-            let pixels =
-                image.rgba.as_chunks::<4>().0.iter().map(|p| crate::canvas::color(bimcraft_core::render::Rgb(p[0], p[1], p[2]))).collect();
-            let picture = egui::ColorImage { size: [image.width as usize, image.height as usize], pixels, source_size: Default::default() };
-            let texture = ui.ctx().load_texture("family-tile-3d", picture, egui::TextureOptions::NEAREST);
-            ed.views.tile_3d = Some(super::views::Tile3d { key, texture });
+            (
+                ed.document.revision,
+                ed.picked,
+                ed.document.preview_visibility,
+                ed.temporary(),
+                ed.views.detail,
+                ed.views.kept.key(None),
+                ed.selected_form(),
+                self.session.model.materials.len(),
+                self.session.model.images.len(),
+                crate::style::canvas_dark(),
+            ).hash(&mut h);
+            serde_json::to_string(&ed.preview_params).unwrap_or_default().hash(&mut h);
+            (azimuth.to_bits(), elevation.to_bits()).hash(&mut h);
+            let key = (h.finish(), size);
+            if ed.views.tile_3d.as_ref().is_none_or(|c| c.key != key) {
+                ed.stage_3d(&self.session.model);
+                let Some(staged) = ed.scene3d.as_ref() else { return };
+                let scene = Scene::new(&staged.model);
+                let look = Look::of_3d(&staged.model);
+                let cam = scene.fit_in(azimuth, elevation, size[0], size[1], &look);
+                let image = scene.render_in(&cam, &[], &look);
+                let pixels = image.rgba.as_chunks::<4>().0.iter().map(|p| crate::canvas::color(bimcraft_core::render::Rgb(p[0], p[1], p[2]))).collect();
+                let picture = egui::ColorImage { size: [image.width as usize, image.height as usize], pixels, source_size: Default::default() };
+                let texture = ui.ctx().load_texture("family-tile-3d", picture, egui::TextureOptions::NEAREST);
+                ed.views.tile_3d = Some(super::views::Tile3d { key, texture });
+            }
         }
         if let Some(tile) = &ed.views.tile_3d {
             painter.image(tile.texture.id(), pane, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
@@ -1622,18 +1647,21 @@ impl BimApp {
         let values = ed.values();
         let hidden = ed.adaptive.as_ref().map(|d| ed.temp_hidden(d)).unwrap_or_default();
         let tabs = self.active_doc().map(|id| self.doc_tabs(id)).unwrap_or_default();
-        let tiled = ed.views.tiled && tabs.len() > 1;
+        let tiled = ed.adaptive.is_none() && ed.views.tiled && tabs.len() > 1;
+        let open: Vec<Option<bimcraft_core::family::views::Which>> = if tiled { tabs.iter().filter_map(|s| match s { Sheet::Family(_, view) => Some(*view), _ => None }).collect() } else { Vec::new() };
+        ed.views.retain_tiles(&open);
         let area = if ed.adaptive.is_some() { pane } else { drawn };
         let panes = if tiled { family_tile_rects(area, tabs.len()) } else { vec![area] };
         let mut activate = None;
         let mut active_pane = area;
+        let freeze = ed.modal() || ui.input(|i| i.pointer.any_down()) || ui.ctx().text_edit_focused();
         for (index, tile) in panes.iter().copied().enumerate() {
             let sheet = if tiled { tabs[index] } else { self.sheet };
             let Sheet::Family(_, view) = sheet else { continue };
             let active = sheet == self.sheet;
             if active {
                 active_pane = tile;
-                self.view_rect = tile;
+                ed.views.pane = Some(tile);
                 if let Some(which) = view {
                     let base = Arc::clone(&self.session.model);
                     if let Some(e) = ed.view_2d(ui, &base, which, tile, self.thin) {
@@ -1655,11 +1683,15 @@ impl BimApp {
                 }
             } else {
                 if let Some(which) = view {
-                    ed.tile_view_2d(ui, &self.session.model, which, tile, self.thin);
+                    ed.passive_picture(|ed| ed.tile_view_2d(ui, &self.session.model, which, tile, self.thin, freeze));
                 } else {
-                    self.family_tile_3d(ui, &mut ed, tile);
+                    ed.passive_picture(|ed| self.family_tile_3d(ui, ed, tile, freeze));
                 }
-                if ui.interact(tile, UiId::new(("family-tile", sheet)), Sense::click()).clicked() {
+                let response = ui.interact(tile, UiId::new(("family-tile", sheet)), Sense::click());
+                if response.hovered() {
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                }
+                if response.clicked() {
                     activate = Some(sheet);
                 }
             }

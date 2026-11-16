@@ -73,6 +73,43 @@ fn clicking_an_inactive_tile_activates_its_tab_without_editing_the_family() {
     assert!(h.state().active_family().unwrap().views.tiled);
 }
 
+#[test]
+fn bars_keep_the_full_canvas_while_only_the_active_view_uses_a_tile() {
+    let mut h = open();
+    shortcut(&mut h, "WT");
+    h.run();
+    let full = h.state().view_rect;
+    let active = h.state().active_family().unwrap().views.pane.unwrap();
+    assert!(full.width() > active.width());
+    assert!(full.contains(active.center()));
+    assert!(h.state().tabs_foot <= full.top());
+}
+
+#[test]
+fn adaptive_family_keeps_its_full_modelling_canvas_with_wt() {
+    let mut h = app("");
+    h.set_size(vec2(1600.0, 1000.0));
+    h.state_mut().new_family(bimcraft_core::family::Category::Generic);
+    h.state_mut().active_family_mut().unwrap().adaptive = Some(bimcraft_core::adaptive::Definition::default());
+    h.run();
+    super::family_views::view(&mut h, Some(Which::Plan));
+    shortcut(&mut h, "WT");
+    h.run();
+    assert!(h.state().active_family().unwrap().views.tiled);
+    assert_eq!(h.state().view_rect, h.state().pane);
+}
+
+#[test]
+fn passive_picture_cannot_replace_the_active_views_error() {
+    let mut h = open();
+    let ed = h.state_mut().active_family_mut().unwrap();
+    ed.problem = Some("active view error".into());
+    ed.passive_picture(|ed| ed.problem = Some("inactive view error".into()));
+    assert_eq!(ed.problem.as_deref(), Some("active view error"));
+    ed.passive_picture(|ed| ed.problem = None);
+    assert_eq!(ed.problem.as_deref(), Some("active view error"));
+}
+
 /// Render both layouts for visual review when BIMCRAFT_FE22_DUMP names a folder.
 #[test]
 fn family_window_layout_screenshots() {

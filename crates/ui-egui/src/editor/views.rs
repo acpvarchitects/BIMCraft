@@ -133,7 +133,7 @@ pub(crate) struct Views {
     /// What a tool of the views couldn't do, for the status bar.
     pub(crate) status: Option<String>,
     /// Where on screen the view was last shown.
-    pub(super) pane: Option<Rect>,
+    pub(crate) pane: Option<Rect>,
     /// Where the view shown, a plan, an elevation or {3D}, was last drawn, as `view_2d` and `family_3d` were given it: what a test
     /// reads to see it clear of the tabs (UI-1).
     #[cfg(test)]
@@ -159,6 +159,30 @@ pub(crate) struct Views {
     pub(crate) paste_views: Option<super::clipboard::PasteViews>,
     /// What a tool of the views did that is worth saying, not an error: the constraints a paste dropped.
     pub(crate) said: Option<String>,
+}
+
+impl Views {
+    /// Keep pictures only for views whose tabs are still open in this document.
+    pub(crate) fn retain_tiles(&mut self, open: &[Option<Which>]) {
+        self.tiles_2d.retain(|which, _| open.contains(&Some(*which)));
+        if !open.contains(&None) {
+            self.tile_3d = None;
+        }
+    }
+
+    /// When a tile becomes active, exchange its picture and fit with the active view's.
+    pub(crate) fn activate_tile(&mut self, old: Option<Which>, new: Option<Which>) {
+        if old == new || !self.tiled { return }
+        if let Some(which) = old {
+            self.tiles_2d.insert(which, Tile2d { cache: self.cache.take(), fitted: self.fitted.take() });
+        } else {
+            self.cache = None;
+            self.fitted = None;
+        }
+        let next = new.and_then(|which| self.tiles_2d.remove(&which)).unwrap_or_default();
+        self.cache = next.cache;
+        self.fitted = next.fitted;
+    }
 }
 
 /// A selected extrusion's Start or End (`end`) being dragged by its handle (F5): where the pointer was (the view's
@@ -207,7 +231,7 @@ struct Tile2d {
 }
 
 pub(super) struct Tile3d {
-    pub(super) key: (u64, [u32; 2], u64),
+    pub(super) key: (u64, [u32; 2]),
     pub(super) texture: TextureHandle,
 }
 
@@ -551,12 +575,11 @@ impl FamilyEditor {
     }
 
     /// The view shown, drawn again when what it shows or how it's looked at changes.
-    fn refresh_view(&mut self, ctx: &Context, base: &Model, which: Which, size: [u32; 2]) {
+    fn refresh_view(&mut self, ctx: &Context, base: &Model, which: Which, size: [u32; 2], revision: Option<u64>) {
         let (zoom, pan) = self.views.frames.get(&which).copied().unwrap_or((1.0, (0.0, 0.0)));
         let key = {
             let mut h = DefaultHasher::new();
             (
-                self.family().ok().map(|f| serde_json::to_string(&f).unwrap_or_default()),
                 self.picked,
                 self.name.trim(),
                 which,
@@ -567,6 +590,10 @@ impl FamilyEditor {
                 crate::style::canvas_dark(),
             )
                 .hash(&mut h);
+            match revision {
+                Some(generation) => generation.hash(&mut h),
+                None => self.family().ok().map(|f| serde_json::to_string(&f).unwrap_or_default()).hash(&mut h),
+            }
             // The view's own graphics and range (FE-18).
             self.views.kept.key(Some(which)).hash(&mut h);
             (base.materials.len(), base.images.len()).hash(&mut h);
@@ -639,12 +666,14 @@ impl FamilyEditor {
 
     /// Draw an inactive view as a picture. Its rendering cache and fit belong to this tile, and
     /// no input handler or view selection is called. The active view keeps its own cached frame.
-    pub(crate) fn tile_view_2d(&mut self, ui: &Ui, base: &Model, which: Which, pane: Rect, thin: bool) {
+    pub(crate) fn tile_view_2d(&mut self, ui: &Ui, base: &Model, which: Which, pane: Rect, thin: bool, freeze: bool) {
         let size = [pane.width().clamp(64.0, 2400.0) as u32, pane.height().clamp(64.0, 1600.0) as u32];
         let mut tile = self.views.tiles_2d.remove(&which).unwrap_or_default();
         std::mem::swap(&mut self.views.cache, &mut tile.cache);
         std::mem::swap(&mut self.views.fitted, &mut tile.fitted);
-        self.refresh_view(ui.ctx(), base, which, size);
+        if !(freeze && self.views.cache.is_some()) {
+            self.refresh_view(ui.ctx(), base, which, size, Some(self.document.revision));
+        }
         let painter = ui.painter_at(pane);
         painter.rect_filled(pane, 0.0, crate::canvas::color(bimcraft_core::render::PAPER));
         if let Some(c) = self.views.cache.as_ref().filter(|c| c.which == which) {
@@ -695,7 +724,7 @@ impl FamilyEditor {
         {
             (m.selection, m.tool) = (self.selection.items().to_vec(), m.tool.fresh());
         }
-        self.refresh_view(ui.ctx(), base, which, size);
+        self.refresh_view(ui.ctx(), base, which, size, None);
         let response = ui.interact(pane, UiId::new("family-view-2d"), Sense::click_and_drag());
         self.views.pane = Some(pane);
         #[cfg(test)]
