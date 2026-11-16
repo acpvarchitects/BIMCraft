@@ -315,3 +315,57 @@ fn the_box_of_what_a_move_takes_is_drawn_where_the_click_would_put_it() {
     let boxed = round(&mut h, edge);
     assert_ne!(boxed, empty, "the box's edge where the move would put it");
 }
+
+#[test]
+fn a_shape_handle_gives_way_to_a_modify_tool_in_hand() {
+    let mut h = in_3d();
+    pick(&mut h, &[Picked::Form(0)]);
+    for _ in 0..3 {
+        h.run();
+    }
+    // Selected, the form has its handles in {3D} (FE-25).
+    let handles = editor(&h).views.handles3d_shown.clone();
+    assert!(!handles.is_empty(), "a selected form's handles show");
+    let (at, _) = handles[0];
+    // A tool in hand: none is drawn, and none can be grabbed.
+    shortcut(&mut h, "MV");
+    for _ in 0..2 {
+        h.run();
+    }
+    assert!(editor(&h).views.handles3d_shown.is_empty(), "no handle with a tool in hand");
+    let camera = |h: &Harness<BimApp>| editor(h).orbit.camera.expect("{3D} drawn");
+    let (before, was) = (serde_json::to_string(&family(&h)).unwrap(), camera(&h));
+    // A press and a drag where a handle stood: the view turns, as a drag does with a tool in hand, and nothing changes.
+    let to = at + vec2(80.0, 30.0);
+    h.hover_at(at);
+    h.run();
+    h.event(Event::PointerButton { pos: at, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::NONE });
+    h.run();
+    for k in 1..=4 {
+        h.event(Event::PointerMoved(at + (to - at) * (k as f32 / 4.0)));
+        h.run();
+    }
+    h.event(Event::PointerButton { pos: to, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE });
+    h.run();
+    assert_eq!(serde_json::to_string(&family(&h)).unwrap(), before, "the family is as it was");
+    assert_ne!(camera(&h), was, "the drag turned the view");
+    assert_eq!(tool(&h), Some(M::Move { copy: false, from: None }), "and was no click of the tool's");
+    // Put down, the handles are back.
+    key(&mut h, Key::Escape);
+    for _ in 0..3 {
+        h.run();
+    }
+    assert!(!editor(&h).views.handles3d_shown.is_empty());
+}
+
+#[test]
+fn a_plans_shape_handles_give_way_to_a_modify_tool_too() {
+    let (mut h, _) = open(&family_with(""), "Movers");
+    view(&mut h, Some(Which::Plan));
+    pick(&mut h, &[Picked::Form(0)]);
+    assert!(editor(&h).handles_shown());
+    shortcut(&mut h, "MV");
+    assert!(!editor(&h).handles_shown(), "a tool in hand: its clicks are its own");
+    key(&mut h, Key::Escape);
+    assert!(editor(&h).handles_shown());
+}
