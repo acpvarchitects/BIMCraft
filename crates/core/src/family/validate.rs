@@ -223,7 +223,8 @@ fn geometry(f: &Family, out: &mut Vec<String>) {
         let wall = number(&values, WALL).unwrap_or(DEFAULT_WALL);
         for void in shapes.iter().filter(|s| s.void) {
             let cuts = f.forms.get(void.index).map(super::Form::cuts).unwrap_or_default();
-            let cut = cuts.forms() && shapes.iter().any(|solid| !solid.void && solid.index < void.index && void.over(solid));
+            let cut =
+                cuts.forms() && shapes.iter().any(|solid| !solid.void && f.cutters(solid.index).contains(&void.index) && void.over(solid));
             // A door's or a window's cuts its wall ([`Family::host_voids`]), where it reaches it, unless it cuts the forms alone.
             let host = f.category.hosted() && cuts.host();
             // A work plane-based family's cuts the face it is placed on ([`Family::face_voids`]), where it reaches it.

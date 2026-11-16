@@ -58,7 +58,8 @@ cuts as it stands before any cutting, so a loop of `cut_by` and `joined_by` is r
 has, the form itself, a void as a target or in `joined_by`, an `uncut_by` that would not cut anyway, a nil GUID, and more
 than `MAX_JOINS` in a list); a cutter that is hidden cuts nothing, as a hidden void never did. Removing a form takes it from
 every list; a copy names the copies where both ends are copied and drops the rest, and, since it lands after the family's
-forms, is named in the `cut_by` of the voids that cut the original. `Family::cut`, `uncut`, `join`, `unjoin` and
+forms, is named in the `cut_by` of the voids that cut the original. `Family::tidy_cutting` takes out what moving forms about leaves stale (an `uncut_by` void now listed before its form, a `cut_by` void
+now listed after it), and runs after a `family` command, a reorder, a copy and a paste, while `check` stays strict. `Family::cut`, `uncut`, `join`, `unjoin` and
 `switch_join_order` edit them and say why they refuse; the `family` command sets and clears them in a `form` patch.
 
 F10d, part of FORMAT 18: a void's `cuts` (`family::Cuts`): `both` (left out of the file) cuts the solid forms listed before it that it

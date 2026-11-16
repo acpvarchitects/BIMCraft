@@ -153,6 +153,17 @@ fn every_family_builds_as_it_did_with_the_lists_empty() {
         }
     }
     families.push(("slab".into(), family(vec![slab(SLAB), hole(HOLE), block(BLOCK), hole(7)])));
+    let mut host = hole(8);
+    host["cuts"] = json!("host");
+    let mut hidden = hole(9);
+    hidden["visible"] = json!(0);
+    let mut both = hole(10);
+    both["cuts"] = json!("both");
+    families.push(("host void between solids".into(), family(vec![slab(SLAB), host, block(BLOCK)])));
+    families.push(("hidden void".into(), family(vec![slab(SLAB), hidden, block(BLOCK)])));
+    families.push(("void first".into(), family(vec![hole(HOLE), slab(SLAB), block(BLOCK)])));
+    families.push(("void cuts both".into(), family(vec![slab(SLAB), both])));
+    families.push(("a void two solids".into(), family(vec![slab(SLAB), block(BLOCK), hole(HOLE)])));
     assert!(families.len() > 10);
     let mut with_voids = 0;
     for (name, f) in &families {
@@ -160,31 +171,32 @@ fn every_family_builds_as_it_did_with_the_lists_empty() {
             continue;
         }
         with_voids += usize::from(f.forms.iter().any(|x| x.void));
-        let Some(t) = f.types.keys().next() else { continue };
-        let Ok(values) = f.values(t, &BTreeMap::new()) else { continue };
-        // The rule it had: a void cuts the visible solids listed before it.
-        let mut read = std::collections::HashMap::new();
-        let mut cuts = crate::csg::Meter::default();
-        let mut want: Vec<(usize, Vec<[crate::view3d::P3; 3]>)> = Vec::new();
-        let mut voids = Vec::new();
-        for i in 0..f.forms.len() {
-            let Ok(Some(p)) = f.solid(i, &values, &mut read) else { continue };
-            if f.forms[i].void {
-                if f.forms[i].cuts().forms() {
-                    voids.push((want.len(), p.tris));
+        for t in f.types.keys() {
+            let Ok(values) = f.values(t, &BTreeMap::new()) else { continue };
+            // The rule it had: a void cuts the visible solids listed before it.
+            let mut read = std::collections::HashMap::new();
+            let mut cuts = crate::csg::Meter::default();
+            let mut want: Vec<(usize, Vec<[crate::view3d::P3; 3]>)> = Vec::new();
+            let mut voids = Vec::new();
+            for i in 0..f.forms.len() {
+                let Ok(Some(p)) = f.solid(i, &values, &mut read) else { continue };
+                if f.forms[i].void {
+                    if f.forms[i].cuts().forms() {
+                        voids.push((want.len(), p.tris));
+                    }
+                } else {
+                    want.push((i, p.tris));
                 }
-            } else {
-                want.push((i, p.tris));
             }
-        }
-        for (before, void) in &voids {
-            for (_, tris) in want.iter_mut().take(*before) {
-                *tris = crate::csg::subtract(tris, void, &mut cuts).unwrap();
+            for (before, void) in &voids {
+                for (_, tris) in want.iter_mut().take(*before) {
+                    *tris = crate::csg::subtract(tris, void, &mut cuts).unwrap();
+                }
             }
+            let got = f.pieces(&values).map(|p| p.into_iter().map(|p| p.tris).collect::<Vec<_>>());
+            let want: Vec<_> = want.into_iter().map(|(_, t)| t).filter(|t| !t.is_empty()).collect();
+            assert_eq!(got.as_ref().ok(), Some(&want), "{name}: type {t}");
         }
-        let got = f.pieces(&values).map(|p| p.into_iter().map(|p| p.tris).collect::<Vec<_>>());
-        let want: Vec<_> = want.into_iter().map(|(_, t)| t).filter(|t| !t.is_empty()).collect();
-        assert_eq!(got.as_ref().ok(), Some(&want), "{name}");
     }
     assert!(with_voids > 0, "some of them hold voids");
 }
@@ -198,7 +210,8 @@ fn each_rule_refuses_with_a_reason() {
     };
     said(base(vec![with(slab(SLAB), "cut_by", &[99]), hole(HOLE)]), "isn't a form");
     said(base(vec![with(slab(SLAB), "cut_by", &[SLAB]), hole(HOLE)]), "itself");
-    said(base(vec![with(slab(SLAB), "cut_by", &[HOLE, HOLE]), hole(HOLE)]), "twice");
+    said(base(vec![with(slab(SLAB), "cut_by", &[BLOCK, BLOCK]), block(BLOCK)]), "twice");
+    said(base(vec![with(slab(SLAB), "cut_by", &[HOLE]), hole(HOLE)]), "cuts it already");
     said(base(vec![with(hole(HOLE), "cut_by", &[BLOCK]), block(BLOCK)]), "never cut");
     said(base(vec![with(hole(HOLE), "joined_by", &[BLOCK]), block(BLOCK)]), "never cut");
     said(base(vec![with(slab(SLAB), "joined_by", &[HOLE]), hole(HOLE)]), "a void");
@@ -208,7 +221,6 @@ fn each_rule_refuses_with_a_reason() {
     let mut host = hole(HOLE);
     host["cuts"] = json!("host");
     said(base(vec![with(slab(SLAB), "uncut_by", &[HOLE]), host]), "anyway");
-    said(base(vec![with(with(slab(SLAB), "uncut_by", &[HOLE]), "cut_by", &[HOLE]), hole(HOLE)]), "both");
     // Loops: two, and a longer one.
     let two = vec![with(slab(SLAB), "joined_by", &[BLOCK]), with(block(BLOCK), "joined_by", &[SLAB])];
     said(base(two), "loop");
@@ -327,6 +339,7 @@ fn a_copied_solid_is_cut_by_what_cut_the_original_though_it_lands_after_the_void
         let c = f.copies(&forms_of(which)).unwrap();
         let mut all = f.clone();
         all.forms.extend(c.forms.clone());
+        all.tidy_cutting();
         all.check(&|_| true).unwrap();
         (c.forms, all)
     };
@@ -346,7 +359,8 @@ fn a_copied_solid_is_cut_by_what_cut_the_original_though_it_lands_after_the_void
     let mut told = f.clone();
     told.forms[0].uncut_by = vec![g(HOLE)];
     let (copies, all) = added(&told, &[0]);
-    assert!(copies[0].cut_by.is_empty() && copies[0].uncut_by.is_empty());
+    assert!(copies[0].cut_by.is_empty() && copies[0].uncut_by == [g(HOLE)], "kept, for an editor that lists the copy before the void");
+    assert!(all.forms[2].uncut_by.is_empty(), "stale where the copy is listed after the void, so tidied");
     assert_eq!(volumes(&all), [WHOLE, WHOLE]);
     // (A copy of the void is a new cutter, listed after the original slab, which was told nothing about it.)
     let (copies, all) = added(&told, &[0, 1]);
@@ -363,4 +377,104 @@ fn pasting_keeps_a_copy_cut_by_the_voids_that_cut_the_original_and_checks() {
     fam.forms.extend(pasted.forms);
     fam.check(&|_| true).unwrap();
     assert_eq!(volumes(&fam), [HOLED, HOLED]);
+}
+
+#[test]
+fn reordering_forms_leaves_nothing_stale_once_tidied() {
+    // The slab told not to be cut by the hole after it; the hole is then moved above it.
+    let mut f = family(vec![with(slab(SLAB), "uncut_by", &[HOLE]), hole(HOLE)]);
+    f.check(&|_| true).unwrap();
+    f.forms.swap(0, 1);
+    assert!(f.check(&|_| true).unwrap_err().contains("wouldn't cut"), "check stays strict");
+    f.tidy_cutting();
+    f.check(&|_| true).unwrap();
+    assert!(f.forms[1].uncut_by.is_empty());
+    // A `cut_by` void now listed after its solid cuts it by the order: redundant, refused, and tidied.
+    let mut g2 = family(vec![hole(HOLE), with(slab(SLAB), "cut_by", &[HOLE])]);
+    g2.check(&|_| true).unwrap();
+    g2.forms.swap(0, 1);
+    assert!(g2.check(&|_| true).unwrap_err().contains("cuts it already"));
+    g2.tidy_cutting();
+    g2.check(&|_| true).unwrap();
+    assert_eq!(volumes(&g2), [HOLED]);
+    // Joins and solids in the lists stay as they were.
+    let mut j = family(vec![slab(SLAB), block(BLOCK)]);
+    j.join(0, 1).unwrap();
+    j.forms.swap(0, 1);
+    j.tidy_cutting();
+    assert_eq!(j.forms[1].joined_by, [g(BLOCK)]);
+}
+
+#[test]
+fn the_family_command_tidies_a_reordered_list_so_it_saves() {
+    let mut s = session(vec![with(slab(SLAB), "uncut_by", &[HOLE]), hole(HOLE)]);
+    let forms = s.model.families["F"].forms.clone();
+    let reordered = json!([forms[1], forms[0]]);
+    s.execute("family", &json!({"name": "F", "forms": reordered})).unwrap_or_else(|e| panic!("{e}"));
+    let f = &s.model.families["F"];
+    assert!(f.forms[1].uncut_by.is_empty() && f.forms[0].void);
+}
+
+#[test]
+fn cut_refuses_a_host_void_and_one_listed_after_that_cuts_already() {
+    let mut host = hole(HOLE);
+    host["cuts"] = json!("host");
+    let mut f = family(vec![slab(SLAB), host]);
+    assert!(f.cut(0, 1).unwrap_err().contains("host alone"));
+    assert!(f.forms[0].cut_by.is_empty());
+    // A void listed after cuts it already.
+    let mut g2 = family(vec![slab(SLAB), hole(HOLE)]);
+    assert!(g2.cut(0, 1).unwrap_err().contains("already"));
+    // `check` refuses the redundant `cut_by`, and once tidied `uncut` works.
+    g2.forms[0].cut_by = vec![g(HOLE)];
+    assert!(g2.check(&|_| true).unwrap_err().contains("cuts it already"));
+    g2.tidy_cutting();
+    g2.uncut(0, 1).unwrap();
+    assert_eq!(g2.forms[0].uncut_by, [g(HOLE)]);
+    assert_eq!(volumes(&g2), [WHOLE]);
+}
+
+#[test]
+fn a_join_refuses_a_pair_that_already_cuts() {
+    let mut f = family(vec![slab(SLAB), block(BLOCK)]);
+    f.cut(0, 1).unwrap();
+    assert!(f.join(0, 1).unwrap_err().contains("already"));
+    assert!(f.join(1, 0).unwrap_err().contains("already"));
+    f.unjoin(0, 1).unwrap_err();
+    f.uncut(0, 1).unwrap();
+    f.join(1, 0).unwrap();
+}
+
+#[test]
+fn a_paste_drops_a_cutter_check_would_refuse() {
+    let mut host = hole(HOLE);
+    host["cuts"] = json!("host");
+    let mut fam = family(vec![slab(SLAB), hole(HOLE)]);
+    let clip = fam.clip(&forms_of(&[0])).unwrap();
+    // Pasted where the hole now cuts the host alone, the copy isn't named as cut by it.
+    fam.forms[1].cuts = Some(crate::family::Cuts::Host);
+    let pasted = fam.paste(&clip).unwrap();
+    assert!(pasted.forms[0].cut_by.is_empty());
+    fam.forms.extend(pasted.forms);
+    fam.check(&|_| true).unwrap();
+    // And a family without the hole takes none of its GUIDs.
+    let mut other = family(vec![slab(5)]);
+    let pasted = other.paste(&clip).unwrap();
+    other.forms.extend(pasted.forms);
+    other.check(&|_| true).unwrap();
+    let _ = host;
+}
+
+#[test]
+fn a_void_that_cuts_nothing_is_not_warned_of_where_a_cut_by_gives_it_a_solid() {
+    let f = family(vec![hole(HOLE), with(slab(SLAB), "cut_by", &[HOLE])]);
+    let (_, warnings) = f.problems(&|_| true);
+    assert!(warnings.iter().all(|w| !w.contains("cuts nothing")), "{warnings:?}");
+    let g2 = family(vec![hole(HOLE), slab(SLAB)]);
+    let (_, warnings) = g2.problems(&|_| true);
+    assert!(warnings.iter().any(|w| w.contains("cuts nothing")), "{warnings:?}");
+    // Told not to, it cuts nothing.
+    let h = family(vec![with(slab(SLAB), "uncut_by", &[HOLE]), hole(HOLE)]);
+    let (_, warnings) = h.problems(&|_| true);
+    assert!(warnings.iter().any(|w| w.contains("cuts nothing")), "{warnings:?}");
 }

@@ -1308,6 +1308,16 @@ impl FamilyEditor {
         }
         self.forms.swap(i, j);
         self.selection.forms_swapped(i, j);
+        self.tidy_cutting();
+    }
+
+    /// The forms' cutting lists (FE-16) made sound after forms moved about or were added, as [`Family::tidy_cutting`] does.
+    pub(crate) fn tidy_cutting(&mut self) {
+        let mut forms: Vec<Form> = self.forms.iter().map(|f| Form { void: f.void, ..f.original.clone() }).collect();
+        bimcraft_core::family::cutting::tidy_forms(&mut forms);
+        for (f, t) in self.forms.iter_mut().zip(forms) {
+            (f.original.cut_by, f.original.uncut_by) = (t.cut_by, t.uncut_by);
+        }
     }
 
     /// Form `i` taken away, with the dimensions and locks measuring to it, as the ribbon's Delete does.

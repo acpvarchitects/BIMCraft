@@ -9,6 +9,9 @@
 //! cut by nothing, as nothing of it is built. A solid cuts as it stands before any cutting, never as what is left of it, so
 //! two solids that each cut the other would empty both: a loop of `cut_by` and `joined_by` is refused ([`check_cutting`]).
 //!
+//! Moving forms about can leave a list stale (an `uncut_by` void now listed before its form): [`Family::tidy_cutting`] takes
+//! those out, and the editor and the `family` command call it. [`check_cutting`] stays strict.
+//!
 //! Removing a form takes its GUID from every list ([`Family::forget_cuts`]). A copy ([`Family::copies`]) names the copies
 //! where both ends are copied and drops what reaches past them, as an Align lock does; but a copy lands after the family's
 //! own forms, so the voids listed after the original, which cut it, would be listed before its copy and cut it no longer:
@@ -27,8 +30,8 @@ fn shown(i: usize) -> String {
 
 /// Whether `forms` hold sound cutting lists: every GUID named a form of the family with a GUID (a form drawn in the editor
 /// may not have one yet), not the form itself, none twice in a list, at most [`MAX_CUTTERS`] in each; a void with none of the
-/// lists; `cut_by` naming no void that cuts the host alone; `joined_by` naming solid forms; `uncut_by` naming voids listed
-/// after the form that would cut it, and none of them in `cut_by`; and no loop of cutting.
+/// lists; `cut_by` naming no void that cuts the host alone, nor one listed after the form (it cuts it already); `joined_by` naming solid forms; `uncut_by` naming voids listed
+/// after the form that would cut it; and no loop of cutting.
 pub fn check_cutting(forms: &[Form]) -> Result<(), String> {
     let find = |g: Guid| forms.iter().position(|f| f.guid == g);
     for (i, form) in forms.iter().enumerate() {
@@ -60,6 +63,12 @@ pub fn check_cutting(forms: &[Form]) -> Result<(), String> {
                     "cut_by" if by.void && !by.cuts().forms() => {
                         return Err(format!("{who}: `cut_by` names {}, a void that cuts the host alone, which cuts no form", shown(m)));
                     }
+                    "cut_by" if by.void && m > i => {
+                        return Err(format!(
+                            "{who}: `cut_by` names {}, a void listed after it, which cuts it already; leave it out",
+                            shown(m)
+                        ));
+                    }
                     "joined_by" if by.void => {
                         return Err(format!("{who}: `joined_by` names {}, a void; a void cuts as it is, join solid forms", shown(m)));
                     }
@@ -75,9 +84,6 @@ pub fn check_cutting(forms: &[Form]) -> Result<(), String> {
                                 "{who}: `uncut_by` names {}, which wouldn't cut it anyway (a void cuts the forms listed before it, and not if it cuts the host alone)",
                                 shown(m)
                             ));
-                        }
-                        if form.cut_by.contains(g) {
-                            return Err(format!("{who}: {} is in `cut_by` and in `uncut_by`; it can't both cut it and not", shown(m)));
                         }
                     }
                     _ => {}
@@ -126,6 +132,16 @@ pub fn check_cutting(forms: &[Form]) -> Result<(), String> {
     Ok(())
 }
 
+/// [`Family::tidy_cutting`] on forms alone, which an editor holds apart from its family.
+pub fn tidy_forms(forms: &mut [Form]) {
+    let place: Vec<(Guid, bool, bool)> = forms.iter().map(|f| (f.guid, f.void, f.cuts().forms())).collect();
+    let find = |g: &Guid| if g.is_nil() { None } else { place.iter().position(|p| p.0 == *g) };
+    for (i, form) in forms.iter_mut().enumerate() {
+        form.uncut_by.retain(|g| find(g).is_none_or(|m| !place[m].1 || (m > i && place[m].2)));
+        form.cut_by.retain(|g| find(g).is_none_or(|m| !(place[m].1 && place[m].2 && m > i)));
+    }
+}
+
 impl Family {
     /// The forms that cut form `i`, as their places in the list, in the order they cut it: the voids listed after it that cut
     /// forms, less its `uncut_by`; then its `cut_by`, then its `joined_by`, none twice. None for a void.
@@ -141,6 +157,14 @@ impl Family {
             }
         }
         out
+    }
+
+    /// The lists made sound again after the forms were moved about, which changes what the list's order says: an `uncut_by`
+    /// naming a void no longer listed after its form (or one that now cuts the host alone) and a `cut_by` naming a void now
+    /// listed after its form (which cuts it by the order) are taken out. Nothing else is touched: what [`check_cutting`]
+    /// refuses for another reason it still refuses.
+    pub fn tidy_cutting(&mut self) {
+        tidy_forms(&mut self.forms);
     }
 
     /// Every list of every form without `gone`, as removing that form leaves them.
@@ -185,6 +209,9 @@ impl Family {
         let (t, c) = self.pair(target, cutter)?;
         if self.forms[target].void {
             return Err(format!("{} is a void, and a void is never cut", shown(target)));
+        }
+        if self.forms[cutter].void && !self.forms[cutter].cuts().forms() {
+            return Err(format!("{} cuts the host alone, which cuts no form", shown(cutter)));
         }
         if self.cutters(target).contains(&cutter) {
             return Err(format!("{} cuts {} already", shown(cutter), shown(target)));
@@ -231,6 +258,12 @@ impl Family {
         let (t, k) = (&self.forms[target], &self.forms[cutter]);
         if t.joined_by.contains(&c) || k.joined_by.contains(&t.guid) {
             return Err(format!("{} and {} are joined already", shown(target), shown(cutter)));
+        }
+        if t.cut_by.contains(&c) {
+            return Err(format!("{} cuts {} already; take it out of `cut_by` before joining them", shown(cutter), shown(target)));
+        }
+        if k.cut_by.contains(&t.guid) {
+            return Err(format!("{} cuts {} already; take it out of `cut_by` before joining them", shown(target), shown(cutter)));
         }
         self.recut(|forms| forms[target].joined_by.push(c))
     }

@@ -15101,6 +15101,8 @@ fn family(s: &mut Session, p: &Value) -> R {
     let to = rename.clone().unwrap_or_else(|| name.clone());
     // A family type parameter a nested instance is labelled with by this command holds what it showed, where it held none
     // (T24); later edits leave it as they find it.
+    // What a form moved, or a void changed, leaves stale in the cutting lists goes (FE-16).
+    f.tidy_cutting();
     f.fill_labels(was.as_ref());
     // The instances inside what it nests, each by a GUID of its own, which the elements of shared ones are named by (T6b).
     f.give_inner_guids();
