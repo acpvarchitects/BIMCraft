@@ -580,29 +580,29 @@ impl BimApp {
                 // Extrusion and Revolve sketch on the work plane (F5); Blend, Sweep and Swept Blend too (F6).
                 use bimcraft_core::family::forms::FormKind;
                 let tip = msg!("Extrusion: sketch a profile on the work plane, extruded along its normal");
-                if big_button(ui, Icon::CreateForm, msg!("Extrusion"), false, tip).clicked() {
+                if big_button(ui, Icon::Extrusion, msg!("Extrusion"), false, tip).clicked() {
                     ed.create_form(FormKind::Extrusion, false);
                 }
                 let tip = msg!("Blend: sketch a base and a top on the work plane, joined between their two ends");
-                if big_button(ui, Icon::CreateForm, msg!("Blend"), false, tip).clicked() {
+                if big_button(ui, Icon::Blend, msg!("Blend"), false, tip).clicked() {
                     ed.create_form(FormKind::Blend, false);
                 }
                 let tip = msg!("Revolve: sketch a profile and an axis line on the work plane, turned about the axis");
-                if big_button(ui, Icon::CreateForm, msg!("Revolve"), false, tip).clicked() {
+                if big_button(ui, Icon::Revolve, msg!("Revolve"), false, tip).clicked() {
                     ed.create_form(FormKind::Revolve, false);
                 }
                 let tip = msg!("Sweep: sketch or pick a path on the work plane, then a profile square to it, swept along it");
-                if big_button(ui, Icon::CreateForm, msg!("Sweep"), false, tip).clicked() {
+                if big_button(ui, Icon::Sweep, msg!("Sweep"), false, tip).clicked() {
                     ed.create_form(FormKind::Sweep, false);
                 }
                 let tip = msg!("Swept Blend: a path of one line or arc, and a profile at each end, blended along it");
-                if big_button(ui, Icon::CreateForm, msg!("Swept Blend"), false, tip).clicked() {
+                if big_button(ui, Icon::SweptBlend, msg!("Swept Blend"), false, tip).clicked() {
                     ed.create_form(FormKind::SweptBlend, false);
                 }
                 let tip = msg!(
                     "Void Forms: a void extrusion, blend, revolve, sweep or swept blend, sketched as a solid one is, which cuts the solids before it"
                 );
-                let r = big_button(ui, Icon::CreateForm, msg!("Void Forms"), false, tip);
+                let r = big_button(ui, Icon::VoidForms, msg!("Void Forms"), false, tip);
                 ribbon::choices(ui, &r, false, |ui| {
                     for (label, kind) in [
                         (msg!("Void Extrusion"), FormKind::Extrusion),
@@ -641,13 +641,16 @@ impl BimApp {
                     {
                         ed.model_line_tool();
                     }
-                    later(ui, Icon::Text, msg!("Model Text"));
+                    later(ui, Icon::ModelText, msg!("Model Text"));
                 });
                 ribbon::yielding(ui, msg!("Datum"), |ui| {
                     // Drawn in a plan or an elevation of a family that isn't adaptive, as Revit's (F4).
                     let tip = msg!("Reference Plane (RP): a plane drawn by two clicks in a plan or an elevation");
                     let on = ed.views.drawing.is_some() && !ed.views.drawing_line;
-                    if ui.add_enabled_ui(ed.editing_2d(), |ui| big_button(ui, Icon::Line, msg!("Reference Plane"), on, tip)).inner.clicked()
+                    if ui
+                        .add_enabled_ui(ed.editing_2d(), |ui| big_button(ui, Icon::RefPlane, msg!("Reference Plane"), on, tip))
+                        .inner
+                        .clicked()
                     {
                         ed.reference_plane_tool();
                     }
@@ -1158,7 +1161,7 @@ impl BimApp {
         }
         // A reference plane selected in a plan or an elevation: its name, and its pivot (F7d).
         if let Some(g) = ed.selected_plane() {
-            selector(ui, Icon::Line, t("Reference Plane"));
+            selector(ui, Icon::RefPlane, t("Reference Plane"));
             ui.add_space(6.0);
             if let Some(p) = ed.planes.iter_mut().find(|p| p.guid == g) {
                 let datum = p.datum();
@@ -1189,7 +1192,7 @@ impl BimApp {
         }
         // A form selected: its own Properties, as Revit's show only what is selected.
         if let Some(i) = ed.selected_form() {
-            selector(ui, Icon::CreateForm, &ed.forms[i].describe());
+            selector(ui, ed.forms[i].icon(), &ed.forms[i].describe());
             ui.add_space(6.0);
             self.form_properties(ui, &mut ed, i);
             self.put_family(ed);
@@ -1468,14 +1471,21 @@ impl BimApp {
         (ed.selecting.by_face, ed.selecting.drag_faces) = (self.select_by_face, self.drag_on_selection);
         ed.selecting.pins = self.select_pinned;
         let pane = ui.available_rect_before_wrap();
-        self.view_rect = pane;
         self.pane = pane;
+        // A plan, an elevation and {3D} are drawn below the tabs that float over the view's top (UI-1: as they were last drawn),
+        // so a plane's name along an elevation's top and the top of what {3D} fits show; above, the canvas.
+        // On a whole pixel, as the pane's own top is, so a point on screen stands for the same millimetres as before.
+        let drawn = pane.with_min_y(self.tabs_foot.ceil().clamp(pane.top(), (pane.bottom() - 64.0).max(pane.top())));
+        self.view_rect = drawn;
+        if ed.adaptive.is_none() {
+            ui.painter().rect_filled(pane.with_max_y(drawn.top()), 0.0, crate::canvas::color(bimcraft_core::render::PAPER));
+        }
         let values = ed.values();
         let hidden = ed.adaptive.as_ref().map(|d| ed.temp_hidden(d)).unwrap_or_default();
         if let Some(which) = ed.views.shown {
             // A plan or an elevation (F4): the project's own drawing of the family in a scratch model.
             let base = Arc::clone(&self.session.model);
-            if let Some(e) = ed.view_2d(ui, &base, which, pane, self.thin) {
+            if let Some(e) = ed.view_2d(ui, &base, which, drawn, self.thin) {
                 self.status = Status { text: e, error: true };
             }
             if let Some(text) = ed.views.said.take() {
@@ -1491,7 +1501,7 @@ impl BimApp {
                 self.status = Status { text: e, error: true };
             }
         } else {
-            self.family_3d(ui, &mut ed, pane);
+            self.family_3d(ui, &mut ed, drawn);
         }
         // The point a snap override waited for, picked: it is done.
         if std::mem::take(&mut ed.took_point) {
@@ -2267,7 +2277,7 @@ fn on_pane(cam: bimcraft_core::view3d::Camera, size: [u32; 2], pane: Rect) -> im
 fn connectors_panel(ui: &mut Ui, ed: &mut FamilyEditor) {
     ribbon::panel(ui, msg!("Connectors"), |ui| {
         let tip = msg!("Connector: a pipe, power, switch, data or earthing connector, where the family joins a system");
-        let r = big_button(ui, Icon::Pipe, msg!("Connector"), false, tip);
+        let r = big_button(ui, Icon::Connector, msg!("Connector"), false, tip);
         ribbon::choices(ui, &r, false, |ui| {
             for (kind, label, tip) in super::connectors::KINDS {
                 if ui.button(t(label)).on_hover_text(t(tip)).clicked() {
@@ -2327,12 +2337,12 @@ fn draw_panel(ui: &mut Ui, ed: &mut FamilyEditor) {
 fn work_plane_panel(ui: &mut Ui, ed: &mut FamilyEditor) {
     ribbon::panel(ui, msg!("Work Plane"), |ui| {
         let tip = msg!("Set: the work plane, a plane picked in the view (a point's, the level or a reference plane)");
-        if big_button(ui, Icon::PickFaces, msg!("Set"), ed.modeller.picking_plane, tip).clicked() {
+        if big_button(ui, Icon::WorkPlane, msg!("Set"), ed.modeller.picking_plane, tip).clicked() {
             ed.modeller.picking_plane = true;
         }
         crate::stacked(ui, |ui| {
             let tip = msg!("Show: the work plane drawn, tinted, with a grid on it");
-            if crate::stacked_button(ui, Icon::Visibility, msg!("Show"), ed.modeller.show_work_plane, tip).clicked() {
+            if crate::stacked_button(ui, Icon::ShowWorkPlane, msg!("Show"), ed.modeller.show_work_plane, tip).clicked() {
                 ed.modeller.show_work_plane = !ed.modeller.show_work_plane;
             }
             ui.add_enabled_ui(false, |ui| crate::stacked_button(ui, Icon::View3D, msg!("Viewer"), false, msg!("Not in BIMCraft yet")));
@@ -2346,12 +2356,12 @@ fn views_work_plane_panel(ui: &mut Ui, ed: &mut FamilyEditor) {
     ribbon::panel(ui, msg!("Work Plane"), |ui| {
         let tip = msg!("Set: the view's work plane, by name or picked in the view (the Work Plane dialog)");
         let on = ed.views.dialog.is_some() || ed.views.picking.is_some();
-        if big_button(ui, Icon::PickFaces, msg!("Set"), on, tip).clicked() {
+        if big_button(ui, Icon::WorkPlane, msg!("Set"), on, tip).clicked() {
             ed.open_work_plane_dialog(super::work_plane::Target::View);
         }
         crate::stacked(ui, |ui| {
             let tip = msg!("Show: the view's work plane, tinted");
-            if crate::stacked_button(ui, Icon::Visibility, msg!("Show"), ed.views.show_work_plane, tip).clicked() {
+            if crate::stacked_button(ui, Icon::ShowWorkPlane, msg!("Show"), ed.views.show_work_plane, tip).clicked() {
                 ed.views.show_work_plane = !ed.views.show_work_plane;
             }
         });
@@ -2425,6 +2435,10 @@ impl BimApp {
     /// over it), and on nothing lets the selection go, as in Revit and the project's 3D view; the pointer over one lights it
     /// first (T11). A double click on a form sketches it again, as Edit Extrusion or Edit Revolve does (F5).
     fn family_3d(&mut self, ui: &mut Ui, ed: &mut FamilyEditor, pane: Rect) {
+        #[cfg(test)]
+        {
+            ed.views.drawn = Some(pane);
+        }
         let response = ui.interact(pane, UiId::new("family-preview"), Sense::click_and_drag());
         self.canvas.track(ui, &response);
         // The triad stands left of the ViewCube, which is in the top right corner; both are laid over the view, so a click on
@@ -2473,8 +2487,28 @@ impl BimApp {
             }
             None => cam,
         };
+        // A selected form's handles (FE-25), where the view shows them as the hand found it: a press on one holds it, and the
+        // drag is the handle's, not the view's.
+        ed.keep_3d(ui.ctx().cumulative_pass_nr());
+        let before = on_pane(cam, [w, h], pane);
+        let handles = ed.handles_3d_on(&before, &cam);
+        let on_handle = |p: egui::Pos2| {
+            handles
+                .iter()
+                .filter(|(at, ..)| at.distance(p) <= super::handles3d::REACH)
+                .min_by(|a, b| a.0.distance(p).total_cmp(&b.0.distance(p)))
+        };
+        if response.drag_started_by(egui::PointerButton::Primary)
+            && !ed.sketching()
+            && let Some(press) = ui.input(|i| i.pointer.press_origin()).filter(|p| !crate::orbit::Orbit::on_cube(pane, *p))
+            && let Some((from, per_mm, h)) = on_handle(press)
+            && let Err(e) = ed.grab_3d(h, (press, *from), *per_mm, ui.ctx().cumulative_pass_nr())
+            && !e.is_empty()
+        {
+            self.status = Status { text: e, error: true };
+        }
         // While sketching, a drag from a picked line's end drags it rather than turn the view.
-        let gripped = ed.sketch.as_ref().is_some_and(|s| s.sketch.drag.is_some());
+        let gripped = ed.sketch.as_ref().is_some_and(|s| s.sketch.drag.is_some()) || ed.holding_3d();
         let quick = self.canvas.quick();
         let nav = ed.orbit.navigate(ui, &response, &input, cam, gripped, false, quick, fresh.then_some(&*scene));
         let cam = nav.cam;
@@ -2505,7 +2539,8 @@ impl BimApp {
             ed.connector_hover = at.and_then(|p| super::connector_marks::pick(&marks, &project, p));
             ed.views.hover3d = at.filter(|_| ed.connector_hover.is_none()).map(|p| (p, cam, part_at(ed, p)));
             let click = response.clicked().then(|| response.interact_pointer_pos()).flatten().or(self.canvas.quick_press());
-            if let Some(p) = click.filter(|p| !crate::orbit::Orbit::on_cube(pane, *p)) {
+            // A click on a handle, with no drag: the selection stays.
+            if let Some(p) = click.filter(|p| !crate::orbit::Orbit::on_cube(pane, *p) && on_handle(*p).is_none()) {
                 match super::connector_marks::pick(&marks, &project, p) {
                     Some(i) => ed.select_connector(i),
                     None => ed.click_3d(part_at(ed, p)),
@@ -2520,6 +2555,24 @@ impl BimApp {
                     self.status = Status { text: e, error: true };
                 }
             }
+        }
+        // The handle held, the pointer read along it; let go, it stays where the drag left it, a step of the history.
+        if ed.holding_3d()
+            && (response.dragged_by(egui::PointerButton::Primary) || response.drag_stopped_by(egui::PointerButton::Primary))
+            && let Some(now) = response.interact_pointer_pos()
+            && let Err(e) = ed.drag_3d_to(now)
+            && !e.is_empty()
+        {
+            self.status = Status { text: e, error: true };
+        }
+        if (response.drag_stopped() || !ui.input(|i| i.pointer.primary_down()))
+            && let Err(e) = ed.let_go_3d()
+        {
+            self.status = Status { text: e, error: true };
+        }
+        // The parameter a handle drags, at its value now (FE-25).
+        if let Some(text) = ed.views.said.take() {
+            self.status = Status { text, error: false };
         }
         // The picture: what is selected and under the pointer tinted, the work plane and a datum selected laid over it.
         let tints = ed.scene3d.as_ref().map(|s| s.tints(&ed.lit_3d())).unwrap_or_default();
@@ -2558,6 +2611,25 @@ impl BimApp {
             .filter_map(|x| if let super::select_box::Picked::Connector(i) = x { Some(*i) } else { None })
             .collect();
         super::connector_marks::paint(&p, &marks, &project, &chosen, ed.connector_hover, lit);
+        // The selected form's handles over it, where the view shows them now: blue, or grey where they can't be dragged.
+        let shown = ed.handles_3d_on(&project, &cam);
+        // The one under the pointer a drag takes, lit; a greyed one never is. One held is drawn where the hand has it, lit.
+        let held = ed.held_3d();
+        let lit = input.hover.filter(|_| held.is_none()).and_then(|p| {
+            shown
+                .iter()
+                .filter(|(at, _, h)| h.blocked.is_none() && at.distance(p) <= super::handles3d::REACH)
+                .min_by(|a, b| a.0.distance(p).total_cmp(&b.0.distance(p)))
+                .map(|(at, ..)| *at)
+        });
+        ed.views.lit_handle = lit;
+        for (at, along, h) in &shown {
+            super::handles3d::paint_arrow(&p, *at, along.normalized(), h.blocked.is_none(), lit == Some(*at));
+        }
+        if let Some((at, way)) = held {
+            super::handles3d::paint_arrow(&p, at, way, true, true);
+        }
+        ed.views.handles3d_shown = shown.into_iter().map(|(at, _, h)| (at, h)).collect();
         // A form being sketched on its plane, over the picture (F5), with its padlocks.
         if let Some(e) = ed.sketch_in_3d(ui, &response, &p, &cam, size, pane) {
             self.status = Status { text: e, error: true };

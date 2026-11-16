@@ -59,8 +59,18 @@ pub(crate) struct Views {
     /// millimetres, the normal it moves along, and the view as it was when the drag began, which the pointer is read through
     /// while it goes on (a drag that changes what the view frames would otherwise change its scale under the hand).
     pub(super) end_drag: Option<EndDrag>,
-    /// A profile edge being dragged by its handle (FE-5).
+    /// A profile edge being dragged by its handle (FE-5), in a plan, an elevation or {3D}.
     pub(super) edge_drag: Option<super::shape_handles::EdgeDrag>,
+    /// A handle being dragged in {3D} (FE-25, `handles3d.rs`): how the pointer is read along it, and an end's number before.
+    pub(super) drag3d: Option<super::handles3d::Drag3d>,
+    /// A parameter being dragged by a handle tied to it (FE-25, `handle_params.rs`), in any view.
+    pub(super) param_drag: Option<super::handle_params::ParamDrag>,
+    /// How each handle of the selected form drags, worked out once for the draft as it is (FE-25).
+    pub(super) drives: std::cell::RefCell<super::handle_params::Drives>,
+    /// The handle the pointer is over, lit, where it was last drawn: a greyed one never is.
+    pub(crate) lit_handle: Option<egui::Pos2>,
+    /// Where the selected form's handles were last shown in {3D} (FE-25).
+    pub(crate) handles3d_shown: Vec<(egui::Pos2, super::handles3d::Handle3d)>,
     /// The selection being dragged to move it (FE-7, `drag_move.rs`).
     pub(super) moving: Option<super::drag_move::MoveDrag>,
     /// A Modify tool in hand (FE-8, `modify.rs`): Move, Copy, Rotate, Mirror, Scale or Offset, with what has been clicked.
@@ -81,6 +91,9 @@ pub(crate) struct Views {
     pub(crate) ends_shown: Vec<(egui::Pos2, bool)>,
     /// The picture shown, and what it was drawn of.
     pub(super) cache: Option<Cached>,
+    /// The view shown fitted (UI-1: what it draws, inside its picture), and what it was fitted for: kept while only the zoom
+    /// and the pan change, as the fit draws the view again a few times.
+    fitted: Option<(u64, View)>,
     /// Aligned Dimension (DI): on, with the references picked so far; Radial or Diameter Dimension too (`dim_kind`), its
     /// circle picked once it is.
     pub(crate) dimensioning: Option<Vec<DimRef>>,
@@ -104,6 +117,10 @@ pub(crate) struct Views {
     pub(crate) status: Option<String>,
     /// Where on screen the view was last shown.
     pub(super) pane: Option<Rect>,
+    /// Where the view shown, a plan, an elevation or {3D}, was last drawn, as `view_2d` and `family_3d` were given it: what a test
+    /// reads to see it clear of the tabs (UI-1).
+    #[cfg(test)]
+    pub(crate) drawn: Option<Rect>,
     /// Where the pointer was last over {3D} and the camera {3D} was seen through, and the form or nested instance under it
     /// there (T11's hover).
     pub(crate) hover3d: Option<(egui::Pos2, bimcraft_core::view3d::Camera, Option<bimcraft_core::family::views::Part>)>,
@@ -302,6 +319,25 @@ impl Views {
         let (x, y) = self.pixel_of(p)?;
         Some(self.pane?.min + vec2(x, y))
     }
+
+    /// Every point the drawing of the plan or elevation shown paints, its lettering's included, on screen: each elevation mark's
+    /// (with its name) apart, then the rest.
+    pub(crate) fn ink_on_screen(&self) -> (Vec<Vec<egui::Pos2>>, Vec<egui::Pos2>) {
+        let (Some(c), Some(pane)) = (self.cache.as_ref(), self.pane) else { return Default::default() };
+        let mut marks: std::collections::BTreeMap<bimcraft_core::ids::Id, Vec<egui::Pos2>> = Default::default();
+        let mut rest = Vec::new();
+        for (p, o) in c.drawing.prims.iter().zip(&c.drawing.owners) {
+            if matches!(p, bimcraft_core::render::Prim::Image { .. }) {
+                continue;
+            }
+            let pts = p.points().into_iter().map(|(x, y)| pane.min + vec2(x, y));
+            match o.filter(|id| matches!(c.staged.model.elements.get(*id), Some(Element::Elevation(_)))) {
+                Some(id) => marks.entry(id).or_default().extend(pts),
+                None => rest.extend(pts),
+            }
+        }
+        (marks.into_values().collect(), rest)
+    }
 }
 
 #[cfg(test)]
@@ -487,9 +523,6 @@ impl FamilyEditor {
                 self.name.trim(),
                 which,
                 size,
-                zoom.to_bits(),
-                pan.0.to_bits(),
-                pan.1.to_bits(),
                 self.document.preview_visibility,
                 self.temporary(),
                 self.views.detail,
@@ -501,17 +534,32 @@ impl FamilyEditor {
             (base.materials.len(), base.images.len()).hash(&mut h);
             // The form being sketched again, which the view leaves out.
             self.sketch.as_ref().and_then(|s| s.index).hash(&mut h);
+            (zoom.to_bits(), pan.0.to_bits(), pan.1.to_bits()).hash(&mut h);
             h.finish()
         };
         if self.views.cache.as_ref().is_some_and(|c| c.key == key) {
             return;
         }
+        let kept = self.views.fitted;
+        let graphics = self.views.kept.key(Some(which));
         let drawn = self.staged(base, which).and_then(|mut st| {
-            let shown = st.draw_lines(which, size[0], size[1], zoom, P2(pan.0, pan.1))?;
-            Ok((st, shown))
+            // What the fit depends on, the room the view frames (the marks stand round it), the view, its size and its graphics,
+            // and not the rest of the family: an edit inside the room, a drag's every frame, keeps the frame it had.
+            let fit_key = {
+                let mut h = DefaultHasher::new();
+                (st.room.0.map(f64::to_bits), st.room.1.map(f64::to_bits), which, size, &graphics).hash(&mut h);
+                h.finish()
+            };
+            let fitted = match kept {
+                Some((k, v)) if k == fit_key => v,
+                _ => st.fitted(which, size[0], size[1]),
+            };
+            let shown = st.draw_lines_at(which, fitted, zoom, P2(pan.0, pan.1))?;
+            Ok((st, shown, (fit_key, fitted)))
         });
         match drawn {
-            Ok((staged, mut shown)) => {
+            Ok((staged, mut shown, fitted)) => {
+                self.views.fitted = Some(fitted);
                 // A plane the view hides, revealed (FE-18): its trace in magenta, as a form is (the drawing draws every plane in
                 // the one colour, whatever its graphics).
                 for (prim, owner) in shown.drawing.prims.iter_mut().zip(&shown.drawing.owners) {
@@ -556,7 +604,8 @@ impl FamilyEditor {
         // A handle's drag begun in another view, or in this one before something else was shown, is given up (FE-5).
         let pass = ui.ctx().cumulative_pass_nr();
         let stale = |w: Which, seen: u64| w != which || seen + 1 < pass;
-        if self.views.edge_drag.as_ref().is_some_and(|d| stale(d.which, d.seen))
+        if self.views.edge_drag.as_ref().is_some_and(|d| d.which.is_none_or(|w| stale(w, d.seen)))
+            || self.views.drag3d.is_some()
             || self.views.end_drag.as_ref().is_some_and(|d| stale(d.which, d.seen))
             || self.views.moving.as_ref().is_some_and(|d| stale(d.which, d.seen))
         {
@@ -587,6 +636,10 @@ impl FamilyEditor {
         self.refresh_view(ui.ctx(), base, which, size);
         let response = ui.interact(pane, UiId::new("family-view-2d"), Sense::click_and_drag());
         self.views.pane = Some(pane);
+        #[cfg(test)]
+        {
+            self.views.drawn = Some(pane);
+        }
         let c = self.views.cache.as_ref().filter(|c| c.which == which)?;
         let view = c.view;
         let painter = ui.painter_at(pane);
@@ -1251,16 +1304,22 @@ impl FamilyEditor {
             (Some(d), Some(f)) if editable => self.shape_handles(d, f, &c.staged, which),
             _ => Vec::new(),
         };
+        // The handle under the pointer that a drag takes, lit (FE-25); a greyed one never is.
+        let hover = response.hover_pos();
+        let lit = hover.and_then(|p| {
+            let free = handles.iter().filter(|h| h.2.is_none()).map(|h| screen(h.0));
+            let free = free.chain(shapes.iter().filter(|h| h.blocked.is_none()).map(|h| screen(h.at)));
+            free.filter(|at| at.distance(p) <= HANDLE).min_by(|a, b| a.distance(p).total_cmp(&b.distance(p)))
+        });
+        let lit = lit.filter(|_| self.views.moving.is_none() && self.views.grip.is_none());
+        self.views.lit_handle = lit;
         let arrow = |at: P2, way: [f64; 3], free: bool| {
             let centre = screen(at);
             let towards = c.staged.to_view(which, way) - c.staged.to_view(which, [0.0; 3]);
             let way = egui::vec2(towards.0 as f32, -towards.1 as f32).normalized();
-            let side = egui::vec2(-way.y, way.x);
-            let tip = [centre + way * 9.0, centre + side * 6.0, centre - side * 6.0];
-            let colour = if free { PICKED } else { pal().muted };
-            painter.add(egui::Shape::convex_polygon(tip.to_vec(), colour, Stroke::new(1.0, Color32::WHITE)));
+            super::handles3d::paint_arrow(&painter, centre, way, free, lit == Some(centre));
         };
-        for (at, end, blocked, n) in &handles {
+        for (at, end, blocked, n, _) in &handles {
             let k = if *end { 1.0 } else { -1.0 };
             arrow(*at, [n[0] * k, n[1] * k, n[2] * k], blocked.is_none());
         }
@@ -1275,12 +1334,17 @@ impl FamilyEditor {
         let mut problem = None;
         let mut end_moved: Option<(bool, f64)> = None;
         let mut edge_moved: Option<[f64; 3]> = None;
+        let mut begin_param: Option<(usize, super::handle_params::Target, Vec<String>)> = None;
         if response.drag_started_by(PointerButton::Primary)
             && let Some(p) = ui.input(|i| i.pointer.press_origin())
         {
-            if let Some((_, end, blocked, n)) = handles.iter().find(|h| screen(h.0).distance(p) <= HANDLE) {
+            if let Some((_, end, blocked, n, param)) = handles.iter().find(|h| screen(h.0).distance(p) <= HANDLE) {
                 match blocked {
                     None => {
+                        // Through a parameter (FE-25): its drag begun below, once the view is drawn.
+                        if let (Some(names), Some(i)) = (param, self.selected_form()) {
+                            begin_param = Some((i, super::handle_params::Target::End(*end), names.clone()));
+                        }
                         if let Some(ft) = self.selected_form().and_then(|i| self.forms.get(i)) {
                             let before = if *end { ft.to.clone() } else { ft.from.clone() };
                             let (last, n, tag, end) = (at_view(p), *n, ft.tag, *end);
@@ -1295,8 +1359,13 @@ impl FamilyEditor {
                 .min_by(|a, b| screen(a.at).distance(p).total_cmp(&screen(b.at).distance(p)))
                 && let Some(f) = family.as_ref()
             {
-                match self.edge_drag(h, (at_view(p), view, which, pass), f) {
-                    Ok(d) => self.views.edge_drag = Some(d),
+                match self.edge_drag(h, (Some((at_view(p), view)), Some(which), pass), f) {
+                    Ok(d) => {
+                        self.views.edge_drag = Some(d);
+                        if let (Some(names), Some(i)) = (&h.param, self.selected_form()) {
+                            begin_param = Some((i, super::handle_params::Target::Edge(h.line, h.out), names.clone()));
+                        }
+                    }
                     Err(e) => problem = Some(e),
                 }
             }
@@ -1304,7 +1373,7 @@ impl FamilyEditor {
         let held_at = |v: View, p: egui::Pos2| v.mm((p.x - pane.min.x, p.y - pane.min.y));
         if let Some(EndDrag { end, last: from, n, view: then, .. }) = self.views.end_drag.clone()
             && let Some(to) = response.interact_pointer_pos().map(|p| held_at(then, p))
-            && response.dragged_by(PointerButton::Primary)
+            && (response.dragged_by(PointerButton::Primary) || response.drag_stopped_by(PointerButton::Primary))
         {
             let d = c.staged.vector(which, P2(to.0 - from.0, to.1 - from.1));
             end_moved = Some((end, d[0] * n[0] + d[1] * n[1] + d[2] * n[2]));
@@ -1312,9 +1381,9 @@ impl FamilyEditor {
                 e.last = to;
             }
         }
-        if let Some((from, then)) = self.views.edge_drag.as_ref().map(|d| (d.from, d.view))
+        if let Some((from, then)) = self.views.edge_drag.as_ref().and_then(|d| d.on)
             && let Some(to) = response.interact_pointer_pos().map(|p| held_at(then, p))
-            && response.dragged_by(PointerButton::Primary)
+            && (response.dragged_by(PointerButton::Primary) || response.drag_stopped_by(PointerButton::Primary))
         {
             edge_moved = Some(c.staged.vector(which, P2(to.0 - from.0, to.1 - from.1)));
         }
@@ -1679,10 +1748,20 @@ impl FamilyEditor {
             self.views.end_drag = None;
             self.views.grip = None;
         }
+        let param_let_go = response.drag_stopped() || !ui.input(|i| i.pointer.primary_down());
         self.zoom_and_pan(ui, &response, which, view.scale);
+        // A handle's drag through a parameter begun (FE-25); none can move it: the drag given up, saying why.
+        if let Some((i, target, names)) = begin_param
+            && let Err(e) = self.start_param_drag(i, target, &names, true)
+        {
+            self.views.edge_drag = None;
+            self.views.end_drag = None;
+            (end_moved, edge_moved) = (None, None);
+            problem = Some(e);
+        }
         if let Some((end, d)) = end_moved
             && d != 0.0
-            && let Err(e) = self.drag_end(end, d)
+            && let Err(e) = if self.dragging_param() { self.param_by(if end { d } else { -d }) } else { self.drag_end(end, d) }
         {
             problem = Some(e);
         }
@@ -1707,6 +1786,10 @@ impl FamilyEditor {
             }
             self.views.edge_drag = None;
             self.views.moving = None;
+        }
+        // A parameter dragged by a handle: written as the drag left it (FE-25).
+        if param_let_go && self.views.end_drag.is_none() {
+            self.let_param_go();
         }
         if let Some(i) = edit
             && let Err(e) = self.edit_form_sketch(i)
