@@ -4,7 +4,7 @@ use serde_json::{Value, json};
 
 use crate::engine::Session;
 use crate::model::{Element, Guid, Id, Model};
-use crate::parts::{BuildingPart, Decay, FILE_KEY, Heritage, PartType, Source};
+use crate::parts::{BuildingPart, Decay, Heritage, PartType, Source};
 
 fn run(s: &mut Session, id: &str, p: Value) -> Value {
     s.execute(id, &p).unwrap_or_else(|e| panic!("{id} {p}: {e}"))
@@ -170,7 +170,7 @@ fn a_parts_own_material_is_the_librarys_follows_its_rename_and_keeps_it_in_the_l
     assert_eq!(part(&s.model, id).material.as_deref(), Some("Opus Signinum"));
     // A file holds it by its GUID, as a layer's material.
     let file: Value = serde_json::from_str(&s.model.to_json().unwrap()).unwrap();
-    let held = file[FILE_KEY][id.to_string()]["material"].as_str().unwrap();
+    let held = file["elements"][id.to_string()]["material"].as_str().unwrap();
     assert!(Guid::parse(held).is_some_and(|g| g.pending().is_none()), "{held}");
     let back = Model::from_json(&s.model.to_json().unwrap()).unwrap();
     assert_eq!(part(&back, id).material.as_deref(), Some("Opus Signinum"));
@@ -313,20 +313,11 @@ fn a_part_has_no_place_of_its_own_to_move_copy_turn_or_mirror() {
 }
 
 #[test]
-fn nothing_but_a_part_points_at_a_part_yet() {
+fn a_view_hides_no_part_yet() {
     let (mut s, wall) = historic();
     let id = put(&mut s, |m| layer_part(m, wall, 0));
     let level = s.model.levels()[0].0;
-    // A view's own override of it, which a file would hold outside the parts: an older BIMCraft, leaving the parts out,
-    // would find it pointing at nothing.
-    let mut m = (*s.model).clone();
-    let guid = m.guid(id);
-    let Some(Element::Level(l)) = m.elements.get_mut(level) else { panic!("no level") };
-    l.graphics.elements.insert(guid, crate::graphics::Override { hidden: true, ..Default::default() });
-    let e = m.check().unwrap_err();
-    assert_eq!(e, format!("level {level} points at part {id}; nothing but a part points at a part yet"));
-    assert_eq!(m.check_changed(&s.model), Err(e));
-    // The command says it its own way: a part is drawn in no view yet. Its wall may be hidden, as ever.
+    // A part is drawn in no view yet, so a view has nothing of it to hide. Its wall may be hidden, as ever.
     let e = fails(&mut s, "graphics", json!({"view": level, "hide_elements": [id]}));
     assert!(e.contains(&format!("element {id} is a part, and views don't draw those")), "{e}");
     run(&mut s, "graphics", json!({"view": level, "hide_elements": [wall]}));
@@ -348,12 +339,14 @@ fn a_file_keeps_its_parts_under_a_key_of_their_own_and_reads_them_back_as_elemen
     let patch = put(&mut s, |m| BuildingPart { parent: Some(m.guid(plaster)), ..layer_part(m, wall, 0) });
     let text = s.model.to_json().unwrap();
     let file: Value = serde_json::from_str(&text).unwrap();
-    // The format is the one a BIMCraft from before parts reads, and no element is of a category it doesn't know.
-    assert_eq!(file["format"], 18);
+    // Among the elements, each a `part`, in a file of the format that brought them: one a BIMCraft from before parts refuses
+    // as a newer one's, so it never drops them when it saves.
+    assert_eq!(file["format"], 21);
+    assert!(file.get("parts").is_none());
     let elements = file["elements"].as_object().unwrap();
-    assert!(elements.values().all(|e| e["category"] != "part"));
-    assert_eq!(elements.len() + 3, s.model.elements.len());
-    let parts = file[FILE_KEY].as_object().unwrap();
+    assert_eq!(elements.len(), s.model.elements.len());
+    let parts: serde_json::Map<String, Value> =
+        elements.iter().filter(|(_, e)| e["category"] == "part").map(|(k, v)| (k.clone(), v.clone())).collect();
     assert_eq!(parts.keys().map(String::as_str).collect::<Vec<_>>(), [plaster.to_string(), masonry.to_string(), patch.to_string()]);
     // Each as an element is written: its GUID, what it points at by GUID, and only what it says.
     let p = &parts[&plaster.to_string()];
@@ -376,74 +369,38 @@ fn a_file_keeps_its_parts_under_a_key_of_their_own_and_reads_them_back_as_elemen
     assert_eq!(back.check(), Ok(()));
     assert_eq!(back.elements, s.model.elements);
     assert_eq!(back.to_json().unwrap(), text);
-    // A project with no parts is written as it always was: no key for them.
-    run(&mut s, "delete", json!({"ids": [wall]}));
-    let bare: Value = serde_json::from_str(&s.model.to_json().unwrap()).unwrap();
-    assert!(bare.get(FILE_KEY).is_none());
+    // An older BIMCraft's answer, as this one's to a file of a format after its own.
+    let mut newer = file.clone();
+    newer["format"] = json!(crate::model::FORMAT + 1);
+    let e = Model::read(&newer.to_string()).unwrap_err();
+    assert!(e.contains("saved by a newer BIMCraft"), "{e}");
 }
 
 #[test]
-fn a_reader_that_leaves_the_parts_out_loses_nothing_else() {
-    let (mut s, wall) = historic();
-    run(&mut s, "door", json!({"at": [2000, 0]}));
-    let plaster = put(&mut s, |m| layer_part(m, wall, 0));
-    put(&mut s, |m| BuildingPart { parent: Some(m.guid(plaster)), ..layer_part(m, wall, 0) });
-    let without = {
-        let mut m = (*s.model).clone();
-        m.elements.retain(|_, e| !matches!(e, Element::Part(_)));
-        m
-    };
-    // As a BIMCraft from before parts reads the file: the key is one it doesn't know, so it leaves it out, names it,
-    // and what it reads is the project without its parts, which stands on its own.
-    let mut file: Value = serde_json::from_str(&s.model.to_json().unwrap()).unwrap();
-    let parts = file.as_object_mut().unwrap().remove(FILE_KEY).unwrap();
-    file["parts_of_a_later_bimcraft"] = parts;
-    let (older, left_out) = Model::read(&file.to_string()).unwrap();
-    assert_eq!(left_out, ["/parts_of_a_later_bimcraft"]);
-    assert_eq!(older.check(), Ok(()));
-    assert_eq!(older.elements, without.elements);
-    assert_eq!(older.to_json().unwrap(), without.to_json().unwrap());
-    // The same with the key taken out altogether.
-    file.as_object_mut().unwrap().remove("parts_of_a_later_bimcraft");
-    let (bare, left_out) = Model::read(&file.to_string()).unwrap();
-    assert_eq!((left_out, bare.check()), (Vec::new(), Ok(())));
-    assert_eq!(bare.elements, without.elements);
-}
-
-#[test]
-fn a_file_is_read_kindly_whatever_its_parts_key_holds() {
+fn a_file_is_read_kindly_whatever_its_parts_hold() {
     let (mut s, wall) = historic();
     let id = put(&mut s, |m| layer_part(m, wall, 0));
     let text = s.model.to_json().unwrap();
     let file: Value = serde_json::from_str(&text).unwrap();
     // A field of a part this BIMCraft doesn't know is left out and named, as any element's.
     let mut later = file.clone();
-    later[FILE_KEY][id.to_string()]["weathering_index"] = json!(7);
+    later["elements"][id.to_string()]["weathering_index"] = json!(7);
     let (m, left_out) = Model::read(&later.to_string()).unwrap();
     assert_eq!(left_out, [format!("/elements/{id}/weathering_index")]);
     assert_eq!(m.elements, s.model.elements);
-    // The key holding something else, or a part whose id an element has: left out and named, the rest opens.
-    for (hostile, named) in
-        [(json!([1, 2]), true), (json!("parts"), true), (json!({wall.to_string(): {"host": 1}}), true), (json!({}), false)]
-    {
-        let mut f = file.clone();
-        f[FILE_KEY] = hostile.clone();
-        let (m, left_out) = Model::read(&f.to_string()).unwrap_or_else(|e| panic!("{hostile}: {e}"));
-        assert_eq!(left_out, if named { vec![format!("/{FILE_KEY}")] } else { Vec::new() }, "{hostile}");
-        assert!(m.wall(wall).is_some() && !m.elements.contains_key(id), "{hostile}");
-    }
     // What is no part at all is refused as a hostile element is, with its id.
     let mut f = file.clone();
-    f[FILE_KEY][id.to_string()] = json!({"host": "not a guid"});
+    f["elements"][id.to_string()] = json!({"category": "part", "host": "not a guid"});
     let e = Model::read(&f.to_string()).unwrap_err();
     assert!(e.contains(&format!("element {id}")), "{e}");
-    // In `elements`, as this BIMCraft writes one to anything but a file, a part is read too.
-    let mut inline = file.clone();
-    let part = inline[FILE_KEY].as_object_mut().unwrap().remove(&id.to_string()).unwrap();
-    inline.as_object_mut().unwrap().remove(FILE_KEY);
-    inline["elements"][id.to_string()] = part;
-    inline["elements"][id.to_string()]["category"] = json!("part");
-    assert_eq!(Model::read(&inline.to_string()).unwrap().0.elements, s.model.elements);
+    // A top-level `parts` key, where builds of the heritage fork kept them before they were elements, is one this
+    // BIMCraft doesn't know: left out and named, and the rest opens.
+    let mut fork = file.clone();
+    let part = fork["elements"].as_object_mut().unwrap().remove(&id.to_string()).unwrap();
+    fork["parts"] = json!({id.to_string(): part});
+    let (m, left_out) = Model::read(&fork.to_string()).unwrap();
+    assert_eq!(left_out, ["/parts"]);
+    assert!(m.wall(wall).is_some() && !m.elements.contains_key(id));
 }
 
 // ---------- what a part is of its host now ----------
@@ -1424,7 +1381,7 @@ fn a_part_holds_values_of_the_projects_parameters_for_parts() {
     // In a file, keyed by the parameters' GUIDs as any element's; read back, by their names.
     let text = s.model.to_json().unwrap();
     let file: Value = serde_json::from_str(&text).unwrap();
-    let held = file[FILE_KEY][ids[0].to_string()]["params"].as_object().unwrap();
+    let held = file["elements"][ids[0].to_string()]["params"].as_object().unwrap();
     assert!(held.keys().all(|k| Guid::parse(k).is_some_and(|g| g.pending().is_none())), "{held:?}");
     let back = Model::from_json(&text).unwrap();
     assert_eq!(part(&back, ids[0]).params, part(&s.model, ids[0]).params);

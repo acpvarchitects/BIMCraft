@@ -173,7 +173,8 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// (`library`), and what names a library entry holds its GUID. 1: elements have GUIDs, ids six digits, and what points at
 /// an element holds its GUID. None (0): a file from before.
 /// 20 (0.12's, which every change since 19 shares; the Family Editor's unreleased builds wrote 20 to 32 too, and a file of
-/// theirs stamped 20 opens as one of 0.12's, 21 and up as newer): rooms have types (`types.room`), which may name a floor type and a ceiling type, and a room holds the floor and the
+/// theirs stamped 20 opens as one of 0.12's; 21 is parts' now, and nobody keeps a file of those builds stamped 21, so 22 and
+/// up are refused as newer): rooms have types (`types.room`), which may name a floor type and a ceiling type, and a room holds the floor and the
 /// ceiling made for it (`floor`, `ceiling`); a build that reads up to 19 would lose the links and leave the finishes behind. And
 /// project parameters may be of kinds 19 doesn't know (`integer`, `area`, `volume`, `angle`), a type's (`scope`, `type_values`),
 /// from a `.bimparams` dictionary (`dictionaries`), grouped under a heading of the project's own, and the project's information
@@ -185,7 +186,10 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// georeference and lose where the project stands; and it would read spot coordinates (a spot's `coordinate`, `type`, `origin`,
 /// `leader`, `shoulder` and `end`) and a level's `elevation_base` as spot elevations from the Project Base Point. A file of 19
 /// needs no step: its georeference is the active site, both points at the internal origin.
-pub const FORMAT: u32 = 20;
+/// 21: parts of elements (`part`, `parts.rs`) are elements, and project parameters may be for them (`part`); nothing in a file of
+/// 20 changes, but a build that reads up to 20 would answer a part with a serde error ("unknown variant"), or, reading it
+/// leniently, leave every part out and drop them when it saves, not "saved by a newer BIMCraft".
+pub const FORMAT: u32 = 21;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -2542,7 +2546,7 @@ impl Element {
             | Element::Ramp(Ramp { params, .. })
             | Element::Railing(Railing { params, .. })
             | Element::ProjectInfo(crate::project_info::ProjectInfo { params, .. }) => Some(params),
-            | Element::Part(crate::parts::BuildingPart { params, .. }) => Some(params),
+            Element::Part(crate::parts::BuildingPart { params, .. }) => Some(params),
             _ => None,
         }
     }
@@ -2567,7 +2571,7 @@ impl Element {
             | Element::Ramp(Ramp { params, .. })
             | Element::Railing(Railing { params, .. })
             | Element::ProjectInfo(crate::project_info::ProjectInfo { params, .. }) => Some(params),
-            | Element::Part(crate::parts::BuildingPart { params, .. }) => Some(params),
+            Element::Part(crate::parts::BuildingPart { params, .. }) => Some(params),
             _ => None,
         }
     }
@@ -3144,7 +3148,7 @@ pub struct Classification {
 pub const MAX_PROJECT_PARAMETERS: usize = 4096;
 
 /// The categories project parameters are for.
-pub const PARAMETER_CATEGORIES: [&str; 26] = [
+pub const PARAMETER_CATEGORIES: [&str; 27] = [
     "wall",
     "floor",
     "ceiling",
@@ -4069,19 +4073,10 @@ impl Model {
                         return Err(format!("{} {id} points at element {n} by its id, not its GUID", e.category()));
                     }
                     Some(n) => return Err(format!("{} {id} points at element {n}, which the project hasn't", e.category())),
-                    None => match self.elements.get(g) {
-                        None => return Err(format!("{} {id} points at {g}, which no element of the project is", e.category())),
-                        // Until a file holds its parts among its elements (`parts::file_text`): an older BIMCraft leaves the
-                        // parts out of one, and would then find this pointing at nothing, and refuse the file.
-                        Some(Element::Part(_)) if !matches!(e, Element::Part(_)) => {
-                            return Err(format!(
-                                "{} {id} points at part {}; nothing but a part points at a part yet",
-                                e.category(),
-                                self.shown(g)
-                            ));
-                        }
-                        Some(_) => {}
-                    },
+                    None if !self.elements.contains_key(g) => {
+                        return Err(format!("{} {id} points at {g}, which no element of the project is", e.category()));
+                    }
+                    None => {}
                 }
             }
         }
@@ -4213,8 +4208,6 @@ impl Model {
         if format < 4 {
             pens_from_pixels(&mut v);
         }
-        // Its parts, which a file keeps apart from its other elements for now (`parts::file_text`), are elements as the rest.
-        crate::parts::from_file(&mut v);
         let mut left_out = Vec::new();
         // An element is an internally tagged enum, which serde reads whole: each is looked into as its category's struct.
         let mut elements = v.get_mut("elements").map_or(Value::Null, Value::take);

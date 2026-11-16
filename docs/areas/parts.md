@@ -83,37 +83,24 @@ uses for forms of decay, or `Custom(text)`; the words only, never a standard's d
 
 ## IFC
 
-Each part that is not excluded and not in conflict (`parts::exported`) is an `IfcBuildingElementPart`: its GlobalId its GUID,
-its name what it is made of (else its host's type), its `ObjectType` and `PredefinedType` as it says, placed relative to its
-host's placement with its body a closed `IfcTriangulatedFaceSet` in the host's axes, associated with its `IfcMaterial`, with
-`BIMCraft_PartQuantities` (`Width`, `NetArea`, `NetVolume`) and, for what was said, `BIMCraft_Heritage`. A material that says
-its weight or its heat carries `Pset_MaterialCommon` (`MassDensity`) and `Pset_MaterialThermal` (`ThermalConductivity`,
+**Parts don't go to IFC yet**: a host with parts is exported as it always was, with its own body, and its parts are left
+out. Their export (`IfcBuildingElementPart`, the host the sum of its parts by `IfcRelAggregates` with no `Body` of its own, its
+area and volume left out) comes in one step with reading them back, so that a file BIMCraft writes comes back whole: today's
+import leaves out a wall with no body, and its doors and windows with it (the maintainers' answer on #440). A material that
+says its weight or its heat carries `Pset_MaterialCommon` (`MassDensity`) and `Pset_MaterialThermal` (`ThermalConductivity`,
 `SpecificHeatCapacity`) as `IfcMaterialProperties`, and the project's units then name kg/m³, W/(m·K) and J/(kg·K); the import
-does not read them back yet. Its host is the sum
-of its parts (`IfcRelAggregates`, the same relation that holds a host's bars), and so is a part of its divisions. **What is
-decomposed has no `Body` of its own** (a wall keeps its `Axis`), as a stair has none beside its flights: IFC asks it, and a
-body on both would be drawn and measured twice. Parts are in no storey but through their host. An element with no part
-written (all excluded or in conflict) keeps its body. **Reading parts back from IFC is not done**, and BIMCraft's own import
-does not yet read a decomposed element's body from its parts: it leaves such a wall out as one with no body it can read (its
-doors and windows with it), and says so in `skipped`. After touching this, export a project with parts and check it as
-[looking at the result](looking-at-results.md) says: `ci/validate_ifc.py`, then each part's shape built by IfcOpenShell holds
-its `NetVolume`. `ci/ifc-coverage.txt` takes a wall and a floor apart for CI's IFC job.
+does not read them back yet.
 
-## The file, for now
+## The file
 
-`FORMAT` stays 18. A BIMCraft from before parts refuses a file with an element of a category it doesn't know, so a file keeps
-its parts under a top-level key, `parts` (`parts::file_text`, `parts::from_file`), which that one leaves out and names; and
-**nothing but a part may point at a part** (`Model::check`), or what the older one keeps would point at what it left out.
-Both are **provisional**: that older BIMCraft drops every part when it saves, which is a misreading, so before parts go
-upstream they move into `elements` with a step of `FORMAT` and `Model::migrate` (the fork's other lines hold 19 and 20, so 21
-or whatever is free then). Until then a per-view Parts Visibility field and rule-based overrides are fine; a per-element
-reference to a part (a tag's host, a view's override of one element, a dimension) is not. A project parameter for parts names
-the category `part`, which an older one refuses on opening, saying so.
+Parts are elements (category `part`) since `FORMAT` 21. A BIMCraft that reads up to 20 refuses such a file as a newer one's,
+rather than leaving the parts out and dropping them when it saves. A project parameter for parts names the category `part`.
+Builds of the heritage fork kept parts under a top-level `parts` key in a file of 18; that key is one this BIMCraft doesn't
+know, so it leaves it out and names it (`left_out`).
 
 ## Next
 
-Divide Parts (the engine is `divide.rs`; a division is a new `Source`, its cuts in the host's own coordinates, and the divided
+Divide Parts (the engine is `divide.rs`; the divided part holds its cuts, in the host's own coordinates, and the divided
 part the sum of its divisions), edge offsets and gaps, parts in plans, sections and the 3D view with Parts Visibility (Show
 Original, Show Parts, Show Both) and colours by `Decay_Pathology` or `Historical_Period`, schedules and tags of parts, the
-desktop's tools (the material's weight and heat among them), reading parts and a material's values from IFC, and the
-`FORMAT` step.
+desktop's tools (the material's weight and heat among them), and parts and a material's values to IFC and back.

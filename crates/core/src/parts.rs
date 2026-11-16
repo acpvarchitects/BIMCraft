@@ -10,13 +10,14 @@
 //! When the recipe no longer applies (the layer is gone from the host's type, the host's type was swapped), the part is
 //! in conflict: it stays in the model, and says what to fix.
 //!
-//! In IFC a part is an `IfcBuildingElementPart`, which its host is the sum of (`IfcRelAggregates`).
+//! A file holds parts among its other elements (category `part`), since format 21: a BIMCraft that reads up to 20 refuses
+//! such a file as one of a newer BIMCraft, and so never opens it and drops its parts when it saves.
 
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::model::{Element, Elements, Guid, Id, MAX_TEXT, Model};
+use crate::model::{Element, Guid, Id, MAX_TEXT, Model};
 
 pub mod solid;
 mod state;
@@ -29,9 +30,6 @@ pub const HOSTS: [&str; 5] = ["wall", "floor", "roof", "ceiling", "component"];
 
 /// How deep parts divided from parts may go.
 pub const MAX_DEPTH: usize = 16;
-
-/// The key of a project file that holds its parts, apart from its other elements: see [`to_file`].
-pub const FILE_KEY: &str = "parts";
 
 /// What of its host a part is.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -437,66 +435,4 @@ pub(crate) fn check(m: &Model, who: &str, id: Id, p: &BuildingPart) -> Result<()
         return Err(format!("part {first}: part {second} is that of {host} {} too; delete one of them", m.shown(p.host)));
     }
     Ok(())
-}
-
-/// The project as the text of a file, its parts under a key of their own ([`FILE_KEY`]) after everything else: an
-/// object of ids, each part with its `guid`, as `elements` is. A project with no parts is written as it always was.
-///
-/// Provisional, until the file format takes its step for parts. A BIMCraft from before parts refuses a file with an
-/// element of a category it doesn't know (`unknown variant`), and this line of work may not take the next format
-/// number, which another holds. A key it doesn't know it leaves out and names (`left_out`), and opens the rest: so the
-/// parts are kept where an older one still opens the file. That is not what a file should do for good, since the older
-/// BIMCraft then drops every part when it saves, which is a misreading: before parts go upstream they move into
-/// `elements` with a step of `FORMAT` and of `Model::migrate`, and this function and [`from_file`] go. Until then
-/// nothing but a part may point at a part (`Model::check`), or what an older one keeps would point at what it left out.
-pub(crate) fn file_text(mut m: Model) -> serde_json::Result<String> {
-    #[derive(Serialize)]
-    struct File<'a> {
-        #[serde(flatten)]
-        model: &'a Model,
-        parts: &'a Elements,
-    }
-    let ids: Vec<Id> = m.elements.iter().filter(|(_, e)| matches!(e, Element::Part(_))).map(|(id, _)| *id).collect();
-    if ids.is_empty() {
-        return serde_json::to_string_pretty(&m);
-    }
-    let mut parts = Elements::new();
-    for id in ids {
-        if let (Some(guid), Some(e)) = (m.elements.guid(id), m.elements.remove(id)) {
-            let _ = parts.insert_as(id, guid, e);
-        }
-    }
-    serde_json::to_string_pretty(&File { model: &m, parts: &parts })
-}
-
-/// What [`file_text`] did, undone in a file read as JSON: the parts under their own key put back among its `elements`,
-/// each as a `part`. One whose id an element has, or that isn't an object, stays under the key, for the reading to leave
-/// out and name. Provisional with it.
-pub(crate) fn from_file(file: &mut serde_json::Value) {
-    use serde_json::Value;
-    let Some(Value::Object(parts)) = file.get_mut(FILE_KEY).map(Value::take) else { return };
-    let mut left = serde_json::Map::new();
-    match file.get_mut("elements") {
-        Some(Value::Object(elements)) => {
-            for (id, mut e) in parts {
-                match e.as_object_mut() {
-                    Some(o) if !elements.contains_key(&id) => {
-                        o.insert("category".to_string(), "part".into());
-                        elements.insert(id, e);
-                    }
-                    _ => {
-                        left.insert(id, e);
-                    }
-                }
-            }
-        }
-        _ => left = parts,
-    }
-    if let Some(o) = file.as_object_mut() {
-        if left.is_empty() {
-            o.remove(FILE_KEY);
-        } else {
-            o.insert(FILE_KEY.to_string(), Value::Object(left));
-        }
-    }
 }
