@@ -346,13 +346,30 @@ impl BimApp {
         let ordinary = ed.adaptive.is_none();
         // What a command said: done (the status bar cleared, as Finish and Cancel clear it), or refused and why.
         let mut said: Option<Result<(), String>> = None;
+        // A sweep's own mode draws nothing (FE-27): the sketch's tools wait for Sketch Path or Edit Profile.
+        let waits = ed.sketch.as_ref().is_some_and(|s| s.parent())
+            && (super::modify::Tool::of(action).is_some()
+                || matches!(
+                    action,
+                    "Modify"
+                        | "Work Plane"
+                        | "Aligned Dimension"
+                        | "Angular Dimension"
+                        | "Align"
+                        | "Delete"
+                        | "Trim/Extend to Corner"
+                        | "Pick Lines"
+                ));
+        if waits {
+            said = Some(Err(t("Open Sketch Path or Edit Profile first: the sweep's own mode draws nothing.").to_string()));
+        }
         // FE-8: Modify's tools in a family that isn't adaptive, where their buttons are enabled; else why not, in the status bar.
-        let modify = if ordinary { super::modify::Tool::of(action) } else { None };
+        let modify = if ordinary && !waits { super::modify::Tool::of(action) } else { None };
         if let Some(tool) = modify {
             said = Some(ed.modify_tool_on(tool));
         }
         match action {
-            _ if modify.is_some() => {}
+            _ if waits || modify.is_some() => {}
             // While a form is sketched, the sketch's Modify: its Draw panel's shape put down, and Align.
             "Modify" => match ed.sketch.as_mut() {
                 Some(s) => {

@@ -152,10 +152,10 @@ pub(crate) struct FormSketch {
 
 /// A Sweep's or a Swept Blend's Sketch Path or Edit Profile, open (FE-27): the part it draws, its lines as it began (what its
 /// own Cancel puts back), and how many steps the sketch's history held then (its Undo goes no further back).
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub(crate) struct Nested {
     pub(crate) part: Part,
-    before: Vec<SketchLine>,
+    before: Snap,
     floor: usize,
 }
 
@@ -251,6 +251,10 @@ impl FormSketch {
                 self.history.push(was);
                 if self.history.len() > STEPS {
                     self.history.remove(0);
+                    // A nested mode's floor counts from the history's start, which moved on a step.
+                    if let Some(n) = self.nested.as_mut() {
+                        n.floor = n.floor.saturating_sub(1);
+                    }
                 }
             }
             _ => {}
@@ -267,6 +271,12 @@ impl FormSketch {
             return false;
         }
         let Some(was) = self.history.pop() else { return false };
+        self.restore(was);
+        true
+    }
+
+    /// The sketch put back as `was` holds it: its lines (every part's), dimensions, locks and parameters together.
+    fn restore(&mut self, was: Snap) {
         let Snap { mut lines, locks, unlocked, dims, changed, params, driven } = was.clone();
         self.sketch.lines = std::mem::take(&mut lines[self.part as usize]);
         self.parts = lines;
@@ -275,7 +285,7 @@ impl FormSketch {
         self.sketch.changed();
         self.offer = None;
         self.align_from = None;
-        true
+        self.selected_dim = None;
     }
 
     /// The path (a sweep's sketch) as drawn, chained, its numbers as they are.
@@ -680,7 +690,7 @@ impl FamilyEditor {
     /// Sketch Path, Edit Profile, Profile 1 or Profile 2 (FE-27): part `p` of the sweep opened in a mode of its own, in the view
     /// shown where it sees the part's plane flat ({3D} sees any), else Go To View is asked, listing the views that do. A
     /// profile is refused while the path doesn't chain, saying why.
-    pub(crate) fn enter_part(&mut self, p: Part) -> Result<(), String> {
+    pub(crate) fn enter_part(&mut self, p: Part, pick: bool) -> Result<(), String> {
         let Some(s) = self.sketch.as_ref() else { return Ok(()) };
         if matches!(p, Part::Profile | Part::End)
             && let Err(e) = s.path()
@@ -696,23 +706,24 @@ impl FamilyEditor {
             if views.is_empty() {
                 views.push(None);
             }
-            let then = super::work_plane::Then::Part(p);
+            let then = super::work_plane::Then::Part(p, pick);
             self.views.go_to = Some(super::work_plane::GoTo { plane: host, views, chosen: 0, then });
             return Ok(());
         }
-        self.open_part(p);
+        self.open_part(p, pick);
         Ok(())
     }
 
-    /// Part `p` of the sweep put on screen in its own mode, in the view shown.
-    pub(super) fn open_part(&mut self, p: Part) {
+    /// Part `p` of the sweep put on screen in its own mode, in the view shown: drawing with Line, or Pick Lines (`pick`).
+    pub(super) fn open_part(&mut self, p: Part, pick: bool) {
         let Some(s) = self.sketch.as_mut() else { return };
         s.track();
         s.set_part(p);
-        s.set_tool(Some(Shape::Line), false);
+        s.set_tool(Some(if pick { Shape::PickLines } else { Shape::Line }), false);
         s.selected_dim = None;
-        s.nested = Some(Nested { part: p, before: s.sketch.lines.clone(), floor: s.history.len() });
+        s.nested = Some(Nested { part: p, before: s.snap(), floor: s.history.len() });
         self.views.dimensioning = None;
+        self.views.aligning = None;
     }
 
     /// Finish Edit Mode in Sketch Path or Edit Profile (FE-27): the path checked to chain (a Swept Blend's, one line or one
@@ -732,12 +743,13 @@ impl FamilyEditor {
         if let Some(s) = self.sketch.as_mut()
             && let Some(n) = s.nested.take()
         {
-            s.sketch.lines = n.before;
-            s.sketch.changed();
+            // All it changed, its dimensions, locks and parameters too, as it began.
+            s.restore(n.before);
             s.history.truncate(n.floor);
-            s.seen = None;
             s.set_tool(None, false);
             s.sketch.picked.clear();
+            self.views.aligning = None;
+            self.views.dimensioning = None;
             return;
         }
         self.cancel_form_sketch();
@@ -977,7 +989,7 @@ impl FamilyEditor {
                 // A sweep's part at fault opened in its own mode, in a view that sees it flat (Go To View where the view shown
                 // doesn't): never left on a plane the view sees edge-on (FE-27). A Blend's put on screen.
                 if kind.swept() {
-                    let _ = self.enter_part(p);
+                    let _ = self.enter_part(p, false);
                 } else {
                     s.set_part(p);
                 }
@@ -1832,7 +1844,7 @@ impl BimApp {
                 ),
                 None => (
                     msg!("Finish Edit Mode: the lines, closed into loops, become the form"),
-                    "Cancel Edit Mode: drop the lines, keep it as it was",
+                    msg!("Cancel Edit Mode: drop the lines, keep it as it was"),
                 ),
             };
             finish |= crate::big_button(ui, Icon::Check, "Finish Edit Mode", false, tip).clicked();
@@ -1921,15 +1933,14 @@ impl BimApp {
         if let Some(p) = part {
             // A sweep's part opens a mode of its own (FE-27); a Blend's base and top are put on screen.
             let swept = ed.sketch.as_ref().is_some_and(|s| s.kind.swept());
-            match if swept { ed.enter_part(p) } else { ed.show_part(p) } {
+            match if swept { ed.enter_part(p, twist == i32::MIN) } else { ed.show_part(p) } {
                 Ok(()) => self.status = Status::default(),
                 Err(e) => self.status = Status { text: e, error: true },
             }
         }
         if let Some(s) = ed.sketch.as_mut() {
-            if twist == i32::MIN {
-                s.set_tool(Some(Shape::PickLines), false);
-            } else if twist != 0 {
+            // Pick Path's Pick Lines is the path's mode's own (`enter_part`).
+            if twist != 0 && twist != i32::MIN {
                 s.twist = (s.twist + twist).clamp(-forms::MAX_TWIST, forms::MAX_TWIST);
             }
         }

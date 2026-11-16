@@ -1756,12 +1756,13 @@ impl BimApp {
                     self.status = Status { text: e, error: true };
                 }
             }
-            // A selected extrusion's Depth, as Revit's Options Bar has it.
+            // A selected extrusion's (or Blend's) Depth, as Revit's Options Bar has it: a sweep has no ends to measure (FE-27).
             let driven = ed.selected_form().map(|i| ed.driven_ends(i)).unwrap_or_default();
             if let Some(i) = ed.selected_form()
                 && let Some(f) = ed.forms.get_mut(i)
                 && !f.revolve
                 && !f.mesh()
+                && !f.original.kind().swept()
             {
                 ui.separator();
                 super::extrusion::depth(ui, units, f, &values, driven);

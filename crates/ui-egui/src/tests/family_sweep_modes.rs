@@ -126,6 +126,12 @@ fn a_sweep_is_its_path_finished_then_its_profile_finished_then_the_sweep() {
     assert_eq!(f.forms.len(), 2);
     assert_eq!(f.forms[1].kind(), FormKind::Sweep);
     assert_eq!(editor(&h).steps(), steps + 1);
+    // Built, with volume: its solid's box along the L and up the profile.
+    let values = f.values("T", &std::collections::BTreeMap::new()).unwrap();
+    let s = f.shapes(&values).into_iter().find(|s| s.index == 1).expect("the sweep builds");
+    assert!(s.max[0] - s.min[0] > 900.0 && s.max[1] - s.min[1] > 700.0 && s.max[2] - s.min[2] > 150.0, "{:?} {:?}", s.min, s.max);
+    // Selected, the Options Bar has no Depth: a sweep has no ends to measure.
+    assert!(h.query_by_label("Depth").is_none(), "no Depth for a sweep");
     h.state_mut().family_undo();
     h.run();
     assert_eq!(editor(&h).draft_family().unwrap().forms.len(), 1, "one Undo takes the sweep back");
@@ -281,5 +287,111 @@ fn sweep_modes_screenshots() {
     save(&mut h, "6-profile-finished");
     button(&mut h, "Finish Edit Mode");
     super::family_views::view(&mut h, None);
+    // {3D} keeps the frame it had; Zoom to Fit takes the sweep in too.
+    h.state_mut().active_family_mut().unwrap().zoom_to_fit();
+    for _ in 0..4 {
+        h.run();
+    }
     save(&mut h, "7-made");
+}
+
+/// FE-27 review: Cancel in a nested mode puts back all it changed, a dimension made there too.
+#[test]
+fn a_nested_cancel_takes_back_a_dimension_made_in_it() {
+    let mut h = open();
+    button(&mut h, "Sweep");
+    button(&mut h, "Sketch Path");
+    l_path(&mut h);
+    button(&mut h, "Finish Edit Mode");
+    button(&mut h, "Edit Profile");
+    go_to(&mut h, "Elevation: Right");
+    rectangle(&mut h, P2(-100.0, 0.0), P2(100.0, 200.0));
+    button(&mut h, "Finish Edit Mode");
+    button(&mut h, "Edit Profile");
+    // A dimension made while Edit Profile is open, as the Dimension tool makes one.
+    let dim: bimcraft_core::family::FamilyDimension =
+        serde_json::from_value(serde_json::json!({"refs": [{"plane": "11111111-1111-4111-8111-000000000001"}], "at": [0, 0, 0]})).unwrap();
+    h.state_mut().active_family_mut().unwrap().sketch.as_mut().unwrap().dims.push(dim);
+    h.run();
+    button(&mut h, "Cancel Edit Mode");
+    assert_eq!(title(&h), "Modify | Sweep");
+    assert!(editor(&h).sketch.as_ref().unwrap().dims.is_empty(), "the dimension went with the mode");
+}
+
+/// FE-27 review: Pick Path from a view that sees the work plane edge-on goes through Go To View and picks there.
+#[test]
+fn pick_path_through_go_to_view_picks() {
+    // A sweep on Ref. Level, begun in plan, then the front elevation shown, which sees that plane edge-on.
+    let mut h = open();
+    button(&mut h, "Sweep");
+    super::family_views::view(&mut h, Some(Which::Elevation(Side::Front)));
+    button(&mut h, "Pick Path");
+    assert!(editor(&h).views.go_to.is_some(), "Go To View asked");
+    button(&mut h, "Open View");
+    assert_eq!(title(&h), "Modify | Sweep > Sketch Path");
+    assert_eq!(editor(&h).sketch.as_ref().unwrap().tool, Some(crate::draw::Shape::PickLines), "picking, not drawing");
+}
+
+/// FE-27 review: past the history's cap, Undo inside a nested mode still reaches as far back as the history holds of it.
+#[test]
+fn a_nested_undo_floor_follows_the_history_cap() {
+    let mut h = open();
+    button(&mut h, "Sweep");
+    button(&mut h, "Sketch Path");
+    l_path(&mut h);
+    button(&mut h, "Finish Edit Mode");
+    button(&mut h, "Sketch Path");
+    let start = part_len(&h, crate::editor::sketch::Part::Main);
+    {
+        let s = h.state_mut().active_family_mut().unwrap().sketch.as_mut().unwrap();
+        let line = s.sketch.lines[0].clone();
+        for _ in 0..120 {
+            s.sketch.lines.push(line.clone());
+            s.track();
+        }
+    }
+    while h.state_mut().active_family_mut().unwrap().sketch.as_mut().unwrap().undo() {}
+    // 120 steps, 100 kept: back to 20 lines in, every step the history holds taken back.
+    assert_eq!(part_len(&h, crate::editor::sketch::Part::Main), start + 20);
+}
+
+/// FE-27 review: the sketch's tools wait at the sweep's own level, and the profile's plane can't be moved under the profile.
+#[test]
+fn the_sweeps_own_mode_takes_no_tool_and_a_profile_keeps_its_plane() {
+    let mut h = open();
+    button(&mut h, "Sweep");
+    shortcut(&mut h, "AL");
+    assert!(editor(&h).views.aligning.is_none(), "Align waits");
+    assert!(status(&h).1, "said why: {:?}", status(&h));
+    button(&mut h, "Sketch Path");
+    assert!(editor(&h).views.aligning.is_none());
+    l_path(&mut h);
+    button(&mut h, "Finish Edit Mode");
+    button(&mut h, "Edit Profile");
+    go_to(&mut h, "Elevation: Right");
+    h.state_mut().active_family_mut().unwrap().open_work_plane_dialog(crate::editor::work_plane::Target::Sketch);
+    h.run();
+    assert!(editor(&h).views.dialog.is_none(), "no Work Plane dialog for a profile");
+}
+
+/// FE-27 review: Go To View with no view that sees the plane flat says so and offers {3D}.
+#[test]
+fn go_to_view_offers_3d_alone_when_no_view_sees_the_plane_flat() {
+    let mut h = open();
+    button(&mut h, "Sweep");
+    button(&mut h, "Sketch Path");
+    // A path at 30 degrees: its profile's plane is askew to every elevation.
+    button(&mut h, "Line");
+    click_plane(&mut h, P2(0.0, 0.0));
+    click_plane(&mut h, P2(866.0, 500.0));
+    h.key_press(Key::Escape);
+    h.run();
+    button(&mut h, "Finish Edit Mode");
+    button(&mut h, "Edit Profile");
+    let g = editor(&h).views.go_to.clone().expect("Go To View asked");
+    assert_eq!(g.views, vec![None]);
+    assert!(h.query_by_label_contains("No view shows").is_some(), "says no view shows it flat");
+    button(&mut h, "Open View");
+    assert_eq!(editor(&h).views.shown, None);
+    assert_eq!(title(&h), "Modify | Sweep > Edit Profile");
 }
