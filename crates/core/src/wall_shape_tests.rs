@@ -215,15 +215,15 @@ fn a_room_bounded_by_faces_ends_at_the_battered_face() {
     let before = area(&mut s);
     assert!(near(before, 5.7 * 3.7, 0.006), "{before}");
     run(&mut s, "batter", json!({"id": west, "face": "interior", "top": 200}));
-    // At the level's computation height (1200 mm), the face stands 80 mm into the room; at each corner it ends on the
-    // mitre run on into the room, the room keeping the triangle between it and the other wall's face.
+    // At the level's computation height (1200 mm), the face stands 80 mm into the room, ending at each corner on the other
+    // wall's face: the room is 80 mm narrower, with no notch at its corners.
     let z = s.model.levels()[0].1.computation_height;
     let after = area(&mut s);
     // Measured at the wall's centre line, it keeps the line.
     run(&mut s, "room_area", json!({"at": "centre"}));
     assert!(near(area(&mut s), 24.0, 0.006));
     let d = 0.2 * z / 3000.0;
-    assert!(near(after, (5.7 - d) * 3.7 + d * d, 0.006), "{after}");
+    assert!(near(after, (5.7 - d) * 3.7, 0.006), "{after}");
 }
 
 #[test]
@@ -292,7 +292,8 @@ fn a_shaped_wall_goes_to_ifc_as_a_wall_with_a_triangulated_body() {
     assert_eq!((n(&plain, "IFCWALL"), n(&plain, "IFCTRIANGULATEDFACESET")), (1, 0));
     run(&mut s, "batter", json!({"id": id, "face": "exterior", "top": -100}));
     let f = crate::ifc::export(&s.model);
-    assert_eq!((n(&f, "IFCWALL"), n(&f, "IFCTRIANGULATEDFACESET"), n(&f, "IFCOPENINGELEMENT")), (1, 1, 1));
+    // The wall's body, and the window's panel bent along its core.
+    assert_eq!((n(&f, "IFCWALL"), n(&f, "IFCTRIANGULATEDFACESET"), n(&f, "IFCOPENINGELEMENT")), (1, 2, 1));
     assert!(f.contains("'Body','Tessellation'"));
     // Its quantities are the shaped solid's: 3.0 m³ gross.
     assert!(
@@ -365,4 +366,158 @@ fn a_battered_wall_exported_to_ifc_and_imported_comes_back_battered() {
     wall(&mut plain, [0.0, 0.0], [4000.0, 0.0]);
     let i = crate::import::ifc(crate::ifc::export(&plain.model).as_bytes(), "x").unwrap();
     assert!(i.model.elements.values().all(|e| !matches!(e, Element::Wall(w) if !w.shape.is_empty())));
+}
+
+/// The highest and lowest `y` of wall `id`'s outline where a plan cutting at `z` has it.
+fn y_range(s: &Session, id: u64, z: f64) -> (f64, f64) {
+    let ring = crate::walls::at_height(&s.model, id, crate::walls::outline(&s.model, id), z, None);
+    (ring.iter().map(|p| p.1).fold(f64::INFINITY, f64::min), ring.iter().map(|p| p.1).fold(f64::NEG_INFINITY, f64::max))
+}
+
+#[test]
+fn walls_ending_on_a_battered_face_follow_it_in_a_t_and_an_x_with_no_gap_or_overlap() {
+    for sign in [-1.0, 1.0] {
+        let mut s = session();
+        // A wall along x, and two ending on its middle from the north (on its exterior) and from the south (its interior).
+        let host = wall(&mut s, [0.0, 0.0], [6000.0, 0.0]);
+        let north = wall(&mut s, [3000.0, 0.0], [3000.0, 4000.0]);
+        let south = wall(&mut s, [3000.0, 0.0], [3000.0, -4000.0]);
+        let plain = [north, south].map(|id| volume(&s, id, true));
+        assert!(plain.iter().all(|v| near(*v, 300.0 * 3850.0 * 3000.0, 1.0)), "{plain:?}");
+        // Both faces 150 mm out (or in) at the top: d = h / 20.
+        run(&mut s, "batter", json!({"id": host, "face": "exterior", "top": 150.0 * sign}));
+        run(&mut s, "batter", json!({"id": host, "face": "interior", "top": 150.0 * sign}));
+        assert!(near(volume(&s, host, true), 6000.0 * (300.0 * 3000.0 + sign * 0.05 * 3000.0 * 3000.0), 1e3));
+        // Each wall ending on it as much shorter (or longer) as the face stands out at each height: 300 × ∫ d dh.
+        let change = 300.0 * 0.05 * 3000.0 * 3000.0 / 2.0;
+        for id in [north, south] {
+            assert!(near(volume(&s, id, true), 300.0 * 3850.0 * 3000.0 - sign * change, 1e3), "{sign}: {}", volume(&s, id, true));
+            assert!(meshes(&s, id, true).iter().all(|m| closed(m)), "{sign}: closed");
+        }
+        assert!(meshes(&s, host, true).iter().all(|m| closed(m)));
+        // In plan, at two heights, each ends exactly on the face: no gap, no overlap.
+        for z in [1000.0, 2000.0] {
+            let d = sign * 0.05 * z;
+            let (lo, hi) = y_range(&s, host, z);
+            assert!(near(hi, 150.0 + d, 1e-6) && near(lo, -150.0 - d, 1e-6), "{sign} {z}: {lo} {hi}");
+            assert!(near(y_range(&s, north, z).0, hi, 1e-6), "{sign} {z}: north {:?}", y_range(&s, north, z));
+            assert!(near(y_range(&s, south, z).1, lo, 1e-6), "{sign} {z}: south {:?}", y_range(&s, south, z));
+        }
+    }
+}
+
+#[test]
+fn a_face_leaning_past_a_corner_ends_on_the_neighbours_face() {
+    // An L, both faces out to the north-west, as in the mitre test: the west wall's exterior 150 mm out at its top.
+    let mut s = session();
+    let a = wall(&mut s, [0.0, 0.0], [0.0, 4000.0]);
+    let b = wall(&mut s, [0.0, 4000.0], [4000.0, 4000.0]);
+    let vb = volume(&s, b, true);
+    run(&mut s, "batter", json!({"id": a, "face": "exterior", "top": 150}));
+    // The strip it gains runs up to the other's exterior plane, y 4150: ∫ 4150 d dh, no spur past it.
+    let gained = 4150.0 * 0.05 * 3000.0f64.powi(2) / 2.0;
+    assert!(near(volume(&s, a, true), 1.2e6 * 3000.0 + gained, 1e3), "{}", volume(&s, a, true));
+    assert!(near(volume(&s, b, true), vb, 1e-3));
+    assert!(meshes(&s, a, true).iter().all(|m| closed(m)));
+    let top = crate::walls::at_height(&s.model, a, crate::walls::outline(&s.model, a), 3000.0, None);
+    assert!(top.iter().all(|p| p.1 <= 4150.0 + 1e-6), "{top:?}");
+    assert!(top.iter().any(|p| near(p.0, -300.0, 1e-6) && near(p.1, 4150.0, 1e-6)), "{top:?}");
+    // On the inside corner, its interior leaning into the room: it ends on the other's interior plane, y 3850, no notch.
+    run(&mut s, "reset_wall_shape", json!({"id": a}));
+    run(&mut s, "batter", json!({"id": a, "face": "interior", "top": 150}));
+    let gained = 3850.0 * 0.05 * 3000.0f64.powi(2) / 2.0;
+    assert!(near(volume(&s, a, true), 1.2e6 * 3000.0 + gained, 1e3), "{}", volume(&s, a, true));
+    assert!(meshes(&s, a, true).iter().all(|m| closed(m)));
+    let top = crate::walls::at_height(&s.model, a, crate::walls::outline(&s.model, a), 3000.0, None);
+    assert!(top.iter().all(|p| p.0 <= 150.0 + 1e-6 || p.1 <= 3850.0 + 1e-6), "{top:?}");
+    assert!(top.iter().any(|p| near(p.0, 300.0, 1e-6) && near(p.1, 3850.0, 1e-6)), "{top:?}");
+}
+
+#[test]
+fn what_is_hosted_on_a_battered_face_follows_it() {
+    let mut s = session();
+    let id = wall(&mut s, [0.0, 0.0], [4000.0, 0.0]);
+    run(&mut s, "batter", json!({"id": id, "face": "exterior", "top": -300}));
+    // A point on its exterior face: 150 mm in at 1500 mm up, its normal leaning up as the face does (0.1 mm in per mm).
+    let at = s.model.face_at(s.model.guid(id), crate::hosting::FaceRole::Exterior, [2000.0, 1500.0]).unwrap();
+    assert!(near(at.point[1], 0.0, 1e-6) && near(at.point[2], 1500.0, 1e-6), "{:?}", at.point);
+    let k = 1.0 / 1.01f64.sqrt();
+    assert!(near(at.normal[1], k, 1e-6) && near(at.normal[2], 0.1 * k, 1e-6), "{:?}", at.normal);
+    // A window's panel stays in the wall at every height, 280 mm in at its top, which would have left a plumb one out.
+    run(&mut s, "batter", json!({"id": id, "face": "exterior", "top": -280}));
+    let win = run(&mut s, "window", json!({"wall": id, "offset": 2000, "sill": 900}))["id"].as_u64().unwrap();
+    let w = wall_of(&s, id).clone();
+    let solids = crate::view3d::solids(&s.model);
+    let mut points = Vec::new();
+    for x in solids.iter().filter(|x| x.owner() == win) {
+        points.extend(x.corners());
+    }
+    assert!(!points.is_empty());
+    for p in points {
+        let (ext, int) = crate::walls::faces_at(&s.model, &w, p[2]);
+        assert!(p[1] <= ext + 1e-6 && p[1] >= int - 1e-6, "{p:?} out of {int}..{ext}");
+    }
+    // A dimension to its exterior face measures it where its level's plan cuts it (1200 mm up: 112 mm in).
+    let line =
+        s.model.reference_line(&crate::model::Reference { id: s.model.guid(id), face: crate::model::Face::Left, point: None }).unwrap();
+    assert!(near(line.0.1, 150.0 - 280.0 * 1200.0 / 3000.0, 1e-6), "{line:?}");
+}
+
+#[test]
+fn a_family_windows_voids_go_deeper_by_the_lean() {
+    let mut s = session();
+    run(
+        &mut s,
+        "family",
+        json!({"name": "Holed", "category": "window", "types": {"A": {}},
+        "parameters": [{"name": "Width", "value": 1000}, {"name": "Height", "value": 1500}, {"name": "Sill Height", "value": 900}],
+        "forms": [
+            {"void": true, "plane": "xz", "profile": [[-500, 0], [500, 0], [500, 1500], [-500, 1500]], "from": -150, "to": 150},
+            {"profile": [[-500, -40], [500, -40], [500, 40], [-500, 40]], "from": 0, "to": 40, "material": ""}
+        ]}),
+    );
+    let id = wall(&mut s, [0.0, 0.0], [4000.0, 0.0]);
+    let win = run(&mut s, "window", json!({"wall": id, "offset": 2000, "family": "Holed"}))["id"].as_u64().unwrap();
+    let depth = |s: &Session| {
+        let e = s.model.elements.get(win).unwrap();
+        s.model.opening_voids_local(e).iter().flatten().flatten().map(|p| p[1].abs()).fold(0.0, f64::max)
+    };
+    assert!(near(depth(&s), 150.0, 1e-6));
+    run(&mut s, "batter", json!({"id": id, "face": "exterior", "top": 120}));
+    assert!(near(depth(&s), 270.0, 1e-6), "{}", depth(&s));
+}
+
+#[test]
+fn a_flipped_wall_keeps_its_batter_on_the_same_side() {
+    let mut s = session();
+    let id = wall(&mut s, [0.0, 0.0], [4000.0, 0.0]);
+    run(&mut s, "batter", json!({"id": id, "face": "exterior", "top": -100}));
+    let (before, v) = (y_range(&s, id, 3000.0), volume(&s, id, true));
+    assert!(near(before.1, 50.0, 1e-6));
+    run(&mut s, "flip", json!({"ids": [id]}));
+    let w = wall_of(&s, id);
+    assert!(w.shape.exterior.is_none() && w.shape.interior.is_some());
+    let after = y_range(&s, id, 3000.0);
+    assert!(near(after.0, before.0, 1e-6) && near(after.1, before.1, 1e-6), "{before:?} {after:?}");
+    assert!(near(volume(&s, id, true), v, 1e-3));
+}
+
+#[test]
+fn a_face_is_plumb_below_its_base_and_an_imported_shape_it_cant_take_is_left_off() {
+    let b = crate::walls::shape::Batter { angle: Some(10.0), ..Default::default() };
+    assert_eq!(b.offset(-500.0, 3000.0), 0.0);
+    let mut s = session();
+    let id = wall(&mut s, [0.0, 0.0], [4000.0, 0.0]);
+    run(&mut s, "batter", json!({"id": id, "face": "exterior", "top": -100}));
+    // The index boxes it by its lean too.
+    let plain = crate::walls::reach(&s.model, &wall_of(&s, id).clone()).unwrap();
+    run(&mut s, "batter", json!({"id": id, "face": "exterior", "top": 400}));
+    let leaning = crate::walls::reach(&s.model, &wall_of(&s, id).clone()).unwrap();
+    assert!(near(leaning[3] - plain[3], 300.0, 1e-6), "{plain:?} {leaning:?}");
+    // A file saying the core goes thinner than nothing: the wall comes in plumb.
+    run(&mut s, "batter", json!({"id": id, "face": "exterior", "top": -100}));
+    let file = crate::ifc::export(&s.model).replace("-100.0", "-400.0");
+    let i = crate::import::ifc(file.as_bytes(), "x").unwrap();
+    let w = i.model.elements.values().find_map(|e| if let Element::Wall(w) = e { Some(w.clone()) } else { None }).unwrap();
+    assert!(w.shape.is_empty());
 }
