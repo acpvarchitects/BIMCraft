@@ -1528,10 +1528,19 @@ impl BimApp {
         // A plan, an elevation and {3D} are drawn below the tabs that float over the view's top (UI-1: as they were last drawn),
         // so a plane's name along an elevation's top and the top of what {3D} fits show; above, the canvas.
         // On a whole pixel, as the pane's own top is, so a point on screen stands for the same millimetres as before.
-        let drawn = pane.with_min_y(self.tabs_foot.ceil().clamp(pane.top(), (pane.bottom() - 64.0).max(pane.top())));
+        // UI-3: and between the Options Bar's row, kept whether or not a card is on it so the view never moves as one comes and
+        // goes, and the view-control bar along its foot, so neither a plane's name nor {3D}'s box runs under them.
+        let row = if ed.adaptive.is_none() { f32::from(crate::style::gap()) + crate::OPTIONS_CARD } else { 0.0 };
+        let bottom = (self.family_bar_top - f32::from(crate::style::gap())).floor().clamp(pane.top() + 64.0, pane.bottom()).max(pane.top());
+        let drawn = Rect::from_min_max(
+            pos2(pane.left(), (self.tabs_foot + row).ceil().clamp(pane.top(), (bottom - 64.0).max(pane.top()))),
+            pos2(pane.right(), bottom),
+        );
         self.view_rect = drawn;
         if ed.adaptive.is_none() {
-            ui.painter().rect_filled(pane.with_max_y(drawn.top()), 0.0, crate::canvas::color(bimcraft_core::render::PAPER));
+            let paper = crate::canvas::color(bimcraft_core::render::PAPER);
+            ui.painter().rect_filled(pane.with_max_y(drawn.top()), 0.0, paper);
+            ui.painter().rect_filled(pane.with_min_y(drawn.bottom()), 0.0, paper);
         }
         let values = ed.values();
         let hidden = ed.adaptive.as_ref().map(|d| ed.temp_hidden(d)).unwrap_or_default();
@@ -1576,7 +1585,7 @@ impl BimApp {
         self.tabs_foot = foot.response.rect.bottom();
         // The view control bar, at the view's bottom left.
         let mut bar = ui.new_child(UiBuilder::new().id_salt("family-view-bar").max_rect(pane).layout(Layout::bottom_up(Align::Min)));
-        crate::style::card([true, true, true, true]).inner_margin(Margin::symmetric(6, 2)).show(&mut bar, |ui| {
+        let bar_card = crate::style::card([true, true, true, true]).inner_margin(Margin::symmetric(6, 2)).show(&mut bar, |ui| {
             ui.horizontal(|ui| {
                 // F8: the document's Detail Level, which each of its views draws its forms and symbols at.
                 if ed.adaptive.is_none() {
@@ -1644,6 +1653,7 @@ impl BimApp {
                 }
             });
         });
+        self.family_bar_top = bar_card.response.rect.top();
         self.work = pane.with_min_y(pane.top().max(self.tabs_foot));
         // While it hides anything for now, the project's cyan frame round the view, as Revit draws.
         let hiding = ed.temporary().hides() || ed.views.kept.revealing(ed.views.shown);

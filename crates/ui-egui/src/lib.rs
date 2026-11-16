@@ -613,6 +613,8 @@ pub struct BimApp {
     /// How far down the view the tabs reach where they float over it (else the view's top): what floats over the view
     /// (the Options Bar) and what docks along it start below.
     tabs_foot: f32,
+    /// The top of a family view's view-control bar, as it was last drawn (UI-3): the view is drawn above it.
+    family_bar_top: f32,
     tab_rects: Vec<(Sheet, Rect)>,
     work: Rect,
     pointer: Pos2,
@@ -1474,6 +1476,9 @@ fn tab_button_with(ui: &mut Ui, label: &str, active: bool, contextual: bool, sen
 
 /// How tall a card floating over a view is (its tabs, its view control bar), points.
 const FLOATING_CARD: f32 = 30.0;
+/// How tall the Options Bar's card is on one row: its row of fields (24), its margins (3 and 3) and its border (1 and 1). A
+/// family view keeps that row, and the gap above it, clear of its drawing (UI-3).
+const OPTIONS_CARD: f32 = 32.0;
 
 /// The ribbon's tabs, in order, with the icon the Tools palette's rail gives each (the contextual tab comes after them).
 const TABS: [(Tab, &str, Icon); 13] = [
@@ -1536,6 +1541,7 @@ impl BimApp {
             drop_headers: Vec::new(),
             tab_bar: Rect::NOTHING,
             tabs_foot: f32::NEG_INFINITY,
+            family_bar_top: f32::INFINITY,
             tab_rects: Vec::new(),
             work: Rect::ZERO,
             pointer: Pos2::ZERO,
@@ -5519,7 +5525,8 @@ impl BimApp {
             }
             let g = f32::from(style::gap());
             let view = self.view_rect;
-            let top = view.top().max(self.tabs_foot - g + 4.0);
+            // On its own row under the tabs, which the view is drawn below (UI-3).
+            let top = self.work.top().max(self.tabs_foot - g + 4.0);
             let frame = style::card([false; 4]).inner_margin(Margin::symmetric(10, 3));
             let shown = Area::new(UiId::new("family-options-bar"))
                 .order(Order::Middle)
@@ -6279,7 +6286,8 @@ impl BimApp {
             return;
         }
         let (title, color) = if self.status.error { (t("Error"), pal().error) } else { (t("Note"), pal().accent_ink) };
-        let at = self.view_rect.right_bottom() - vec2(16.0, 16.0);
+        // Above the view-control bar where it floats over the view's foot (UI-3); a family view is drawn above its own.
+        let at = self.view_rect.right_bottom() - vec2(16.0, 16.0 + self.bar_cover(ctx));
         Area::new(UiId::new("warning")).order(Order::Middle).fixed_pos(at).pivot(Align2::RIGHT_BOTTOM).show(ctx, |ui| {
             Frame::popup(ui.style()).fill(pal().surface).stroke(Stroke::new(1.0, color)).show(ui, |ui| {
                 ui.set_max_width(380.0);
