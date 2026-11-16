@@ -16,6 +16,77 @@ fn open() -> Harness<'static, BimApp> {
 }
 
 #[test]
+fn tile_windows_is_a_document_local_session_layout() {
+    let mut h = open();
+    let box_doc = h.state().active_doc().unwrap();
+    let before = h.state().active_family().unwrap().draft_family().unwrap();
+    let project = h.state().session.model.to_json().unwrap();
+    shortcut(&mut h, "WT");
+    h.run();
+    assert!(h.state().active_family().unwrap().views.tiled);
+    assert_eq!(h.state().sheet, Sheet::Family(box_doc, Some(Which::Plan)));
+    assert_eq!(h.state().doc_tabs(box_doc).len(), 2);
+    assert!(h.state().active_family().unwrap().draft_family().unwrap() == before);
+    assert_eq!(h.state().session.model.to_json().unwrap(), project);
+    h.state_mut().edit_family("Crate");
+    h.run();
+    assert!(!h.state().active_family().unwrap().views.tiled);
+    h.state_mut().open_sheet(Sheet::Family(box_doc, None));
+    h.run();
+    assert!(h.state().active_family().unwrap().views.tiled);
+    shortcut(&mut h, "TW");
+    h.run();
+    assert!(!h.state().active_family().unwrap().views.tiled);
+    assert_eq!(h.state().doc_tabs(box_doc).len(), 2);
+    assert!(h.state().active_family().unwrap().draft_family().unwrap() == before);
+}
+
+#[test]
+fn tile_rects_cover_clear_area_without_overlap() {
+    let area = Rect::from_min_max(pos2(20.0, 50.0), pos2(620.0, 450.0));
+    for count in 1..=7 {
+        let tiles = crate::editor::document::family_tile_rects(area, count);
+        assert_eq!(tiles.len(), count);
+        for (i, tile) in tiles.iter().enumerate() {
+            assert!(area.contains(tile.center()));
+            assert!(tile.width() > 0.0 && tile.height() > 0.0);
+            for other in tiles.iter().skip(i + 1) {
+                assert!(!tile.contains(other.center()));
+            }
+        }
+    }
+}
+
+#[test]
+fn clicking_an_inactive_tile_activates_its_tab_without_editing_the_family() {
+    let mut h = open();
+    let doc = h.state().active_doc().unwrap();
+    let before = h.state().active_family().unwrap().draft_family().unwrap();
+    shortcut(&mut h, "WT");
+    h.run();
+    let active = h.state().view_rect;
+    click_at(&mut h, pos2(active.left() - active.width() / 2.0, active.center().y));
+    h.run();
+    assert_eq!(h.state().sheet, Sheet::Family(doc, None));
+    assert!(h.state().active_family().unwrap().draft_family().unwrap() == before);
+    assert!(h.state().active_family().unwrap().views.tiled);
+}
+
+/// Render both layouts for visual review when BIMCRAFT_FE22_DUMP names a folder.
+#[test]
+fn family_window_layout_screenshots() {
+    let Ok(folder) = std::env::var("BIMCRAFT_FE22_DUMP") else { return };
+    std::fs::create_dir_all(&folder).unwrap();
+    let mut h = open();
+    super::family_views::view(&mut h, Some(Which::Elevation(bimcraft_core::family::views::Side::Front)));
+    h.run();
+    h.render().unwrap().save(std::path::Path::new(&folder).join("fe22-tabs.png")).unwrap();
+    shortcut(&mut h, "WT");
+    h.run();
+    h.render().unwrap().save(std::path::Path::new(&folder).join("fe22-tiles.png")).unwrap();
+}
+
+#[test]
 fn close_inactive_keeps_the_active_view_and_one_tab_per_other_document() {
     let mut h = open();
     let project = h.state().session.model.to_json().unwrap();

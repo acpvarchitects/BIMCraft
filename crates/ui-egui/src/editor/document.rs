@@ -16,6 +16,23 @@ use bimcraft_core::adaptive::{Definition, Evaluated, Plane, PointType, WorkPlane
 use bimcraft_core::units::Units;
 use egui::{Align2, FontId, Frame, Margin, UiBuilder};
 
+/// Row-major tiles in the clear canvas. Every open view has a stable pane as tabs change.
+pub(crate) fn family_tile_rects(area: Rect, count: usize) -> Vec<Rect> {
+    if count == 0 { return Vec::new() }
+    let columns = (count as f32).sqrt().ceil() as usize;
+    let rows = count.div_ceil(columns);
+    (0..count).map(|i| {
+        let row = i / columns;
+        let in_row = (count - row * columns).min(columns);
+        let col = i % columns;
+        let x0 = area.left() + area.width() * col as f32 / in_row as f32;
+        let x1 = area.left() + area.width() * (col + 1) as f32 / in_row as f32;
+        let y0 = area.top() + area.height() * row as f32 / rows as f32;
+        let y1 = area.top() + area.height() * (row + 1) as f32 / rows as f32;
+        Rect::from_min_max(pos2(x0, y0), pos2(x1, y1))
+    }).collect()
+}
+
 /// What the family document keeps of its own: its history.
 #[derive(Default)]
 pub(crate) struct State {
@@ -531,6 +548,37 @@ fn form_context(ed: &FamilyEditor, i: usize) -> &'static str {
 pub(crate) const VIEW: &str = "{3D}";
 
 impl BimApp {
+    /// A tiled {3D} that is not active is a cached processor picture, with no orbit or pick input.
+    fn family_tile_3d(&mut self, ui: &Ui, ed: &mut FamilyEditor, pane: Rect) {
+        use bimcraft_core::graphics::Look;
+        use bimcraft_core::view3d::{Scene, AZIMUTH, ELEVATION};
+        let painter = ui.painter_at(pane);
+        painter.rect_filled(pane, 0.0, crate::canvas::color(bimcraft_core::render::PAPER));
+        ed.stage_3d(&self.session.model);
+        let Some(staged) = ed.scene3d.as_ref() else { return };
+        let size = [pane.width().clamp(64.0, 2400.0) as u32, pane.height().clamp(64.0, 1600.0) as u32];
+        let (azimuth, elevation) = ed.orbit.camera.map(|c| (c.azimuth, c.elevation)).unwrap_or((AZIMUTH, ELEVATION));
+        let orientation = {
+            let mut h = std::collections::hash_map::DefaultHasher::new();
+            (azimuth.to_bits(), elevation.to_bits(), crate::style::canvas_dark()).hash(&mut h);
+            h.finish()
+        };
+        let key = (staged.key, size, orientation);
+        if ed.views.tile_3d.as_ref().is_none_or(|c| c.key != key) {
+            let scene = Scene::new(&staged.model);
+            let look = Look::of_3d(&staged.model);
+            let cam = scene.fit_in(azimuth, elevation, size[0], size[1], &look);
+            let image = scene.render_in(&cam, &[], &look);
+            let pixels = image.rgba.as_chunks::<4>().0.iter().map(|p| crate::canvas::color(bimcraft_core::render::Rgb(p[0], p[1], p[2]))).collect();
+            let picture = egui::ColorImage { size: [image.width as usize, image.height as usize], pixels, source_size: Default::default() };
+            let texture = ui.ctx().load_texture("family-tile-3d", picture, egui::TextureOptions::NEAREST);
+            ed.views.tile_3d = Some(super::views::Tile3d { key, texture });
+        }
+        if let Some(tile) = &ed.views.tile_3d {
+            painter.image(tile.texture.id(), pane, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
+        }
+    }
+
     /// Whether a family document has the window: a family open in the Family Editor.
     pub(crate) fn family_doc(&self) -> bool {
         self.active_family().is_some()
@@ -788,6 +836,12 @@ impl BimApp {
                     }
                 });
                 ribbon::panel(ui, msg!("Windows"), |ui| {
+                    if ui.button(t(msg!("Tile Windows"))).on_hover_text(t(msg!("Tile Windows (WT): show this family's open views together"))).clicked() {
+                        ed.views.tiled = true;
+                    }
+                    if ui.button(t(msg!("Tab Windows"))).on_hover_text(t(msg!("Tab Windows (TW): show one family view at a time"))).clicked() {
+                        ed.views.tiled = false;
+                    }
                     let tip = msg!("Close Inactive Views: keep this view and one view of every other open family");
                     if big_button(ui, Icon::CloseInactive, msg!("Close Inactive Views"), false, tip).clicked() {
                         self.close_inactive_family_views();
@@ -1535,26 +1589,51 @@ impl BimApp {
         }
         let values = ed.values();
         let hidden = ed.adaptive.as_ref().map(|d| ed.temp_hidden(d)).unwrap_or_default();
-        if let Some(which) = ed.views.shown {
-            // A plan or an elevation (F4): the project's own drawing of the family in a scratch model.
-            let base = Arc::clone(&self.session.model);
-            if let Some(e) = ed.view_2d(ui, &base, which, drawn, self.thin) {
-                self.status = Status { text: e, error: true };
+        let tabs = self.active_doc().map(|id| self.doc_tabs(id)).unwrap_or_default();
+        let tiled = ed.views.tiled && tabs.len() > 1;
+        let area = if ed.adaptive.is_some() { pane } else { drawn };
+        let panes = if tiled { family_tile_rects(area, tabs.len()) } else { vec![area] };
+        let mut activate = None;
+        let mut active_pane = area;
+        for (index, tile) in panes.iter().copied().enumerate() {
+            let sheet = if tiled { tabs[index] } else { self.sheet };
+            let Sheet::Family(_, view) = sheet else { continue };
+            let active = sheet == self.sheet;
+            if active {
+                active_pane = tile;
+                self.view_rect = tile;
+                if let Some(which) = view {
+                    let base = Arc::clone(&self.session.model);
+                    if let Some(e) = ed.view_2d(ui, &base, which, tile, self.thin) {
+                        self.status = Status { text: e, error: true };
+                    }
+                    if let Some(text) = ed.views.said.take() {
+                        self.status = Status { text, error: false };
+                    }
+                } else if let Some(d) = ed.adaptive.as_mut() {
+                    ui.scope_builder(UiBuilder::new().max_rect(tile), |ui| {
+                        let planes = bimcraft_core::family::Planes { planes: &ed.planes, lines: &ed.lines };
+                        adaptive_view::show(ui, d, planes, &mut ed.modeller, &values, tile.size(), &hidden);
+                    });
+                    if let Some(e) = ui.ctx().data_mut(|w| w.remove_temp::<String>(UiId::new("adaptive-view-problem"))) {
+                        self.status = Status { text: e, error: true };
+                    }
+                } else {
+                    self.family_3d(ui, &mut ed, tile);
+                }
+            } else {
+                if let Some(which) = view {
+                    ed.tile_view_2d(ui, &self.session.model, which, tile, self.thin);
+                } else {
+                    self.family_tile_3d(ui, &mut ed, tile);
+                }
+                if ui.interact(tile, UiId::new(("family-tile", sheet)), Sense::click()).clicked() {
+                    activate = Some(sheet);
+                }
             }
-            if let Some(text) = ed.views.said.take() {
-                self.status = Status { text, error: false };
+            if tiled {
+                ui.painter().rect_stroke(tile.shrink(1.0), 0.0, Stroke::new(if active { 3.0 } else { 1.0 }, if active { pal().accent } else { pal().muted }), StrokeKind::Inside);
             }
-        } else if let Some(d) = ed.adaptive.as_mut() {
-            ui.scope_builder(UiBuilder::new().max_rect(pane), |ui| {
-                let planes = bimcraft_core::family::Planes { planes: &ed.planes, lines: &ed.lines };
-                adaptive_view::show(ui, d, planes, &mut ed.modeller, &values, pane.size(), &hidden);
-            });
-            // What a tool in the view could not do, in the status bar.
-            if let Some(e) = ui.ctx().data_mut(|w| w.remove_temp::<String>(UiId::new("adaptive-view-problem"))) {
-                self.status = Status { text: e, error: true };
-            }
-        } else {
-            self.family_3d(ui, &mut ed, drawn);
         }
         // The point a snap override waited for, picked: it is done.
         if std::mem::take(&mut ed.took_point) {
@@ -1562,12 +1641,15 @@ impl BimApp {
             ed.override_tool = None;
         }
         // Zoom In Region's drag, over the view (`zoom.rs`).
-        ed.zoom_region_drag(ui, pane);
+        ed.zoom_region_drag(ui, active_pane);
         // The window's tabs, the project's and each family document's, over the view's top left corner.
         let card = crate::style::card([true, false, true, false]).inner_margin(Margin::same(2));
         let mut over = ui.new_child(UiBuilder::new().id_salt("family-view-tabs").max_rect(pane));
         // While the bar is drawn the document is in its place, so its tabs are named.
         self.put_family(ed);
+        if let Some(sheet) = activate {
+            self.open_sheet(sheet);
+        }
         let foot = card.show(&mut over, |ui| self.view_tabs(ui));
         let Some(mut ed) = self.take_family() else {
             self.tabs_foot = foot.response.rect.bottom();

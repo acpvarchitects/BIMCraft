@@ -23,6 +23,12 @@ use bimcraft_core::render::{Drawing, Rgb, View};
 pub(crate) struct Views {
     /// The view shown; none, {3D}.
     pub(crate) shown: Option<Which>,
+    /// Tile Windows is a layout of this document's open views for this session.
+    pub(crate) tiled: bool,
+    /// Inactive 2D panes have their own picture and fit; neither replaces the active view's cache.
+    tiles_2d: BTreeMap<Which, Tile2d>,
+    /// The inactive {3D} pane's processor picture, rebuilt only when its model or size changes.
+    pub(super) tile_3d: Option<Tile3d>,
     /// How close each view is, times as fitted, and how far it is moved (mm).
     pub(super) frames: BTreeMap<Which, (f64, (f64, f64))>,
     /// Each view's work plane ({3D}'s under none), once Set; else its own (`default_work_plane`).
@@ -192,6 +198,17 @@ pub(super) struct Cached {
     texture: Option<TextureHandle>,
     #[cfg(test)]
     picture: Option<bimcraft_core::view3d::Image>,
+}
+
+#[derive(Default)]
+struct Tile2d {
+    cache: Option<Cached>,
+    fitted: Option<(u64, View)>,
+}
+
+pub(super) struct Tile3d {
+    pub(super) key: (u64, [u32; 2], u64),
+    pub(super) texture: TextureHandle,
 }
 
 #[cfg(test)]
@@ -618,6 +635,28 @@ impl FamilyEditor {
                 self.problem = Some(e);
             }
         }
+    }
+
+    /// Draw an inactive view as a picture. Its rendering cache and fit belong to this tile, and
+    /// no input handler or view selection is called. The active view keeps its own cached frame.
+    pub(crate) fn tile_view_2d(&mut self, ui: &Ui, base: &Model, which: Which, pane: Rect, thin: bool) {
+        let size = [pane.width().clamp(64.0, 2400.0) as u32, pane.height().clamp(64.0, 1600.0) as u32];
+        let mut tile = self.views.tiles_2d.remove(&which).unwrap_or_default();
+        std::mem::swap(&mut self.views.cache, &mut tile.cache);
+        std::mem::swap(&mut self.views.fitted, &mut tile.fitted);
+        self.refresh_view(ui.ctx(), base, which, size);
+        let painter = ui.painter_at(pane);
+        painter.rect_filled(pane, 0.0, crate::canvas::color(bimcraft_core::render::PAPER));
+        if let Some(c) = self.views.cache.as_ref().filter(|c| c.which == which) {
+            if let Some(texture) = &c.texture {
+                let at = Rect::from_min_size(pane.min, vec2(c.view.width as f32, c.view.height as f32));
+                painter.image(texture.id(), at, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
+            }
+            crate::canvas::paint(&painter, crate::canvas::Place::at(pane.min), &c.drawing, &[], None, thin, &[]);
+        }
+        std::mem::swap(&mut self.views.cache, &mut tile.cache);
+        std::mem::swap(&mut self.views.fitted, &mut tile.fitted);
+        self.views.tiles_2d.insert(which, tile);
     }
 
     /// The plan or elevation shown, filling `pane`: its picture, what is selected over it, the work plane tinted while Show is
