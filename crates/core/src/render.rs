@@ -3790,6 +3790,8 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
             _ => {}
         }
     }
+    // A name slid in along its own trace (UI-3) cuts it, as an elevation's names do.
+    cut_traces(&mut d, &lettered);
     // Grids stop at the crop's edge on their own, and annotation is whole or not there: the rest is cut.
     if let Some([lo, hi]) = crop {
         let (a, b) = (d.view.px(lo), d.view.px(hi));

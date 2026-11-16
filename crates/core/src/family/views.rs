@@ -1938,10 +1938,31 @@ mod tests {
                     }
                 }
                 assert!(names.len() >= 2 && !marks.is_empty(), "{w}x{h}: names {} marks {}", names.len(), marks.len());
+                // And no trace runs through a name: one slid in along its own is cut under it.
+                let green = crate::render::REFERENCE_PLANE;
+                let traces: Vec<Vec<(f32, f32)>> = d
+                    .prims
+                    .iter()
+                    .zip(&d.parts)
+                    .filter_map(|(p, part)| match p {
+                        Prim::Line { pts, dash: Some(_), color, .. } if *color == green && *part != Part::Text => Some(pts.clone()),
+                        _ => None,
+                    })
+                    .collect();
                 for (n, r) in &names {
                     for (m, b) in &marks {
                         let apart = r[2] <= b[0] || b[2] <= r[0] || r[3] <= b[1] || b[3] <= r[1];
                         assert!(apart, "{w}x{h}: the name of {n} at {r:?} runs into the mark {m} at {b:?}");
+                    }
+                    for t in &traces {
+                        let on = t.windows(2).any(|s| {
+                            (0..=200).any(|i| {
+                                let k = i as f32 / 200.0;
+                                let (x, y) = (s[0].0 + (s[1].0 - s[0].0) * k, s[0].1 + (s[1].1 - s[0].1) * k);
+                                x > r[0] && x < r[2] && y > r[1] && y < r[3]
+                            })
+                        });
+                        assert!(!on, "{w}x{h}: a trace runs through the name of {n} at {r:?}");
                     }
                 }
             }
