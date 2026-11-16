@@ -830,6 +830,9 @@ pub enum Reference3d {
     Edge(usize),
 }
 
+/// A reference {3D} picked, and its two ends in the family's axes.
+pub type Picked3d = (Reference3d, (P3, P3));
+
 /// The reference of `family` (sized by `values`) seen nearest pixel `px` of a picture taken through `cam`, within `reach`
 /// pixels, and its two ends in the family's axes: what Mirror - Pick Axis, Offset and Align pick in {3D} (FE-24b). One a
 /// solid stands in front of there doesn't show, so it isn't picked; nor is what the view hides: a plane, a reference line or
@@ -842,7 +845,7 @@ pub fn reference_at_3d(
     reach: f64,
     shown: &dyn Fn(Guid) -> bool,
     form_shown: &dyn Fn(usize) -> bool,
-) -> Option<(Reference3d, (P3, P3))> {
+) -> Option<Picked3d> {
     let flexed = family.flexed(values).ok()?;
     let mut read = HashMap::new();
     let mut solids: Vec<[P3; 3]> = Vec::new();

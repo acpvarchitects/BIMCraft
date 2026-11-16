@@ -315,6 +315,9 @@ fn boxed(space: &Space, points: &[[f64; 3]]) -> Option<[(P2, f64); 8]> {
     Some(std::array::from_fn(|i| (P2(pick(i & 1, 0), pick((i >> 1) & 1, 1)), pick((i >> 2) & 1, 2))))
 }
 
+/// What a Modify tool's point in {3D} snaps to on the work plane, in its axes (FE-24b).
+pub(crate) type Traces = std::sync::Arc<Vec<(P2, P2)>>;
+
 /// Where Align's padlock stands in {3D} from the point the second reference was picked at, in pixels (FE-24b).
 pub(crate) const PADLOCK_3D: (f32, f32) = (16.0, -16.0);
 
@@ -809,6 +812,14 @@ impl FamilyEditor {
             let back = |p: Pos2| at(p).unwrap_or(P2(f64::NAN, f64::NAN));
             paint_tool(painter, &tool, &o, hover, &[], &screen, &back, axis, shift, &snaps);
         }
+        // The reference under the pointer, lit as a click would pick it (FE-24b).
+        if (picking_axis || offsetting)
+            && let Some((_, (a, b))) =
+                response.hover_pos().filter(|p| pane.contains(*p)).and_then(|p| self.reference_3d(cam, pixel(p), reach_px))
+            && let (Some(a), Some(b)) = (project(a), project(b))
+        {
+            painter.line_segment([a, b], egui::Stroke::new(3.0, crate::style::canvas_pal().hover));
+        }
         // Offset: where the plane or the line under the pointer would go.
         if let (Some(h), Some(p)) = (hover, response.hover_pos())
             && let Some(Ok((_, line))) = offset_at(self, p)
@@ -948,7 +959,7 @@ impl FamilyEditor {
         cam: &bimcraft_core::view3d::Camera,
         px: (f64, f64),
         reach: f64,
-    ) -> Option<(bimcraft_core::family::views::Reference3d, ([f64; 3], [f64; 3]))> {
+    ) -> Option<bimcraft_core::family::views::Picked3d> {
         let f = self.family().ok()?;
         let (hidden, forms_hidden) = self.hidden_3d(&f);
         let shown = |g: Guid| !hidden.contains(&g);
@@ -992,7 +1003,7 @@ impl FamilyEditor {
     /// What a Modify tool's point snaps to on {3D}'s work plane (FE-24b): `Family::work_plane_traces`, sized as the view
     /// draws the family, with neither what Temporary Hide/Isolate nor what the view hides for good; found again only when the
     /// family, its values, the plane or what is hidden changes.
-    fn traces_3d(&mut self) -> std::sync::Arc<Vec<(P2, P2)>> {
+    fn traces_3d(&mut self) -> Traces {
         use std::hash::{Hash, Hasher};
         let Ok(f) = self.family() else { return Default::default() };
         let values = self.values();
