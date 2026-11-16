@@ -191,7 +191,9 @@ impl FamilyEditor {
             "Component" => {
                 let chosen = self.last_component.clone();
                 self.component_tool();
-                if let Some(chosen) = chosen.filter(|(family, ty)| self.nested.iter().any(|n| n.name == *family && n.family.types.contains_key(ty))) {
+                if let Some(chosen) =
+                    chosen.filter(|(family, ty)| self.nested.iter().any(|n| n.name == *family && n.family.types.contains_key(ty)))
+                {
                     self.placing = Some(chosen.clone());
                     self.last_component = Some(chosen);
                 }
