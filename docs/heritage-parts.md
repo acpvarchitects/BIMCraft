@@ -34,7 +34,7 @@ Compare: <https://github.com/acpvarchitects/BIMCraft/compare/f202abd...feature/h
 | HP-6 | Schedules of parts: the bill of quantities (Restoration Quantities), CSV and xlsx | [#17](https://github.com/acpvarchitects/BIMCraft/pull/17), `vp/heritage-parts-schedules` | **Done**, in review |
 | HP-7 | Desktop: Create Parts, Divide Parts (sketch on the face), Properties of a part | | Not started |
 | HP-8 | IFC import of parts | | Not started |
-| HP-9 | The `FORMAT` step | | Not started; needs agreement (2.3) |
+| HP-9 | Parts in `elements`, the `FORMAT` step after main's, rebased on main | | Not started; agreed on #440 (2.3) |
 
 What HP-1 was checked with, on b7a9847:
 - `cargo fmt --check`, `cargo clippy --workspace --all-targets -D warnings` and `cargo i18n check` are clean.
@@ -91,11 +91,13 @@ wall type was edited would be worse than a visible conflict.
 - **The number.** The Family Editor line holds the next steps: T23 owns 19→20, which also counts FE-12's sweep-profile
   dimensions. **Proposal:** Parts take the first number free when their PR is ready (21 if the family line lands
   first), and nothing is bumped independently before the branches are aligned.
-- **Superseded on 2026-11-12, to bring to Vincenzo and Emiliano at HP-9.** Upstream (IPedrax, closing #311) keeps
-  FORMAT 18 for everything until 0.12, so there is no 18→19 step to take. New fields fold into `Model::migrate`'s step
-  to 18 (a file of 17), with notes in 18's, and a file saved at 18 without them must still open, so they need serde
-  defaults. The proposal above, and the idea that a bump shields parts from older builds, no longer hold. HP-9 must
-  instead say how parts live in `elements` with serde defaults and what an older 18 build does when it saves such a file.
+- **Settled on #440 (dronov-dmitry, 2026-11-14).** 18 and 19 were never released: 0.11 is 17 and 0.12 is **20**.
+  Parts don't go into 20, and no serde defaults to pass a parts file off as 20. The **first upstream PR moves parts into
+  `elements` and takes the step after main's, for 0.13**, with a `Model::migrate` step; it rebases on current main first.
+  The fork may keep the top-level `parts` key until then. As elements, parts get id, GUID, selection, undo, schedules,
+  phases and IFC with no extra work.
+- **The number.** The Family Editor follow-ups (`followups/family-editor`) already use 21. Whichever goes upstream first
+  takes 21, the other the next one; the Heritage room is told before HP's first upstream PR is opened.
 
 ### 2.4 IFC: a decomposed element has no body of its own
 
@@ -109,6 +111,10 @@ wall type was edited would be worse than a visible conflict.
 - **Quantities and survey data.** `BIMCraft_PartQuantities` (`Width`, `NetArea`, `NetVolume`), since IFC4 has no quantity
   set for parts. `BIMCraft_Heritage` holds the survey values that were set. Material values go out as
   `Pset_MaterialCommon` / `Pset_MaterialThermal`.
+- **Agreed on #440, with two conditions.** (a) Export and import go **in one PR** (HP-8 joins the export), with a
+  round-trip test of a wall with an opening and a door; if import has to wait, the wall keeps its body until then.
+  (b) When its parts are exported, the host's own area and volume are left out of the IFC, so nothing is counted twice;
+  checked in a real viewer as well as IfcOpenShell.
 - **Vincenzo's choice (10.1): no body on the host, and HP-8 rebuilds it from the parts.** BIMCraft's own IFC import skips a host with no body, and its doors and windows with it,
   listing them in `skipped`. HP-8 should read a decomposed host's shape from its parts. Until then a file exported with
   parts does not come back whole. **The alternative** is to keep the host's body too: simpler import, but every reader
@@ -293,7 +299,7 @@ divided part has no area or volume of its own, because its divisions hold them, 
 
 **HP-7, the desktop:**
 - Create Parts, Exclude/Restore Parts;
-- Divide Parts as a sketch on the selected part's face, drawn with the project's Draw gallery and sketch mode, plus a plane and a profile tool;
+- Divide Parts as a sketch on the selected part's face, drawn with the project's Draw gallery and one new sketch mode, plus a plane and a profile tool; the tool in a file of its own, and the face's plane from the existing face/work-plane code, since the sketch plane is a height and can't hold a vertical face (#440: no need to wait for the Family Editor);
 - Properties of a part with the survey values;
 - the Parts Visibility selector and the theme in the view's Properties;
 - the material values in the Material Browser.
@@ -315,11 +321,11 @@ Each tool drives a command; the UI stays thin.
 
 | PR | Contents | Depends on |
 |---|---|---|
-| 1 | **The part element**: HP-1 with the `FORMAT` step (HP-9) inside it, so no build ever writes the provisional layout | the number agreed with the family line |
+| 1 | **The part element**: HP-1 in `elements` with the `FORMAT` step after main's (HP-9), rebased on main, IFC export left out | the step after main's, the Heritage room told first |
 | 2 | **Divide Parts**: HP-2 + HP-3 | 1 |
 | 3 | **Parts in views**: HP-4 + HP-5 | 1 (2 for divided pieces) |
 | 4 | **Schedules of parts**: HP-6 | 1 |
-| 5 | **IFC import of parts**: HP-8 | 1 |
+| 5 | **IFC of parts, both ways**: HP-1's export + HP-8, with the round-trip test (2.4) | 1 |
 | 6 | **The desktop tools**: HP-7 | 2, 3 |
 
 - **The discussion.** Section 2 goes to an upstream discussion first, as #217 and #267 did for the Family Editor, only
@@ -345,12 +351,11 @@ Answered by Vincenzo on 2026-11-11 and 12 (the IFC one still for the maintainers
    ceiling's plaster on its underside (#19).
 3. ~~The decay list~~: **the 26 terms stand.**
 4. ~~`SU_Code` or `MSU_Code`~~: **`SU_Code`.**
+5. ~~How parts are stored~~ (#440, 2026-11-14): **in `elements`, with the step after main's (0.13)** (2.3).
 8. ~~A theme's legend in an elevation~~ (2026-11-12): **only the parts the elevation or section shows**, those hidden
    behind others left out; a section also counts what its line cuts (#20).
 
 Still open:
-5. **How parts are stored without a `FORMAT` bump** (2.3, changed 2026-11-12: FORMAT stays 18 until 0.12), with
-   Vincenzo and Emiliano at HP-9.
 6. **Parts in a project brought in by Insert from File**: a type with the same name but different layer GUIDs puts its
    parts in conflict, which `part {layer}` fixes. Is that acceptable?
 7. **`csg::MAX_TRIANGLES`** (20 000) can be reached by a large floor's part. Raise it for parts, or cut near the cutter
