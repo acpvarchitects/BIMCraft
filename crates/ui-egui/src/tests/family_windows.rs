@@ -1,6 +1,7 @@
 //! FE-22: family window commands operate on tabs and tools, never on the draft.
 use super::*;
 use bimcraft_core::family::views::Which;
+use egui::Rect;
 
 const FAMILIES: &str = r#"family {"name": "Box", "category": "generic", "types": {"T": {}}, "forms": [{"profile": [[0, 0], [500, 0], [500, 300], [0, 300]], "to": 400}]}
 family {"name": "Crate", "category": "generic", "types": {"T": {}}, "forms": [{"profile": [[0, 0], [800, 0], [800, 600], [0, 600]], "to": 600}]}"#;

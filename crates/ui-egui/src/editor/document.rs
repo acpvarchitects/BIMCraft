@@ -11,6 +11,7 @@ use crate::dock::Palette;
 use crate::icons::Icon;
 use crate::properties::group_header;
 use crate::ribbon;
+use crate::Sheet;
 use crate::{big_button, icon_button, tab_button};
 use bimcraft_core::adaptive::{Definition, Evaluated, Plane, PointType, WorkPlane};
 use bimcraft_core::units::Units;
