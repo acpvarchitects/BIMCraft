@@ -1968,4 +1968,47 @@ mod tests {
             }
         }
     }
+
+    /// UI-3 review: a name lettered beside its trace, crowded off both its ends, leaves the trace whole; only one slid in along
+    /// it cuts it.
+    #[test]
+    fn a_name_beside_its_trace_leaves_it_whole() {
+        use crate::render::{Part, Prim};
+        let plane = |name: &str, x: f64| -> crate::family::RefPlane {
+            serde_json::from_value(serde_json::json!({
+                "guid": Guid::new(), "name": name, "start": [x, -2000.0, 0.0], "end": [x, 2000.0, 0.0], "up": [0.0, 0.0, 1.0]
+            }))
+            .unwrap()
+        };
+        // How long each of the three traces is drawn, by where it runs across the picture.
+        let lengths = |names: [&str; 3]| -> BTreeMap<i64, f32> {
+            let mut f = boxed(0.0, 900.0);
+            f.planes.retain(|p| p.datum());
+            f.planes.extend([plane(names[0], -600.0), plane(names[1], -590.0), plane(names[2], -580.0)]);
+            let mut st = staged(&f);
+            let shown = st.draw(Which::Plan, 1290, 740, 1.0, P2(0.0, 0.0)).unwrap();
+            let d = &shown.drawing;
+            let green = crate::render::REFERENCE_PLANE;
+            let mut out: BTreeMap<i64, f32> = BTreeMap::new();
+            for ((prim, o), part) in d.prims.iter().zip(&d.owners).zip(&d.parts) {
+                if let (Prim::Line { pts, dash: Some(_), color, .. }, Some(id)) = (prim, o)
+                    && *color == green
+                    && *part != Part::Text
+                    && matches!(st.model.elements.get(*id), Some(Element::RefPlane(p)) if !p.name.contains('('))
+                    && pts.len() == 2
+                    && (pts[0].0 - pts[1].0).abs() < 0.5
+                {
+                    *out.entry(pts[0].0.round() as i64).or_default() += (pts[1].1 - pts[0].1).abs();
+                }
+            }
+            out
+        };
+        // Three close together: the third's ends are both taken, so it goes beside its trace, which stays as it is unnamed.
+        let named = lengths(["Aaaa", "Bbbb", "Cccc"]);
+        let bare = lengths(["", "", ""]);
+        assert_eq!(bare.len(), 3, "{bare:?}");
+        let longest = |m: &BTreeMap<i64, f32>| m.values().copied().fold(0.0f32, f32::max);
+        // Beyond an end a trace runs no further in a plan, so a name there cuts nothing; beside it, nothing either.
+        assert!(named.values().all(|l| (l - longest(&bare)).abs() < 1.0), "named {named:?} against bare {bare:?}");
+    }
 }

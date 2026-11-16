@@ -1531,10 +1531,16 @@ impl BimApp {
         // UI-3: and between the Options Bar's row, kept whether or not a card is on it so the view never moves as one comes and
         // goes, and the view-control bar along its foot, so neither a plane's name nor {3D}'s box runs under them.
         let row = if ed.adaptive.is_none() { f32::from(crate::style::gap()) + crate::OPTIONS_CARD } else { 0.0 };
-        let bottom = (pane.bottom() - self.family_bar_cover - f32::from(crate::style::gap()))
-            .floor()
-            .clamp(pane.top() + 64.0, pane.bottom())
-            .max(pane.top());
+        // An adaptive family's canvas fills the pane, as before.
+        let bottom = if ed.adaptive.is_none() {
+            (pane.bottom() - self.family_bar_cover - f32::from(crate::style::gap()))
+                .floor()
+                .max(pane.top() + 64.0)
+                .min(pane.bottom())
+                .max(pane.top())
+        } else {
+            pane.bottom()
+        };
         let drawn = Rect::from_min_max(
             pos2(pane.left(), (self.tabs_foot + row).ceil().clamp(pane.top(), (bottom - 64.0).max(pane.top()))),
             pos2(pane.right(), bottom),
@@ -1657,7 +1663,12 @@ impl BimApp {
             });
         });
         self.family_bar_top = bar_card.response.rect.top();
-        self.family_bar_cover = pane.bottom() - self.family_bar_top;
+        // Grown or shrunk (wrapped onto another row), the view fits again now, not at the next input.
+        let cover = pane.bottom() - self.family_bar_top;
+        if (cover - self.family_bar_cover).abs() > 0.5 {
+            ui.ctx().request_repaint();
+        }
+        self.family_bar_cover = cover;
         self.work = pane.with_min_y(pane.top().max(self.tabs_foot));
         // While it hides anything for now, the project's cyan frame round the view, as Revit draws.
         let hiding = ed.temporary().hides() || ed.views.kept.revealing(ed.views.shown);

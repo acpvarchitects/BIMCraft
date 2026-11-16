@@ -103,6 +103,24 @@ fn a_family_view_is_drawn_between_the_options_bar_row_and_the_view_control_bar_a
     }
 }
 
+#[test]
+fn a_family_view_in_a_window_too_small_for_it_draws_without_a_panic() {
+    use super::family_views::view;
+    let mut h = app("");
+    h.set_size(egui::vec2(1400.0, 900.0));
+    h.run();
+    new_family_of(&mut h, "Generic");
+    for which in [Some(Which::Plan), None] {
+        view(&mut h, which);
+        for (w, ht) in [(300.0, 50.0), (300.0, 200.0), (420.0, 280.0), (1400.0, 900.0)] {
+            h.set_size(egui::vec2(w, ht));
+            for _ in 0..3 {
+                h.run();
+            }
+        }
+    }
+}
+
 /// Before and after: the new Generic family's views, a tool's Options Bar and a refusal, and a project's Join and Cut Geometry,
 /// when `BIMCRAFT_UI3_DUMP` names a folder.
 #[test]
