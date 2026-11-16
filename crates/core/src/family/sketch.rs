@@ -618,24 +618,9 @@ impl super::Family {
         host: &super::PlaneRef,
         skip: Option<usize>,
     ) -> Targets {
-        use crate::view3d::{cross, dot};
         let Ok(f) = self.frame(host) else { return Targets::default() };
         let mut t = Targets::default();
-        for plane in &self.planes {
-            let g = plane.frame();
-            let d = cross(f.z, g.z);
-            let dd = dot(d, d);
-            if dd < 1e-12 {
-                continue;
-            }
-            // The point of both planes nearest the family's origin, and the way their crossing runs.
-            let (h1, h2) = (dot(f.z, f.origin), dot(g.z, g.origin));
-            let (a, b) = (cross(g.z, d), cross(d, f.z));
-            let p0: crate::view3d::P3 = std::array::from_fn(|i| (h1 * a[i] + h2 * b[i]) / dd);
-            let (q, _) = f.local(p0);
-            let u = P2(dot(d, f.x), dot(d, f.y)).unit();
-            t.traces.push((q - u * TRACE, q + u * TRACE));
-        }
+        t.traces.extend(self.planes.iter().filter_map(|plane| trace_across(&f, &plane.frame())));
         for (a, b) in self.edges_3d(values, skip) {
             let ((p, _), (q, _)) = (f.local(a), f.local(b));
             if p.dist(q) > TOL {
@@ -646,10 +631,67 @@ impl super::Family {
     }
 }
 
+impl super::Family {
+    /// What a point on {3D}'s work plane `host` snaps to (FE-24b), in its axes, sized by `values` as the view draws it: each
+    /// reference plane's trace across it (the datums' too), and the reference lines, model lines and forms' edges seen square
+    /// on to it. What the view hides is none: `shown` says it of a plane, a reference line or a model line by its GUID,
+    /// `form_shown` of a form by its place.
+    pub fn work_plane_traces(
+        &self,
+        values: &std::collections::BTreeMap<String, super::Val>,
+        host: &super::PlaneRef,
+        shown: &dyn Fn(Guid) -> bool,
+        form_shown: &dyn Fn(usize) -> bool,
+    ) -> Vec<(P2, P2)> {
+        let Ok(f) = self.frame(host) else { return Vec::new() };
+        let flexed = self.flexed(values).map(std::borrow::Cow::into_owned).unwrap_or_else(|_| self.clone());
+        let mut out: Vec<(P2, P2)> = super::planes::with_the_datums(&flexed.planes)
+            .iter()
+            .filter(|p| shown(p.guid))
+            .filter_map(|p| trace_across(&f, &p.frame()))
+            .collect();
+        let mut seen: Vec<(crate::view3d::P3, crate::view3d::P3)> = Vec::new();
+        let mut read = std::collections::HashMap::new();
+        for i in (0..flexed.forms.len()).filter(|i| form_shown(*i) && !flexed.forms[*i].void) {
+            if let Ok(Some(piece)) = flexed.solid(i, values, &mut read) {
+                seen.extend(creases(&piece.tris));
+            }
+            if seen.len() >= MAX_EDGES {
+                break;
+            }
+        }
+        seen.extend(flexed.lines.iter().filter(|l| shown(l.guid)).map(|l| (l.start, l.end)));
+        seen.extend(flexed.model_lines.iter().filter(|l| shown(l.guid)).map(|l| (l.start, l.end)));
+        seen.truncate(MAX_EDGES);
+        out.extend(seen.into_iter().filter_map(|e| on_plane(&f, e).ok()));
+        out
+    }
+}
+
+/// Where plane `g` crosses plane `f`: its trace, in `f`'s axes, running [`TRACE`] either way; none where they are parallel.
+pub fn trace_across(f: &super::Frame, g: &super::Frame) -> Option<(P2, P2)> {
+    use crate::view3d::{cross, dot};
+    let d = cross(f.z, g.z);
+    let dd = dot(d, d);
+    if dd < 1e-12 {
+        return None;
+    }
+    // The point of both planes nearest the family's origin, and the way their crossing runs.
+    let (h1, h2) = (dot(f.z, f.origin), dot(g.z, g.origin));
+    let (a, b) = (cross(g.z, d), cross(d, f.z));
+    let p0: crate::view3d::P3 = std::array::from_fn(|i| (h1 * a[i] + h2 * b[i]) / dd);
+    let (q, _) = f.local(p0);
+    let u = P2(dot(d, f.x), dot(d, f.y)).unit();
+    Some((q - u * TRACE, q + u * TRACE))
+}
+
 /// Edge `(a, b)` of the family seen square on to plane `f`: its ends in the plane's axes, or why it has no line there.
 pub fn on_plane(f: &super::Frame, (a, b): (crate::view3d::P3, crate::view3d::P3)) -> Result<(P2, P2), String> {
     let ((p, _), (q, _)) = (f.local(a), f.local(b));
-    if p.dist(q) <= TOL {
+    // Square to the plane as a way, however long: a line along what it faces, or of no length.
+    let d: crate::view3d::P3 = std::array::from_fn(|i| b[i] - a[i]);
+    let len = crate::view3d::dot(d, d).sqrt();
+    if len <= 1e-9 || p.dist(q) <= len * 1e-6 {
         return Err("it runs square to the work plane: it has no line on it".into());
     }
     Ok((p, q))
