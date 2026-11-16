@@ -123,7 +123,7 @@ impl Tool {
     /// Whether it works in {3D} (FE-24): one whose clicks are points, which land on the view's work plane, and one that picks
     /// a reference in the picture (FE-24b). Scale, which leans on the view's depth, doesn't.
     fn in_3d(&self) -> bool {
-        matches!(self, Tool::Move { .. } | Tool::Rotate { .. } | Tool::Mirror { .. })
+        matches!(self, Tool::Move { .. } | Tool::Rotate { .. } | Tool::Mirror { .. } | Tool::Offset)
     }
 
     /// Whether it is a sketch's alone.
@@ -734,7 +734,7 @@ impl FamilyEditor {
         if self.views.modify.as_ref().is_some_and(|m| m.typed.is_some()) {
             said = self.modify_typed(space, &shown);
         }
-        // Mirror - Pick Axis (FE-24b): the reference under the pointer, as an axis on the plane, or why it is none.
+        // Mirror - Pick Axis and Offset (FE-24b): the reference under the pointer, as a line on the plane, or why it is none.
         let picking_axis = matches!(self.views.modify.as_ref().map(|m| m.tool), Some(Tool::Mirror { draw: false, .. }));
         let pixel = |p: Pos2| (f64::from((p.x - pane.min.x) / sx), f64::from((p.y - pane.min.y) / sy));
         let reach_px = f64::from(SNAP_REACH / sx.max(1e-6));
@@ -745,6 +745,22 @@ impl FamilyEditor {
             let (r, e) = ed.reference_3d(cam, pixel(p), reach_px)?;
             Some(ed.axis_3d(&frame, r, e))
         };
+        let offset_at = |ed: &Self, p: Pos2| -> OffsetHit {
+            use bimcraft_core::family::views::Reference3d;
+            if !offsetting {
+                return None;
+            }
+            let (r, e) = ed.reference_3d(cam, pixel(p), reach_px)?;
+            let picked = match r {
+                Reference3d::Plane(g) => Picked::Plane(g),
+                Reference3d::Line(g) => Picked::Line(g),
+                Reference3d::ModelLine(_) | Reference3d::Edge(_) => {
+                    let why = "Offset takes reference planes and reference lines: edit a form's sketch to offset its lines.";
+                    return Some(Err(t(why).to_string()));
+                }
+            };
+            Some(ed.axis_3d(&frame, r, e).map(|line| (picked, line)))
+        };
         // The view a drag would be read through isn't read by a move of two clicks.
         let free = bimcraft_core::render::View { scale: 1.0, cx: 0.0, cy: 0.0, width: 1, height: 1, angle: 0.0 };
         if let Some(p) = click {
@@ -752,6 +768,10 @@ impl FamilyEditor {
                 (Some(Err(why)), _) => said = Some(why),
                 (Some(Ok(axis)), q) => {
                     said = self.modify_click(q.unwrap_or(axis.0), (Which::Plan, free, 0), space, &shown, Some(axis), None, shift);
+                }
+                (None, Ok(q)) if offsetting => {
+                    let hit = offset_at(self, p);
+                    said = self.modify_click(q, (Which::Plan, free, 0), space, &shown, None, hit, shift);
                 }
                 (None, Ok(q)) => {
                     // A point picked: a snap override waiting for one is used up by it (FE-21).
@@ -785,6 +805,14 @@ impl FamilyEditor {
             let screen = |q: P2| seen(q).unwrap_or(off);
             let back = |p: Pos2| at(p).unwrap_or(P2(f64::NAN, f64::NAN));
             paint_tool(painter, &tool, &o, hover, &[], &screen, &back, axis, shift, &snaps);
+        }
+        // Offset: where the plane or the line under the pointer would go.
+        if let (Some(h), Some(p)) = (hover, response.hover_pos())
+            && let Some(Ok((_, line))) = offset_at(self, p)
+            && let Some((a, b)) = offset_line(line, h, &o)
+            && let (Some(a), Some(b)) = (seen(a), seen(b))
+        {
+            painter.extend(egui::Shape::dashed_line(&[a, b], egui::Stroke::new(1.5, crate::style::canvas_pal().accent), 8.0, 4.0));
         }
         if let Some(map) = hover.and_then(|h| preview_map(&tool, &o, h, shift, &snaps, axis)) {
             let accent = crate::style::canvas_pal().accent.gamma_multiply(0.8);
@@ -826,7 +854,7 @@ impl FamilyEditor {
         bimcraft_core::family::views::reference_at_3d(&f, &self.values(), cam, px, reach, &shown, &form_shown)
     }
 
-    /// Mirror - Pick Axis' axis in {3D} (FE-24b): reference `r` (its ends `e`) as a line on the work plane `frame`, in its
+    /// Mirror - Pick Axis' axis or Offset's line in {3D} (FE-24b): reference `r` (its ends `e`) as a line on the work plane `frame`, in its
     /// axes. A plane's is its trace across the work plane, kept to about the line it was drawn as; a line's or an edge's, it
     /// seen square on to the plane. Why there is none: a plane parallel to the work plane, a line along what it faces.
     fn axis_3d(
@@ -839,15 +867,14 @@ impl FamilyEditor {
         use bimcraft_core::family::views::Reference3d;
         let Reference3d::Plane(g) = r else {
             return on_plane(frame, e).map_err(|_| {
-                t("That runs square to the work plane, so it is no line on it: pick another axis, or set another work plane.").to_string()
+                t("That runs square to the work plane, so it is no line on it: pick another, or set another work plane.").to_string()
             });
         };
         let f = self.family().map_err(|e| e.to_string())?;
         let values = self.values();
         let flexed = f.flexed(&values).map(std::borrow::Cow::into_owned).unwrap_or_else(|_| f.clone());
-        let parallel = || {
-            t("That plane is parallel to the work plane and crosses it nowhere: pick another axis, or set another work plane.").to_string()
-        };
+        let parallel =
+            || t("That plane is parallel to the work plane and crosses it nowhere: pick another, or set another work plane.").to_string();
         let plane = flexed.planes.iter().find(|p| p.guid == g).ok_or_else(parallel)?;
         let (a, b) = trace_across(frame, &plane.frame()).ok_or_else(parallel)?;
         // Kept to the feet on it of the line the plane was drawn as, or 1 m either way of one where that line is square to it.

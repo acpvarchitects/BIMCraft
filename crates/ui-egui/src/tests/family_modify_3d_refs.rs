@@ -162,3 +162,49 @@ fn mirror_pick_axis_in_3d_refuses_a_line_along_the_planes_normal_and_a_plane_par
     click_off(&mut h, [0.0, 1200.0, 0.0]);
     assert!(about(extent(&h, 0), [100.0, 500.0, 1900.0, 2300.0]), "{:?}: {}", extent(&h, 0), status(&h));
 }
+
+/// A click in {3D} right where family point `p` shows.
+fn click_on(h: &mut Harness<BimApp>, p: [f64; 3]) {
+    let at = h.state().family_screen3(p).expect("{3D} drawn");
+    click_at(h, at);
+}
+
+/// Offset in hand in {3D}, its distance 300, moving (no copy).
+fn offsetting() -> Harness<'static, BimApp> {
+    let mut h = zoomed();
+    shortcut(&mut h, "OF");
+    assert_eq!(tool(&h), Some(M::Offset), "{}", status(&h));
+    super::family_drag_move::ed(&mut h).views.modify_options.offset_copy = false;
+    h
+}
+
+#[test]
+fn offset_in_3d_takes_a_plane_or_a_reference_line_toward_the_side_clicked() {
+    use super::family_drag_move::{LINE, family};
+    // Edge (x 1000), clicked just east of the line it was drawn as: 300 east.
+    let mut h = offsetting();
+    click_on(&mut h, [1010.0, 600.0, 0.0]);
+    let edge = family(&h).planes.iter().find(|p| p.guid == g(EDGE)).unwrap().clone();
+    assert!((edge.start[0] - 1300.0).abs() < 1e-6 && (edge.end[0] - 1300.0).abs() < 1e-6, "{edge:?}: {}", status(&h));
+    // The reference line (y 1200), clicked just south of it: 300 south.
+    let mut h = offsetting();
+    click_on(&mut h, [0.0, 1190.0, 0.0]);
+    let line = family(&h).lines.iter().find(|l| l.guid == g(LINE)).unwrap().clone();
+    assert!((line.start[1] - 900.0).abs() < 1e-6 && (line.end[1] - 900.0).abs() < 1e-6, "{line:?}: {}", status(&h));
+    // With Copy, a new plane 300 off, Edge where it was.
+    let mut h = offsetting();
+    super::family_drag_move::ed(&mut h).views.modify_options.offset_copy = true;
+    let planes = family(&h).planes.len();
+    click_on(&mut h, [1010.0, 600.0, 0.0]);
+    assert_eq!(family(&h).planes.len(), planes + 1, "{}", status(&h));
+    assert!(family(&h).planes.iter().any(|p| (p.start[0] - 1300.0).abs() < 1e-6), "a copy at x 1300");
+}
+
+#[test]
+fn offset_in_3d_refuses_a_forms_edge_saying_what_it_takes() {
+    let mut h = offsetting();
+    let before = extent(&h, 0);
+    click_off(&mut h, [500.0, 300.0, 300.0]);
+    assert!(about(extent(&h, 0), before));
+    assert!(status(&h).contains("Offset takes reference planes and reference lines"), "{}", status(&h));
+}
