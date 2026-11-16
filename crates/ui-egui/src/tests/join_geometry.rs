@@ -348,3 +348,58 @@ fn join_geometry_screenshots() {
     h.run();
     save(&mut h, "italian");
 }
+
+/// A wall of brick and a floor of plaster-faced concrete through its foot, and a section across them; the types as
+/// `join_cleanup_tests` in the core has them.
+const CLEANUP: &str = r#"type {"category": "wall", "name": "Brick 200", "layers": [{"material": "Brick", "thickness": 200}]}
+type {"category": "wall", "name": "Concrete 200", "layers": [{"material": "Concrete", "thickness": 200}]}
+type {"category": "floor", "name": "Concrete 200", "layers": [{"material": "Concrete", "thickness": 200}]}
+wall {"points": [[0, 2000], [6000, 2000]], "height": 3000, "type": "Brick 200"}
+floor {"boundary": [[0, 0], [6000, 0], [6000, 4000], [0, 4000]], "offset": 300, "type": "Concrete 200"}
+section {"start": [3000, 1000], "end": [3000, 3000]}"#;
+
+/// The section through a wall and a floor joined (join cleanup): unjoined, joined with the wall of brick (a line where it
+/// meets the concrete) and with the wall of concrete too (none: one region), at Fine, in the three looks: saved where
+/// `BIMCRAFT_JOINCLEAN_DUMP` says (only then).
+#[test]
+fn join_cleanup_screenshots() {
+    let Ok(folder) = std::env::var("BIMCRAFT_JOINCLEAN_DUMP") else { return };
+    std::fs::create_dir_all(&folder).unwrap();
+    for (look, dark, light_canvas) in [("light", false, false), ("dark", true, false), ("dark-ui-light-canvas", true, true)] {
+        let mut h = app(CLEANUP);
+        h.set_size(egui::vec2(1600.0, 1000.0));
+        h.ctx.set_theme(if dark { egui::ThemePreference::Dark } else { egui::ThemePreference::Light });
+        h.state_mut().light_canvas = light_canvas;
+        let (w, f) = wall_and_floor(&h);
+        let sec = ids(&h, "section")[0];
+        h.state_mut().session.execute("detail", &json!({"view": sec, "detail": "fine"})).unwrap();
+        browse(&mut h, "Section 1");
+        // Zoomed in on where the wall meets the floor, there in a window of this size.
+        for _ in 0..3 {
+            h.hover_at(pos2(870.0, 698.0));
+            h.event(Event::MouseWheel {
+                unit: MouseWheelUnit::Point,
+                delta: vec2(0.0, 120.0),
+                phase: TouchPhase::Move,
+                modifiers: Modifiers::NONE,
+            });
+            h.run();
+        }
+        // The pointer off the canvas, so nothing under it is lit.
+        h.hover_at(pos2(150.0, 960.0));
+        let save = |h: &mut Harness<BimApp>, what: &str| {
+            for _ in 0..6 {
+                h.run();
+                std::thread::sleep(std::time::Duration::from_millis(100));
+            }
+            h.render().unwrap().save(std::path::Path::new(&folder).join(format!("joinclean-{what}-{look}.png"))).unwrap();
+        };
+        save(&mut h, "brick-unjoined");
+        h.state_mut().session.execute("join_geometry", &json!({"first": w, "second": f})).unwrap();
+        save(&mut h, "brick-joined");
+        h.state_mut().session.execute("modify", &json!({"id": w, "type": "Concrete 200"})).unwrap();
+        save(&mut h, "concrete-joined");
+        h.state_mut().session.execute("unjoin_geometry", &json!({"first": w, "second": f})).unwrap();
+        save(&mut h, "concrete-unjoined");
+    }
+}
