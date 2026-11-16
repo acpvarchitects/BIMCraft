@@ -141,6 +141,8 @@ pub const ACTIONS: &[&str] = &[
     "Snaps Off",
     "Turn Snap Override Off",
     msg!("Reference Plane"),
+    msg!("Close Inactive Views"),
+    msg!("Repeat Last Command"),
     // The family document's alone (`FAMILY_ONLY`).
     msg!("Work Plane"),
     msg!("Load Family"),
@@ -173,6 +175,8 @@ pub const ACTIONS: &[&str] = &[
 /// The actions of `ACTIONS` only a family document does (`editor::keys`): a key for one does nothing on a project's tab, and
 /// Find, which runs actions on the project, doesn't list them.
 pub(crate) const FAMILY_ONLY: &[&str] = &[
+    "Close Inactive Views",
+    "Repeat Last Command",
     "Work Plane",
     "Load Family",
     "Angular Dimension",

@@ -649,6 +649,18 @@ impl FamilyEditor {
         self.placing = None;
         let selection = self.selection.items().to_vec();
         self.views.modify = Some(Modifying { tool, which: self.views.shown, typed: None, selection });
+        self.last_tool = Some(match tool {
+            Tool::Move { copy: false, .. } => "Move",
+            Tool::Move { copy: true, .. } => "Copy",
+            Tool::Rotate { .. } => "Rotate",
+            Tool::Mirror { draw: false, .. } => "Mirror Pick Axis",
+            Tool::Mirror { draw: true, .. } => "Mirror Draw Axis",
+            Tool::Scale { .. } => "Scale",
+            Tool::Offset => "Offset",
+            Tool::TrimTo { many: false, .. } => "Trim/Extend Single Element",
+            Tool::TrimTo { many: true, .. } => "Trim/Extend Multiple Elements",
+            Tool::Split => "Split",
+        });
         Ok(())
     }
 

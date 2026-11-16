@@ -390,12 +390,14 @@ impl FamilyEditor {
         self.datum_tool(true);
         if self.editing_2d() {
             self.views.drawing_model = true;
+            self.last_tool = Some("Model Line");
         }
     }
 
     /// Reference Plane's tool, or Reference Line's (`line`), on; the selection goes.
     fn datum_tool(&mut self, line: bool) {
         if self.editing_2d() {
+            self.last_tool = Some(if line { "Reference Line" } else { "Reference Plane" });
             self.views.drawing = Some(None);
             self.views.drawing_line = line;
             self.views.drawing_model = false;

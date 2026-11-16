@@ -645,6 +645,7 @@ impl FamilyEditor {
         if self.editing_2d() {
             self.drop_tools();
             self.views.dimensioning = Some(Vec::new());
+            self.last_tool = Some("Aligned Dimension");
         }
     }
 
@@ -659,6 +660,12 @@ impl FamilyEditor {
             self.drop_tools();
             self.views.dimensioning = Some(Vec::new());
             self.views.dim_kind = kind;
+            self.last_tool = Some(match kind {
+                DimKind::Aligned => "Aligned Dimension",
+                DimKind::Radial => "Radial Dimension",
+                DimKind::Diameter => "Diameter Dimension",
+                DimKind::Angular => "Angular Dimension",
+            });
         }
     }
 
@@ -669,6 +676,7 @@ impl FamilyEditor {
         if self.aligns_in_3d() {
             self.drop_tools();
             self.views.aligning = Some(None);
+            self.last_tool = Some("Align");
             return;
         }
         if self.editing_2d() {
@@ -685,6 +693,7 @@ impl FamilyEditor {
             }
             self.drop_tools();
             self.views.aligning = Some(None);
+            self.last_tool = Some("Align");
         }
     }
 

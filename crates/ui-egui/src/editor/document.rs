@@ -156,6 +156,53 @@ fn followed<T: PartialEq>(before: &[T], after: &[T], i: usize, guid: impl Fn(&T)
 }
 
 impl FamilyEditor {
+    /// Enter repeats only on an idle family canvas; an in-progress pick or draw keeps Enter for itself.
+    pub(crate) fn repeat_idle(&self) -> bool {
+        self.sketch.is_none()
+            && self.placing.is_none()
+            && self.views.drawing.is_none()
+            && self.views.measuring.is_none()
+            && self.views.picking.is_none()
+            && self.views.dimensioning.is_none()
+            && self.views.aligning.is_none()
+            && self.views.pivoting.is_none()
+            && self.views.modify.is_none()
+            && self.views.pasting.is_none()
+            && !self.zoom_region_armed()
+            && matches!(self.modeller.tool, Draw::Modify)
+    }
+
+    /// Re-arm the document's last tool from its initial state. Commands that directly edit the draft are never recorded.
+    pub(crate) fn repeat_last_tool(&mut self) -> Result<(), String> {
+        let Some(action) = self.last_tool else { return Ok(()) };
+        if let Some(tool) = super::modify::Tool::of(action) {
+            return self.modify_tool_on(tool);
+        }
+        match action {
+            "Reference Plane" => self.reference_plane_tool(),
+            "Reference Line" => self.reference_line_tool(),
+            "Model Line" => self.model_line_tool(),
+            "Aligned Dimension" => self.dimension_tool(),
+            "Angular Dimension" => self.radial_tool(bimcraft_core::family::DimKind::Angular),
+            "Radial Dimension" => self.radial_tool(bimcraft_core::family::DimKind::Radial),
+            "Diameter Dimension" => self.radial_tool(bimcraft_core::family::DimKind::Diameter),
+            "Align" => self.align_tool(),
+            "Measure" => self.measure_tool(),
+            "Component" => {
+                let chosen = self.last_component.clone();
+                self.component_tool();
+                if let Some(chosen) =
+                    chosen.filter(|(family, ty)| self.nested.iter().any(|n| n.name == *family && n.family.types.contains_key(ty)))
+                {
+                    self.placing = Some(chosen.clone());
+                    self.last_component = Some(chosen);
+                }
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
     /// Whether something of the family's own is selected that Delete takes away: a form, a plane of its own (a datum stays), a
     /// dimension, a nested instance, a reference line, a symbol or a connector, one or several (FE-1).
     pub(crate) fn deletable(&self) -> bool {
@@ -239,7 +286,7 @@ impl FamilyEditor {
     }
 
     /// Whether a dialog of the document's is open: Family Types, Family Category and Parameters, or an association.
-    fn modal(&self) -> bool {
+    pub(crate) fn modal(&self) -> bool {
         self.dialog.is_some()
             || self.purging()
             || self.associating.is_some()
@@ -741,7 +788,10 @@ impl BimApp {
                     }
                 });
                 ribbon::panel(ui, msg!("Windows"), |ui| {
-                    later(ui, Icon::CloseInactive, msg!("Close Inactive Views"));
+                    let tip = msg!("Close Inactive Views: keep this view and one view of every other open family");
+                    if big_button(ui, Icon::CloseInactive, msg!("Close Inactive Views"), false, tip).clicked() {
+                        self.close_inactive_family_views();
+                    }
                 });
             }
             DocTab::Manage => {
@@ -860,6 +910,7 @@ impl BimApp {
                             .clicked()
                         {
                             ed.modeller.tool = Draw::Move { from: None, copy: false };
+                            ed.last_tool = None;
                         }
                         let tip = msg!("Copy (CO): copies of what is selected, from a point clicked to another");
                         if ui
@@ -870,6 +921,7 @@ impl BimApp {
                             .clicked()
                         {
                             ed.modeller.tool = Draw::Move { from: None, copy: true };
+                            ed.last_tool = None;
                         }
                         let tip = msg!("Rotate (RO): what is selected, about its centre, by the angle between two clicks");
                         if ui
@@ -882,6 +934,7 @@ impl BimApp {
                             && let Some(centre) = adaptive_view::selection_centre(d, &ed.modeller, &values)
                         {
                             ed.modeller.tool = Draw::Rotate { centre, start: None };
+                            ed.last_tool = None;
                         }
                         later_small(ui, Icon::Trim, msg!("Trim/Extend"));
                         later_small(ui, Icon::Split, msg!("Split Element"));
@@ -1951,6 +2004,15 @@ impl BimApp {
         if self.show_shortcuts {
             return;
         }
+        if !ctx.egui_wants_keyboard_input()
+            && !egui::Popup::is_any_open(ctx)
+            && self.active_family().is_some_and(FamilyEditor::repeat_idle)
+            && ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Enter))
+            && let Some(ed) = self.active_family_mut()
+            && let Err(text) = ed.repeat_last_tool()
+        {
+            self.status = Status { text, error: true };
+        }
         // FE-14: the window's Copy, Cut and Paste (Ctrl+C, Ctrl+X and Ctrl+V), in a family that isn't adaptive, at once and
         // whatever Shortcuts need Ctrl says: they are the clipboard's, never letters of a shortcut (`crate::ctrl_letters`).
         if self.active_family().is_some_and(|ed| ed.adaptive.is_none())
@@ -2310,6 +2372,7 @@ fn draw_panel(ui: &mut Ui, ed: &mut FamilyEditor) {
                 let tip = msg!("Line: click points, or the work plane, in turn; the first again closes a profile");
                 if crate::small_button(ui, Icon::Line, "Line", line, tip).clicked() {
                     ed.modeller.tool = Draw::Line(Vec::new());
+                    ed.last_tool = None;
                 }
                 later_small(ui, Icon::Rectangle, "Rectangle");
                 later_small(ui, Icon::Inscribed, msg!("Inscribed Polygon"));
@@ -2325,6 +2388,7 @@ fn draw_panel(ui: &mut Ui, ed: &mut FamilyEditor) {
                 let tip = msg!("Point Element: click the work plane for a reference point, or a line for one hosted on it");
                 if crate::small_button(ui, Icon::PointElement, msg!("Point Element"), ed.modeller.tool == Draw::Point, tip).clicked() {
                     ed.modeller.tool = Draw::Point;
+                    ed.last_tool = None;
                 }
                 later_small(ui, Icon::PickLines, msg!("Pick Lines"));
                 later_small(ui, Icon::PickFaces, msg!("Pick Faces"));
