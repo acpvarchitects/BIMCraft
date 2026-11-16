@@ -76,15 +76,16 @@ fn copy_with_multiple_makes_a_copy_at_each_click_and_escape_steps_back() {
     let n = family(&h).forms.len();
     shortcut(&mut h, "CO");
     ed(&mut h).views.modify_options.multiple = true;
+    // Within what the view frames: it stays as it was while the copies are made (FE-26).
     click(&mut h, [300.0, 300.0]);
+    click(&mut h, [300.0, 800.0]);
     click(&mut h, [300.0, 1300.0]);
-    click(&mut h, [300.0, 2300.0]);
     let f = family(&h);
     assert_eq!(f.forms.len(), n + 2, "{}", status(&h));
     // Each copy a step further, the original where it was.
     assert_eq!(points(&h, 0)[0], [100.0, 100.0]);
-    assert!(same(points(&h, 1)[0], [100.0, 1100.0]), "{:?}", points(&h, 1));
-    assert!(same(points(&h, 2)[0], [100.0, 2100.0]), "{:?}", points(&h, 2));
+    assert!(same(points(&h, 1)[0], [100.0, 600.0]), "{:?}", points(&h, 1));
+    assert!(same(points(&h, 2)[0], [100.0, 1100.0]), "{:?}", points(&h, 2));
     assert_eq!(editor(&h).steps(), 2);
     // Still copying; Escape lets the start go, then the tool.
     assert!(matches!(tool(&h), Some(M::Move { copy: true, from: Some(_) })));

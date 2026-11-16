@@ -77,7 +77,7 @@ msgstr "3D視圖"
 msgid "3D View: {3D}"
 msgstr "3D視圖：{3D}"
 
-#: crates/ui-egui/src/editor/views.rs:209
+#: crates/ui-egui/src/editor/views.rs:211
 msgid "3D View: {}"
 msgstr ""
 
@@ -198,7 +198,7 @@ msgid "A copy is drawn on a reference plane or a reference line the family no lo
 msgstr ""
 
 #: crates/ui-egui/src/editor/modify.rs:801
-#: crates/ui-egui/src/editor/views.rs:1128
+#: crates/ui-egui/src/editor/views.rs:1138
 msgid "A datum stays where it is: offset a reference plane of the family's own."
 msgstr ""
 
@@ -250,7 +250,7 @@ msgstr "過濾器在“視圖”>“過濾器”中創建"
 msgid "A folder. One that isn't absolute is beside the project's file."
 msgstr ""
 
-#: crates/ui-egui/src/editor/views.rs:1551
+#: crates/ui-egui/src/editor/views.rs:1577
 msgid "A form made of a mesh has no faces Align can take: pick a reference plane, an extrusion's end or a line of a form."
 msgstr ""
 
@@ -778,7 +778,7 @@ msgstr "對齊 (AL)：拾取參照，再拾取要移到其上的草圖線；其�
 msgid "Align (AL): pick a reference, then what moves onto it; its padlock locks them"
 msgstr "對齊 (AL)：拾取參照，再拾取要移到其上的對象；其鎖可將二者鎖定"
 
-#: crates/ui-egui/src/editor/dimensions.rs:980
+#: crates/ui-egui/src/editor/dimensions.rs:967
 msgid "Align can't put it there: {}"
 msgstr ""
 
@@ -790,7 +790,7 @@ msgstr ""
 msgid "Align lines up with what a plan shows: in the 3D view, drag a line's end or draw it again."
 msgstr "“對齊”用於使線與平面所顯示的內容對齊：在3D視圖中，請拖動線的端點，或重新繪製。"
 
-#: crates/ui-egui/src/editor/views.rs:1553
+#: crates/ui-egui/src/editor/views.rs:1579
 msgid "Align takes a form's straight edge, a side the view sees edge on, or its end: click on its outline."
 msgstr ""
 
@@ -871,6 +871,14 @@ msgstr ""
 
 #: crates/ui-egui/src/editor/clipboard.rs:113
 msgid "Aligned to Selected Views: dimensions copied alone, drawn in the views picked"
+msgstr ""
+
+#: crates/ui-egui/src/editor/handles3d.rs:259
+msgid "Aligned."
+msgstr ""
+
+#: crates/ui-egui/src/editor/views.rs:1825
+msgid "Aligned: let go, then click the padlock to lock it there."
 msgstr ""
 
 #: crates/ui-egui/src/lib.rs:463
@@ -1016,11 +1024,11 @@ msgstr ""
 msgid "An empty project to model in."
 msgstr "一個空項目，可在其中建模。"
 
-#: crates/ui-egui/src/editor/shape_handles.rs:77
+#: crates/ui-egui/src/editor/shape_handles.rs:119
 msgid "An equality (EQ) holds this edge: take it off to drag it."
 msgstr ""
 
-#: crates/ui-egui/src/editor/shape_handles.rs:78
+#: crates/ui-egui/src/editor/shape_handles.rs:120
 msgid "An equality (EQ) holds this end: take it off to drag it."
 msgstr ""
 
@@ -1865,8 +1873,8 @@ msgstr "相機：單擊視點所在位置，再單擊其注視的目標：由該
 #: crates/ui-egui/src/dimtypes.rs:319
 #: crates/ui-egui/src/display.rs:95
 #: crates/ui-egui/src/editor/clipboard.rs:519
-#: crates/ui-egui/src/editor/dimensions.rs:1082
-#: crates/ui-egui/src/editor/dimensions.rs:1156
+#: crates/ui-egui/src/editor/dimensions.rs:1069
+#: crates/ui-egui/src/editor/dimensions.rs:1143
 #: crates/ui-egui/src/editor/document.rs:2102
 #: crates/ui-egui/src/editor/exists.rs:442
 #: crates/ui-egui/src/editor/purge.rs:75
@@ -2040,7 +2048,7 @@ msgstr "天花板平面"
 msgid "Ceiling Plan:"
 msgstr ""
 
-#: crates/ui-egui/src/editor/views.rs:211
+#: crates/ui-egui/src/editor/views.rs:213
 msgid "Ceiling Plan: {}"
 msgstr "天花板平面：{}"
 
@@ -3304,11 +3312,11 @@ msgstr "約束"
 msgid "Constraints are not satisfied"
 msgstr "不滿足約束"
 
-#: crates/ui-egui/src/editor/shape_handles.rs:255
+#: crates/ui-egui/src/editor/shape_handles.rs:345
 msgid "Constraints are not satisfied: a lock or a dimension holds the profile where it is."
 msgstr ""
 
-#: crates/ui-egui/src/editor/handle_params.rs:164
+#: crates/ui-egui/src/editor/handle_params.rs:165
 msgid "Constraints are not satisfied: {} can't put it where the drag takes it."
 msgstr ""
 
@@ -4298,11 +4306,11 @@ msgstr "尺寸文字對齊:"
 msgid "Dimension Value"
 msgstr "尺寸標注值"
 
-#: crates/ui-egui/src/editor/shape_handles.rs:73
+#: crates/ui-egui/src/editor/shape_handles.rs:115
 msgid "Dimension label {} sets this edge: change it in Family Types."
 msgstr ""
 
-#: crates/ui-egui/src/editor/shape_handles.rs:74
+#: crates/ui-egui/src/editor/shape_handles.rs:116
 msgid "Dimension label {} sets this end: change it in Family Types."
 msgstr ""
 
@@ -5050,7 +5058,7 @@ msgstr "高程："
 msgid "Elevation: click a wall, a line or a slab's edge to look at, the project's or a link's"
 msgstr ""
 
-#: crates/ui-egui/src/editor/views.rs:212
+#: crates/ui-egui/src/editor/views.rs:214
 #: crates/ui-egui/src/lib.rs:3717
 msgid "Elevation: {}"
 msgstr "立面：{}"
@@ -5273,14 +5281,14 @@ msgid "Extrusion"
 msgstr "拉伸"
 
 #: crates/ui-egui/src/editor/extrusion.rs:198
-#: crates/ui-egui/src/editor/handles3d.rs:242
+#: crates/ui-egui/src/editor/handles3d.rs:255
 #: crates/ui-egui/src/editor/sketch.rs:1914
 #: crates/ui-egui/src/properties.rs:384
 msgid "Extrusion End"
 msgstr "拉伸終點"
 
 #: crates/ui-egui/src/editor/extrusion.rs:198
-#: crates/ui-egui/src/editor/handles3d.rs:243
+#: crates/ui-egui/src/editor/handles3d.rs:256
 #: crates/ui-egui/src/editor/sketch.rs:1914
 #: crates/ui-egui/src/properties.rs:383
 msgid "Extrusion Start"
@@ -5388,7 +5396,7 @@ msgstr "族參數"
 msgid "Family Type"
 msgstr ""
 
-#: crates/ui-egui/src/editor/dimensions.rs:1142
+#: crates/ui-egui/src/editor/dimensions.rs:1129
 msgid "Family Type of {}"
 msgstr ""
 
@@ -5778,7 +5786,7 @@ msgstr "樓層平面"
 msgid "Floor Plan:"
 msgstr ""
 
-#: crates/ui-egui/src/editor/views.rs:210
+#: crates/ui-egui/src/editor/views.rs:212
 #: crates/ui-egui/src/lib.rs:3712
 #: crates/ui-egui/src/lib.rs:3713
 msgid "Floor Plan: {}"
@@ -6634,7 +6642,7 @@ msgid "Installing BIMCraft {}…"
 msgstr "正在安裝 BIMCraft {}…"
 
 #: crates/ui-egui/src/adaptive_editor.rs:727
-#: crates/ui-egui/src/editor/dimensions.rs:1135
+#: crates/ui-egui/src/editor/dimensions.rs:1122
 #: crates/ui-egui/src/editor/types_dialog.rs:610
 #: crates/ui-egui/src/parameters.rs:58
 #: crates/ui-egui/src/parameters.rs:1414
@@ -6943,7 +6951,7 @@ msgstr ""
 msgid "LEFT"
 msgstr ""
 
-#: crates/ui-egui/src/editor/dimensions.rs:1236
+#: crates/ui-egui/src/editor/dimensions.rs:1223
 #: crates/ui-egui/src/editor/nested.rs:38
 #: crates/ui-egui/src/electrical.rs:443
 #: crates/ui-egui/src/parameters.rs:1497
@@ -8384,7 +8392,7 @@ msgstr ""
 msgid "Move: click the point to move to (Shift or Constrain keeps it square). Esc picks another start."
 msgstr ""
 
-#: crates/ui-egui/src/editor/handles3d.rs:244
+#: crates/ui-egui/src/editor/handles3d.rs:257
 msgid "Moved {} mm"
 msgstr ""
 
@@ -8392,7 +8400,7 @@ msgstr ""
 msgid "Moving the selection: let go to put it there; Esc gives the move up."
 msgstr ""
 
-#: crates/ui-egui/src/editor/handle_params.rs:297
+#: crates/ui-egui/src/editor/handle_params.rs:294
 msgid "Moving {} leaves this where it is: nothing the family sets places it."
 msgstr ""
 
@@ -8463,7 +8471,7 @@ msgstr "未封閉"
 #: crates/ui-egui/src/clouds.rs:62
 #: crates/ui-egui/src/coordinates.rs:621
 #: crates/ui-egui/src/editor/connectors.rs:236
-#: crates/ui-egui/src/editor/dimensions.rs:1129
+#: crates/ui-egui/src/editor/dimensions.rs:1116
 #: crates/ui-egui/src/editor/document.rs:1169
 #: crates/ui-egui/src/editor/selection.rs:331
 #: crates/ui-egui/src/editor/types_dialog.rs:512
@@ -9032,7 +9040,7 @@ msgstr ""
 #: crates/ui-egui/src/dimtypes.rs:318
 #: crates/ui-egui/src/display.rs:96
 #: crates/ui-egui/src/editor/clipboard.rs:521
-#: crates/ui-egui/src/editor/dimensions.rs:1157
+#: crates/ui-egui/src/editor/dimensions.rs:1144
 #: crates/ui-egui/src/editor/document.rs:2101
 #: crates/ui-egui/src/editor/purge.rs:76
 #: crates/ui-egui/src/editor/selection.rs:261
@@ -9147,7 +9155,7 @@ msgstr "主體中的偏移"
 msgid "Offset from Surface:"
 msgstr "距表面的偏移："
 
-#: crates/ui-egui/src/editor/views.rs:1133
+#: crates/ui-egui/src/editor/views.rs:1143
 msgid "Offset takes reference planes and reference lines: edit a form's sketch to offset its lines."
 msgstr ""
 
@@ -9199,7 +9207,7 @@ msgstr "OmniClass 編號"
 msgid "OmniClass Title"
 msgstr "OmniClass 標題"
 
-#: crates/ui-egui/src/editor/dimensions.rs:1254
+#: crates/ui-egui/src/editor/dimensions.rs:1241
 msgid "Only a dimension of one segment takes a label."
 msgstr "只有單段尺寸標注才能添加標籤。"
 
@@ -9570,7 +9578,7 @@ msgid "Parameter Name"
 msgstr "參數名稱"
 
 #: crates/ui-egui/src/adaptive_editor.rs:716
-#: crates/ui-egui/src/editor/dimensions.rs:1126
+#: crates/ui-egui/src/editor/dimensions.rs:1113
 #: crates/ui-egui/src/editor/types_dialog.rs:568
 msgid "Parameter Properties"
 msgstr "參數屬性"
@@ -9845,7 +9853,7 @@ msgstr "拾取牆"
 msgid "Pick Walls: a boundary line along each wall clicked"
 msgstr "拾取牆：沿每面單擊的牆繪製一條邊界線"
 
-#: crates/ui-egui/src/editor/dimensions.rs:1429
+#: crates/ui-egui/src/editor/dimensions.rs:1416
 msgid "Pick a circle or an arc, then click where the dimension goes."
 msgstr "拾取一個圓或圓弧，然後單擊尺寸標注的放置位置。"
 
@@ -9887,7 +9895,7 @@ msgstr ""
 msgid "Pick a line of the sketch, on the part to keep."
 msgstr "在要保留的部分上拾取一條草圖線。"
 
-#: crates/ui-egui/src/editor/dimensions.rs:1435
+#: crates/ui-egui/src/editor/dimensions.rs:1422
 msgid "Pick a line that crosses the one before."
 msgstr "拾取與前一條線相交的線。"
 
@@ -9916,7 +9924,7 @@ msgstr "請從共用參數檔案中選擇一個參數。"
 msgid "Pick a plane"
 msgstr "拾取一個平面"
 
-#: crates/ui-egui/src/editor/dimensions.rs:1456
+#: crates/ui-egui/src/editor/dimensions.rs:1443
 msgid "Pick a plane or a line too: points alone face no way to measure along."
 msgstr "還需拾取一個平面或一條線：僅有點無法確定測量方向。"
 
@@ -9940,7 +9948,7 @@ msgstr ""
 msgid "Pick a reference edge or centre line; the line under the cursor is highlighted."
 msgstr "拾取參照邊或中心線；游標下的線會高亮顯示。"
 
-#: crates/ui-egui/src/editor/dimensions.rs:1448
+#: crates/ui-egui/src/editor/dimensions.rs:1435
 msgid "Pick a reference parallel to the first."
 msgstr "拾取與第一個參照平行的參照。"
 
@@ -9965,7 +9973,7 @@ msgstr "拾取參照平面、參照線或線，再拾取一條草圖線。"
 msgid "Pick a reference plane, a reference line, a model line or a form's edge."
 msgstr ""
 
-#: crates/ui-egui/src/editor/views.rs:1554
+#: crates/ui-egui/src/editor/views.rs:1580
 msgid "Pick a reference plane, an extrusion's end or a line of a form."
 msgstr "拾取參照平面、拉伸的端面或形狀的線。"
 
@@ -10041,7 +10049,7 @@ msgstr ""
 msgid "Pick lines of the sketch first."
 msgstr ""
 
-#: crates/ui-egui/src/editor/dimensions.rs:1443
+#: crates/ui-egui/src/editor/dimensions.rs:1430
 msgid "Pick lines that cross, then click where the dimension goes."
 msgstr "拾取相交的線，然後單擊尺寸標注的放置位置。"
 
@@ -10177,8 +10185,8 @@ msgstr "拾取三個點"
 msgid "Pick three points: after OK, click three points on the model, each snapping to a corner near the pointer"
 msgstr "拾取三個點：單擊“確定”後，在模型上單擊三個點，每個點捕捉到指標附近的角點"
 
-#: crates/ui-egui/src/editor/dimensions.rs:1457
-#: crates/ui-egui/src/editor/views.rs:1533
+#: crates/ui-egui/src/editor/dimensions.rs:1444
+#: crates/ui-egui/src/editor/views.rs:1559
 msgid "Pick two references or more, then click where the dimension goes."
 msgstr "拾取兩個或更多參照，然後單擊尺寸標注的放置位置。"
 
@@ -11191,8 +11199,8 @@ msgstr "參照平面"
 #: crates/ui-egui/src/editor/view_graphics.rs:370
 #: crates/ui-egui/src/editor/view_graphics.rs:578
 #: crates/ui-egui/src/editor/view_graphics.rs:579
-#: crates/ui-egui/src/editor/views.rs:210
-#: crates/ui-egui/src/editor/views.rs:211
+#: crates/ui-egui/src/editor/views.rs:212
+#: crates/ui-egui/src/editor/views.rs:213
 msgid "Ref. Level"
 msgstr ""
 
@@ -11343,7 +11351,7 @@ msgstr "刪除鋼筋"
 msgid "Remove Checked"
 msgstr ""
 
-#: crates/ui-egui/src/editor/dimensions.rs:1083
+#: crates/ui-egui/src/editor/dimensions.rs:1070
 msgid "Remove Constraints"
 msgstr "刪除約束"
 
@@ -11489,7 +11497,7 @@ msgstr ""
 msgid "Replaying instance {} with its exact parameters and placement"
 msgstr ""
 
-#: crates/ui-egui/src/editor/dimensions.rs:1145
+#: crates/ui-egui/src/editor/dimensions.rs:1132
 #: crates/ui-egui/src/editor/types_dialog.rs:612
 msgid "Reporting Parameter"
 msgstr "報告參數"
@@ -13799,7 +13807,7 @@ msgid "That is no IP address: 0.0.0.0 listens on all of this machine's"
 msgstr "這不是 IP 位址：0.0.0.0 會監聽本機的所有位址"
 
 #: crates/ui-egui/src/editor/modify.rs:1001
-#: crates/ui-egui/src/editor/views.rs:1544
+#: crates/ui-egui/src/editor/views.rs:1570
 msgid "That is the reference: pick what moves onto it."
 msgstr ""
 
@@ -14003,8 +14011,8 @@ msgstr "該族已有名為 {} 的類型。"
 msgid "The family has changes that are not loaded. If you close it without loading, they are lost."
 msgstr "族中有尚未載入的更改。如果不載入就關閉，這些更改將會遺失。"
 
-#: crates/ui-egui/src/editor/handle_params.rs:277
-#: crates/ui-egui/src/editor/handle_params.rs:356
+#: crates/ui-egui/src/editor/handle_params.rs:274
+#: crates/ui-egui/src/editor/handle_params.rs:353
 msgid "The family has no type for a drag to set a parameter of: make one in Family Types."
 msgstr ""
 
@@ -14125,8 +14133,8 @@ msgstr ""
 msgid "The profile"
 msgstr "輪廓"
 
-#: crates/ui-egui/src/editor/handle_params.rs:168
-#: crates/ui-egui/src/editor/shape_handles.rs:66
+#: crates/ui-egui/src/editor/handle_params.rs:169
+#: crates/ui-egui/src/editor/shape_handles.rs:108
 msgid "The profile can't take this: its lines would cross, overlap or no longer close."
 msgstr ""
 
@@ -14270,7 +14278,7 @@ msgstr "頂部"
 msgid "The topic is about the {} elements selected."
 msgstr ""
 
-#: crates/ui-egui/src/editor/views.rs:1493
+#: crates/ui-egui/src/editor/views.rs:1519
 msgid "The two points are the same: pick the second elsewhere."
 msgstr ""
 
@@ -14286,7 +14294,7 @@ msgstr "視圖與尺寸標注同向：請旋轉視圖後再放置尺寸線。"
 msgid "The view sees it end-on: offset it in a view that sees its trace."
 msgstr ""
 
-#: crates/ui-egui/src/editor/views.rs:1500
+#: crates/ui-egui/src/editor/views.rs:1526
 msgid "The view sees its work plane edge on: set a work plane it sees flat (Work Plane > Set)."
 msgstr ""
 
@@ -14432,19 +14440,19 @@ msgstr "此副本沒有可用於繪製3D視圖的顯卡"
 msgid "This dimension measures to a line that is gone: draw the line again (Ctrl+Z) or delete the dimension."
 msgstr ""
 
-#: crates/ui-egui/src/editor/shape_handles.rs:75
+#: crates/ui-egui/src/editor/shape_handles.rs:117
 msgid "This edge is locked: unlock it to drag it."
 msgstr ""
 
-#: crates/ui-egui/src/editor/shape_handles.rs:65
+#: crates/ui-egui/src/editor/shape_handles.rs:107
 msgid "This edge is tied to a parameter or worked out by a formula: change it in Family Types."
 msgstr ""
 
-#: crates/ui-egui/src/editor/shape_handles.rs:76
+#: crates/ui-egui/src/editor/shape_handles.rs:118
 msgid "This end is locked: unlock it to drag it."
 msgstr ""
 
-#: crates/ui-egui/src/editor/handles3d.rs:295
+#: crates/ui-egui/src/editor/handles3d.rs:311
 #: crates/ui-egui/src/editor/sketch.rs:1512
 #: crates/ui-egui/src/editor/sketch.rs:1530
 msgid "This end is tied to a parameter or worked out by a formula: change it in Family Types."
@@ -14857,7 +14865,7 @@ msgstr "有兩個{}都名為 {}。"
 
 #: crates/core/src/model.rs:1778
 #: crates/ui-egui/src/adaptive_editor.rs:726
-#: crates/ui-egui/src/editor/dimensions.rs:1134
+#: crates/ui-egui/src/editor/dimensions.rs:1121
 #: crates/ui-egui/src/editor/nested.rs:401
 #: crates/ui-egui/src/editor/nested.rs:607
 #: crates/ui-egui/src/editor/types_dialog.rs:609
@@ -16085,7 +16093,7 @@ msgstr ""
 msgid "`{}` isn't an angle"
 msgstr "`{}` 不是角度"
 
-#: crates/ui-egui/src/editor/views.rs:413
+#: crates/ui-egui/src/editor/views.rs:415
 msgid "a datum stays: it can't be deleted"
 msgstr "基準保留：無法刪除"
 
@@ -16109,7 +16117,7 @@ msgstr "長度"
 msgid "a number"
 msgstr "數字"
 
-#: crates/ui-egui/src/editor/dimensions.rs:1178
+#: crates/ui-egui/src/editor/dimensions.rs:1165
 msgid "a parameter needs a name"
 msgstr "參數需要名稱"
 
@@ -16345,7 +16353,7 @@ msgstr "小於或等於"
 msgid "its active one"
 msgstr ""
 
-#: crates/ui-egui/src/editor/handle_params.rs:296
+#: crates/ui-egui/src/editor/handle_params.rs:293
 msgid "its formulas"
 msgstr ""
 
@@ -16625,7 +16633,7 @@ msgstr "下一個可用名稱"
 msgid "the opening has to stay on its wall"
 msgstr "洞口必須保留在其所在的牆上"
 
-#: crates/ui-egui/src/editor/views.rs:417
+#: crates/ui-egui/src/editor/views.rs:419
 msgid "the plane can't go while {} is drawn on it"
 msgstr "平面上繪有 {}，無法刪除該平面"
 
@@ -16633,7 +16641,7 @@ msgstr "平面上繪有 {}，無法刪除該平面"
 msgid "the symbol is gone"
 msgstr ""
 
-#: crates/ui-egui/src/editor/dimensions.rs:1181
+#: crates/ui-egui/src/editor/dimensions.rs:1168
 msgid "there's a parameter `{}` already"
 msgstr "已存在參數 `{}`"
 
@@ -16769,10 +16777,10 @@ msgstr "{} / {}"
 msgid "{} : {} plane"
 msgstr ""
 
-#: crates/ui-egui/src/editor/handle_params.rs:548
-#: crates/ui-egui/src/editor/handle_params.rs:563
-#: crates/ui-egui/src/editor/handles3d.rs:242
-#: crates/ui-egui/src/editor/handles3d.rs:243
+#: crates/ui-egui/src/editor/handle_params.rs:545
+#: crates/ui-egui/src/editor/handle_params.rs:560
+#: crates/ui-egui/src/editor/handles3d.rs:255
+#: crates/ui-egui/src/editor/handles3d.rs:256
 msgid "{} = {}"
 msgstr ""
 
@@ -16945,7 +16953,7 @@ msgstr ""
 msgid "{} is a file's triangles: it has no sketch to move."
 msgstr ""
 
-#: crates/ui-egui/src/editor/handle_params.rs:186
+#: crates/ui-egui/src/editor/handle_params.rs:187
 msgid "{} is a reporting parameter: it reads a dimension and never drives one."
 msgstr ""
 
@@ -16969,11 +16977,11 @@ msgstr "{} 不是{}：`{}`"
 msgid "{} is pinned: unpin it (UP) to change where it is."
 msgstr ""
 
-#: crates/ui-egui/src/editor/handle_params.rs:192
+#: crates/ui-egui/src/editor/handle_params.rs:193
 msgid "{} is set by the family's types, and it has none: make one in Family Types."
 msgstr ""
 
-#: crates/ui-egui/src/editor/handle_params.rs:189
+#: crates/ui-egui/src/editor/handle_params.rs:190
 msgid "{} is set by the instance previewed: change it there."
 msgstr ""
 
@@ -16981,7 +16989,7 @@ msgstr ""
 msgid "{} is still being asked to lend their key: ask again"
 msgstr "{} 仍在被詢問是否借出金鑰：請再問一次"
 
-#: crates/ui-egui/src/editor/handle_params.rs:183
+#: crates/ui-egui/src/editor/handle_params.rs:184
 msgid "{} is worked out by a formula: change the formula in Family Types."
 msgstr ""
 
@@ -16989,7 +16997,7 @@ msgstr ""
 msgid "{} isn't a format"
 msgstr ""
 
-#: crates/ui-egui/src/editor/handle_params.rs:180
+#: crates/ui-egui/src/editor/handle_params.rs:181
 msgid "{} isn't a parameter of the family: no drag sets it."
 msgstr ""
 
