@@ -33,6 +33,9 @@ pub(crate) enum Then {
     Sketch,
     /// Create > Extrusion, Blend, Revolve, Sweep or Swept Blend (`kind`), solid or `void`: sketch mode on it (F5, F6).
     Create { kind: bimcraft_core::family::forms::FormKind, void: bool },
+    /// A sweep's Sketch Path or Edit Profile (FE-27): that part opened in its mode, on its own plane (the view's work plane
+    /// left as it is).
+    Part(super::sketch::Part),
 }
 
 /// How the dialog's Specify a new Work Plane takes it.
@@ -116,9 +119,13 @@ impl FamilyEditor {
 
     /// The view shown given work plane `plane`, and `then` done on it.
     fn done_on(&mut self, plane: PlaneRef, then: Then) {
+        if let Then::Part(p) = then {
+            self.open_part(p);
+            return;
+        }
         self.views.set_work_plane(plane);
         match then {
-            Then::View => {}
+            Then::View | Then::Part(_) => {}
             Then::Sketch => {
                 if let Some(s) = self.sketch.as_mut() {
                     s.host = plane;
@@ -267,7 +274,11 @@ impl FamilyEditor {
     /// done, Cancel does nothing.
     pub(crate) fn go_to_view_dialog(&mut self, ctx: &Context) {
         let Some(mut g) = self.views.go_to.clone() else { return };
-        let name = self.plane_label(g.plane);
+        let name = match g.then {
+            Then::Part(super::sketch::Part::Main) => t("The path's plane").to_string(),
+            Then::Part(_) => t("The profile's plane").to_string(),
+            _ => self.plane_label(g.plane),
+        };
         let (mut open, mut cancel) = (false, false);
         let r = Modal::new(UiId::new("family-go-to-view"), t("Go To View")).width(420.0).show(ctx, |ui| {
             crate::popup::body(ui, |ui| {

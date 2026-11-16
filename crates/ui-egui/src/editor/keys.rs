@@ -435,7 +435,7 @@ impl BimApp {
             }
             "Finish Edit Mode" if sketching => said = Some(ed.finish_form_sketch(units)),
             "Cancel Edit Mode" if sketching => {
-                ed.cancel_form_sketch();
+                ed.cancel_edit_mode();
                 said = Some(Ok(()));
             }
             // The family's own {3D}, and the view control bar's zoom commands, in the view shown (`zoom.rs`).
