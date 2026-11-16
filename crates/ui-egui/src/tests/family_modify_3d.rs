@@ -134,8 +134,9 @@ fn what_picks_from_the_view_stays_greyed_in_3d_and_says_why() {
     // Nothing selected: Move asks for a selection, as in a plan.
     let why = editor(&h).modify_blocked(&M::Move { copy: false, from: None }).expect("nothing selected");
     assert!(why.contains("Select"), "{why}");
-    pick(&mut h, &[Picked::Form(0)]);
-    for t in [M::Mirror { draw: false, start: None }, M::Offset] {
+    // Scale, which leans on the view's depth, stays greyed (FE-24b gave Mirror - Pick Axis, Offset and Align references).
+    pick(&mut h, &[Picked::Plane(super::family_drag_move::g(super::family_drag_move::EDGE))]);
+    for t in [M::Scale { origin: None, first: None }] {
         let why = editor(&h).modify_blocked(&t).expect("greyed in {3D}");
         assert!(why.contains("{3D}") && why.contains("plan or an elevation"), "{t:?}: {why}");
     }
@@ -170,16 +171,17 @@ fn a_tool_in_hand_is_this_views_and_esc_lets_go_of_it() {
     assert_eq!(tool(&h), None);
     // A tool {3D} can't work with, taken in a plan: put down as {3D} opens, saying why; the selection is kept.
     view(&mut h, Some(Which::Plan));
-    pick(&mut h, &[Picked::Form(0)]);
-    shortcut(&mut h, "MM");
-    assert_eq!(tool(&h), Some(M::Mirror { draw: false, start: None }));
+    let edge = Picked::Plane(super::family_drag_move::g(super::family_drag_move::EDGE));
+    pick(&mut h, &[edge]);
+    shortcut(&mut h, "RE");
+    assert_eq!(tool(&h), Some(M::Scale { origin: None, first: None }));
     view(&mut h, None);
     for _ in 0..4 {
         h.run();
     }
     assert_eq!(tool(&h), None);
     assert!(status(&h).contains("{3D}"), "{}", status(&h));
-    assert_eq!(editor(&h).selection.items(), [Picked::Form(0)]);
+    assert_eq!(editor(&h).selection.items(), [edge]);
 }
 
 #[test]

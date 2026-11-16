@@ -120,10 +120,10 @@ impl Tool {
         matches!(self, Tool::Move { .. } | Tool::Rotate { .. } | Tool::Mirror { .. } | Tool::Scale { .. })
     }
 
-    /// Whether it works in {3D} (FE-24): one whose clicks are points, which land on the view's work plane. One that picks
-    /// something of the view (an axis, what to offset) doesn't, until {3D} picks references.
+    /// Whether it works in {3D} (FE-24): one whose clicks are points, which land on the view's work plane, and one that picks
+    /// a reference in the picture (FE-24b). Scale, which leans on the view's depth, doesn't.
     fn in_3d(&self) -> bool {
-        matches!(self, Tool::Move { .. } | Tool::Rotate { .. } | Tool::Mirror { draw: true, .. })
+        matches!(self, Tool::Move { .. } | Tool::Rotate { .. } | Tool::Mirror { .. })
     }
 
     /// Whether it is a sketch's alone.
@@ -555,7 +555,7 @@ impl FamilyEditor {
         if !self.editing_2d() {
             // {3D}: a tool whose clicks are points works on the view's work plane (FE-24).
             if !tool.in_3d() {
-                return Some(tf("{} picks from the view, which {3D} can't do yet: use it in a plan or an elevation.", &[t(tool.label())]));
+                return Some(tf("{} works in a plan or an elevation, not in {3D}.", &[t(tool.label())]));
             }
             if let Err(e) = self.work_frame_3d() {
                 return Some(e);
@@ -734,16 +734,31 @@ impl FamilyEditor {
         if self.views.modify.as_ref().is_some_and(|m| m.typed.is_some()) {
             said = self.modify_typed(space, &shown);
         }
+        // Mirror - Pick Axis (FE-24b): the reference under the pointer, as an axis on the plane, or why it is none.
+        let picking_axis = matches!(self.views.modify.as_ref().map(|m| m.tool), Some(Tool::Mirror { draw: false, .. }));
+        let pixel = |p: Pos2| (f64::from((p.x - pane.min.x) / sx), f64::from((p.y - pane.min.y) / sy));
+        let reach_px = f64::from(SNAP_REACH / sx.max(1e-6));
+        let axis_at = |ed: &Self, p: Pos2| -> Option<Result<(P2, P2), String>> {
+            if !picking_axis {
+                return None;
+            }
+            let (r, e) = ed.reference_3d(cam, pixel(p), reach_px)?;
+            Some(ed.axis_3d(&frame, r, e))
+        };
+        // The view a drag would be read through isn't read by a move of two clicks.
+        let free = bimcraft_core::render::View { scale: 1.0, cx: 0.0, cy: 0.0, width: 1, height: 1, angle: 0.0 };
         if let Some(p) = click {
-            match snapped(p) {
-                Ok(q) => {
+            match (axis_at(self, p), snapped(p)) {
+                (Some(Err(why)), _) => said = Some(why),
+                (Some(Ok(axis)), q) => {
+                    said = self.modify_click(q.unwrap_or(axis.0), (Which::Plan, free, 0), space, &shown, Some(axis), None, shift);
+                }
+                (None, Ok(q)) => {
                     // A point picked: a snap override waiting for one is used up by it (FE-21).
-                    self.took_point = true;
-                    // The view a drag would be read through isn't read by a move of two clicks.
-                    let free = bimcraft_core::render::View { scale: 1.0, cx: 0.0, cy: 0.0, width: 1, height: 1, angle: 0.0 };
+                    self.took_point = !picking_axis;
                     said = self.modify_click(q, (Which::Plan, free, 0), space, &shown, None, None, shift);
                 }
-                Err(why) => said = Some(t(why).to_string()),
+                (None, Err(why)) => said = Some(t(why).to_string()),
             }
         }
         // What the tool selected itself (the copies) is what it goes on with.
@@ -755,6 +770,7 @@ impl FamilyEditor {
         let Some(m) = self.views.modify.as_ref() else { return said };
         let (tool, o, snaps) = (m.tool, self.views.modify_options.clone(), self.snaps);
         let hover = response.hover_pos().filter(|p| pane.contains(*p)).and_then(|p| snapped(p).ok());
+        let axis = response.hover_pos().filter(|p| pane.contains(*p)).and_then(|p| axis_at(self, p)).and_then(Result::ok);
         // Drawn only while every point of it is on screen: one behind the eye would draw a line across the view.
         let seen = |q: P2| project(space.point(q)).filter(|p| pane.expand(2000.0).contains(*p));
         let points: Vec<P2> = match tool {
@@ -768,9 +784,9 @@ impl FamilyEditor {
             let off = Pos2::new(-1.0e6, -1.0e6);
             let screen = |q: P2| seen(q).unwrap_or(off);
             let back = |p: Pos2| at(p).unwrap_or(P2(f64::NAN, f64::NAN));
-            paint_tool(painter, &tool, &o, hover, &[], &screen, &back, None, shift, &snaps);
+            paint_tool(painter, &tool, &o, hover, &[], &screen, &back, axis, shift, &snaps);
         }
-        if let Some(map) = hover.and_then(|h| preview_map(&tool, &o, h, shift, &snaps, None)) {
+        if let Some(map) = hover.and_then(|h| preview_map(&tool, &o, h, shift, &snaps, axis)) {
             let accent = crate::style::canvas_pal().accent.gamma_multiply(0.8);
             // The forms' boxes are the picture's to draw, behind what stands in front of them.
             let moved = |(q, h): &(P2, f64)| space.lifted(map(*q), *h);
@@ -784,6 +800,66 @@ impl FamilyEditor {
         said
     }
 
+    /// What {3D} leaves out of `f` for now or for good, as a Modify tool sees it (FE-24b): the planes, reference lines and
+    /// model lines by GUID, and for each form whether it is out.
+    fn hidden_3d(&self, f: &bimcraft_core::family::Family) -> (Vec<Guid>, Vec<bool>) {
+        let hidden = (f.planes.iter().map(|p| p.guid))
+            .chain(f.lines.iter().map(|l| l.guid))
+            .chain(f.model_lines.iter().map(|l| l.guid))
+            .filter(|g| self.temp_hidden_plane(*g))
+            .collect();
+        (hidden, (0..f.forms.len()).map(|i| self.temp_hidden_form(i)).collect())
+    }
+
+    /// The reference {3D} shows at screen point `p` within the snap's reach (FE-24b), and its two ends in the family's axes;
+    /// `px` takes a screen point to the picture's pixel.
+    fn reference_3d(
+        &self,
+        cam: &bimcraft_core::view3d::Camera,
+        px: (f64, f64),
+        reach: f64,
+    ) -> Option<(bimcraft_core::family::views::Reference3d, ([f64; 3], [f64; 3]))> {
+        let f = self.family().ok()?;
+        let (hidden, forms_hidden) = self.hidden_3d(&f);
+        let shown = |g: Guid| !hidden.contains(&g);
+        let form_shown = |i: usize| !forms_hidden.get(i).copied().unwrap_or(false);
+        bimcraft_core::family::views::reference_at_3d(&f, &self.values(), cam, px, reach, &shown, &form_shown)
+    }
+
+    /// Mirror - Pick Axis' axis in {3D} (FE-24b): reference `r` (its ends `e`) as a line on the work plane `frame`, in its
+    /// axes. A plane's is its trace across the work plane, kept to about the line it was drawn as; a line's or an edge's, it
+    /// seen square on to the plane. Why there is none: a plane parallel to the work plane, a line along what it faces.
+    fn axis_3d(
+        &self,
+        frame: &bimcraft_core::family::Frame,
+        r: bimcraft_core::family::views::Reference3d,
+        e: ([f64; 3], [f64; 3]),
+    ) -> Result<(P2, P2), String> {
+        use bimcraft_core::family::sketch::{on_plane, trace_across};
+        use bimcraft_core::family::views::Reference3d;
+        let Reference3d::Plane(g) = r else {
+            return on_plane(frame, e).map_err(|_| {
+                t("That runs square to the work plane, so it is no line on it: pick another axis, or set another work plane.").to_string()
+            });
+        };
+        let f = self.family().map_err(|e| e.to_string())?;
+        let values = self.values();
+        let flexed = f.flexed(&values).map(std::borrow::Cow::into_owned).unwrap_or_else(|_| f.clone());
+        let parallel = || {
+            t("That plane is parallel to the work plane and crosses it nowhere: pick another axis, or set another work plane.").to_string()
+        };
+        let plane = flexed.planes.iter().find(|p| p.guid == g).ok_or_else(parallel)?;
+        let (a, b) = trace_across(frame, &plane.frame()).ok_or_else(parallel)?;
+        // Kept to the feet on it of the line the plane was drawn as, or 1 m either way of one where that line is square to it.
+        let d = (b - a).unit();
+        let foot = |p: [f64; 3]| {
+            let (q, _) = frame.local(p);
+            a + d * (q - a).dot(d)
+        };
+        let (s, e) = (foot(plane.start), foot(plane.end));
+        Ok(if s.dist(e) > 1.0 { (s, e) } else { (s - d * 1000.0, s + d * 1000.0) })
+    }
+
     /// What a Modify tool's point snaps to on {3D}'s work plane (FE-24b): `Family::work_plane_traces`, sized as the view
     /// draws the family, with neither what Temporary Hide/Isolate nor what the view hides for good; found again only when the
     /// family, its values, the plane or what is hidden changes.
@@ -792,12 +868,7 @@ impl FamilyEditor {
         let Ok(f) = self.family() else { return Default::default() };
         let values = self.values();
         let host = self.views.work_plane();
-        let hidden: Vec<Guid> = (f.planes.iter().map(|p| p.guid))
-            .chain(f.lines.iter().map(|l| l.guid))
-            .chain(f.model_lines.iter().map(|l| l.guid))
-            .filter(|g| self.temp_hidden_plane(*g))
-            .collect();
-        let forms_hidden: Vec<bool> = (0..f.forms.len()).map(|i| self.temp_hidden_form(i)).collect();
+        let (hidden, forms_hidden) = self.hidden_3d(&f);
         let key = {
             let mut h = std::collections::hash_map::DefaultHasher::new();
             serde_json::to_string(&f).unwrap_or_default().hash(&mut h);

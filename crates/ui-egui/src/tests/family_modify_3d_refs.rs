@@ -91,3 +91,74 @@ fn in_3d_what_the_view_hides_is_no_snap_target_and_so_takes_the_point_as_clicked
     click_off(&mut h, [1000.0, 400.0, 0.0]);
     assert!((from(&h).0 - 1000.0).abs() > 1e-3, "SO: {:?}", from(&h));
 }
+
+/// Form `i`'s sketch's extent: least and most x, least and most y.
+fn extent(h: &Harness<BimApp>, i: usize) -> [f64; 4] {
+    let pts = super::family_drag_move::points(h, i);
+    let f = |k: usize, most: bool| {
+        pts.iter().map(|p| p[k]).fold(if most { f64::NEG_INFINITY } else { f64::INFINITY }, if most { f64::max } else { f64::min })
+    };
+    [f(0, false), f(0, true), f(1, false), f(1, true)]
+}
+
+fn about(a: [f64; 4], b: [f64; 4]) -> bool {
+    a.iter().zip(&b).all(|(x, y)| (x - y).abs() < 1e-3)
+}
+
+/// Mirror - Pick Axis in hand in {3D} on box A, not copying.
+fn mirroring() -> Harness<'static, BimApp> {
+    let mut h = zoomed();
+    pick(&mut h, &[Picked::Form(0)]);
+    shortcut(&mut h, "MM");
+    super::family_drag_move::ed(&mut h).views.modify_options.mirror_copy = false;
+    assert_eq!(tool(&h), Some(M::Mirror { draw: false, start: None }), "{}", status(&h));
+    h
+}
+
+#[test]
+fn mirror_pick_axis_in_3d_takes_a_plane_a_reference_line_or_a_forms_edge() {
+    // Edge (x 1000), by the line it was drawn as: box A from x 100 to 500 goes to 1500 to 1900.
+    let mut h = mirroring();
+    click_off(&mut h, [1000.0, 600.0, 0.0]);
+    assert!(about(extent(&h, 0), [1500.0, 1900.0, 100.0, 500.0]), "{:?}: {}", extent(&h, 0), status(&h));
+    // The reference line along y 1200: from y 100 to 500 to 1900 to 2300.
+    let mut h = mirroring();
+    click_off(&mut h, [0.0, 1200.0, 0.0]);
+    assert!(about(extent(&h, 0), [100.0, 500.0, 1900.0, 2300.0]), "{:?}: {}", extent(&h, 0), status(&h));
+    // Box B's east edge on its top (x -600), seen square on to Ref. Level: from x 100 to 500 to -1700 to -1300.
+    let mut h = mirroring();
+    click_off(&mut h, [-600.0, 300.0, 300.0]);
+    assert!(about(extent(&h, 0), [-1700.0, -1300.0, 100.0, 500.0]), "{:?}: {}", extent(&h, 0), status(&h));
+}
+
+#[test]
+fn mirror_pick_axis_in_3d_refuses_a_line_along_the_planes_normal_and_a_plane_parallel_to_it() {
+    use super::family_drag_move::ed;
+    // An upright model line: square to Ref. Level, it is a point on it.
+    let mut h = mirroring();
+    ed(&mut h).model_lines.push(bimcraft_core::family::ModelLine {
+        guid: bimcraft_core::ids::Guid::new(),
+        start: [1400.0, -600.0, 0.0],
+        end: [1400.0, -600.0, 900.0],
+        ..Default::default()
+    });
+    h.run();
+    let before = extent(&h, 0);
+    click_off(&mut h, [1400.0, -600.0, 450.0]);
+    assert!(about(extent(&h, 0), before), "nothing mirrored");
+    assert!(status(&h).contains("square to the work plane"), "{}", status(&h));
+    // A plane level with Ref. Level, 600 over it: it crosses the plane nowhere.
+    let mut h = mirroring();
+    let shelf: bimcraft_core::family::RefPlane = serde_json::from_value(serde_json::json!({
+        "guid": bimcraft_core::ids::Guid::new(), "name": "Shelf", "start": [-500, 800, 600], "end": [500, 800, 600], "up": [0, 1, 0]
+    }))
+    .unwrap();
+    ed(&mut h).planes.push(shelf);
+    h.run();
+    click_off(&mut h, [0.0, 800.0, 600.0]);
+    assert!(about(extent(&h, 0), before), "nothing mirrored");
+    assert!(status(&h).contains("parallel to the work plane"), "{}", status(&h));
+    // A line lying on the plane is an axis: the reference line, as above.
+    click_off(&mut h, [0.0, 1200.0, 0.0]);
+    assert!(about(extent(&h, 0), [100.0, 500.0, 1900.0, 2300.0]), "{:?}: {}", extent(&h, 0), status(&h));
+}
