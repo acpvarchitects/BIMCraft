@@ -19,19 +19,23 @@ use egui::{Align2, FontId, Frame, Margin, UiBuilder};
 
 /// Row-major tiles in the clear canvas. Every open view has a stable pane as tabs change.
 pub(crate) fn family_tile_rects(area: Rect, count: usize) -> Vec<Rect> {
-    if count == 0 { return Vec::new() }
+    if count == 0 {
+        return Vec::new();
+    }
     let columns = (count as f32).sqrt().ceil() as usize;
     let rows = count.div_ceil(columns);
-    (0..count).map(|i| {
-        let row = i / columns;
-        let in_row = (count - row * columns).min(columns);
-        let col = i % columns;
-        let x0 = area.left() + area.width() * col as f32 / in_row as f32;
-        let x1 = area.left() + area.width() * (col + 1) as f32 / in_row as f32;
-        let y0 = area.top() + area.height() * row as f32 / rows as f32;
-        let y1 = area.top() + area.height() * (row + 1) as f32 / rows as f32;
-        Rect::from_min_max(pos2(x0, y0), pos2(x1, y1))
-    }).collect()
+    (0..count)
+        .map(|i| {
+            let row = i / columns;
+            let in_row = (count - row * columns).min(columns);
+            let col = i % columns;
+            let x0 = area.left() + area.width() * col as f32 / in_row as f32;
+            let x1 = area.left() + area.width() * (col + 1) as f32 / in_row as f32;
+            let y0 = area.top() + area.height() * row as f32 / rows as f32;
+            let y1 = area.top() + area.height() * (row + 1) as f32 / rows as f32;
+            Rect::from_min_max(pos2(x0, y0), pos2(x1, y1))
+        })
+        .collect()
 }
 
 /// What the family document keeps of its own: its history.
@@ -552,7 +556,7 @@ impl BimApp {
     /// A tiled {3D} that is not active is a cached processor picture, with no orbit or pick input.
     fn family_tile_3d(&mut self, ui: &Ui, ed: &mut FamilyEditor, pane: Rect) {
         use bimcraft_core::graphics::Look;
-        use bimcraft_core::view3d::{Scene, AZIMUTH, ELEVATION};
+        use bimcraft_core::view3d::{AZIMUTH, ELEVATION, Scene};
         let painter = ui.painter_at(pane);
         painter.rect_filled(pane, 0.0, crate::canvas::color(bimcraft_core::render::PAPER));
         ed.stage_3d(&self.session.model);
@@ -570,7 +574,8 @@ impl BimApp {
             let look = Look::of_3d(&staged.model);
             let cam = scene.fit_in(azimuth, elevation, size[0], size[1], &look);
             let image = scene.render_in(&cam, &[], &look);
-            let pixels = image.rgba.as_chunks::<4>().0.iter().map(|p| crate::canvas::color(bimcraft_core::render::Rgb(p[0], p[1], p[2]))).collect();
+            let pixels =
+                image.rgba.as_chunks::<4>().0.iter().map(|p| crate::canvas::color(bimcraft_core::render::Rgb(p[0], p[1], p[2]))).collect();
             let picture = egui::ColorImage { size: [image.width as usize, image.height as usize], pixels, source_size: Default::default() };
             let texture = ui.ctx().load_texture("family-tile-3d", picture, egui::TextureOptions::NEAREST);
             ed.views.tile_3d = Some(super::views::Tile3d { key, texture });
@@ -837,10 +842,18 @@ impl BimApp {
                     }
                 });
                 ribbon::panel(ui, msg!("Windows"), |ui| {
-                    if ui.button(t(msg!("Tile Windows"))).on_hover_text(t(msg!("Tile Windows (WT): show this family's open views together"))).clicked() {
+                    if ui
+                        .button(t(msg!("Tile Windows")))
+                        .on_hover_text(t(msg!("Tile Windows (WT): show this family's open views together")))
+                        .clicked()
+                    {
                         ed.views.tiled = true;
                     }
-                    if ui.button(t(msg!("Tab Windows"))).on_hover_text(t(msg!("Tab Windows (TW): show one family view at a time"))).clicked() {
+                    if ui
+                        .button(t(msg!("Tab Windows")))
+                        .on_hover_text(t(msg!("Tab Windows (TW): show one family view at a time")))
+                        .clicked()
+                    {
                         ed.views.tiled = false;
                     }
                     let tip = msg!("Close Inactive Views: keep this view and one view of every other open family");
@@ -1651,7 +1664,12 @@ impl BimApp {
                 }
             }
             if tiled {
-                ui.painter().rect_stroke(tile.shrink(1.0), 0.0, Stroke::new(if active { 3.0 } else { 1.0 }, if active { pal().accent } else { pal().muted }), StrokeKind::Inside);
+                ui.painter().rect_stroke(
+                    tile.shrink(1.0),
+                    0.0,
+                    Stroke::new(if active { 3.0 } else { 1.0 }, if active { pal().accent } else { pal().muted }),
+                    StrokeKind::Inside,
+                );
             }
         }
         // The point a snap override waited for, picked: it is done.
