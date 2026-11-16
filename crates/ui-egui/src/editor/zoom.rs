@@ -96,6 +96,7 @@ impl FamilyEditor {
     /// Zoom In Region (ZR, ZZ): the next drag in the view shown is a rectangle it fits. Escape gives it up.
     pub(crate) fn zoom_region_tool(&mut self) {
         self.zoom.region = Some((self.views.shown, None));
+        self.last_tool = Some("Zoom In Region");
     }
 
     /// Whether Zoom In Region is armed in the view shown.

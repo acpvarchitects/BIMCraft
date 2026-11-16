@@ -44,6 +44,8 @@ pub(crate) const FAMILY_SHORTCUTS: &[(&str, &str)] = &[
     ("FG", "Finish Edit Mode"),
     ("CG", "Cancel Edit Mode"),
     ("KS", "Keyboard Shortcuts"),
+    ("CH", "Close Inactive Views"),
+    ("RC", "Repeat Last Command"),
     ("3D", "3D View"),
     ("ZE", "Zoom to Fit"),
     ("ZF", "Zoom to Fit"),
@@ -243,6 +245,18 @@ impl BimApp {
         }
         // What the window does for the document: its palettes, dialogs and the view's Temporary Hide/Isolate.
         let asked = match action {
+            "Close Inactive Views" => {
+                self.close_inactive_family_views();
+                return true;
+            }
+            "Repeat Last Command" => {
+                if !self.keys_taken(&Context::default())
+                    && let Some(ed) = self.active_family_mut().filter(|ed| ed.sketch.is_none() && !ed.modal())
+                {
+                    ed.repeat_last_tool();
+                }
+                return true;
+            }
             "Properties" => {
                 self.toggle_properties();
                 return true;

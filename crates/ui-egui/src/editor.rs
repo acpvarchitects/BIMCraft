@@ -596,6 +596,8 @@ pub(crate) struct FamilyEditor {
     pub(crate) took_point: bool,
     /// The tool in hand when a snap override began waiting ([`FamilyEditor::tool_in_hand`]): another picked up ends it.
     pub(crate) override_tool: Option<u64>,
+    /// FE-22: last repeatable tool picked in this document, session state outside its draft and undo history.
+    pub(crate) last_tool: Option<&'static str>,
     /// The families loaded into it and their instances placed in it (T6a, `nested.rs`), as the family holds them.
     pub(crate) nested: Vec<bimcraft_core::family::NestedFamily>,
     /// Manage > Purge Unused, open (FE-19).
@@ -731,6 +733,7 @@ impl FamilyEditor {
             snaps: Default::default(),
             took_point: false,
             override_tool: None,
+            last_tool: None,
             nested: f.nested.clone(),
             purging: None,
             nested_instances: f.nested_instances.clone(),

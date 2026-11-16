@@ -121,6 +121,19 @@ impl BimApp {
         self.views.iter().copied().filter(|s| matches!(s, Sheet::Family(d, _) if *d == id)).collect()
     }
 
+    /// Close spare view tabs, retaining the active tab and one tab of every other family document.
+    /// No document or draft is closed, so this never starts the unsaved-changes flow.
+    pub(crate) fn close_inactive_family_views(&mut self) {
+        let Sheet::Family(active_id, _) = self.sheet else { return };
+        let active = self.sheet;
+        let mut kept = std::collections::BTreeSet::new();
+        self.views.retain(|sheet| match *sheet {
+            Sheet::Family(id, _) if id == active_id => *sheet == active,
+            Sheet::Family(id, _) => kept.insert(id),
+            _ => true,
+        });
+    }
+
     /// `ed` open as a document of its own, opened from file `path` (none: from the project, or new), its view's tab brought
     /// forward after the project's tabs and the other documents'.
     pub(crate) fn open_family_document(&mut self, ed: FamilyEditor, path: Option<PathBuf>) -> DocId {

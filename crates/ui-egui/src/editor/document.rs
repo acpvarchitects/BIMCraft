@@ -156,6 +156,43 @@ fn followed<T: PartialEq>(before: &[T], after: &[T], i: usize, guid: impl Fn(&T)
 }
 
 impl FamilyEditor {
+    /// Enter repeats only on an idle family canvas; an in-progress pick or draw keeps Enter for itself.
+    pub(crate) fn repeat_idle(&self) -> bool {
+        self.sketch.is_none()
+            && self.placing.is_none()
+            && self.views.drawing.is_none()
+            && self.views.measuring.is_none()
+            && self.views.picking.is_none()
+            && self.views.dimensioning.is_none()
+            && self.views.aligning.is_none()
+            && self.views.pivoting.is_none()
+            && self.views.modify.is_none()
+            && self.views.pasting.is_none()
+            && !self.zoom_region_armed()
+            && matches!(self.modeller.tool, Draw::Modify)
+    }
+
+    /// Re-arm the document's last tool from its initial state. Commands that directly edit the draft are never recorded.
+    pub(crate) fn repeat_last_tool(&mut self) {
+        let Some(action) = self.last_tool else { return };
+        if let Some(tool) = super::modify::Tool::of(action) {
+            let _ = self.modify_tool_on(tool);
+            return;
+        }
+        match action {
+            "Reference Plane" => self.reference_plane_tool(),
+            "Reference Line" => self.reference_line_tool(),
+            "Model Line" => self.model_line_tool(),
+            "Aligned Dimension" => self.dimension_tool(),
+            "Angular Dimension" => self.radial_tool(bimcraft_core::family::DimKind::Angular),
+            "Align" => self.align_tool(),
+            "Measure" => self.measure_tool(),
+            "Component" => self.component_tool(),
+            "Zoom In Region" => self.zoom_region_tool(),
+            _ => {}
+        }
+    }
+
     /// Whether something of the family's own is selected that Delete takes away: a form, a plane of its own (a datum stays), a
     /// dimension, a nested instance, a reference line, a symbol or a connector, one or several (FE-1).
     pub(crate) fn deletable(&self) -> bool {
@@ -741,7 +778,10 @@ impl BimApp {
                     }
                 });
                 ribbon::panel(ui, msg!("Windows"), |ui| {
-                    later(ui, Icon::CloseInactive, msg!("Close Inactive Views"));
+                    let tip = msg!("Close Inactive Views: keep this view and one view of every other open family");
+                    if big_button(ui, Icon::CloseInactive, msg!("Close Inactive Views"), false, tip).clicked() {
+                        self.close_inactive_family_views();
+                    }
                 });
             }
             DocTab::Manage => {
@@ -1950,6 +1990,15 @@ impl BimApp {
         // Keyboard Shortcuts, opened over the document (KS), has the keys: Escape and Delete are not the document's then.
         if self.show_shortcuts {
             return;
+        }
+        if !ctx.egui_wants_keyboard_input()
+            && !egui::Popup::is_any_open(ctx)
+            && self.active_family().is_some_and(FamilyEditor::repeat_idle)
+            && ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Enter))
+        {
+            if let Some(ed) = self.active_family_mut() {
+                ed.repeat_last_tool();
+            }
         }
         // FE-14: the window's Copy, Cut and Paste (Ctrl+C, Ctrl+X and Ctrl+V), in a family that isn't adaptive, at once and
         // whatever Shortcuts need Ctrl says: they are the clipboard's, never letters of a shortcut (`crate::ctrl_letters`).

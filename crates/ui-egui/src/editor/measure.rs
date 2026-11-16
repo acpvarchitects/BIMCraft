@@ -35,6 +35,7 @@ impl FamilyEditor {
         if self.editing_2d() && self.sketch.is_none() {
             self.drop_tools();
             self.views.measuring = Some(Measuring::default());
+            self.last_tool = Some("Measure");
         }
     }
 

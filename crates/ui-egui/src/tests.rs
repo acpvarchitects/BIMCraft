@@ -7400,6 +7400,7 @@ mod family_sketch_dimensions;
 mod family_sketch_locks;
 mod family_snaps;
 mod family_tabs;
+mod family_windows;
 mod family_tabs_async;
 mod family_temporary_hide;
 mod family_type_params;
