@@ -145,6 +145,8 @@ pub mod import;
 pub mod inquiry;
 pub mod insert;
 #[cfg(test)]
+mod join_cleanup_tests;
+#[cfg(test)]
 mod join_geometry_tests;
 pub mod language;
 pub mod lenient;

@@ -36,7 +36,10 @@ use crate::{font, massing, sheet, stairs};
 
 mod crop;
 mod dimensions;
+mod joins;
 use dimensions::dimension;
+#[cfg(test)]
+pub(crate) use joins::{joint_work, joint_work_reset};
 mod regions;
 mod spots;
 pub use spots::leader_end;
@@ -1113,27 +1116,12 @@ fn cut_edges(outlines: &[(Id, Vec<P2>)], reach: f64) -> Vec<(Id, Vec<Vec<P2>>)> 
         let ccw = geom::area(o) > 0.0;
         let mut runs: Vec<Vec<P2>> = Vec::new();
         for (a, b) in geom::ring_edges(o) {
-            let len = a.dist(b);
-            if len <= 0.0 {
+            if a.dist(b) <= 0.0 {
                 continue;
             }
-            // Cut where another outline's edge crosses it, or starts or ends on it.
-            let mut ts = vec![0.0, 1.0];
-            for (c, e) in others.iter().flat_map(|r| geom::ring_edges(r)) {
-                ts.extend(geom::crossing(a, b, c, e));
-                for p in [c, e] {
-                    if geom::dist_to_segment(p, a, b) < 1e-6 * len.max(1.0) {
-                        ts.push(geom::param_on_segment(p, a, b));
-                    }
-                }
-            }
-            ts.sort_by(f64::total_cmp);
-            ts.dedup_by(|x, y| (*x - *y) * len < 1e-6);
             let out_of = ((b - a).perp() * if ccw { -1.0 } else { 1.0 }).unit() * PAST;
-            for w in ts.windows(2) {
-                let (p, q) = (a + (b - a) * w[0], a + (b - a) * w[1]);
-                let probe = (p + q) * 0.5 + out_of;
-                if others.iter().any(|r| geom::contains(r, probe)) {
+            for (p, q, against) in edge_pieces(a, b, &others, out_of) {
+                if against.is_some() {
                     continue;
                 }
                 match runs.last_mut() {
@@ -1155,6 +1143,30 @@ fn cut_edges(outlines: &[(Id, Vec<P2>)], reach: f64) -> Vec<(Id, Vec<Vec<P2>>)> 
     }
     turn_corners(&mut out, reach);
     out
+}
+
+/// Edge `a` to `b` of an outline in pieces, cut where an edge of `others` crosses it, or starts or ends on it: each piece's
+/// ends, and which of `others` (by place) holds the point `out_of` past its middle, the piece lying against that one.
+pub(crate) fn edge_pieces(a: P2, b: P2, others: &[&[P2]], out_of: P2) -> Vec<(P2, P2, Option<usize>)> {
+    let len = a.dist(b);
+    let mut ts = vec![0.0, 1.0];
+    for (c, e) in others.iter().flat_map(|r| geom::ring_edges(r)) {
+        ts.extend(geom::crossing(a, b, c, e));
+        for p in [c, e] {
+            if geom::dist_to_segment(p, a, b) < 1e-6 * len.max(1.0) {
+                ts.push(geom::param_on_segment(p, a, b));
+            }
+        }
+    }
+    ts.sort_by(f64::total_cmp);
+    ts.dedup_by(|x, y| (*x - *y) * len < 1e-6);
+    ts.windows(2)
+        .map(|w| {
+            let (p, q) = (a + (b - a) * w[0], a + (b - a) * w[1]);
+            let probe = (p + q) * 0.5 + out_of;
+            (p, q, others.iter().position(|r| geom::contains(r, probe)))
+        })
+        .collect()
 }
 
 /// A run of [`cut_edges`] in its category's pen: one that comes back to where it starts (an outline nothing lies against)
@@ -2488,6 +2500,10 @@ fn section_base_cancellable(
     // the line crosses its boundaries; a thin line up each boundary between two, as high as the wall
     // stands there, around its openings.
     let lookup = m.lookup();
+    // Joined pairs it cuts both of: their layers kept as they're drawn, for the lines between them (none at Coarse, which
+    // draws no layers).
+    let pairs = if d.detail == Detail::Coarse { Vec::new() } else { joins::pairs(m, &cuts) };
+    let mut joined = joins::Layers::of(&pairs);
     for (wall, w) in section_walls(m, &lookup, v, first, last) {
         if cancelled() {
             return None;
@@ -2536,6 +2552,7 @@ fn section_base_cancellable(
                     if part.len() >= 3 {
                         let room = (s1 - s0) * d.view.scale;
                         cut_layer(&mut d, m, layer, &part, P2(1.0, 0.0), room);
+                        joined.add(wall, &layer.material, &part);
                     }
                 }
             }
@@ -2610,6 +2627,7 @@ fn section_base_cancellable(
                 };
                 let room = (p.1 - p2.1).abs().min((q.1 - q2.1).abs()) * d.view.scale;
                 cut_layer(&mut d, m, layer, &[p2, q2, q, p], (q - p).unit(), room);
+                joined.add(owner, &layer.material, &[p2, q2, q, p]);
                 if k > 0 {
                     d.part(Part::Pattern);
                     d.line(&[p, q], Pen::PROJECTION, INK, false);
@@ -2617,6 +2635,9 @@ fn section_base_cancellable(
                 }
             }
         }
+    }
+    if !pairs.is_empty() {
+        joins::seams(&mut d, m, &pairs, &cuts, &joined);
     }
     for (mid, e) in lookup.rare("mass").filter(|id| look.shows(*id)).filter_map(|id| Some((id, m.elements.get(id)?))) {
         if cancelled() {

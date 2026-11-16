@@ -41,9 +41,26 @@ take what they all share out of every one of them; a join or a switch that would
 edit parts stays joined, cutting nothing, and `Model::warnings` says so; the check refuses only what can't be (itself, an
 element of another kind, a pair joined both ways, more than `MAX_JOINS`, the other's list read only within the cap). Copy and Insert from File keep a join when both of
 the pair come along and drop it when one comes alone; deleting either takes it off. IFC writes an IfcRelConnectsElements for
-each pair, the cutter relating, and both bodies whole: that relation clips neither. Open: a cutter wall cuts with its prisms
+each pair, the cutter relating, and both bodies whole: that relation clips neither (IFC stays so: no cleanup there, by
+design). Open: a cutter wall cuts with its prisms
 round its doors' and windows' rectangles, so what it cuts keeps its own material inside those openings; and `join_voids` doesn't look at phases
 and design options, as Cut Geometry's `void_cuts` doesn't.
+
+Where a section cuts both of a joined pair, the join is cleaned up as a drawing does (`render/joins.rs`). Every cut that
+meets another is one outline already, joined or not (`cut_edges`): one poché, patterns in one lattice from the drawing's
+origin, no line where the two meet. So a joined pair of one material reads as one region, as it did before the join; what a
+join adds is the line between them where the layers meeting differ, thin, as between two layers of one compound element:
+layer by layer, so a wall's concrete core cleans up against a floor's concrete and its plaster keeps a line. Two materials
+of other names count as one where they cut alike: the same fill pattern (one that shows: `cut_pattern`, else a `cut` other
+than none) and their categories' same cut pen (so screed and concrete, both stippled, clean up). A layer's material is its
+type's; a type of no layers has none, the same as another's none. The layers are those the section draws (`cut_layer`); one
+whose layers it doesn't draw is its cut pieces in its structure's material. Coarse draws no layers, and no line either.
+Unjoined elements, a pair the section cuts one of, and a model with no joins draw exactly as before (`joins::pairs` finds
+none, and nothing else is done; the sample's sections and plans at each detail level are the same to the byte). Open: plans
+show no join, neither its cut nor its cleanup (a pair the plan cuts both of, two walls or a wall and a roof, is drawn as
+before, both whole, one outline); a cutter's finish doesn't yield to the cut element's structure (layer priority), so where
+a wall cuts a floor its plaster stays between the two cores; the picture past the line (what a section sees beyond it, and
+an elevation) is the 3D raster's, which draws the edges a join's cut makes as it does any other.
 
 In the desktop, Modify > Geometry's Join button, beside Cut, drops down Join Geometry (JO), Switch Join Order and Unjoin
 Geometry (`Tool::JoinGeometry`, its `JoinMode` the command; one button, as Cut is, with the icon of the one in hand; its
@@ -59,8 +76,7 @@ nothing of a join. A refusal says there what to do at the window (`canvas::join_
 joined already or not joined, a loop of joins named, a list that is full. The prompt names what the plan shows: walls,
 floors and roofs in a floor plan, walls and ceilings in a ceiling plan. Open: the picks are a plan's, so a floor and a
 ceiling, which no plan shows together, can't be joined in the desktop until the 3D view or a section picks for it (a
-script, or an agent, joins them with `join_geometry`); and a section and a plan still draw the line between two joined
-elements of one material.
+script, or an agent, joins them with `join_geometry`); and a plan draws no join (above).
 
 At a square corner of two compound walls, one core runs through and the other stops on it (`walls/compound.rs`). It takes
 two walls and nothing else joined there, ending at the same point square to each other, straight, on their centre lines,
