@@ -91,9 +91,11 @@ pub(crate) fn greyed(lines: &[FormLine], k: usize, out: P2, num: &mut dyn FnMut(
 }
 
 impl FamilyEditor {
-    /// Whether a view's handles show: no tool in hand, nothing being sketched or placed.
+    /// Whether a view's handles show: no tool in hand (a Modify tool's clicks are its own, FE-24), nothing being sketched
+    /// or placed.
     pub(crate) fn handles_shown(&self) -> bool {
         self.sketch.is_none()
+            && self.views.modify.is_none()
             && self.adaptive.is_none()
             && self.placing.is_none()
             && self.views.drawing.is_none()

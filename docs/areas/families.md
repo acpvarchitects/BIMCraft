@@ -1063,11 +1063,24 @@ boundary, then each line on the part to keep, the project's `draw::meet` and `tr
 cut there) beside TR's Trim/Extend to Corner; a copy is a new line with a GUID of its own, never the Axis Line. A line a sketch
 tool moves keeps its GUID, and its formulas go as a moved line's do (FE-12's `driven`); a lock or an Align lock from it to what
 didn't move with it, added while sketching or the form's, is released, the status bar saying how many. Outside a sketch
-Trim/Extend and Split Element are greyed, saying they work on a sketch's lines (TR and SL say it too); in {3D} the tools say they
-work in a plan or an elevation; with nothing selected, what to select. Revit has no keys for Trim/Extend Single and Multiple
+Trim/Extend and Split Element are greyed, saying they work on a sketch's lines (TR and SL say it too); with nothing selected,
+what to select. Revit has no keys for Trim/Extend Single and Multiple
 Elements; Keyboard Shortcuts can give them one. Known: Rotate, Mirror and Scale don't take symbols, connectors or nested
 instances yet, and a sketch tool doesn't refuse what a label holds while sketching (Finish solves it as before). Tests:
 `tests/family_modify.rs`, `family_transform_tests.rs`.
+
+FE-24, part 1: in {3D} the tools whose clicks are points work on the view's work plane (Ref. Level until Work Plane > Set
+picks another, an upright one to move up and down): Move, Copy, Rotate about what the plane faces, and Mirror - Draw Axis
+(`Tool::in_3d`). The plane's frame is the tools' space as a plan's is (`Space::on_plane`), so `modify_3d`, called once from
+`family_3d`, puts a click on the plane with `Camera::on` and hands it to the plans' `modify_click`: the edit, the typed
+distances and angles, the refusals and the one step are the same. A click with a tool in hand selects nothing and uses up
+a waiting snap override; a drag still turns the view. While a tool is in hand the work plane is shown, and over the picture
+go the tool's marks, its rubber band and the box of each form taken where the click would put it (`boxed`, from
+`family::views::form_corners`). The tool takes what {3D} draws of the selection, so a form hidden in the view stays, and
+planes and lines selected in a plan before. A tool taken in another view starts again in {3D}, its points let go, or is
+put down there, saying why, where {3D} can't work with it. Mirror - Pick Axis, Offset, Scale and Align, which pick
+something of the view or lean on its depth, are greyed in {3D} with that reason until it picks references and snaps on its
+work plane (part 2). Tests: `tests/family_modify_3d.rs`.
 
 FE-14 (`editor/clipboard.rs`, `family/clipboard.rs`): the Clipboard panel in a family that isn't adaptive, as Revit's family
 editor has it, on the Modify tab and the contextual tab (a sketch's contextual tab has no room for it at 1600 pixels without
@@ -1925,6 +1938,17 @@ the rectangle let go; while it is armed the status bar asks for the rectangle, a
 left by each of those commands and none by the wheel or the middle button. Previous in {3D} gives up a fit still being worked out (`Orbit::cancel_fit`), so the fit never comes back over the camera it restored. The view control bar has the three beside Zoom to
 Fit. Their names are in `shortcuts::ACTIONS` and `FAMILY_ONLY` (the project has no such commands yet). Tests:
 `tests/family_zoom.rs`.
+
+What a fit shows (UI-1): the document's plan, elevation and {3D} are drawn in the view's pane below the tabs that float over its
+top (`family_central`, from where the tabs were last drawn, on a whole pixel; the canvas above; the window's `view_rect` is that
+pane), so an elevation's plane names, which run along its picture's top, and the top of {3D}'s box are never under them. A plan
+or the ceiling plan keeps the room's frame unless it cuts an elevation mark at its edge, its name with it (a narrow view's, the
+BIMCraft profile's between its palettes): then it shrinks about the room and the marks it shows a part of until none is cut
+(`Staged::fitted`, a few passes, as lettering keeps its size on paper as the frame shrinks); a mark wholly outside stays out,
+so a wide view is framed as before. An elevation keeps the room's frame, with room for its levels' names, as its planes run
+from edge to edge whatever the frame. The editor keeps the fitted frame while only the zoom and the pan change
+(`Staged::draw_lines_at` draws from it). Tests: `tests/family_canvas_clear.rs`, and
+`a_fitted_view_cuts_no_elevation_mark_at_its_edge` in `family/views.rs`.
 
 ## Imported 3D models
 

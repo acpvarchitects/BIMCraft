@@ -1471,14 +1471,21 @@ impl BimApp {
         (ed.selecting.by_face, ed.selecting.drag_faces) = (self.select_by_face, self.drag_on_selection);
         ed.selecting.pins = self.select_pinned;
         let pane = ui.available_rect_before_wrap();
-        self.view_rect = pane;
         self.pane = pane;
+        // A plan, an elevation and {3D} are drawn below the tabs that float over the view's top (UI-1: as they were last drawn),
+        // so a plane's name along an elevation's top and the top of what {3D} fits show; above, the canvas.
+        // On a whole pixel, as the pane's own top is, so a point on screen stands for the same millimetres as before.
+        let drawn = pane.with_min_y(self.tabs_foot.ceil().clamp(pane.top(), (pane.bottom() - 64.0).max(pane.top())));
+        self.view_rect = drawn;
+        if ed.adaptive.is_none() {
+            ui.painter().rect_filled(pane.with_max_y(drawn.top()), 0.0, crate::canvas::color(bimcraft_core::render::PAPER));
+        }
         let values = ed.values();
         let hidden = ed.adaptive.as_ref().map(|d| ed.temp_hidden(d)).unwrap_or_default();
         if let Some(which) = ed.views.shown {
             // A plan or an elevation (F4): the project's own drawing of the family in a scratch model.
             let base = Arc::clone(&self.session.model);
-            if let Some(e) = ed.view_2d(ui, &base, which, pane, self.thin) {
+            if let Some(e) = ed.view_2d(ui, &base, which, drawn, self.thin) {
                 self.status = Status { text: e, error: true };
             }
             if let Some(text) = ed.views.said.take() {
@@ -1494,7 +1501,7 @@ impl BimApp {
                 self.status = Status { text: e, error: true };
             }
         } else {
-            self.family_3d(ui, &mut ed, pane);
+            self.family_3d(ui, &mut ed, drawn);
         }
         // The point a snap override waited for, picked: it is done.
         if std::mem::take(&mut ed.took_point) {
@@ -1747,7 +1754,8 @@ impl BimApp {
             return Some(super::sketch::prompt(s, &ed.views.modify_options));
         }
         // A Modify tool in hand (FE-8): what to click next.
-        if let (Some(_), None, Some(m)) = (ed.views.shown, ed.adaptive.as_ref(), ed.views.modify.as_ref()) {
+        // A Modify tool in hand, in a plan, an elevation or {3D} (FE-24): its own prompt.
+        if let (None, Some(m)) = (ed.adaptive.as_ref(), ed.views.modify.as_ref()) {
             return Some(super::modify::prompt(&m.tool, &ed.views.modify_options, false));
         }
         Some(match (ed.views.shown, ed.adaptive.is_some()) {
@@ -2427,6 +2435,10 @@ impl BimApp {
     /// over it), and on nothing lets the selection go, as in Revit and the project's 3D view; the pointer over one lights it
     /// first (T11). A double click on a form sketches it again, as Edit Extrusion or Edit Revolve does (F5).
     fn family_3d(&mut self, ui: &mut Ui, ed: &mut FamilyEditor, pane: Rect) {
+        #[cfg(test)]
+        {
+            ed.views.drawn = Some(pane);
+        }
         let response = ui.interact(pane, UiId::new("family-preview"), Sense::click_and_drag());
         self.canvas.track(ui, &response);
         // The triad stands left of the ViewCube, which is in the top right corner; both are laid over the view, so a click on
@@ -2511,9 +2523,16 @@ impl BimApp {
         };
         // What the pointer is over and what a click picks, in the picture on screen: the connectors' symbols first.
         let marks = ed.connector_marks();
+        // A Modify tool in hand (FE-24): a click is a point of its, on the work plane, and selects nothing.
+        let mut tool_click = None;
         if ed.sketching() {
             ed.views.hover3d = None;
             ed.connector_hover = None;
+        } else if ed.views.modify.is_some() {
+            ed.views.hover3d = None;
+            ed.connector_hover = None;
+            let click = response.clicked().then(|| response.interact_pointer_pos()).flatten().or(self.canvas.quick_press());
+            tool_click = click.filter(|p| !crate::orbit::Orbit::on_cube(pane, *p) && !cube.hovered());
         } else {
             let still = !response.dragged() && ui.input(|i| !i.pointer.any_down());
             let at = input.hover.filter(|_| still && !cube.hovered());
@@ -2613,6 +2632,12 @@ impl BimApp {
         ed.views.handles3d_shown = shown.into_iter().map(|(at, _, h)| (at, h)).collect();
         // A form being sketched on its plane, over the picture (F5), with its padlocks.
         if let Some(e) = ed.sketch_in_3d(ui, &response, &p, &cam, size, pane) {
+            self.status = Status { text: e, error: true };
+        }
+        // A Modify tool in hand, on the work plane (FE-24).
+        if !ed.sketching()
+            && let Some(e) = ed.modify_3d(ui, &response, &p, &cam, size, pane, tool_click)
+        {
             self.status = Status { text: e, error: true };
         }
         crate::orbit::Orbit::draw_cube(&p, &cam, pane, input.hover.or_else(|| cube.hover_pos()));
