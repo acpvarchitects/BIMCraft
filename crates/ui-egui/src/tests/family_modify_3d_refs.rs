@@ -255,3 +255,58 @@ fn align_in_3d_says_why_where_it_takes_nothing() {
     assert!(about(extent(&h, 0), before), "nothing moved");
     assert!(status(&h).contains("square to the work plane"), "{}", status(&h));
 }
+
+/// Mirror - Pick Axis over Edge, Offset over the reference line and Align's padlock, in {3D} in the three looks, when
+/// `BIMCRAFT_FE24B_DUMP` names a folder.
+#[test]
+fn references_in_3d_screenshots() {
+    use super::family_drag_move::family_with;
+    let Ok(dir) = std::env::var("BIMCRAFT_FE24B_DUMP") else { return };
+    std::fs::create_dir_all(&dir).unwrap();
+    for (look, dark, light_canvas) in [("light", false, false), ("dark", true, false), ("dark-ui-light-canvas", true, true)] {
+        for name in ["mirror", "offset", "align"] {
+            // The ribbon's harness, whose renderer draws.
+            let mut h = app(&family_with(""));
+            h.set_size(egui::vec2(1400.0, 900.0));
+            h.state_mut().edit_family("Movers");
+            h.ctx.set_theme(if dark { egui::ThemePreference::Dark } else { egui::ThemePreference::Light });
+            h.state_mut().light_canvas = light_canvas;
+            for _ in 0..4 {
+                h.run();
+            }
+            super::family_views::view(&mut h, None);
+            for _ in 0..4 {
+                h.run();
+            }
+            if let Some(c) = h.state_mut().active_family_mut().and_then(|f| f.orbit.camera.as_mut()) {
+                c.scale *= 0.5;
+            }
+            for _ in 0..2 {
+                h.run();
+            }
+            let hover = match name {
+                "mirror" => {
+                    pick(&mut h, &[Picked::Form(0)]);
+                    shortcut(&mut h, "MM");
+                    [1000.0, 600.0, 0.0]
+                }
+                "offset" => {
+                    shortcut(&mut h, "OF");
+                    [0.0, 1210.0, 0.0]
+                }
+                _ => {
+                    shortcut(&mut h, "AL");
+                    click_off(&mut h, [1000.0, 600.0, 0.0]);
+                    click_off(&mut h, [500.0, 300.0, 300.0]);
+                    [500.0, 300.0, 300.0]
+                }
+            };
+            let at = h.state().family_screen3(hover).expect("{3D} drawn") + egui::vec2(3.0, 2.0);
+            h.hover_at(at);
+            for _ in 0..3 {
+                h.run();
+            }
+            h.render().unwrap().save(std::path::Path::new(&dir).join(format!("fe24b-{name}-{look}.png"))).unwrap();
+        }
+    }
+}

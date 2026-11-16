@@ -812,6 +812,9 @@ impl FamilyEditor {
             let back = |p: Pos2| at(p).unwrap_or(P2(f64::NAN, f64::NAN));
             paint_tool(painter, &tool, &o, hover, &[], &screen, &back, axis, shift, &snaps);
         }
+        if picking_axis || offsetting {
+            self.paint_references_3d(painter, &project);
+        }
         // The reference under the pointer, lit as a click would pick it (FE-24b).
         if (picking_axis || offsetting)
             && let Some((_, (a, b))) =
@@ -899,6 +902,7 @@ impl FamilyEditor {
         if let Some(at) = lock_at {
             super::dimensions::padlock(painter, at, false, accent);
         }
+        self.paint_references_3d(painter, &project);
         // The reference under the pointer, lit as a click would pick it.
         if let Some((_, (a, b))) =
             response.hover_pos().filter(|p| pane.contains(*p)).and_then(|p| self.reference_3d(cam, pixel(p), reach_px))
@@ -937,6 +941,25 @@ impl FamilyEditor {
             _ => {
                 self.views.aligning = Some(Some(r));
                 None
+            }
+        }
+    }
+
+    /// The reference planes and lines {3D} doesn't draw, over the picture while a tool picks one (FE-24b), as a sketch's are,
+    /// so they can be seen and picked: a plane dashed along the line it was drawn as, a line whole; not what the view hides.
+    fn paint_references_3d(&self, painter: &egui::Painter, project: &dyn Fn([f64; 3]) -> Option<Pos2>) {
+        let Ok(f) = self.family() else { return };
+        let values = self.values();
+        let flexed = f.flexed(&values).map(std::borrow::Cow::into_owned).unwrap_or_else(|_| f.clone());
+        let stroke = egui::Stroke::new(1.5, super::sketch::REFERENCE);
+        for p in flexed.planes.iter().filter(|p| !p.datum() && !self.temp_hidden_plane(p.guid)) {
+            if let (Some(a), Some(b)) = (project(p.start), project(p.end)) {
+                painter.extend(egui::Shape::dashed_line(&[a, b], stroke, 8.0, 4.0));
+            }
+        }
+        for l in flexed.lines.iter().filter(|l| !self.temp_hidden_plane(l.guid)) {
+            if let (Some(a), Some(b)) = (project(l.start), project(l.end)) {
+                painter.line_segment([a, b], stroke);
             }
         }
     }
