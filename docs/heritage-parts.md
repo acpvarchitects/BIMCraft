@@ -34,7 +34,7 @@ Compare: <https://github.com/acpvarchitects/BIMCraft/compare/f202abd...feature/h
 | HP-6 | Schedules of parts: the bill of quantities (Restoration Quantities), CSV and xlsx | [#17](https://github.com/acpvarchitects/BIMCraft/pull/17), `vp/heritage-parts-schedules` | **Done**, in review |
 | HP-7 | Desktop: Create Parts, Divide Parts (sketch on the face), Properties of a part | | Not started |
 | HP-8 | IFC import of parts | | Not started |
-| HP-9 | Parts in `elements`, the `FORMAT` step after main's, rebased on main | | Not started; agreed on #440 (2.3) |
+| HP-9 | Parts in `elements`, FORMAT 21 (21–32 reservation narrowed to 22–32), HP-1 ported onto main 3e08223f without its IFC export | [#70](https://github.com/acpvarchitects/BIMCraft/pull/70), `vp/heritage-parts-hp9` → `feature/heritage-parts-0.13` | **Done**, in review |
 
 What HP-1 was checked with, on b7a9847:
 - `cargo fmt --check`, `cargo clippy --workspace --all-targets -D warnings` and `cargo i18n check` are clean.
