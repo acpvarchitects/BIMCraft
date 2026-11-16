@@ -2024,4 +2024,54 @@ mod tests {
         // Beyond an end a trace runs no further in a plan, so a name there cuts nothing; beside it, nothing either.
         assert!(named.values().all(|l| (l - longest(&bare)).abs() < 1.0), "named {named:?} against bare {bare:?}");
     }
+
+    /// UI-3b: in a narrow plan no reference plane's name lies over a form's drawn lines: a form's outline is in a name's way
+    /// as an elevation mark is.
+    #[test]
+    fn no_plane_name_lies_over_a_forms_lines_in_a_narrow_plan() {
+        use crate::render::{Part, Prim};
+        // A box across Center (Front/Back) and running east toward the RIGHT mark, as the starter box does narrowed.
+        let f: Family = serde_json::from_value(json!({
+            "category": "generic",
+            "types": {"T": {}},
+            "forms": [{"profile": [[-500, -300], [1500, -300], [1500, 300], [-500, 300]], "to": 900}],
+        }))
+        .unwrap();
+        let mut st = staged(&f);
+        for (w, h) in [(640, 320), (520, 300), (800, 360)] {
+            let shown = st.draw(Which::Plan, w, h, 1.0, P2(0.0, 0.0)).unwrap();
+            let d = &shown.drawing;
+            let mut names: BTreeMap<Id, [f32; 4]> = BTreeMap::new();
+            let mut lines: Vec<((f32, f32), (f32, f32))> = Vec::new();
+            for ((prim, o), part) in d.prims.iter().zip(&d.owners).zip(&d.parts) {
+                let Some(id) = o else { continue };
+                match (st.model.elements.get(*id), prim) {
+                    (Some(Element::RefPlane(_)), Prim::Line { pts, .. }) if *part == Part::Text => {
+                        let b = names.entry(*id).or_insert([f32::MAX, f32::MAX, f32::MIN, f32::MIN]);
+                        for &(x, y) in pts {
+                            *b = [b[0].min(x), b[1].min(y), b[2].max(x), b[3].max(y)];
+                        }
+                    }
+                    (Some(Element::Component(_)), Prim::Line { pts, closed, .. }) => {
+                        lines.extend(pts.windows(2).map(|s| (s[0], s[1])));
+                        if *closed && pts.len() > 2 {
+                            lines.push((pts[pts.len() - 1], pts[0]));
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            assert!(names.len() >= 2 && !lines.is_empty(), "{w}x{h}: names {} lines {}", names.len(), lines.len());
+            for (n, r) in &names {
+                for (a, b) in &lines {
+                    let over = (0..=100).any(|i| {
+                        let k = i as f32 / 100.0;
+                        let (x, y) = (a.0 + (b.0 - a.0) * k, a.1 + (b.1 - a.1) * k);
+                        x > r[0] && x < r[2] && y > r[1] && y < r[3]
+                    });
+                    assert!(!over, "{w}x{h}: the name of {n} at {r:?} lies over the form's line {a:?}-{b:?}");
+                }
+            }
+        }
+    }
 }

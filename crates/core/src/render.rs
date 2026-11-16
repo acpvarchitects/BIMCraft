@@ -2809,6 +2809,8 @@ struct Lettered {
     marks: Vec<[f32; 4]>,
     /// Of `boxes`, the names lettered on their own trace (beyond an end, or slid in along it), which a plan cuts it under.
     on_trace: Vec<[f32; 4]>,
+    /// The lines a name keeps off as it keeps off a mark: a plan's forms' outlines (UI-3b), in pixels.
+    lines: Vec<((f32, f32), (f32, f32))>,
 }
 
 /// A reference plane's trace in a drawing: the plane, and its ends in pixels.
@@ -2887,8 +2889,10 @@ fn plane_name_px(d: &mut Drawing, ends: [((f32, f32), (f32, f32)); 2], name: &st
             places.extend([beside(e, 1.0, n), beside(e, -1.0, n)]);
         }
     }
-    let clear =
-        |r: &[f32; 4]| lettered.boxes.iter().chain(&lettered.marks).all(|o| r[2] <= o[0] || o[2] <= r[0] || r[3] <= o[1] || o[3] <= r[1]);
+    let clear = |r: &[f32; 4]| {
+        lettered.boxes.iter().chain(&lettered.marks).all(|o| r[2] <= o[0] || o[2] <= r[0] || r[3] <= o[1] || o[3] <= r[1])
+            && !lettered.lines.iter().any(|(a, b)| clips(*a, *b, (r[0], r[1]), (r[2], r[3])))
+    };
     // Moved, a name also keeps off every other plane's trace, so it can't be read as that one's.
     let own = d.owner;
     let apart =
@@ -3606,6 +3610,13 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
             && inside(crate::elevation::mark(v))
         {
             lettered.marks.push(elevation_mark_box(&d.view, v));
+        }
+        // And a form's outline (UI-3b): a name never lies over a form's lines.
+        if let Element::Component(c) = e {
+            for p in components.pieces(c) {
+                let px: Vec<(f32, f32)> = p.outline.iter().map(|q| d.view.px(*q)).collect();
+                lettered.lines.extend((0..px.len()).map(|i| (px[i], px[(i + 1) % px.len()])));
+            }
         }
         if let Element::RefPlane(rp) = e
             && rp.upright()
