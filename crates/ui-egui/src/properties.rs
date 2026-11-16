@@ -116,6 +116,8 @@ fn relevant(e: &Value, key: &str) -> bool {
         (Some(_), "revision") => !e["cloud"].is_null(),
         // A wall's Top Offset is from its top constraint: an unconnected wall stands `height` tall and has none.
         (_, "top_offset") => !e["top_level"].is_null(),
+        // A wall's thickness up its height says something only where a face is shaped (battered).
+        (_, "thickness_min" | "thickness_max" | "thickness_avg") => e["shape"].is_object(),
         _ => true,
     }
 }
@@ -149,6 +151,9 @@ fn rows(category: &str) -> &'static [Row] {
             ("Constraints", "room_bounding", msg!("Room Bounding"), Flag),
             ("Dimensions", "length", "Length", LengthShown),
             ("Dimensions", "radius", "Radius", LengthShown),
+            ("Dimensions", "thickness_min", msg!("Thinnest"), LengthShown),
+            ("Dimensions", "thickness_max", msg!("Thickest"), LengthShown),
+            ("Dimensions", "thickness_avg", msg!("Average Thickness"), LengthShown),
             (msg!("Other"), "start", msg!("Start"), Point),
             ("Other", "end", msg!("End"), Point),
         ],
