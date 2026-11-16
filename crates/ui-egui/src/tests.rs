@@ -6287,6 +6287,7 @@ mod assistant;
 mod autosave;
 mod browser;
 mod cad;
+mod canvas_overlaps;
 mod chinese;
 mod clouds;
 mod control;
@@ -6362,6 +6363,7 @@ mod triad;
 mod trim;
 mod typed;
 mod typeprops;
+
 mod view_controls;
 mod window;
 mod work_plane_based;

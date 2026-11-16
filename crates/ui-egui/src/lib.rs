@@ -5540,9 +5540,16 @@ impl BimApp {
         let shown = Area::new(UiId::new("options-bar")).order(Order::Middle).fixed_pos(pos2(view.left() + g, top + g)).show(ctx, |ui| {
             // Kept short of the view's zoom buttons on the right, as far as its fields wrap (a drop-down doesn't).
             ui.set_max_width((view.width() - 2.0 * g - 60.0).max(200.0));
-            frame.show(ui, |ui| self.options(ui));
+            // The card only round something: a tool with no name and no options shows none (UI-3).
+            let mut card = frame.begin(ui);
+            self.options(&mut card.content_ui);
+            let something = card.content_ui.min_rect().width() >= 1.0;
+            if something {
+                card.end(ui);
+            }
+            something
         });
-        self.options_rect = shown.response.rect;
+        self.options_rect = if shown.inner { shown.response.rect } else { Rect::NOTHING };
     }
 
     /// Where a view's navigation bar starts: at its top right, or under the Options Bar when that reaches over it.
