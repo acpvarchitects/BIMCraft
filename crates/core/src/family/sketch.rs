@@ -645,7 +645,11 @@ impl super::Family {
     ) -> Vec<(P2, P2)> {
         let Ok(f) = self.frame(host) else { return Vec::new() };
         let flexed = self.flexed(values).map(std::borrow::Cow::into_owned).unwrap_or_else(|_| self.clone());
-        let mut out: Vec<(P2, P2)> = flexed.planes.iter().filter(|p| shown(p.guid)).filter_map(|p| trace_across(&f, &p.frame())).collect();
+        let mut out: Vec<(P2, P2)> = super::planes::with_the_datums(&flexed.planes)
+            .iter()
+            .filter(|p| shown(p.guid))
+            .filter_map(|p| trace_across(&f, &p.frame()))
+            .collect();
         let mut seen: Vec<(crate::view3d::P3, crate::view3d::P3)> = Vec::new();
         let mut read = std::collections::HashMap::new();
         for i in (0..flexed.forms.len()).filter(|i| form_shown(*i) && !flexed.forms[*i].void) {

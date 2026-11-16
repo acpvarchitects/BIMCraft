@@ -871,7 +871,12 @@ impl References3d {
         for i in 0..family.nested_instances.len() {
             out.solids.extend(family.instance_pieces(i, values).into_iter().flat_map(|p| p.tris));
         }
-        out.candidates.extend(flexed.planes.iter().filter(|p| shown(p.guid)).map(|p| (Reference3d::Plane(p.guid), (p.start, p.end))));
+        out.candidates.extend(
+            super::planes::with_the_datums(&flexed.planes)
+                .into_iter()
+                .filter(|p| shown(p.guid))
+                .map(|p| (Reference3d::Plane(p.guid), (p.start, p.end))),
+        );
         out.candidates.extend(flexed.lines.iter().filter(|l| shown(l.guid)).map(|l| (Reference3d::Line(l.guid), (l.start, l.end))));
         out.candidates
             .extend(flexed.model_lines.iter().filter(|l| shown(l.guid)).map(|l| (Reference3d::ModelLine(l.guid), (l.start, l.end))));
