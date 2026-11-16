@@ -684,7 +684,10 @@ pub fn trace_across(f: &super::Frame, g: &super::Frame) -> Option<(P2, P2)> {
 /// Edge `(a, b)` of the family seen square on to plane `f`: its ends in the plane's axes, or why it has no line there.
 pub fn on_plane(f: &super::Frame, (a, b): (crate::view3d::P3, crate::view3d::P3)) -> Result<(P2, P2), String> {
     let ((p, _), (q, _)) = (f.local(a), f.local(b));
-    if p.dist(q) <= TOL {
+    // Square to the plane as a way, however long: a line along what it faces, or of no length.
+    let d: crate::view3d::P3 = std::array::from_fn(|i| b[i] - a[i]);
+    let len = crate::view3d::dot(d, d).sqrt();
+    if len <= 1e-9 || p.dist(q) <= len * 1e-6 {
         return Err("it runs square to the work plane: it has no line on it".into());
     }
     Ok((p, q))

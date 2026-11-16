@@ -3500,10 +3500,10 @@ pub fn view_way(flexed: &Family, r: &DimRef, values: &BTreeMap<String, Val>, vie
 }
 
 /// What Align takes of reference `r` picked in {3D} (FE-24b), its ends `e` there, with the view's work plane `frame`: as a plan
-/// or an elevation takes what it sees edge on, the face through it that stands square to the plane. A plane, a model line
-/// (the plane through it square to its host) are themselves; a reference line, its face square to the plane; a form's
-/// edge, the face of the form through it square to the plane (a sketch line's side, an extrusion's end). Why there is none:
-/// a line along what the plane faces, or no face of it through the edge square to the plane.
+/// or an elevation takes what it sees edge on, the face through it that stands square to the plane: a plane itself, a model
+/// line the plane through it square to its host, a reference line its face square to the plane, a form's edge the face of
+/// the form through it square to the plane (a sketch line's side, an extrusion's end). Why there is none: a line along what
+/// the plane faces, or nothing of it square to the plane there (a plane level with it, say).
 pub fn align_ref_3d(
     f: &Family,
     values: &BTreeMap<String, Val>,
@@ -3512,9 +3512,10 @@ pub fn align_ref_3d(
     e: (P3, P3),
 ) -> Result<DimRef, String> {
     use views::Reference3d;
+    // A line or an edge along what the plane faces is a point on it, however a face through it stands.
     let along: P3 = sub(e.1, e.0);
     let len = dot(along, along).sqrt();
-    if len > TOL && dot(along, frame.z).abs() > len * (1.0 - 1e-9) {
+    if !matches!(r, Reference3d::Plane(_)) && len > TOL && dot(along, frame.z).abs() > len * (1.0 - 1e-9) {
         return Err("it runs square to the work plane, so no face of it stands square to the plane there".into());
     }
     let flexed = f.flexed(values).map_err(|u| u.message)?;
@@ -3528,8 +3529,8 @@ pub fn align_ref_3d(
     };
     let none = || "no face of it through there stands square to the work plane: pick another, or set another work plane".to_string();
     match r {
-        Reference3d::Plane(g) => Ok(DimRef::Plane(g)),
-        Reference3d::ModelLine(g) => Ok(DimRef::ModelLine(g)),
+        Reference3d::Plane(g) => square(vec![DimRef::Plane(g)]).ok_or_else(none),
+        Reference3d::ModelLine(g) => square(vec![DimRef::ModelLine(g)]).ok_or_else(none),
         Reference3d::Line(g) => square(vec![DimRef::Line(g, Face::Vertical), DimRef::Line(g, Face::Horizontal)]).ok_or_else(none),
         Reference3d::Edge(i) => {
             let form = flexed.forms.get(i).ok_or_else(none)?;

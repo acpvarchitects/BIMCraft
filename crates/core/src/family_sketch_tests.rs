@@ -548,11 +548,13 @@ fn a_reference_is_picked_in_3d_where_it_shows_and_never_behind_a_solid() {
         (x + 2.0, y + 1.0)
     };
     let pick = |p: P3| reference_at_3d(&f, &values, &cam, px(p), 6.0, &|_| true, &|_| true);
-    assert!(matches!(pick([-400.0, 500.0, 0.0]), Some((Reference3d::Plane(g), _)) if g == edge), "Edge, by the line it was drawn as");
-    assert!(matches!(pick([0.0, 1200.0, 0.0]), Some((Reference3d::Line(_), _))), "the reference line beside the box");
-    assert!(matches!(pick([1500.0, 0.0, 0.0]), Some((Reference3d::ModelLine(g), _)) if g == ml), "the model line");
+    let which = |p: P3| pick(p).map(|p| p.reference);
+    assert!(matches!(which([-400.0, 500.0, 0.0]), Some(Reference3d::Plane(g)) if g == edge), "Edge, by the line it was drawn as");
+    assert!(matches!(which([0.0, 1200.0, 0.0]), Some(Reference3d::Line(_))), "the reference line beside the box");
+    assert!(matches!(which([1500.0, 0.0, 0.0]), Some(Reference3d::ModelLine(g)) if g == ml), "the model line");
     // The box's east edge on its top, nearer the eye; the one under it is behind the top.
-    let (r, (a, b)) = pick([1000.0, 450.0, 200.0]).expect("an edge");
+    let picked = pick([1000.0, 450.0, 200.0]).expect("an edge");
+    let (r, (a, b)) = (picked.reference, picked.ends);
     assert!(matches!(r, Reference3d::Edge(0)) && [a, b].iter().all(|p| p[0] == 1000.0 && p[2] == 200.0), "{r:?} {a:?} {b:?}");
     // The reference line under the box's top shows nowhere: nothing is picked over it.
     assert_eq!(pick([750.0, 450.0, 0.0]), None);
@@ -560,7 +562,7 @@ fn a_reference_is_picked_in_3d_where_it_shows_and_never_behind_a_solid() {
     assert_eq!(reference_at_3d(&f, &values, &cam, px([1500.0, 0.0, 0.0]), 6.0, &|g| g != ml, &|_| true), None);
     assert!(!matches!(
         reference_at_3d(&f, &values, &cam, px([1000.0, 450.0, 200.0]), 6.0, &|_| true, &|_| false),
-        Some((Reference3d::Edge(_), _))
+        Some(crate::family::views::Picked3d { reference: Reference3d::Edge(_), .. })
     ));
 }
 
@@ -586,9 +588,25 @@ fn what_align_takes_of_a_reference_picked_in_3d_is_its_face_square_to_the_work_p
     // A reference line on Ref. Level: its upright face.
     let line = f.lines[0].guid;
     assert_eq!(take(Reference3d::Line(line), ([-200.0, 1200.0, 0.0], [200.0, 1200.0, 0.0])), Ok(DimRef::Line(line, Face::Vertical)));
-    // A plane is itself.
-    let g = f.planes[0].guid;
-    assert_eq!(take(Reference3d::Plane(g), (f.planes[0].start, f.planes[0].end)), Ok(DimRef::Plane(g)));
+    // A plane standing square to it is itself: Center (Left/Right).
+    let c = f.planes.iter().find(|p| p.guid == crate::family::CENTER_LEFT_RIGHT).unwrap();
+    assert_eq!(take(Reference3d::Plane(c.guid), (c.start, c.end)), Ok(DimRef::Plane(c.guid)));
+    // A plane drawn along what Ref. Level faces is still a plane standing square to it; one level with it is none, as no
+    // plan sees it edge on.
+    let mut f2 = f.clone();
+    let up: crate::family::RefPlane = serde_json::from_value(
+        json!({"guid": crate::ids::Guid::new(), "start": [300, -500, 0], "end": [300, -500, 1600], "up": [0, 1, 0]}),
+    )
+    .unwrap();
+    let shelf: crate::family::RefPlane = serde_json::from_value(
+        json!({"guid": crate::ids::Guid::new(), "start": [-500, 800, 600], "end": [500, 800, 600], "up": [0, 1, 0]}),
+    )
+    .unwrap();
+    f2.planes.extend([up.clone(), shelf.clone()]);
+    let take2 = |r: Reference3d, e: (P3, P3)| crate::family::constraints::align_ref_3d(&f2, &values, &frame, r, e);
+    assert_eq!(take2(Reference3d::Plane(up.guid), (up.start, up.end)), Ok(DimRef::Plane(up.guid)));
+    let e = take2(Reference3d::Plane(shelf.guid), (shelf.start, shelf.end)).unwrap_err();
+    assert!(e.contains("square to the work plane"), "{e}");
     // Seen on an upright work plane (Center (Front/Back)), the top edge's top is what stands square to it.
     let upright = f.frame(&PlaneRef::Plane(crate::family::CENTER_FRONT_BACK)).unwrap();
     assert_eq!(
@@ -601,4 +619,49 @@ fn what_align_takes_of_a_reference_picked_in_3d_is_its_face_square_to_the_work_p
         ),
         Ok(DimRef::Form(form, Extent::End))
     );
+}
+
+#[test]
+fn in_3d_a_datum_is_picked_a_line_partly_behind_the_eye_too_and_ties_come_nearest_first() {
+    use crate::family::ModelLine;
+    use crate::family::views::{Reference3d, References3d};
+    use crate::family::{CENTER_FRONT_BACK, CENTER_LEFT_RIGHT, REF_LEVEL};
+    use crate::ids::Guid;
+    let (s, r) = sketched(json!([{"sketch": rect(500.0, 300.0, 1000.0, 600.0), "to": 200}]));
+    r.unwrap();
+    let mut f = family(&s).clone();
+    let ml = Guid::new();
+    f.model_lines.push(ModelLine { guid: ml, start: [300.0, -3000.0, 0.0], end: [300.0, 3000.0, 0.0], ..Default::default() });
+    let values = f.values("A", &BTreeMap::new()).unwrap();
+    let refs = References3d::new(&f, &values, &|_| true, &|_| true);
+    // From over the box: Center (Left/Right), drawn along y at x 0, is picked like any plane.
+    let cam = crate::view3d::Camera::at([750.0, 450.0, 5000.0], [750.0, 450.0, 0.0], 50.0, 800, 800);
+    let px = |cam: &crate::view3d::Camera, p: P3| {
+        let (x, y, _) = cam.project(p);
+        (x + 2.0, y + 1.0)
+    };
+    let picks = refs.within(&cam, px(&cam, [0.0, 600.0, 0.0]), 6.0);
+    assert!(matches!(picks.first().map(|p| p.reference), Some(Reference3d::Plane(g)) if g == CENTER_LEFT_RIGHT), "{picks:?}");
+    // Ref. Level and Center (Front/Back) are drawn along the same line: both there, the nearer first, either.
+    let picks = refs.within(&cam, px(&cam, [-600.0, 0.0, 0.0]), 6.0);
+    let found: Vec<Reference3d> = picks.iter().map(|p| p.reference).collect();
+    assert!(found.contains(&Reference3d::Plane(REF_LEVEL)) && found.contains(&Reference3d::Plane(CENTER_FRONT_BACK)), "{found:?}");
+    // Where on it the pick was, in the family's axes.
+    assert!((picks[0].at[0] + 600.0).abs() < 20.0 && picks[0].at[1].abs() < 1e-6, "{:?}", picks[0].at);
+    // In perspective from inside, 2 m south of the origin: the model line runs behind the eye, and is picked where it shows.
+    let cam = crate::view3d::Camera::at([300.0, -2000.0, 300.0], [300.0, 0.0, 300.0], 30.0, 800, 800);
+    let picks = refs.within(&cam, px(&cam, [300.0, 1000.0, 0.0]), 6.0);
+    assert!(picks.iter().any(|p| p.reference == Reference3d::ModelLine(ml)), "{picks:?}");
+}
+
+#[test]
+fn a_short_line_lying_on_a_plane_is_a_line_on_it() {
+    use crate::family::sketch::on_plane;
+    use crate::family::{PlaneRef, REF_LEVEL};
+    let (s, r) = sketched(json!([{"sketch": rect(0.0, 0.0, 100.0, 100.0), "to": 100}]));
+    r.unwrap();
+    let frame = family(&s).frame(&PlaneRef::Plane(REF_LEVEL)).unwrap();
+    assert!(on_plane(&frame, ([0.0, 0.0, 0.0], [0.5, 0.0, 0.0])).is_ok(), "half a millimetre along the plane");
+    assert!(on_plane(&frame, ([0.0, 0.0, 0.0], [0.0, 0.0, 0.5])).is_err(), "along what it faces");
+    assert!(on_plane(&frame, ([0.0, 0.0, 0.0], [0.0, 0.0, 0.0])).is_err(), "no length");
 }
