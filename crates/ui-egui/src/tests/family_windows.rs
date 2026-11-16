@@ -65,7 +65,7 @@ fn clicking_an_inactive_tile_activates_its_tab_without_editing_the_family() {
     let before = h.state().active_family().unwrap().draft_family().unwrap();
     shortcut(&mut h, "WT");
     h.run();
-    let active = h.state().view_rect;
+    let active = h.state().active_family().unwrap().views.pane.unwrap();
     click_at(&mut h, pos2(active.left() - active.width() / 2.0, active.center().y));
     h.run();
     assert_eq!(h.state().sheet, Sheet::Family(doc, None));
@@ -93,10 +93,11 @@ fn adaptive_family_keeps_its_full_modelling_canvas_with_wt() {
     h.state_mut().active_family_mut().unwrap().adaptive = Some(bimcraft_core::adaptive::Definition::default());
     h.run();
     super::family_views::view(&mut h, Some(Which::Plan));
+    let before = h.state().view_rect;
     shortcut(&mut h, "WT");
     h.run();
     assert!(h.state().active_family().unwrap().views.tiled);
-    assert_eq!(h.state().view_rect, h.state().pane);
+    assert_eq!(h.state().view_rect, before);
 }
 
 #[test]

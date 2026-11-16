@@ -1679,24 +1679,30 @@ impl BimApp {
             if active {
                 active_pane = tile;
                 ed.views.pane = Some(tile);
+                let mut clipped = tiled.then(|| {
+                    let mut child = ui.new_child(UiBuilder::new().id_salt(("family-active-tile", index)).max_rect(tile));
+                    child.set_clip_rect(tile.shrink(4.0));
+                    child
+                });
+                let draw_ui = clipped.as_mut().unwrap_or(ui);
                 if let Some(which) = view {
                     let base = Arc::clone(&self.session.model);
-                    if let Some(e) = ed.view_2d(ui, &base, which, tile, self.thin) {
+                    if let Some(e) = ed.view_2d(draw_ui, &base, which, tile, self.thin) {
                         self.status = Status { text: e, error: true };
                     }
                     if let Some(text) = ed.views.said.take() {
                         self.status = Status { text, error: false };
                     }
                 } else if let Some(d) = ed.adaptive.as_mut() {
-                    ui.scope_builder(UiBuilder::new().max_rect(tile), |ui| {
+                    draw_ui.scope_builder(UiBuilder::new().max_rect(tile), |ui| {
                         let planes = bimcraft_core::family::Planes { planes: &ed.planes, lines: &ed.lines };
                         adaptive_view::show(ui, d, planes, &mut ed.modeller, &values, tile.size(), &hidden);
                     });
-                    if let Some(e) = ui.ctx().data_mut(|w| w.remove_temp::<String>(UiId::new("adaptive-view-problem"))) {
+                    if let Some(e) = draw_ui.ctx().data_mut(|w| w.remove_temp::<String>(UiId::new("adaptive-view-problem"))) {
                         self.status = Status { text: e, error: true };
                     }
                 } else {
-                    self.family_3d(ui, &mut ed, tile);
+                    self.family_3d(draw_ui, &mut ed, tile);
                 }
             } else {
                 if let Some(which) = view {
