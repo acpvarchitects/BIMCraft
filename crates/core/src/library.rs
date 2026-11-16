@@ -76,6 +76,8 @@ pub enum Kind {
     PrintSet,
     /// A publishing set: print sets in folders, each written as a format.
     PublishSet,
+    /// A survey: a campaign survey areas name, with its date and method.
+    Survey,
 }
 
 impl Kind {
@@ -115,6 +117,7 @@ impl Kind {
             Kind::CoordinatePoint => "coordinate point".into(),
             Kind::PrintSet => ui_msg!("print set").into(),
             Kind::PublishSet => ui_msg!("publishing set").into(),
+            Kind::Survey => "survey".into(),
         }
     }
 
@@ -152,6 +155,7 @@ impl Kind {
             "coordinate-point" => Kind::CoordinatePoint,
             "print-set" => Kind::PrintSet,
             "publish-set" => Kind::PublishSet,
+            "survey" => Kind::Survey,
             _ => Kind::Type(s.strip_prefix("type:")?.to_string()),
         })
     }
@@ -193,6 +197,7 @@ impl fmt::Display for Kind {
             Kind::CoordinatePoint => f.write_str("coordinate-point"),
             Kind::PrintSet => f.write_str("print-set"),
             Kind::PublishSet => f.write_str("publish-set"),
+            Kind::Survey => f.write_str("survey"),
         }
     }
 }
@@ -863,6 +868,7 @@ impl Model {
         add(Kind::CoordinatePoint, &mut points.iter());
         add(Kind::PrintSet, &mut self.print_sets.keys());
         add(Kind::PublishSet, &mut self.publish_sets.keys());
+        add(Kind::Survey, &mut self.surveys.keys());
         out
     }
 
@@ -1555,6 +1561,11 @@ impl crate::model::Element {
                 let mut fields: Vec<&mut String> =
                     sc.fields.iter_mut().map(|x| &mut x.name).chain(sc.sort.iter_mut().map(|x| &mut x.field)).collect();
                 rules_refs(&mut fields, &mut sc.filters, f);
+            }
+            Element::SurveyArea(a) => {
+                if let Some(survey) = &mut a.survey {
+                    f(&Kind::Survey, survey);
+                }
             }
             _ => {}
         }

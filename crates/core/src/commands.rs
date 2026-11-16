@@ -40,6 +40,7 @@ use crate::walls::{self, Axis, stacked};
 use crate::workplane::{Surface, WorkPlane};
 use crate::{pdf, render, schedule, sheet, snap, stairs, view3d};
 
+mod survey;
 mod work_plane;
 
 type R = Result<Value, String>;
@@ -736,6 +737,42 @@ other_files(
          sets. `timings` records completed entry exports, each with folder, print_set, format and time \
          {started_ms, ended_ms, duration_ms}. `publish` writes one",
         publish_set,
+    ),
+    edit(
+        "survey",
+        "Surveys",
+        &[],
+        "{name?, date?: \"YYYY-MM-DD\", method?: visual|thermography|scan|{custom: text}, rename?, delete?: true} a survey \
+         (campaign) of the project, which survey areas name: when and how it was made. Without `name`, lists them. Renamed, its \
+         areas follow; one an area names cannot be deleted",
+        survey::survey,
+    ),
+    edit(
+        "survey_area",
+        "Survey Area",
+        &[],
+        "{id?, host?, face?, outline?: [[u,v],…], holes?: [[[u,v],…],…], item?: category | null, condition?: word | {custom: text} \
+         | null, severity?: 1 to 5 | null, description?, intervention?, depth?: mm | null, survey?: name | null, photos?: [path]} a \
+         survey area (or, with `item`, a drawn item of that category: stone, brick, painting…) on face `face` of `host` (a wall, a \
+         floor, a ceiling, a roof or a column): exterior, interior, start, end, top, bottom or {side: i}. Its `outline` and \
+         `holes` are in the face's own coordinates, mm (`faces` lists them): on a wall's side u along it from its start (arc \
+         length on a curved wall), v up from its base; on a top or a bottom, in plan from the element's first point along its \
+         first edge. It follows its host moved, lengthened, thickened or retyped. `condition` is one of the 26 decay terms \
+         (alveolization, crust, efflorescence, graffiti…); `photos` are paths of files beside the project. Without `id` it makes \
+         one (`host`, `face` and `outline` required); with `id` it changes what is given; `id` alone shows it. Replies with its \
+         `area` on the true surface (developed on a curved wall), `cut` (what openings take out), `net_area`, `cut_share`, \
+         `volume` (net area by `depth`), `outside` (mm² off the face) and `conflict`: an outline off its face is kept and said \
+         so, never dropped. Deleted with `delete`, and with its host",
+        survey::survey_area,
+    ),
+    other(
+        "faces",
+        "Faces",
+        "{id, face?, at?: [[u,v],…]} an element's faces (a wall's exterior, interior, start, end, top and bottom; a floor's, \
+         a ceiling's, a roof's or a column's top, bottom and {side: i}), each with its outline and openings in its own (u, v), \
+         mm, and its area, mm² on the true surface; with `face` one of them, and with `at` where those (u, v) lie in space and \
+         the way the face looks there",
+        survey::faces,
     ),
     edit(
         "voltage",
@@ -3741,6 +3778,12 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
         | Element::View3D(_)
         | Element::PlanView(_)
         | Element::ProjectInfo(_) => {}
+        // What it measures where its host stands now, and whether it is in conflict.
+        Element::SurveyArea(a) => {
+            for (k, v) in crate::survey::quantities_json(m, a) {
+                extra.insert(k, v);
+            }
+        }
     }
     let mut v = serde_json::to_value(e).unwrap_or_default();
     if let Some(o) = v.as_object_mut() {
@@ -16444,6 +16487,14 @@ pub(crate) fn transform(c: &str, m: &Model, mut e: Element, id: Id, mo: &Motion,
         Element::ProjectInfo(_) => {
             return Err(bad(c, format!("{id} is the project's information, which has no place in plan; a project has one")));
         }
+        // A survey area has no place of its own: it is on its host's face, and goes with it.
+        Element::SurveyArea(a) if within(a.host) => {}
+        Element::SurveyArea(_) => {
+            return Err(bad(
+                c,
+                format!("survey area {id} is on its host's face: move its host, or give it another `outline` with `survey_area`"),
+            ));
+        }
         // A camera view has a place in plan: its mark. The camera goes as a whole (the plan point of its eye and its
         // target, each keeping its height), so moving, copying, turning or mirroring it keeps it looking the same way.
         Element::View3D(v) => match v.camera {
@@ -18618,6 +18669,8 @@ fn delete_indexed(s: &mut Session, p: &Value) -> R {
                 Some(Element::Circuit(x)) => gone.contains(&x.panel),
                 // And its panel schedules.
                 Some(Element::PanelSchedule(v)) => gone.contains(&v.panel),
+                // A survey area goes with what it is drawn on.
+                Some(Element::SurveyArea(a)) => gone.contains(&a.host),
                 _ => false,
             };
             if hosted {
@@ -18759,6 +18812,7 @@ fn delete_from_scratch(s: &mut Session, p: &Value) -> R {
                         Element::Circuit(x) => gone.contains(&x.panel),
                         // A panel schedule hangs on its board, as its viewports hang on it.
                         Element::PanelSchedule(v) => gone.contains(&v.panel),
+                        Element::SurveyArea(a) => gone.contains(&a.host),
                         // A plan view goes with its level and its parent; what is annotated in a view goes with it.
                         Element::PlanView(v) => gone.contains(&v.level) || v.parent.is_some_and(|p| gone.contains(&p)),
                         Element::Tag(t) => gone.contains(&t.host) || t.view.is_some_and(|v| gone.contains(&v)),

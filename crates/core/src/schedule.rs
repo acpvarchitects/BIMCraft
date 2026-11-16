@@ -600,6 +600,28 @@ const OWN: &[(&str, usize, &[Own])] = &[
         5,
         &[("Mass", Kind::Text, From::Key("mass")), LEVEL, AREA, ("Perimeter", Kind::Length, From::Metres("perimeter_m")), VOLUME, COUNT],
     ),
+    (
+        "surveyarea",
+        8,
+        &[
+            ID,
+            (msg!("Kind"), Kind::Text, From::Key("kind_name")),
+            (msg!("Condition"), Kind::Text, From::Key("condition_name")),
+            (msg!("Severity"), Kind::Number, From::Key("severity")),
+            AREA,
+            (msg!("Openings Area"), Kind::Area, From::Key("cut_m2")),
+            VOLUME,
+            (msg!("Survey"), Kind::Text, From::Key("survey")),
+            LEVEL,
+            ("Host", Kind::Number, From::Ref("host")),
+            (msg!("Face"), Kind::Text, From::Key("face_name")),
+            (msg!("Gross Area"), Kind::Area, From::Key("gross_m2")),
+            (msg!("Description"), Kind::Text, From::Key("description")),
+            (msg!("Intervention"), Kind::Text, From::Key("intervention")),
+            (msg!("Conflict"), Kind::Text, From::Key("conflict")),
+            COUNT,
+        ],
+    ),
     ("level", 2, &[("Elevation", Kind::Length, From::Key("elevation_shown")), NAME, COUNT]),
     ("sheet", 2, &[("Number", Kind::Text, From::Key("number")), NAME]),
 ];
@@ -633,7 +655,10 @@ pub fn all_categories() -> Vec<&'static str> {
 /// The categories a multi-category schedule lists where it names none: what's built, not rooms, levels, masses
 /// and sheets.
 pub fn built() -> Vec<&'static str> {
-    categories().into_iter().filter(|c| !matches!(*c, "room" | "level" | "mass" | "massfloor" | "propertyline" | "sheet")).collect()
+    categories()
+        .into_iter()
+        .filter(|c| !matches!(*c, "room" | "level" | "mass" | "massfloor" | "propertyline" | "sheet" | "surveyarea"))
+        .collect()
 }
 
 /// The categories multi-category schedule `sc` lists, as elements name theirs.

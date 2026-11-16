@@ -2405,6 +2405,8 @@ macro_rules! visit_refs {
                 f(& $($m)? rb.level);
                 if let Some(g) = & $($m)? rb.host { f(g) }
             }
+            // Its survey is a library entry, named: no element.
+            Element::SurveyArea(a) => f(& $($m)? a.host),
         }
     }};
 }
@@ -2488,6 +2490,10 @@ pub enum Element {
     /// The project's information (Revit's Project Information): one in a project at most.
     #[serde(rename = "project")]
     ProjectInfo(crate::project_info::ProjectInfo),
+    /// A survey area or a drawn item: an outline on a face of a wall, a floor, a ceiling, a roof or a column, held in
+    /// the face's own coordinates, with what a condition survey says of it.
+    #[serde(rename = "surveyarea")]
+    SurveyArea(crate::survey::SurveyArea),
 }
 
 impl Element {
@@ -2510,7 +2516,8 @@ impl Element {
             | Element::Stair(Stair { params, .. })
             | Element::Ramp(Ramp { params, .. })
             | Element::Railing(Railing { params, .. })
-            | Element::ProjectInfo(crate::project_info::ProjectInfo { params, .. }) => Some(params),
+            | Element::ProjectInfo(crate::project_info::ProjectInfo { params, .. })
+            | Element::SurveyArea(crate::survey::SurveyArea { params, .. }) => Some(params),
             _ => None,
         }
     }
@@ -2534,7 +2541,8 @@ impl Element {
             | Element::Stair(Stair { params, .. })
             | Element::Ramp(Ramp { params, .. })
             | Element::Railing(Railing { params, .. })
-            | Element::ProjectInfo(crate::project_info::ProjectInfo { params, .. }) => Some(params),
+            | Element::ProjectInfo(crate::project_info::ProjectInfo { params, .. })
+            | Element::SurveyArea(crate::survey::SurveyArea { params, .. }) => Some(params),
             _ => None,
         }
     }
@@ -2671,6 +2679,7 @@ impl Element {
             Element::PointCloud(_) => "pointcloud",
             Element::CadImport(_) => "cadimport",
             Element::ProjectInfo(_) => crate::project_info::CATEGORY,
+            Element::SurveyArea(_) => "surveyarea",
             Element::Schedule(_) => "schedule",
             Element::View3D(_) => "view3d",
             Element::PlanView(_) => "planview",
@@ -3436,6 +3445,9 @@ pub struct Model {
     /// Its wire types, by name: material, insulation, temperature and the ampacity of each section, mm².
     #[serde(default = "crate::electrical::wire_types")]
     pub wire_types: BTreeMap<String, crate::electrical::WireType>,
+    /// Its surveys (campaigns), by name: when and how each was made. Survey areas name them.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub surveys: BTreeMap<String, crate::survey::Survey>,
     /// Where it lies on a map, where a file or the `georeference` command says: an older BIMCraft leaves it out of a file and
     /// opens the rest, so it took no `FORMAT` step.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -3555,6 +3567,7 @@ impl Model {
             voltages: crate::electrical::voltages(),
             distribution_systems: crate::electrical::distribution_systems(),
             wire_types: crate::electrical::wire_types(),
+            surveys: BTreeMap::new(),
             georeference: None,
             demand_factors: BTreeMap::new(),
             coordinates: crate::coordinates::Coordinates::named(language.word(crate::coordinates::INTERNAL)),
@@ -5303,6 +5316,10 @@ impl Model {
             Element::Tag(t) => self.elements.get(t.host).filter(|h| !matches!(h, Element::Tag(_))).and_then(|h| self.level_of(h)),
             // On the board's level: its plan is where it is drawn.
             Element::Circuit(c) => self.elements.get(c.panel).filter(|h| matches!(h, Element::Component(_))).and_then(|h| self.level_of(h)),
+            // A survey area stands where its host does.
+            Element::SurveyArea(a) => {
+                self.elements.get(a.host).filter(|h| !matches!(h, Element::SurveyArea(_))).and_then(|h| self.level_of(h))
+            }
             // Notes and spot elevations in a level's plan.
             Element::Text(Note { view, .. })
             | Element::Spot(Spot { view, .. })
@@ -8326,6 +8343,7 @@ impl Model {
                 coord(&format!("{who} offset"), pc.offset)?;
                 coord(&format!("{who} angle"), pc.angle)?;
             }
+            Element::SurveyArea(a) => crate::survey::check(self, &who, a)?,
             Element::ProjectInfo(info) => {
                 info.check(&who)?;
                 if let Some(k) =
@@ -8997,6 +9015,7 @@ impl Model {
             voltages,
             distribution_systems,
             wire_types,
+            surveys,
             georeference,
             pinned,
             demand_factors,
@@ -9046,6 +9065,7 @@ impl Model {
             && *voltages == o.voltages
             && *distribution_systems == o.distribution_systems
             && *wire_types == o.wire_types
+            && *surveys == o.surveys
             && *georeference == o.georeference
             && *pinned == o.pinned
             && *demand_factors == o.demand_factors

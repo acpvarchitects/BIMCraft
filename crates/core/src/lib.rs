@@ -231,6 +231,9 @@ pub mod storm;
 #[cfg(test)]
 mod stream_tests;
 pub mod styles;
+pub mod survey;
+#[cfg(test)]
+mod survey_tests;
 pub mod symbol_set;
 pub mod text;
 pub mod texture;
