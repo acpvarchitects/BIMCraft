@@ -38,8 +38,10 @@ pub const MAX_PHOTOS: usize = 64;
 /// How many surveys a project may hold.
 pub const MAX_SURVEYS: usize = 1000;
 
-/// How much of an outline may lie off its face before it is in conflict, mm² (a hair's breadth along a long edge).
+/// How much of an outline may lie off its face before it is in conflict, mm² (a hair's breadth along a long edge), or
+/// this share of its area, whichever is more: what a round top laid out as a polygon misses of its circle.
 pub const OFF_FACE: f64 = 1.0;
+pub const OFF_SHARE: f64 = 1e-4;
 
 /// What an area is: a survey area, the default, or an item drawn on the face to be counted, of a category of the
 /// project's words (`stone`, `brick`, `painting`, `ornament`…). In files and commands `"area"` or `{"item": category}`.
@@ -215,22 +217,17 @@ pub struct Resolved {
 /// The longest a chord along a curved face may be, mm, as an outline is followed in space.
 const STEP: f64 = 100.0;
 
-/// Ring `ring` in `(u, v)` on chart `c` in space: on a curved face each edge cut every [`STEP`] mm.
-fn lifted(c: &Chart, ring: &[P2]) -> Vec<P3> {
-    let curved = matches!(c.surface, crate::face::Surface::Cylinder { .. });
-    let mut out = Vec::new();
-    for (a, b) in geom::ring_edges(ring) {
-        let n = if curved { ((a.dist(b) / STEP).ceil() as usize).clamp(1, 256) } else { 1 };
-        out.extend((0..n).map(|i| c.point(a + (b - a) * (i as f64 / n as f64))));
-    }
-    out
-}
-
 impl Model {
     /// Area `a` as its host stands now: where it is, what it measures and whether it is in conflict ([`Resolved`]).
     pub fn survey_resolved(&self, a: &SurveyArea) -> Resolved {
+        self.survey_resolved_on(a, self.face_chart(a.host, a.face).as_ref())
+    }
+
+    /// [`Model::survey_resolved`] on `chart`, its host's face as [`Model::face_chart`] gave it: what a listing or a schedule
+    /// of many areas on a few faces asks, working each face out once ([`crate::rooms::Rooms::chart`]).
+    pub fn survey_resolved_on(&self, a: &SurveyArea, chart: Option<&Chart>) -> Resolved {
         let own = (geom::area(&a.outline).abs() - a.holes.iter().map(|h| geom::area(h).abs()).sum::<f64>()).max(0.0);
-        let Some(chart) = self.face_chart(a.host, a.face) else {
+        let Some(chart) = chart else {
             return Resolved {
                 outline: Vec::new(),
                 holes: Vec::new(),
@@ -245,7 +242,7 @@ impl Model {
         };
         let m: Measure = chart.measure(&a.outline, &a.holes);
         let net = m.net();
-        let conflict = if m.outside > OFF_FACE.max(own * 1e-9) {
+        let conflict = if m.outside > OFF_FACE.max(own * OFF_SHARE) {
             Some(if m.area <= 0.0 {
                 format!("it lies off its host's {} face", a.face.name())
             } else {
@@ -255,8 +252,8 @@ impl Model {
             None
         };
         Resolved {
-            outline: lifted(&chart, &a.outline),
-            holes: a.holes.iter().map(|h| lifted(&chart, h)).collect(),
+            outline: chart.lift(&a.outline, STEP),
+            holes: a.holes.iter().map(|h| chart.lift(h, STEP)).collect(),
             area: m.area,
             cut: m.cut,
             net,
@@ -394,9 +391,9 @@ pub fn photo_path(p: &str) -> bool {
 
 /// What an element's listing says of area `a` beside its own fields: what it measures where its host stands now (mm²,
 /// mm³), the share openings take, and its conflict, if any.
-pub fn quantities_json(m: &Model, a: &SurveyArea) -> Vec<(String, serde_json::Value)> {
+pub fn quantities_json(m: &Model, a: &SurveyArea, chart: Option<&Chart>) -> Vec<(String, serde_json::Value)> {
     use serde_json::json;
-    let r = m.survey_resolved(a);
+    let r = m.survey_resolved_on(a, chart);
     let mut out = vec![
         ("area".to_string(), json!(r.area)),
         ("cut".to_string(), json!(r.cut)),

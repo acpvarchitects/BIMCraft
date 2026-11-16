@@ -245,7 +245,7 @@ pub(super) fn survey_area(s: &mut Session, p: &Value) -> R {
     };
     let mut out = json!({"id": id});
     if let (Some(o), Some(Element::SurveyArea(a))) = (out.as_object_mut(), s.model.elements.get(id)) {
-        for (k, v) in crate::survey::quantities_json(&s.model, a) {
+        for (k, v) in crate::survey::quantities_json(&s.model, a, s.model.face_chart(a.host, a.face).as_ref()) {
             o.insert(k, v);
         }
     }

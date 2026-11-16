@@ -3780,7 +3780,7 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
         | Element::ProjectInfo(_) => {}
         // What it measures where its host stands now, and whether it is in conflict.
         Element::SurveyArea(a) => {
-            for (k, v) in crate::survey::quantities_json(m, a) {
+            for (k, v) in crate::survey::quantities_json(m, a, rooms.chart(a.host, a.face).as_deref()) {
                 extra.insert(k, v);
             }
         }
@@ -16354,6 +16354,15 @@ fn modify(s: &mut Session, p: &Value) -> R {
                         let mut o = o.clone();
                         o.offset *= k;
                         rescaled.push((*oid, if matches!(oe, Element::Door(_)) { Element::Door(o) } else { Element::Window(o) }));
+                    }
+                    // And what is drawn on its sides, which is placed along it as they are.
+                    if let Element::SurveyArea(a) = oe
+                        && m.same(a.host, id)
+                        && matches!(a.face, crate::face::FaceId::Exterior | crate::face::FaceId::Interior)
+                    {
+                        let mut a = a.clone();
+                        a.outline.iter_mut().chain(a.holes.iter_mut().flatten()).for_each(|q| q.0 *= k);
+                        rescaled.push((*oid, Element::SurveyArea(a)));
                     }
                 }
             }

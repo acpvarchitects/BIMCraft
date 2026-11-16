@@ -728,6 +728,36 @@ pub fn top_at(m: &Model, w: &Wall, s: f64) -> f64 {
     bounds(m, w).1.at(Axis::of(w).at(s, centre(m, w)))
 }
 
+/// A wall's base under the point `s` mm along its location line and `off` mm to its left: on a face, where that face's
+/// bottom edge is when what it stands on slopes.
+pub fn base_at_offset(m: &Model, w: &Wall, s: f64, off: f64) -> f64 {
+    bounds(m, w).0.at(Axis::of(w).at(s, off))
+}
+
+/// A wall's top over the point `s` mm along its location line and `off` mm to its left ([`base_at_offset`]).
+pub fn top_at_offset(m: &Model, w: &Wall, s: f64, off: f64) -> f64 {
+    bounds(m, w).1.at(Axis::of(w).at(s, off))
+}
+
+/// `ring`, in plan, under a wall's top (with `top`) or over its base: cut where what it is attached to changes plane, each
+/// part with the plane it lies in there.
+pub(crate) fn wall_cap(m: &Model, w: &Wall, ring: Vec<P2>, top: bool) -> Vec<(Vec<P2>, Plane)> {
+    let (base, up) = bounds(m, w);
+    if top { up.parts(ring) } else { base.parts(ring) }
+}
+
+/// [`wall_cap`] for a column: its top or its base over `ring`.
+pub(crate) fn column_cap(m: &Model, col: &crate::model::Column, ring: Vec<P2>, top: bool) -> Vec<(Vec<P2>, Plane)> {
+    let (base, up) = column_bounds(m, col);
+    if top { up.parts(ring) } else { base.parts(ring) }
+}
+
+/// A column's base and top over the point `q`, as what it is attached to puts them.
+pub(crate) fn column_base_top_at(m: &Model, col: &crate::model::Column, q: P2) -> (f64, f64) {
+    let (base, up) = column_bounds(m, col);
+    (base.at(q), up.at(q))
+}
+
 /// A wall's lowest base and highest top along its faces and its centre line, where what it's
 /// attached to bends (sampled: a ridge along it may fall between samples).
 pub fn heights(m: &Model, w: &Wall) -> (f64, f64) {

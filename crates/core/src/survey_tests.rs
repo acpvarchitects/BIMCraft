@@ -113,14 +113,39 @@ fn an_area_on_a_curved_wall_measures_its_developed_area() {
         json!({"host": w, "face": "interior", "outline": [[0, 1000], [len, 1000], [len, 2000], [0, 2000]], "condition": "efflorescence"}),
     ));
     let r = s.model.survey_resolved(area_of(&s, a));
-    assert!(near(len, std::f64::consts::PI * 1900.0, 1e-6) || near(len, std::f64::consts::PI * 2100.0, 1e-6), "{len}");
-    assert!(near(r.area, len * 1000.0, 1e-3), "{} against {}", r.area, len * 1000.0);
+    // `u` is along the location line (radius 2000); the interior side, radius 2100, is that much longer.
+    assert!(near(len, std::f64::consts::PI * 2000.0, 1e-6), "{len}");
+    let developed = std::f64::consts::PI * 2100.0 * 1000.0;
+    assert!(near(r.area, developed, 1e-3), "{} against {developed}", r.area);
     assert!(r.area > 4000.0 * 1000.0, "more than its chord: {}", r.area);
     assert!(r.conflict.is_none(), "{r:?}");
     // In space its outline follows the curve, every point on the side's radius.
     let radii: Vec<f64> = r.outline.iter().map(|p| (p[0] - 2000.0).hypot(p[1])).collect();
     assert!(r.outline.len() > 20, "{}", r.outline.len());
     assert!(radii.iter().all(|x| near(*x, radii[0], 1e-6)), "{radii:?}");
+}
+
+#[test]
+fn an_area_over_a_window_in_a_curved_wall_stays_over_it_thickened_retyped_and_its_line_moved() {
+    let mut s = Session::new();
+    let w = first(&run(&mut s, "wall", json!({"points": [[0, 0], [4000, 0]], "arc": 180, "height": 3000})));
+    run(&mut s, "window", json!({"wall": w, "offset": 3000}));
+    // An outline the window's own hole on the exterior: all of it is cut.
+    let hole = s.model.face_chart(s.model.guid(w), crate::face::FaceId::Exterior).unwrap().openings[0].clone();
+    let outline: Vec<[f64; 2]> = hole.iter().map(|q| [q.0, q.1]).collect();
+    let a = first(&run(&mut s, "survey_area", json!({"host": w, "face": "exterior", "outline": outline, "condition": "crack"})));
+    let all_cut = |s: &Session| {
+        let r = s.model.survey_resolved(area_of(s, a));
+        near(r.cut_share, 1.0, 1e-9) && r.conflict.is_none()
+    };
+    assert!(all_cut(&s));
+    run(&mut s, "type", json!({"category": "wall", "name": "Thick", "thickness": 700}));
+    run(&mut s, "modify", json!({"id": w, "type": "Thick"}));
+    assert!(all_cut(&s), "retyped thicker: {:?}", s.model.survey_resolved(area_of(&s, a)));
+    run(&mut s, "type", json!({"category": "wall", "name": "Thick", "thickness": 900}));
+    assert!(all_cut(&s), "its type thickened");
+    run(&mut s, "modify", json!({"id": w, "location": "exterior-finish"}));
+    assert!(all_cut(&s), "its location line moved: {:?}", s.model.survey_resolved(area_of(&s, a)));
 }
 
 #[test]
