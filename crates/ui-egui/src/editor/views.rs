@@ -80,6 +80,8 @@ pub(crate) struct Views {
     pub(crate) ghost_3d: Vec<bimcraft_core::view3d::PlaneMark>,
     /// What a Modify tool's point snaps to on {3D}'s work plane (FE-24b), and what it was found for.
     pub(crate) traces_3d: Option<(u64, super::modify::Traces)>,
+    /// What {3D} picks references among (FE-24b), and what it was made for.
+    pub(crate) refs_3d: Option<(u64, super::modify::Refs3d)>,
     /// The Modify tools' Options Bar, kept for the session.
     pub(crate) modify_options: super::modify::Options,
     /// Whether the pointer was last over something selected that a drag would move, with no tool in hand: what the status
@@ -267,6 +269,8 @@ impl Views {
             self.dim_kind = Default::default();
             self.aligning = None;
             self.align_lock = None;
+            self.align_lock_3d = None;
+            self.align_point_3d = None;
         }
     }
 }

@@ -237,7 +237,7 @@ fn align_in_3d_moves_what_is_picked_second_onto_the_reference_and_its_padlock_lo
     click_at(&mut h, at);
     assert_eq!(editor(&h).dimensions.len(), dims + 1, "{}", status(&h));
     let d = editor(&h).dimensions.last().unwrap().clone();
-    assert!(d.alignment && d.is_locked(0), "{d:?}");
+    assert!(d.alignment && d.is_locked(0) && d.view == bimcraft_core::family::constraints::DimView::Plan, "{d:?}");
 }
 
 #[test]
@@ -309,4 +309,108 @@ fn references_in_3d_screenshots() {
             h.render().unwrap().save(std::path::Path::new(&dir).join(format!("fe24b-{name}-{look}.png"))).unwrap();
         }
     }
+}
+
+/// A reference plane of the family's own through `start` and `end`, `up` the other way it runs, put straight into the
+/// editor; its GUID.
+fn plane(h: &mut Harness<BimApp>, start: [f64; 3], end: [f64; 3], up: [f64; 3]) -> bimcraft_core::ids::Guid {
+    let guid = bimcraft_core::ids::Guid::new();
+    let p: bimcraft_core::family::RefPlane =
+        serde_json::from_value(serde_json::json!({"guid": guid, "start": start, "end": end, "up": up})).unwrap();
+    super::family_drag_move::ed(h).planes.push(p);
+    h.run();
+    guid
+}
+
+#[test]
+fn offset_in_3d_reads_the_side_beside_a_plane_drawn_up_off_the_work_plane() {
+    use super::family_drag_move::family;
+    // A plane x 300 drawn upright, from z 0 to 1600: clicked 10 east of it at z 800, it goes 300 east.
+    let mut h = offsetting();
+    let g = plane(&mut h, [300.0, -500.0, 0.0], [300.0, -500.0, 1600.0], [0.0, 1.0, 0.0]);
+    click_on(&mut h, [310.0, -500.0, 800.0]);
+    let p = family(&h).planes.iter().find(|p| p.guid == g).unwrap().clone();
+    assert!((p.start[0] - 600.0).abs() < 1e-6, "{p:?}: {}", status(&h));
+}
+
+#[test]
+fn a_pick_in_3d_uses_up_a_waiting_snap_override() {
+    for keys in ["OF", "MM"] {
+        let mut h = zoomed();
+        pick(&mut h, &[Picked::Form(0)]);
+        shortcut(&mut h, keys);
+        shortcut(&mut h, "SO");
+        assert!(h.state().snap_once.is_some(), "{keys}: the override waits");
+        click_off(&mut h, [1000.0, 600.0, 0.0]);
+        assert_eq!(h.state().snap_once, None, "{keys}: used up by the pick: {}", status(&h));
+    }
+}
+
+#[test]
+fn a_datum_is_picked_in_3d_as_an_axis_and_offset_refuses_it() {
+    // Center (Left/Right), drawn along y at x 0, south of the boxes: box A from x 100 to 500 goes to -500 to -100.
+    let mut h = mirroring();
+    click_off(&mut h, [0.0, -800.0, 0.0]);
+    assert!(about(extent(&h, 0), [-500.0, -100.0, 100.0, 500.0]), "{:?}: {}", extent(&h, 0), status(&h));
+    let mut h = offsetting();
+    click_off(&mut h, [0.0, -800.0, 0.0]);
+    assert!(status(&h).contains("A datum stays where it is"), "{}", status(&h));
+}
+
+#[test]
+fn align_in_3d_takes_a_plane_drawn_along_the_normal_and_refuses_one_level_with_the_work_plane() {
+    use super::family_drag_move::family;
+    // A plane x 300 drawn upright: Edge (x 1000) aligned onto it.
+    let mut h = aligning();
+    plane(&mut h, [300.0, -500.0, 0.0], [300.0, -500.0, 1600.0], [0.0, 1.0, 0.0]);
+    click_on(&mut h, [310.0, -500.0, 800.0]);
+    click_off(&mut h, [1000.0, 600.0, 0.0]);
+    let edge = family(&h).planes.iter().find(|p| p.guid == g(EDGE)).unwrap().clone();
+    assert!((edge.start[0] - 300.0).abs() < 1e-6, "{edge:?}: {}", status(&h));
+    // A plane level with Ref. Level, 600 over it: no plan sees it edge on.
+    let mut h = aligning();
+    plane(&mut h, [-500.0, 800.0, 600.0], [500.0, 800.0, 600.0], [0.0, 1.0, 0.0]);
+    click_off(&mut h, [0.0, 800.0, 600.0]);
+    assert!(status(&h).contains("square to the work plane"), "{}", status(&h));
+}
+
+/// Box A's top (300 high) aligned onto a plane level 600 high, in {3D} with work plane `work` (none: Ref. Level); the
+/// padlock's view, if one is offered, then clicked.
+fn top_onto_a_shelf(work: Option<[[f64; 3]; 3]>) -> (Harness<'static, BimApp>, Option<bimcraft_core::family::constraints::DimView>) {
+    use super::family_drag_move::ed;
+    let mut h = zoomed();
+    plane(&mut h, [-500.0, 800.0, 600.0], [500.0, 800.0, 600.0], [0.0, 1.0, 0.0]);
+    if let Some([s, e, u]) = work {
+        let w = plane(&mut h, s, e, u);
+        ed(&mut h).views.set_work_plane(bimcraft_core::family::PlaneRef::Plane(w));
+        h.run();
+    }
+    shortcut(&mut h, "AL");
+    click_off(&mut h, [0.0, 800.0, 600.0]);
+    // Box A's south edge on its top, running along x.
+    click_off(&mut h, [300.0, 100.0, 300.0]);
+    let to = serde_json::to_value(&super::family_drag_move::family(&h).forms[0]).unwrap()["to"].clone();
+    assert_eq!(to.as_f64(), Some(600.0), "{to}: {}", status(&h));
+    let view = super::family_views::editor(&h).views.align_lock_3d.map(|l| l.3);
+    if let Some(at) = super::family_views::editor(&h).views.align_lock_3d.map(|l| l.2) {
+        let (dx, dy) = crate::editor::modify::PADLOCK_3D;
+        let p = h.state().family_screen3(at).expect("on screen") + egui::vec2(dx, dy);
+        click_at(&mut h, p);
+    }
+    (h, view)
+}
+
+#[test]
+fn align_in_3d_locks_with_the_view_that_sees_the_work_plane_flat_and_offers_no_padlock_on_an_oblique_one() {
+    use super::family_views::editor;
+    use bimcraft_core::family::constraints::DimView;
+    // Center (Front/Back), upright through the origin facing front: the Front elevation's lock.
+    let (h, view) = top_onto_a_shelf(Some([[-1000.0, 0.0, 0.0], [1000.0, 0.0, 0.0], [0.0, 0.0, 1.0]]));
+    assert_eq!(view, Some(DimView::Front));
+    let d = editor(&h).dimensions.last().unwrap().clone();
+    assert!(d.alignment && d.is_locked(0) && d.view == DimView::Front, "{d:?}");
+    // An upright plane on the diagonal, which no plan or elevation sees flat: aligned, and no padlock.
+    let (h, view) = top_onto_a_shelf(Some([[-1000.0, -1000.0, 0.0], [1000.0, 1000.0, 0.0], [0.0, 0.0, 1.0]]));
+    assert_eq!(view, None);
+    assert!(editor(&h).dimensions.iter().all(|d| !d.alignment), "no lock made");
 }
