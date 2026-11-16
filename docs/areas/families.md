@@ -1999,6 +1999,18 @@ from edge to edge whatever the frame. The editor keeps the fitted frame while on
 (`Staged::draw_lines_at` draws from it). Tests: `tests/family_canvas_clear.rs`, and
 `a_fitted_view_cuts_no_elevation_mark_at_its_edge` in `family/views.rs`.
 
+What floats over a view keeps clear (UI-3). A family view is drawn between the Options Bar's row and its view-control bar:
+the row (`OPTIONS_CARD` and the gap above it) is kept under the tabs whether or not a tool's card is on it, so the view never
+moves as a card comes and goes and a plane's name along an elevation's top is never under one, and the view ends above the
+bar, by how far up it reached when last drawn (`FAMILY_BAR`, one row of it, at first), so {3D}'s box fits clear of it. The
+Options Bar's card is drawn only round something: a tool with no name and no options (Join and Cut Geometry in a project)
+shows none. The Error/Note card at the view's corner stands above the view-control bar, a family's or, where it floats over
+the view, the project's. In a plan an elevation mark is in a reference plane's name's way as another name is: a name it
+blocks beyond the trace's end slides in along its own trace, which is cut under it, before trying the other end or beside
+it, so CENTER (FRONT/BACK) stops short of RIGHT and a plane drawn close to a mark is named clear of it. Tests:
+`tests/canvas_overlaps.rs` (with before/after screenshots, `BIMCRAFT_UI3_DUMP`) and `no_plane_name_runs_into_an_elevation_mark`
+in `family/views.rs`.
+
 ## Imported 3D models
 
 `import_mesh` (Insert > Import 3D Model) brings in the models other programs make: an OBJ, with the colours of the MTL it
