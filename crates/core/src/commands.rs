@@ -10174,6 +10174,7 @@ fn flip(s: &mut Session, p: &Value) -> R {
     refuse_pinned(c, m, &blocked, "flip")?;
     let m = s.model_mut();
     let lengths: BTreeMap<Guid, f64> = ids.iter().filter_map(|id| Some((m.guid(*id), Axis::of(m.wall(*id)?).length()))).collect();
+    let widths: BTreeMap<Guid, f64> = ids.iter().filter_map(|id| Some((m.guid(*id), m.thickness(m.wall(*id)?)))).collect();
     for (id, e) in m.elements.iter_mut() {
         match e {
             Element::Wall(w) if ids.contains(id) => {
@@ -10192,6 +10193,21 @@ fn flip(s: &mut Session, p: &Value) -> R {
                     uv[0] = length - uv[0];
                     *face = face.other_side();
                 }
+            }
+            // Drawn on it: where it was, on what is now its other side, as far from its other end (on an end, as far
+            // across from its other side). Its top and bottom are in plan, and stay.
+            Element::SurveyArea(a) if lengths.contains_key(&a.host) => {
+                use crate::face::FaceId;
+                let (length, width) = (lengths.get(&a.host).copied().unwrap_or_default(), widths.get(&a.host).copied().unwrap_or_default());
+                let (to, across) = match a.face {
+                    FaceId::Exterior => (FaceId::Interior, length),
+                    FaceId::Interior => (FaceId::Exterior, length),
+                    FaceId::Start => (FaceId::End, width),
+                    FaceId::End => (FaceId::Start, width),
+                    _ => continue,
+                };
+                a.face = to;
+                a.outline.iter_mut().chain(a.holes.iter_mut().flatten()).for_each(|q| q.0 = across - q.0);
             }
             _ => {}
         }
@@ -16497,7 +16513,21 @@ pub(crate) fn transform(c: &str, m: &Model, mut e: Element, id: Id, mo: &Motion,
             return Err(bad(c, format!("{id} is the project's information, which has no place in plan; a project has one")));
         }
         // A survey area has no place of its own: it is on its host's face, and goes with it.
-        Element::SurveyArea(a) if within(a.host) => {}
+        // On a top or a bottom it is in plan: taken as its host is. On a wall's side or end, mirrored, the wall runs back
+        // the other way: from its other end, and its start is its end.
+        Element::SurveyArea(a) if within(a.host) => {
+            use crate::face::FaceId;
+            match a.face {
+                FaceId::Top | FaceId::Bottom => a.outline.iter_mut().chain(a.holes.iter_mut().flatten()).for_each(|q| *q = f(*q)),
+                FaceId::Exterior | FaceId::Interior if mo.mirror => {
+                    let length = m.wall(a.host).map_or(0.0, |w| Axis::of(w).length());
+                    a.outline.iter_mut().chain(a.holes.iter_mut().flatten()).for_each(|q| q.0 = length - q.0);
+                }
+                FaceId::Start if mo.mirror => a.face = FaceId::End,
+                FaceId::End if mo.mirror => a.face = FaceId::Start,
+                _ => {}
+            }
+        }
         Element::SurveyArea(_) => {
             return Err(bad(
                 c,
@@ -16801,6 +16831,24 @@ fn face_hosted(m: &Model, ids: &[Id]) -> (Vec<Id>, Vec<Id>) {
     (slabs, sides)
 }
 
+/// The survey areas drawn on elements `ids`, found through what points at them.
+fn surveyed(m: &Model, ids: &[Id]) -> Vec<Id> {
+    let lookup = m.lookup();
+    let mut out: Vec<Id> = ids
+        .iter()
+        .flat_map(|id| {
+            let g = m.guid(*id);
+            lookup
+                .referrers(&g)
+                .filter(move |r| matches!(m.elements.get(*r), Some(Element::SurveyArea(a)) if a.host == g))
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    out.sort_unstable();
+    out.dedup();
+    out
+}
+
 /// Component `e`, on a wall's side, as it is once its wall is mirrored, which runs back the other way: as far from the
 /// wall's other end, turned the other way on the face and mirrored.
 fn side_mirrored(m: &Model, e: &Element) -> Option<Element> {
@@ -16852,11 +16900,16 @@ fn relocate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion, end: Option<bool>
     // What is on a face of a floor, a ceiling or a roof taken whole goes with it, as Revit's hosted elements do; what is
     // on a wall's side keeps its place along it, so the wall takes it (mirrored, from its other end).
     let (carried_faces, on_sides) = face_hosted(m, ids);
-    let ids: Vec<Id> = if end.is_none() {
+    let mut ids: Vec<Id> = if end.is_none() {
         ids.iter().copied().filter(|id| !on_sides.contains(id)).chain(carried_faces.into_iter().filter(|id| !ids.contains(id))).collect()
     } else {
         ids.to_vec()
     };
+    // What is drawn on an element taken whole goes with it (`transform` says how, by its face).
+    if end.is_none() {
+        let surveyed = surveyed(m, &ids);
+        ids.extend(surveyed.into_iter().filter(|id| !ids.contains(id)).collect::<Vec<_>>());
+    }
     let ids = ids.as_slice();
     let sides: Vec<(Id, Element)> = if end.is_none() && mo.mirror {
         on_sides.iter().filter_map(|id| Some((*id, side_mirrored(m, m.elements.get(*id)?)?))).collect()
@@ -17321,6 +17374,7 @@ fn duplicate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion) -> R {
     let copying_guids: BTreeSet<Guid> = ids.iter().map(|id| m.guid(*id)).collect();
     let heads: BTreeMap<Id, P2> = tag_heads(m, ids, mo).into_iter().collect();
     let mut copies = Vec::new();
+    let mut surveys = Vec::new();
     // Dimensions and tags, copied last: they may refer to copies.
     let mut notes = Vec::new();
     for &id in ids {
@@ -17330,6 +17384,8 @@ fn duplicate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion) -> R {
             Element::Railing(Railing { host: Some(h), .. }) if copying_guids.contains(&h) => {}
             Element::Component(cp)
                 if cp.host.is_some_and(|h| matches!(h.host, HostRef::Face { .. }) && copying_guids.contains(&h.host.guid())) => {}
+            // An area copied with its host goes on the copy, after it.
+            e @ Element::SurveyArea(_) => surveys.push((id, e)),
             e @ (Element::Dimension(_) | Element::Tag(_) | Element::Spot(_)) => notes.push((id, e)),
             e => copies.push((id, e)),
         }
@@ -17371,7 +17427,7 @@ fn duplicate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion) -> R {
     let mut made = Vec::new();
     // Each copied element's copy.
     let mut hosts = BTreeMap::new();
-    for (from, mut e) in copies.into_iter().chain(hosted).chain(on_faces) {
+    for (from, mut e) in copies.into_iter().chain(hosted).chain(on_faces).chain(surveys) {
         let door = matches!(e, Element::Door(_));
         match &mut e {
             Element::Grid(g) => g.name = next_grid_name(m),
@@ -17384,6 +17440,7 @@ fn duplicate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion) -> R {
                 }))
             }
             Element::Railing(r) => r.host = r.host.map(|h| hosts.get(&h).copied().unwrap_or(h)),
+            Element::SurveyArea(a) => a.host = hosts.get(&a.host).copied().unwrap_or(a.host),
             // On the copy of its host's face, where its place there puts it.
             Element::Component(cp)
                 if cp.host.is_some_and(|h| matches!(h.host, HostRef::Face { .. }) && hosts.contains_key(&h.host.guid())) =>

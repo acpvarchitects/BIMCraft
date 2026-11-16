@@ -381,3 +381,92 @@ fn a_file_from_before_survey_areas_opens_and_saves_byte_identical() {
     let curved = s.model.elements.iter().find(|(_, e)| matches!(e, Element::Wall(w) if w.arc != 0.0)).map(|(id, _)| *id).unwrap();
     assert_eq!(s.model.faces_of(s.model.guid(curved)).len(), 6);
 }
+
+/// The area's outline in space, its points rounded to a micron and sorted, to compare as a set.
+fn points_of(s: &Session, a: Id) -> Vec<[i64; 3]> {
+    let r = s.model.survey_resolved(area_of(s, a));
+    let mut out: Vec<[i64; 3]> = r.outline.iter().map(|p| p.map(|c| (c * 1000.0).round() as i64)).collect();
+    out.sort_unstable();
+    out
+}
+
+fn mirrored_x(points: &[[i64; 3]], x: i64) -> Vec<[i64; 3]> {
+    let mut out: Vec<[i64; 3]> = points.iter().map(|p| [2 * x * 1000 - p[0], p[1], p[2]]).collect();
+    out.sort_unstable();
+    out
+}
+
+#[test]
+fn a_flipped_wall_keeps_its_areas_where_they_are_on_its_other_side() {
+    let (mut s, w, a) = crusted();
+    let before = points_of(&s, a);
+    run(&mut s, "flip", json!({"ids": [w]}));
+    assert_eq!(area_of(&s, a).face, crate::face::FaceId::Interior);
+    assert_eq!(points_of(&s, a), before);
+    let r = s.model.survey_resolved(area_of(&s, a));
+    assert!(r.conflict.is_none() && near(r.area, 1e6, 1e-6), "{r:?}");
+    // An area on its start goes to its end, as far across from its exterior as it was from its interior.
+    let end =
+        first(&run(&mut s, "survey_area", json!({"host": w, "face": "start", "outline": [[20, 100], [60, 100], [60, 300], [20, 300]]})));
+    let before = points_of(&s, end);
+    run(&mut s, "flip", json!({"ids": [w]}));
+    assert_eq!(area_of(&s, end).face, crate::face::FaceId::End);
+    assert_eq!(points_of(&s, end), before);
+    assert_eq!(area_of(&s, a).face, crate::face::FaceId::Exterior);
+}
+
+#[test]
+fn a_mirrored_wall_takes_its_areas_with_it_from_its_other_end() {
+    let (mut s, w, a) = crusted();
+    let before = points_of(&s, a);
+    run(&mut s, "mirror", json!({"ids": [w], "axis": [[8000, 0], [8000, 1000]]}));
+    assert_eq!(points_of(&s, a), mirrored_x(&before, 8000));
+    assert!(s.model.survey_resolved(area_of(&s, a)).conflict.is_none());
+    // Selected with it, the same.
+    let before = points_of(&s, a);
+    run(&mut s, "mirror", json!({"ids": [w, a], "axis": [[0, 0], [0, 1000]]}));
+    assert_eq!(points_of(&s, a), mirrored_x(&before, 0));
+}
+
+#[test]
+fn an_area_on_a_top_goes_with_its_host_moved_turned_and_mirrored() {
+    let mut s = Session::new();
+    let f = first(&run(&mut s, "floor", json!({"boundary": [[0, 0], [6000, 0], [6000, 4000], [0, 4000]]})));
+    let a = first(&run(
+        &mut s,
+        "survey_area",
+        json!({"host": f, "face": "top", "outline": [[1000, 1000], [2000, 1000], [2000, 1500], [1000, 1500]], "condition": "deposit"}),
+    ));
+    let before = points_of(&s, a);
+    run(&mut s, "move", json!({"ids": [f], "by": [500, 0]}));
+    let moved: Vec<[i64; 3]> = before.iter().map(|p| [p[0] + 500_000, p[1], p[2]]).collect();
+    assert_eq!(points_of(&s, a), moved);
+    run(&mut s, "mirror", json!({"ids": [f], "axis": [[10000, 0], [10000, 1000]]}));
+    assert_eq!(points_of(&s, a), mirrored_x(&moved, 10000));
+    run(&mut s, "rotate", json!({"ids": [f], "about": [0, 0], "angle": 90}));
+    let r = s.model.survey_resolved(area_of(&s, a));
+    assert!(r.conflict.is_none() && near(r.area, 500_000.0, 1e-3), "{r:?}");
+    // A column's top too.
+    run(&mut s, "type", json!({"category": "column", "name": "Pier 600", "width": 600, "depth": 600}));
+    let c = first(&run(&mut s, "column", json!({"at": [20000, 0], "type": "Pier 600", "height": 3000})));
+    let on = first(&run(
+        &mut s,
+        "survey_area",
+        json!({"host": c, "face": "top", "outline": [[19800, -200], [20000, -200], [20000, 0], [19800, 0]]}),
+    ));
+    run(&mut s, "move", json!({"ids": [c], "by": [0, 3000]}));
+    let r = s.model.survey_resolved(area_of(&s, on));
+    assert!(r.conflict.is_none() && near(r.outline[0][1], 2800.0, 1e-6), "{r:?}");
+}
+
+#[test]
+fn an_area_copied_with_its_host_is_on_the_copy() {
+    let (mut s, w, a) = crusted();
+    let made = run(&mut s, "copy", json!({"ids": [w, a], "by": [0, 5000]}));
+    let copies: Vec<Id> = made["ids"].as_array().unwrap().iter().filter_map(Value::as_u64).collect();
+    let copy = copies.iter().copied().find(|id| matches!(s.model.elements.get(*id), Some(Element::SurveyArea(_)))).unwrap();
+    let wall = copies.iter().copied().find(|id| s.model.wall(*id).is_some()).unwrap();
+    assert_eq!(area_of(&s, copy).host, s.model.guid(wall));
+    let moved: Vec<[i64; 3]> = points_of(&s, a).iter().map(|p| [p[0], p[1] + 5_000_000, p[2]]).collect();
+    assert_eq!(points_of(&s, copy), moved);
+}

@@ -12,22 +12,38 @@ element as it stands (`Model::face_chart`, a `Chart`). A face is named by a `Fac
 of its outline in plan; a round column's one curved side is side 0). The name is what the face is to its element, so it
 survives joins, openings, retyping and thickening; `FaceId::role` maps it to Place on Face's `FaceRole`.
 
-- A wall's sides: `u` along the face from square to the location line's start (the arc length along that face's own
-  curve on a curved wall), `v` up from the wall's own base. On a straight wall `u` is a door's offset, as Place on Face's
-  `uv` is. Seen from outside, `u` runs right to left on the exterior: `(u, v)` is the same on both sides, not mirrored.
+The coordinates are Place on Face's where it has them (`Model::face_at`, `face_uv`):
+
+- A wall's sides: `u` mm along the location line from its start (a door's offset), `v` up from the wall's own base. On a
+  curved wall a side is longer than its line by its radius over the line's (`k`), which areas are measured by, so they
+  are developed; a place in `(u, v)` stays square to the same point of the line when the wall is thickened or retyped,
+  and `modify` of its `location` rescales it as it rescales the doors' offsets. Seen from outside, `u` runs right to left
+  on the exterior: `(u, v)` is the same on both sides, not mirrored.
 - A wall's ends: `u` across from the exterior face, `v` up.
-- Any top or bottom: `(u, v)` in plan from the element's own origin and direction (a slab's first boundary point and
-  first edge, a column's point and angle, a wall's start and direction), the height and slope found under each point.
-- A side: `u` along the edge from its first point, `v` up from the lowest point of the face's bottom.
+- Any top or bottom (a slab's, a column's, a wall's): `(u, v)` is the point in plan, in the model's axes, as Place on Face
+  has it; the height and slope under each point come from `hosting::piece_at`, the lookup `face_at` uses, on the pieces
+  the element is cut into where what it is attached to changes plane (a wall's or a column's attached top). Moving,
+  turning or mirroring the element takes what is drawn there with it.
+- A side: `u` along the edge from its first point, `v` up from the lowest point of the face's bottom, which follows what a
+  column is attached to.
+- A round column's side: `u` the arc length counter-clockwise from its angle, round and round (`Chart::period`): an
+  outline across where `u` starts again measures as it lies. Its top is laid out with 512 sides.
 
-Every surface is a plane, a plumb cylinder or a top made of planes, so `point`, `normal` and `uv` are exact, and
-`Chart::measure` reads an outline's area on the true surface: developed on a curved wall, over the cosine on a slope.
-`Chart::frame` gives the face's axes at a point (`origin`, `x`, `normal`), the frame a cut drawn on a face takes. A
-chart's `outline` is the face's boundary in `(u, v)`; `openings` are what the model cuts in it (a wall's doors and windows
-as rectangles, a slab's openings). Site toposolids, when they come, are a top of this kind.
+Every surface is a plane, a wall's side (plumb, straight or curved), a plumb cylinder or a top made of planes, so
+`point`, `normal` and `uv` are exact, and `Chart::measure` reads an outline's area on the true surface: developed on a
+curved wall, over the cosine on a slope. `Chart::lift` gives an outline in space, cut where it crosses from one slope to
+another and along a curve. `Chart::frame` gives the face's axes at a point: `origin`, `x` (along `u`), `y` (along `v`) and
+`normal`; `y` is given, not `normal × x`, because on an exterior, an end and a bottom `x × y` is the inward normal. Heritage
+Parts' cuts on a face (`origin`, `x`, `normal`) read it with `y` for which side `v` is on. A chart's `outline` is the face
+in `(u, v)`, openings not taken out; `openings` are what cuts it: a wall's doors and windows (their family's voids where
+they have them, else their rectangles) and the voids of components on its faces; a slab's openings, the shafts through
+it (`less_shafts`) and its components' voids; a hollow column's hole. A void is the hull of its points seen square on
+the face, where it reaches the face. They are found through the model's lookup of what points at what, and a listing or a
+schedule works each face out once (`rooms::Rooms::chart`). `Model::faces_of` leaves out a wall's end where another wall
+is joined to it. Site toposolids, when they come, are a top of this kind.
 
-Not yet: a wall's sides end square at its location line's ends (a mitre or a join doesn't lengthen them), a shaft
-through a floor isn't one of its openings, and the openings of a family with its own voids are their rectangles.
+Not yet: a wall's sides end square at its location line's ends (a mitre or a join doesn't lengthen them), and a column's
+side faces are not carried by a mirror.
 
 ## Survey areas (`survey.rs`, `commands/survey.rs`)
 
@@ -38,7 +54,9 @@ brick, a painting) counted on a face. It holds `host` (GUID), `face`, `outline` 
 the project, never held in it). It holds nothing in 3D: `Model::survey_resolved` works out its outline in space, its area,
 what openings take out of it (`cut`, `cut_share`), its net area and volume, and `conflict` when its outline lies off its
 face, wholly or in part, or the face is gone. An area in conflict keeps all it says. It goes with its host
-(`delete`), moves only with it, and changes nothing of its host's geometry, quantities or IFC.
+(`delete`), moves only with it, and changes nothing of its host's geometry, quantities or IFC. Flipping a wall puts its
+areas on the other side, as far from the other end; mirroring it takes them from its other end; on a top or a bottom they
+are moved, turned and mirrored with their host, and copied with it when they are copied together.
 
 A survey (campaign) is a library entry, `Model::surveys` by name (`library::Kind::Survey`): its `date` and `method`
 (visual, thermography, scan or its own). Areas name it, follow it renamed, and hold its GUID in a file.
