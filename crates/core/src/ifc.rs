@@ -2178,8 +2178,47 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
         // The door or window itself: a 50 mm panel centred in the wall; of a family, its forms as a component's are,
         // closed face sets in their materials' colours, standing at the middle of the opening.
         let mut made_of: Vec<u64> = Vec::new();
-        let (fill_at, shape) = match m.opening_local(e) {
-            Some((pieces, _)) => {
+        // In a shaped wall, its solids bent as the wall is (`Model::opening_pieces`, a panel along the core), from the jamb.
+        let bent = walls::shape::Shaper::of(m, wl).map(|sh| {
+            let jamb = axis.at(o.offset, walls::centre(m, wl)) - way * (t.width / 2.0);
+            let base = m.own_base(wl) + o.sill;
+            let local = |p: &P3| {
+                let r = P2(p[0], p[1]) - jamb;
+                [r.dot(way), r.dot(way.perp()), p[2] - base]
+            };
+            let mut sets: Vec<(Vec<[P3; 3]>, String)> = if m.opening_local(e).is_some() {
+                m.opening_pieces(e).into_iter().map(|pc| (pc.tris, pc.material)).collect()
+            } else {
+                let c = walls::centre(m, wl);
+                let (s0, s1) = (o.offset - t.width / 2.0, o.offset + t.width / 2.0);
+                let ring = vec![axis.at(s0, c - 25.0), axis.at(s1, c - 25.0), axis.at(s1, c + 25.0), axis.at(s0, c + 25.0)];
+                vec![(sh.mesh(&ring, walls::Plane::flat(base), walls::Plane::flat(base + t.height)), String::new())]
+            };
+            for (tris, _) in &mut sets {
+                *tris = tris.iter().map(|t| t.map(|p| local(&p))).collect();
+            }
+            sets
+        });
+        let (fill_at, shape) = match (bent, m.opening_local(e)) {
+            (Some(sets), _) => {
+                let mut items = Vec::new();
+                for (tris, material) in &sets {
+                    let set = w.faceset(tris);
+                    if !material.trim().is_empty() {
+                        let (material, style) = w.material_style(m, material.trim());
+                        if let Some(style) = style {
+                            w.add(format!("IFCSTYLEDITEM(#{set},(#{style}),$)"));
+                        }
+                        if !made_of.contains(&material) {
+                            made_of.push(material);
+                        }
+                    }
+                    items.push(set);
+                }
+                let rep = w.add(format!("IFCSHAPEREPRESENTATION(#{},'Body',{},({}))", w.body, w.meshed(), refs(&items)));
+                (at, w.add(format!("IFCPRODUCTDEFINITIONSHAPE($,$,(#{rep}))")))
+            }
+            (None, Some((pieces, _))) => {
                 let mut items = Vec::new();
                 for piece in &pieces {
                     let set = w.faceset(&piece.tris);
@@ -2197,7 +2236,7 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
                 let rep = w.add(format!("IFCSHAPEREPRESENTATION(#{},'Body',{},({}))", w.body, w.meshed(), refs(&items)));
                 (w.place(Some(at), (t.width / 2.0, 0.0, 0.0), None), w.add(format!("IFCPRODUCTDEFINITIONSHAPE($,$,(#{rep}))")))
             }
-            None => {
+            (None, None) => {
                 let profile = w.rectangle(P2(t.width / 2.0, 0.0), P2(t.width, 50.0));
                 (w.place(Some(at), (0.0, 0.0, 0.0), None), w.body(profile, 0.0, t.height, &[]))
             }

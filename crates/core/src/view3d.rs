@@ -1334,7 +1334,17 @@ fn solids_in_with(
                     let u = axis.tangent(o.offset);
                     let frame = Frame { o: axis.at(o.offset, walls::centre(m, w)), u, n: u.perp() };
                     let a = (h.s0 - o.offset, h.s1 - o.offset);
-                    out.push(Solid::Box { owner: id, color, tex, frame, a, c: (-25.0, 25.0), z: (h.bottom, h.top) });
+                    match walls::shape::Shaper::of(m, w) {
+                        // In a shaped wall, the panel bent as the wall is, so it stays in it at every height.
+                        Some(sh) => {
+                            let c = walls::centre(m, w);
+                            let ring =
+                                vec![axis.at(h.s0, c - 25.0), axis.at(h.s1, c - 25.0), axis.at(h.s1, c + 25.0), axis.at(h.s0, c + 25.0)];
+                            let tris = sh.mesh(&ring, Plane::flat(h.bottom), Plane::flat(h.top));
+                            out.push(Solid::Mesh { owner: id, color, tex, tris, caps: 0, round: false, cut: true, vis: 0 });
+                        }
+                        None => out.push(Solid::Box { owner: id, color, tex, frame, a, c: (-25.0, 25.0), z: (h.bottom, h.top) }),
+                    }
                 }
             }
             _ => {}

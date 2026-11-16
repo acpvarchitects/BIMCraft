@@ -2243,7 +2243,7 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
     let mut peaks: Vec<(Id, P2, f64)> = Vec::new();
     for w in raw {
         let (top_level, height) = topped(w.level, w.z.0, w.z.1);
-        let wall = Wall {
+        let mut wall = Wall {
             params: Default::default(),
             type_name: w.type_name,
             level: w.level,
@@ -2261,6 +2261,10 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
             join: true,
             shape: w.shape,
         };
+        // A shape the file says that this wall can't take (its core thinner than nothing) is left off: the wall stands plumb.
+        if crate::walls::shape::check(&m, "", &wall).is_err() {
+            wall.shape = Default::default();
+        }
         let id = m.insert(Element::Wall(wall));
         from.insert(id, who(w.ifc));
         origin.entry(w.ifc).or_insert(id);

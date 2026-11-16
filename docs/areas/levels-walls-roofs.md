@@ -44,12 +44,14 @@ layer to where it ends (`walls::layer_geometry`, `LayerGeometry::band`, `LayerGe
 
 **Shaped walls (HBIM, option A: batter).** A wall's `shape` (`walls/shape.rs`, `WallShape`) gives either face a `FaceShape`;
 the one kind so far is `Batter`: one of an `angle` from plumb, an offset at the `top` (along the face's outward normal, in
-proportion below), or a `profile` of `[height, offset]` points over the wall's own base (straight between them from 0 at the
+proportion below, the top being its top constraint's: attached under a roof, it leans on at that rate), or a `profile` of `[height, offset]` points over the wall's own base (straight between them from 0 at the
 base, plumb past the last: one point is a scarp, several a curve; piecewise straight keeps every face flat triangles, as
 shaped floors' are). The commands are `batter` and `reset_wall_shape`. The wall keeps its location line, type, height, joins
 and openings: its solid is the unshaped one deformed (`shape::Shaper`), each point on a face or a layer's boundary moved
-square to the wall by its face's offset at its height, a point on a cap slid along the cap (its first and last edges run
-on), so a battered wall shares its mitre with a plumb neighbour and neither changes the other. The core takes up the change
+square to the wall by its face's offset at its height, a point on a cap slid along the cap; a face moved past a corner a
+neighbour's face made ends on that face's line, the corner kept, so a battered wall shares its mitre with a plumb neighbour,
+neither spur nor notch. A wall ending on a shaped wall's face (a T or an X) is deformed at that end only: its cap follows
+the face at each height (`Cap::host`), so neither gap nor overlap. Below its base a face is plumb. The core takes up the change
 (the thickest structure layer, else the thickest; a wall type can't mark a `variable` layer yet), its finishes keep their
 thickness. 3D and sections get a closed mesh per prism (`walls::shaped_meshes`, `Solid::Mesh` with `cut`), each prism's
 corner edges bent at the profile's heights; its 3D layers are its bands deformed the same way and cut from it; a section's
@@ -61,7 +63,11 @@ whose body is closed `IfcTriangulatedFaceSet`s (IFC2x3: faceted B-reps), its qua
 boxes deep enough for its lean (`shape::reach`), its shape as JSON in BIMCraft's wall property set (`Shape`), which IFC import
 reads back (the type as thick as the body at its base); an unshaped wall is written as before. `Model::check` refuses a batter that
 isn't one of the three ways, in range, or that leaves the core thinner than nothing anywhere up the wall, at its profile's
-points and its ends. Tests: `wall_shape_tests.rs`.
+points and its ends. What is hosted follows the shaped face: a component's place on it (`Model::face_at`, its normal
+leaning), a door's or a window's solids bent as the wall is (`Model::opening_pieces`; a plain panel along the core), its
+family's voids deeper by `shape::reach`; dimensions measure to the faces where the level's plan cuts them; `flip` keeps a
+batter on its physical side (its exterior and interior shapes swap); the wall index's boxes grow by the lean. Tests:
+`wall_shape_tests.rs`.
 
 Room areas are measured at the walls' centre
 lines, run on or back to meet at joins (`walls::centre_line`). A room separator (`roomseparator`, made by `room_separator` a line per segment) bounds rooms as a wall's centre line

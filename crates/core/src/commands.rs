@@ -515,7 +515,8 @@ other_files(
         &[],
         "{id, face: exterior|interior, angle?|top?|profile?} leans one face of a wall (a battered scarp, a tapering buttress, a \
          wall out of plumb), by one of: `angle` degrees from plumb (positive leaning out as it rises, up to 80); `top`, mm the \
-         face stands out along its outward normal at the wall's top (negative: in), in proportion below; or `profile`, \
+         face stands out along its outward normal at the wall's top (negative: in), in proportion below (the top its \
+         constraint gives it: attached under a roof, the face leans on at that rate past it); or `profile`, \
          [[height, offset], …] mm over the wall's base, straight between them from no offset at the base and plumb past the \
          last (one point a scarp, several a curve). The wall keeps its location line, type, height, joins and openings; its \
          core (its thickest structure layer, else its thickest) takes up the change, its finishes keep their thickness, and \
@@ -3480,7 +3481,9 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
             extra.insert("thickness_max".into(), json!(hundredth(thick)));
             extra.insert("thickness_avg".into(), json!(hundredth(avg)));
             // Its solid's, its openings out, as its shape makes it.
-            extra.insert("volume_m3".into(), json!((crate::walls::volume(m, id, true) / 1e5).round() / 1e4));
+            // (its joins and openings through the model's kept index of walls, not a search of every element)
+            let index = m.wall_index();
+            extra.insert("volume_m3".into(), json!((crate::walls::volume_in(m, id, true, Some(&index)) / 1e5).round() / 1e4));
             if let Some(r) = axis.radius() {
                 extra.insert("radius".into(), json!(hundredth(r)));
             }
@@ -10165,6 +10168,9 @@ fn flip(s: &mut Session, p: &Value) -> R {
             Element::Wall(w) if ids.contains(id) => {
                 std::mem::swap(&mut w.start, &mut w.end);
                 w.arc = -w.arc + 0.0;
+                // A batter stays on the side it is on: that face is now the other one.
+                let shape = &mut w.shape;
+                std::mem::swap(&mut shape.exterior, &mut shape.interior);
             }
             Element::Door(o) | Element::Window(o) if lengths.contains_key(&o.host) => {
                 o.offset = lengths.get(&o.host).copied().unwrap_or_default() - o.offset;
