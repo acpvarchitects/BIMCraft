@@ -231,9 +231,10 @@ fn finish_cancel_pick_lines_and_trim_work_while_a_form_is_sketched_and_do_nothin
 #[test]
 fn keys_whose_command_is_greyed_do_nothing() {
     let mut h = open();
-    // {3D}: no plan or elevation to draw or dimension in, no family loaded to place, nothing to move and no sketch.
+    // {3D}: no plan or elevation to draw or dimension in, no family loaded to place, nothing to move and no sketch. Align
+    // (AL, AA) works there, on what the picture shows (FE-24b: `family_modify_3d_refs.rs`).
     view(&mut h, None);
-    for keys in ["DI", "DD", "AN", "AL", "AA", "RP", "CM", "MV", "CO", "RO", "PL", "FG", "CG", "TR"] {
+    for keys in ["DI", "DD", "AN", "RP", "CM", "MV", "CO", "RO", "PL", "FG", "CG", "TR"] {
         shortcut(&mut h, keys);
         let ed = editor(&h);
         assert!(ed.views.dimensioning.is_none() && ed.views.aligning.is_none() && ed.views.drawing.is_none(), "{keys} in {{3D}}");
