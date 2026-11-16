@@ -694,7 +694,7 @@ fn cut_outlines(m: &Model, elements: &[(Id, &Element)], z: f64, look: &Look, ind
         .iter()
         .filter(|(id, _)| look.shows(*id))
         .filter_map(|&(id, e)| match e {
-            Element::Wall(w) if m.spans(w, z) => Some((id, walls::outline_in(m, id, index))),
+            Element::Wall(w) if m.spans(w, z) => Some((id, walls::at_height(m, id, walls::outline_in(m, id, index), z, index))),
             _ => stands(m, id, e, index).filter(|(_, bottom, top)| *bottom <= z && z < *top).map(|(outline, ..)| (id, outline)),
         })
         .collect()
@@ -730,7 +730,7 @@ fn seen_below(m: &Model, elements: &[(Id, &Element)], r: &PlanRange, look: &Look
                     if !(r.depth < top && top <= r.cut) {
                         return None;
                     }
-                    (walls::outline_in(m, id, index), top)
+                    (walls::at_height(m, id, walls::outline_in(m, id, index), top, index), top)
                 }
                 _ if e.run().is_some() => {
                     let top = m.run_geom(e)?.z_span().1;
@@ -2437,7 +2437,8 @@ fn section_base_cancellable(
             return None;
         }
         let layers = m.type_layers("wall", &w.type_name);
-        if layers.is_empty() || !look.shows(wall) || d.detail == Detail::Coarse {
+        // A shaped wall's cut is its solid's, its layers not yet drawn across it.
+        if layers.is_empty() || !look.shows(wall) || d.detail == Detail::Coarse || !w.shape.is_empty() {
             continue;
         }
         d.owner = Some(wall);
@@ -3419,7 +3420,7 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
         let geometry = walls::layer_geometry(m, id, index);
         let along = (w.end - w.start).unit();
         for (k, layer) in layers.iter().enumerate() {
-            let ring = geometry.band(k);
+            let ring = walls::at_height(m, id, geometry.band(k), range.cut, index);
             let room = layer.thickness * d.view.scale;
             for piece in outside_columns(vec![ring], &columns) {
                 cut_layer(&mut d, m, layer, &piece, along, room);
@@ -3428,7 +3429,8 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
         // The lines between the layers are detail, as the hatching is: a cut's weight is its outline's.
         d.part(Part::Pattern);
         for line in geometry.interfaces() {
-            for part in lines_outside_columns(line, &columns) {
+            let line = walls::at_height(m, id, line.to_vec(), range.cut, index);
+            for part in lines_outside_columns(&line, &columns) {
                 d.line(&part, Pen::PROJECTION, INK, false);
             }
         }
@@ -3455,7 +3457,7 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
             for (by, voids) in m.hosted_voids(id) {
                 d.owner = Some(by).filter(|c| shown(*c));
                 let past = 3.0 / d.view.scale;
-                wall_voids(&mut d, &Axis::of(w), walls::faces(m, w), past, &voids, range.cut);
+                wall_voids(&mut d, &Axis::of(w), walls::faces_at(m, w, range.cut), past, &voids, range.cut);
             }
         }
     }
@@ -4388,7 +4390,7 @@ fn opening(d: &mut Drawing, m: &Model, e: &Element, o: &Opening, w: &Wall, cut: 
     if !(h.bottom <= cut && cut < h.top) {
         return;
     }
-    let (axis, (ext, int)) = (Axis::of(w), walls::faces(m, w));
+    let (axis, (ext, int)) = (Axis::of(w), walls::faces_at(m, w, cut));
     let (s0, s1) = (h.s0, h.s1);
     // Clear a little past the faces too, where the outlines' outer halves are; along an arc, an arc.
     let past = 3.0 / d.view.scale;

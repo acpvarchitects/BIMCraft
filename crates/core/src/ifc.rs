@@ -1091,7 +1091,7 @@ fn member_quantities(
 fn wall_quantities(m: &Model, id: Id, wl: &crate::model::Wall, holes: &[(f64, f64, f64)]) -> Vec<(&'static str, &'static str, f64)> {
     let (length, width) = (Axis::of(wl).length(), m.thickness(wl));
     let mut values = vec![("Length", "LENGTH", length), ("Width", "LENGTH", width)];
-    if wl.attach_top.is_none() && wl.attach_base.is_none() {
+    if wl.attach_top.is_none() && wl.attach_base.is_none() && wl.shape.is_empty() {
         let height = m.top_z(wl) - m.base_z(wl);
         let gross = length * height;
         let cut: f64 = holes.iter().map(|&(wd, h, sill)| wd.min(length) * h.min(height - sill).max(0.0)).sum();
@@ -1104,8 +1104,10 @@ fn wall_quantities(m: &Model, id: Id, wl: &crate::model::Wall, holes: &[(f64, f6
             ("NetVolume", "VOLUME", net * width / 1e9),
         ]);
     } else {
-        let volume = |openings| walls::prisms(m, id, openings).iter().map(|p| prism_volume(&p.ring, &p.bottom, &p.top)).sum::<f64>();
+        // Shaped, its solid's volume and its average thickness.
+        let volume = |openings| walls::volume(m, id, openings);
         let (gross, net) = (volume(false), volume(true));
+        let width = if wl.shape.is_empty() { width } else { walls::shape::thickness_range(m, wl).2 };
         // Of a type the project doesn't have, it is 0 thick: no side is known from its volume.
         if width > 0.0 {
             values.extend([("GrossSideArea", "AREA", gross / width / 1e6), ("NetSideArea", "AREA", net / width / 1e6)]);
@@ -1151,14 +1153,6 @@ fn grids(w: &mut Step, m: &Model, building: u64, building_at: u64, context: u64)
     };
     w.add(format!("IFCRELCONTAINEDINSPATIALSTRUCTURE({},$,$,$,(#{ent}),#{building})", w.guid(GRID_CONTAINS, 0)));
 }
-
-/// A prism's volume, mm³: signed triangles of its plan ring times their mean height between the planes.
-fn prism_volume(ring: &[P2], bottom: &walls::Plane, top: &walls::Plane) -> f64 {
-    let Some(&o) = ring.first() else { return 0.0 };
-    let rise = |p| top.at(p) - bottom.at(p);
-    ring.windows(2).skip(1).map(|w| (w[0] - o).cross(w[1] - o) / 2.0 * (rise(o) + rise(w[0]) + rise(w[1])) / 3.0).sum::<f64>().abs()
-}
-
 /// Where an IFC file's coordinates have their origin: the internal origin (geometry as the model holds it), the Project Base
 /// Point, the Survey Point, or the shared coordinates themselves (map coordinates in the file, turned to true north).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -1467,7 +1461,28 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
                 let axis_rep = w.add(format!("IFCSHAPEREPRESENTATION(#{axis},'Axis','Curve2D',(#{line}))"));
                 // Its outline swept up, mitred where it joins others as the plan's is; attached to a
                 // roof or a floor, a closed shell for each piece under (or over) a plane of it.
-                let shape = if wl.attach_top.is_none() && wl.attach_base.is_none() {
+                // Shaped (a face battered), its solid as closed triangles, one face set a piece.
+                let shaped = if wl.shape.is_empty() { None } else { walls::shaped_meshes(m, id, &walls::prisms(m, id, false), None) };
+                let shape = if let Some(meshes) = shaped {
+                    let sets: Vec<u64> = meshes
+                        .iter()
+                        .filter(|t| !t.is_empty())
+                        .map(|tris| {
+                            let tris: Vec<[P3; 3]> = tris
+                                .iter()
+                                .map(|t| {
+                                    t.map(|p| {
+                                        let l = local(P2(p[0], p[1]));
+                                        [l.0, l.1, p[2] - base]
+                                    })
+                                })
+                                .collect();
+                            w.faceset(&tris)
+                        })
+                        .collect();
+                    let rep = w.add(format!("IFCSHAPEREPRESENTATION(#{},'Body',{},({}))", w.body, w.meshed(), refs(&sets)));
+                    w.add(format!("IFCPRODUCTDEFINITIONSHAPE($,$,(#{rep},#{axis_rep}))"))
+                } else if wl.attach_top.is_none() && wl.attach_base.is_none() {
                     let outline: Vec<P2> = walls::outline(m, id).into_iter().map(local).collect();
                     let profile = w.profile(&outline, &[]);
                     w.body(profile, 0.0, m.own_top(wl) - base, &[axis_rep])
@@ -2143,7 +2158,9 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
         // forms do; else the rectangle of its width and height.
         let voids = m.opening_voids_local(e);
         let (opening_at, shape) = if voids.is_empty() {
-            let profile = w.rectangle(P2(t.width / 2.0, 0.0), P2(t.width, m.thickness(wl) + 20.0 + 2.0 * bow));
+            // Past a shaped wall's faces where they stand out farthest.
+            let lean = walls::shape::reach(m, wl);
+            let profile = w.rectangle(P2(t.width / 2.0, 0.0), P2(t.width, m.thickness(wl) + 20.0 + 2.0 * bow + 2.0 * lean));
             (at, w.body(profile, 0.0, t.height, &[]))
         } else {
             let items: Vec<u64> = voids.iter().map(|v| w.faceset(v)).collect();

@@ -239,6 +239,8 @@ pub mod triangulation;
 pub mod units;
 pub mod view3d;
 #[cfg(test)]
+mod wall_shape_tests;
+#[cfg(test)]
 mod wall_top_offset_tests;
 pub mod walls;
 pub mod water;

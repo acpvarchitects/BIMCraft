@@ -370,6 +370,9 @@ pub struct Wall {
     /// Its values of the project's parameters, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
+    /// Its faces' shapes (HBIM shaped walls): a batter on either face, none unless given.
+    #[serde(default, skip_serializing_if = "crate::walls::shape::WallShape::is_empty")]
+    pub shape: crate::walls::shape::WallShape,
 }
 
 /// A room's Limit Offset unless it says: its top 2500 mm over its own level.
@@ -6995,8 +6998,12 @@ impl Model {
     /// [`Model::face_lines`] (with `rooms`, of the walls whose Room Bounding is on), the walls' joins found through `index`.
     pub(crate) fn face_lines_in(&self, level: impl Key, index: Option<&walls::Index>, rooms: bool) -> Vec<(P2, P2)> {
         let keep = |w: &Wall| self.bounding(w, level) && (!rooms || w.room_bounding);
+        // A shaped wall's faces where the level's rooms are computed.
+        let z = self.elevation(&level) + self.level(&level).map_or(CUT_HEIGHT, |l| l.computation_height);
         self.bounding_walls(&level, rooms)
-            .flat_map(|id| geom::ring_edges(&walls::outline_filtered(self, id, index, &keep)).collect::<Vec<_>>())
+            .flat_map(|id| {
+                geom::ring_edges(&walls::at_height(self, id, walls::outline_filtered(self, id, index, &keep), z, index)).collect::<Vec<_>>()
+            })
             .collect()
     }
 
@@ -7983,6 +7990,7 @@ impl Model {
                         "{who}: its top ({top:.0} mm) must be above its base ({base:.0} mm); it comes out {tall} mm tall, so raise its top constraint, top offset or height by more than {short} mm"
                     ));
                 }
+                walls::shape::check(self, &who, w)?;
             }
             Element::Floor(f) => {
                 point(&format!("{who} pattern origin"), f.pattern_origin)?;
@@ -9610,6 +9618,7 @@ mod tests {
             attach_base: None,
             room_bounding: true,
             join: true,
+            shape: Default::default(),
         })
     }
 

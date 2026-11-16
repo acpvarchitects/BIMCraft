@@ -977,14 +977,27 @@ pub(crate) fn lazy_points(m: &Model, id: Id, e: &Element, components: &mut crate
 /// reach as triangles less them, a mesh a section cuts in its own shape. Should cutting fail (too many faces), every opening
 /// cuts its rectangle.
 fn wall_solids(m: &Model, id: Id, index: Option<&walls::Index>) -> Vec<Solid> {
-    let prism =
-        |p: walls::Prism| Solid::Prism { owner: id, color: WALL, tex: 0, ring: p.ring, bottom: p.bottom, top: p.top, curve: p.curve };
     let voids = walls::host_voids_in(m, id, index);
-    let prisms = walls::prisms_in(m, id, true, index).into_iter().map(prism).collect();
+    let prisms = wall_prism_solids(m, id, walls::prisms_in(m, id, true, index), index);
     if voids.is_empty() {
         return prisms;
     }
-    cut_by_voids(id, WALL, prisms, &voids).unwrap_or_else(|| walls::prisms_rect_in(m, id, index).into_iter().map(prism).collect())
+    cut_by_voids(id, WALL, prisms, &voids).unwrap_or_else(|| wall_prism_solids(m, id, walls::prisms_rect_in(m, id, index), index))
+}
+
+/// Wall `id`'s `prisms` as solids: prisms, or of a shaped wall, each a mesh its faces' shapes bend, which sections cut.
+fn wall_prism_solids(m: &Model, id: Id, prisms: Vec<walls::Prism>, index: Option<&walls::Index>) -> Vec<Solid> {
+    if let Some(meshes) = walls::shaped_meshes(m, id, &prisms, index) {
+        return meshes
+            .into_iter()
+            .filter(|t| !t.is_empty())
+            .map(|tris| Solid::Mesh { owner: id, color: WALL, tex: 0, tris, caps: 0, round: false, cut: true, vis: 0 })
+            .collect();
+    }
+    prisms
+        .into_iter()
+        .map(|p| Solid::Prism { owner: id, color: WALL, tex: 0, ring: p.ring, bottom: p.bottom, top: p.top, curve: p.curve })
+        .collect()
 }
 
 /// `solids`, element `owner`'s, less `voids`: each solid a void's box reaches as its triangles less them, a mesh in `color`
@@ -1081,10 +1094,7 @@ pub(crate) fn reaching_voids(m: &Model, id: Id) -> Vec<(Id, Vec<Vec<[P3; 3]>>)> 
         return found;
     }
     let solids = match m.elements.get(id) {
-        Some(Element::Wall(_)) => walls::prisms(m, id, true)
-            .into_iter()
-            .map(|p| Solid::Prism { owner: id, color: WALL, tex: 0, ring: p.ring, bottom: p.bottom, top: p.top, curve: p.curve })
-            .collect(),
+        Some(Element::Wall(_)) => wall_prism_solids(m, id, walls::prisms(m, id, true), None),
         Some(e) => slab_solids(m, id, e),
         None => Vec::new(),
     };
@@ -1527,10 +1537,17 @@ pub(crate) fn layered_with(m: &Model, s: Solid) -> Vec<(Solid, Option<usize>)> {
                 if ring.len() < 3 || geom::area(&ring).abs() < 1e-6 {
                     continue;
                 }
-                let mut slab = Vec::new();
-                Solid::Prism { owner, color, tex, ring, bottom: Plane::flat(lo[2] - 1.0), top: Plane::flat(hi[2] + 1.0), curve: None }
-                    .tris(&mut slab);
-                let slab: Vec<[P3; 3]> = slab.into_iter().map(|t| t.p).collect();
+                // Of a shaped wall, the layer's band bent as its faces are.
+                let band = walls::Prism { ring, bottom: Plane::flat(lo[2] - 1.0), top: Plane::flat(hi[2] + 1.0), curve: None };
+                let slab: Vec<[P3; 3]> = match walls::shaped_meshes(m, owner, std::slice::from_ref(&band), None) {
+                    Some(mut meshes) => meshes.pop().unwrap_or_default(),
+                    None => {
+                        let mut slab = Vec::new();
+                        let walls::Prism { ring, bottom, top, .. } = band;
+                        Solid::Prism { owner, color, tex, ring, bottom, top, curve: None }.tris(&mut slab);
+                        slab.into_iter().map(|t| t.p).collect()
+                    }
+                };
                 let inside = crate::csg::subtract(&tris, &slab, &mut meter).and_then(|outside| {
                     if outside.is_empty() { Ok(tris.clone()) } else { crate::csg::subtract(&tris, &outside, &mut meter) }
                 });

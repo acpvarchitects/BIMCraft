@@ -9,6 +9,7 @@ use std::f64::consts::{PI, TAU};
 
 mod compound;
 mod index;
+pub mod shape;
 pub(crate) use index::{Index, reach};
 
 use crate::geom::{self, P2};
@@ -194,6 +195,58 @@ pub fn faces(m: &Model, w: &Wall) -> (f64, f64) {
     (ext, ext - t)
 }
 
+/// A wall's exterior and interior faces at height `z`: [`faces`], each moved by its shape there ([`shape`]).
+pub fn faces_at(m: &Model, w: &Wall, z: f64) -> (f64, f64) {
+    let (ext, int) = faces(m, w);
+    match shape::Shaper::of(m, w) {
+        Some(s) => (s.offset(ext, z), s.offset(int, z)),
+        None => (ext, int),
+    }
+}
+
+/// `ring` (wall `id`'s outline, a layer's band or a line of it, in plan) as it lies at height `z`: of a shaped wall, its
+/// faces and layers moved by their shapes there, its caps' points along its caps; of any other, as it is.
+pub(crate) fn at_height(m: &Model, id: Id, ring: Vec<P2>, z: f64, index: Option<&Index>) -> Vec<P2> {
+    match m.wall(id).filter(|w| !w.shape.is_empty()).and_then(|_| shape::Shaper::of_id(m, id, index)) {
+        Some(s) => s.ring(&ring, z),
+        None => ring,
+    }
+}
+
+/// Wall `id`'s `prisms` as closed triangles each, its faces following their shapes; none for an unshaped wall.
+pub(crate) fn shaped_meshes(m: &Model, id: Id, prisms: &[Prism], index: Option<&Index>) -> Option<Vec<Vec<[[f64; 3]; 3]>>> {
+    let s = shape::Shaper::of_id(m, id, index)?;
+    Some(prisms.iter().map(|p| s.mesh(&p.ring, p.bottom, p.top)).collect())
+}
+
+/// Wall `id`'s volume, mm³: its solid's, with or without its openings, shaped or not.
+pub fn volume(m: &Model, id: Id, openings: bool) -> f64 {
+    let ps = prisms(m, id, openings);
+    match shaped_meshes(m, id, &ps, None) {
+        Some(meshes) => meshes.iter().map(|t| shape::volume(t)).sum(),
+        None => ps.iter().map(|p| prism_volume(p)).sum(),
+    }
+}
+
+/// A prism's volume, mm³: its area times its height at its centroid (its top and bottom are planes).
+fn prism_volume(p: &Prism) -> f64 {
+    let a = geom::area(&p.ring);
+    if p.ring.is_empty() || a == 0.0 {
+        return 0.0;
+    }
+    // The centroid of the ring's area.
+    let n = p.ring.len();
+    let (mut cx, mut cy) = (0.0, 0.0);
+    for i in 0..n {
+        let (q, r) = (p.ring[i], p.ring[(i + 1) % n]);
+        let k = q.cross(r);
+        cx += (q.0 + r.0) * k;
+        cy += (q.1 + r.1) * k;
+    }
+    let c = P2(cx / (6.0 * a), cy / (6.0 * a));
+    a.abs() * (p.top.at(c) - p.bottom.at(c))
+}
+
 /// How far to the left of its location line a wall's centre line lies.
 pub fn centre(m: &Model, w: &Wall) -> f64 {
     let (ext, int) = faces(m, w);
@@ -343,7 +396,7 @@ pub fn cap(m: &Model, id: Id, at_end: bool) -> Vec<P2> {
     cap_in(m, id, at_end, None)
 }
 
-fn cap_in(m: &Model, id: Id, at_end: bool, index: Option<&Index>) -> Vec<P2> {
+pub(crate) fn cap_in(m: &Model, id: Id, at_end: bool, index: Option<&Index>) -> Vec<P2> {
     end_geometry(m, id, at_end, index, &|_| true).outline
 }
 
