@@ -92,6 +92,53 @@ impl Copies {
     }
 }
 
+impl Copies {
+    /// The copied forms' cutting lists (FE-16) as their copies' own, where `originals` are the family's forms and `taken`
+    /// the places of those copied, in the order of `self.forms`. Both ends copied: the list names the copy. Only one: the
+    /// reference is dropped, as an Align lock is. But a copy lands after the family's own forms, so the voids listed after
+    /// the original, which cut it, would be listed before the copy and cut it no longer: each is named in the copy's `cut_by`
+    /// (a copy of one listed after the copy cuts it by the order). A copy of a void that the original was told not to be cut
+    /// by, and that is listed after the copy, is named in its `uncut_by`.
+    fn carry_cuts(&mut self, originals: &[Form], taken: &[usize]) {
+        let taken: Vec<usize> = taken.iter().copied().filter(|i| originals.get(*i).is_some()).collect();
+        let pos: BTreeMap<Guid, usize> =
+            taken.iter().enumerate().filter(|(_, i)| !originals[**i].guid.is_nil()).map(|(k, i)| (originals[*i].guid, k)).collect();
+        let copy_of = |g: &Guid| self.guids.get(g).copied().filter(|_| pos.contains_key(g));
+        let mut carried = Vec::new();
+        for (k, &i) in taken.iter().enumerate() {
+            let f = &originals[i];
+            let mut by: Vec<Guid> = f.cut_by.iter().filter_map(copy_of).collect();
+            let joined: Vec<Guid> = f.joined_by.iter().filter_map(copy_of).collect();
+            let mut uncut: Vec<Guid> = Vec::new();
+            if !f.void {
+                for v in originals.iter().skip(i + 1).filter(|v| v.void && v.cuts().forms() && !v.guid.is_nil()) {
+                    let cut = !f.uncut_by.contains(&v.guid);
+                    match pos.get(&v.guid) {
+                        // Listed after the copy, it cuts it by the order unless told not to.
+                        Some(p) if *p > k => {
+                            if !cut {
+                                uncut.extend(copy_of(&v.guid));
+                            }
+                        }
+                        Some(_) => by.extend(copy_of(&v.guid).filter(|_| cut)),
+                        None => {
+                            if cut {
+                                by.push(v.guid);
+                            }
+                        }
+                    }
+                }
+            }
+            let mut seen = BTreeSet::new();
+            by.retain(|g| seen.insert(*g));
+            carried.push((by, uncut, joined));
+        }
+        for (c, (by, uncut, joined)) in self.forms.iter_mut().zip(carried) {
+            (c.cut_by, c.uncut_by, c.joined_by) = (by, uncut, joined);
+        }
+    }
+}
+
 impl Family {
     /// The copies of what `copying` takes, made where the originals are; or why not.
     pub fn copies(&self, copying: &Copying) -> Result<Copies, CopyRefused> {
@@ -177,6 +224,7 @@ impl Family {
             }
             out.forms.push(c);
         }
+        out.carry_cuts(&self.forms, &copying.forms);
         for &i in &copying.symbols {
             let Some(s) = self.symbols.get(i) else { continue };
             out.symbols.push(Symbol { id: 0, pinned: false, guid: if s.guid.is_nil() { s.guid } else { Guid::new() }, ..s.clone() });

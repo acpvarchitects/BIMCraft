@@ -14939,6 +14939,7 @@ fn family(s: &mut Session, p: &Value) -> R {
             if !gone.guid.is_nil() {
                 patches.dimensions_dropped += f.forget_reference(gone.guid);
                 f.forget_pivots(gone.guid);
+                f.forget_cuts(gone.guid);
             }
             patches.forms_deleted.push(gone.id);
         }

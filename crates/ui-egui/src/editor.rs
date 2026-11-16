@@ -1318,6 +1318,12 @@ impl FamilyEditor {
         let gone = self.forms.remove(i).original.guid;
         if !gone.is_nil() {
             self.forget_reference(gone);
+            // The cutting lists of what stays no longer name it (FE-16).
+            for f in &mut self.forms {
+                for list in [&mut f.original.cut_by, &mut f.original.uncut_by, &mut f.original.joined_by] {
+                    list.retain(|g| *g != gone);
+                }
+            }
         }
         self.selection.taken_out(select_box::Picked::Form(i));
     }

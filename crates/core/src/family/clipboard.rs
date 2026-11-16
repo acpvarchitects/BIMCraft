@@ -166,6 +166,14 @@ impl Family {
         };
         // Copied once already, so nothing in it is a datum, the origin's plane or what a pivot turns.
         let mut out = h.copies(&all).map_err(|_| PasteRefused::Kind)?;
+        // What cut a form copied (its `cut_by`, FE-16) and is a form of this family still cuts its copy here.
+        for (copy, held) in out.forms.iter_mut().zip(&h.forms) {
+            for g in &held.cut_by {
+                if !h.forms.iter().any(|x| x.guid == *g) && self.forms.iter().any(|x| x.guid == *g) && !copy.cut_by.contains(g) {
+                    copy.cut_by.push(*g);
+                }
+            }
+        }
         out.selected = out
             .dimensions
             .iter()

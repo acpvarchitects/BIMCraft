@@ -21,6 +21,7 @@ use crate::view3d::{P3, add, cross, mul};
 mod bounds;
 pub mod clipboard;
 pub mod constraints;
+pub mod cutting;
 pub mod forms;
 pub mod handles;
 pub mod nested;
@@ -920,6 +921,16 @@ pub struct Form {
     /// What a void cuts (F10d): none, [`Cuts::Both`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cuts: Option<Cuts>,
+    /// More forms that cut this solid than the voids listed after it (FE-16): a void listed after it, or a solid form
+    /// (a solid cuts a solid), by GUID ([`cutting`]).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cut_by: Vec<crate::ids::Guid>,
+    /// Voids listed before this solid that would cut it and must not (FE-16).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub uncut_by: Vec<crate::ids::Guid>,
+    /// Solid forms joined to this one (FE-16): each cuts it, and both are drawn.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub joined_by: Vec<crate::ids::Guid>,
 }
 
 /// What a void cuts (F10d): the solid forms listed before it that it reaches, and in a door's or a window's family the wall
@@ -1006,6 +1017,12 @@ struct FormIn {
     visibility: Option<Visibility>,
     #[serde(default)]
     cuts: Option<Cuts>,
+    #[serde(default)]
+    cut_by: Vec<crate::ids::Guid>,
+    #[serde(default)]
+    uncut_by: Vec<crate::ids::Guid>,
+    #[serde(default)]
+    joined_by: Vec<crate::ids::Guid>,
 }
 
 impl TryFrom<FormIn> for Form {
@@ -1056,6 +1073,9 @@ impl TryFrom<FormIn> for Form {
             twist: f.twist,
             visibility: f.visibility,
             cuts: f.cuts,
+            cut_by: f.cut_by,
+            uncut_by: f.uncut_by,
+            joined_by: f.joined_by,
         })
     }
 }
@@ -2426,6 +2446,7 @@ impl Family {
                 return Err(format!("{who}: a formula of it is longer than {MAX_FORMULA} characters"));
             }
         }
+        cutting::check_cutting(&self.forms)?;
         if let Some(definition) = &self.adaptive {
             for node in &definition.nodes {
                 if node.is_form()
@@ -2885,7 +2906,12 @@ impl Family {
         read: &mut HashMap<&'a str, Result<Node, String>>,
         cuts: &mut csg::Meter,
     ) -> Result<Vec<Piece>, String> {
-        let (mut out, mut voids) = (Vec::new(), Vec::new());
+        let (mut out, mut voids): (Vec<Piece>, HashMap<usize, Vec<[P3; 3]>>) = (Vec::new(), HashMap::new());
+        // The form each piece is of, as its place in the list: invisible forms have no piece, so the two differ (FE-16).
+        let mut of: Vec<usize> = Vec::new();
+        // The solids another form is cut by, as they stand before any cutting.
+        let named: BTreeSet<usize> = (0..self.forms.len()).flat_map(|i| self.cutters(i)).filter(|m| !self.forms[*m].void).collect();
+        let mut solids: HashMap<usize, Vec<[P3; 3]>> = HashMap::new();
         for i in 0..self.forms.len() {
             let what = format!("form {}", i + 1);
             let Some(piece) = self.solid(i, values, read).map_err(|e| format!("{what}: {e}"))? else {
@@ -2894,17 +2920,23 @@ impl Family {
             if self.forms[i].void {
                 // A void that cuts its host alone (F10d) cuts none of its forms.
                 if self.forms[i].cuts().forms() {
-                    voids.push((i, out.len(), piece.tris));
+                    voids.insert(i, piece.tris);
                 }
             } else {
+                if named.contains(&i) {
+                    solids.insert(i, piece.tris.clone());
+                }
+                of.push(i);
                 out.push(piece);
             }
         }
-        // Each void cut from the solids listed before it that it reaches. A cut solid is no longer one round surface,
-        // and its outline seen from above is as it was. ponytail: a notch or a hole doesn't show in plan; trace it if it must.
-        for (i, before, void) in &voids {
-            for piece in out.iter_mut().take(*before) {
-                let tris = csg::subtract(&piece.tris, void, cuts).map_err(|e| format!("form {}: {e}", i + 1))?;
+        // Each solid cut by what cuts it ([`Family::cutters`]: the voids listed before it, as always, and what FE-16 adds) that
+        // is built and reaches it. A cut solid is no longer one round surface, and its outline seen from above is as it was.
+        // ponytail: a notch or a hole doesn't show in plan; trace it if it must.
+        for (piece, &form) in out.iter_mut().zip(&of) {
+            for by in self.cutters(form) {
+                let Some(cutter) = voids.get(&by).or_else(|| solids.get(&by)) else { continue };
+                let tris = csg::subtract(&piece.tris, cutter, cuts).map_err(|e| format!("form {}: {e}", by + 1))?;
                 if tris != piece.tris {
                     let (bottom, top) = heights(&tris);
                     *piece = Piece {
