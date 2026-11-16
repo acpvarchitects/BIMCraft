@@ -613,8 +613,11 @@ pub struct BimApp {
     /// How far down the view the tabs reach where they float over it (else the view's top): what floats over the view
     /// (the Options Bar) and what docks along it start below.
     tabs_foot: f32,
-    /// The top of a family view's view-control bar, as it was last drawn (UI-3): the view is drawn above it.
+    /// The top of a family view's view-control bar, as it was last drawn (UI-3).
     family_bar_top: f32,
+    /// How far up from the family view's foot its view-control bar reaches, as it was last drawn: one row of it at first,
+    /// more where it wraps. The view is drawn above it (UI-3).
+    family_bar_cover: f32,
     tab_rects: Vec<(Sheet, Rect)>,
     work: Rect,
     pointer: Pos2,
@@ -1476,6 +1479,8 @@ fn tab_button_with(ui: &mut Ui, label: &str, active: bool, contextual: bool, sen
 
 /// How tall a card floating over a view is (its tabs, its view control bar), points.
 const FLOATING_CARD: f32 = 30.0;
+/// How far up from a family view's foot its view-control bar reaches on one row: its card (35) and the gap under it (7).
+const FAMILY_BAR: f32 = 42.0;
 /// How tall the Options Bar's card is on one row: its row of fields (24), its margins (3 and 3) and its border (1 and 1). A
 /// family view keeps that row, and the gap above it, clear of its drawing (UI-3).
 const OPTIONS_CARD: f32 = 32.0;
@@ -1542,6 +1547,7 @@ impl BimApp {
             tab_bar: Rect::NOTHING,
             tabs_foot: f32::NEG_INFINITY,
             family_bar_top: f32::INFINITY,
+            family_bar_cover: FAMILY_BAR,
             tab_rects: Vec::new(),
             work: Rect::ZERO,
             pointer: Pos2::ZERO,
