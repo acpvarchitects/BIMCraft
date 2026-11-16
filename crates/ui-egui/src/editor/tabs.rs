@@ -126,10 +126,24 @@ impl BimApp {
     pub(crate) fn close_inactive_family_views(&mut self) {
         let Sheet::Family(active_id, _) = self.sheet else { return };
         let active = self.sheet;
-        let mut kept = std::collections::BTreeSet::new();
+        let all: Vec<Sheet> = self.views.iter().copied().chain(self.floating.iter().map(|f| f.sheet)).collect();
+        let mut kept = std::collections::HashSet::from([active]);
+        for doc in &self.families {
+            if doc.id == active_id {
+                continue;
+            }
+            let tabs: Vec<Sheet> = all.iter().copied().filter(|s| matches!(s, Sheet::Family(id, _) if *id == doc.id)).collect();
+            let shown = doc.ed.as_ref().map(|ed| Sheet::Family(doc.id, ed.views.shown));
+            if let Some(tab) = shown.filter(|s| tabs.contains(s)).or_else(|| tabs.last().copied()) {
+                kept.insert(tab);
+            }
+        }
         self.views.retain(|sheet| match *sheet {
-            Sheet::Family(id, _) if id == active_id => *sheet == active,
-            Sheet::Family(id, _) => kept.insert(id),
+            Sheet::Family(_, _) => kept.contains(sheet),
+            _ => true,
+        });
+        self.floating.retain(|float| match float.sheet {
+            Sheet::Family(_, _) => kept.contains(&float.sheet),
             _ => true,
         });
     }

@@ -350,6 +350,7 @@ impl FamilyEditor {
                 Paste::Pointer => {
                     self.put_view_tools_down();
                     self.views.pasting = Some(Pasting { clip: (**clip).clone(), anchor: None });
+                    self.last_tool = None;
                     Ok(None)
                 }
                 Paste::SamePlace => self.paste_elements(clip, None).map(Some),

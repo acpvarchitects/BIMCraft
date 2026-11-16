@@ -173,11 +173,10 @@ impl FamilyEditor {
     }
 
     /// Re-arm the document's last tool from its initial state. Commands that directly edit the draft are never recorded.
-    pub(crate) fn repeat_last_tool(&mut self) {
-        let Some(action) = self.last_tool else { return };
+    pub(crate) fn repeat_last_tool(&mut self) -> Result<(), String> {
+        let Some(action) = self.last_tool else { return Ok(()) };
         if let Some(tool) = super::modify::Tool::of(action) {
-            let _ = self.modify_tool_on(tool);
-            return;
+            return self.modify_tool_on(tool);
         }
         match action {
             "Reference Plane" => self.reference_plane_tool(),
@@ -185,12 +184,21 @@ impl FamilyEditor {
             "Model Line" => self.model_line_tool(),
             "Aligned Dimension" => self.dimension_tool(),
             "Angular Dimension" => self.radial_tool(bimcraft_core::family::DimKind::Angular),
+            "Radial Dimension" => self.radial_tool(bimcraft_core::family::DimKind::Radial),
+            "Diameter Dimension" => self.radial_tool(bimcraft_core::family::DimKind::Diameter),
             "Align" => self.align_tool(),
             "Measure" => self.measure_tool(),
-            "Component" => self.component_tool(),
-            "Zoom In Region" => self.zoom_region_tool(),
+            "Component" => {
+                let chosen = self.last_component.clone();
+                self.component_tool();
+                if let Some(chosen) = chosen.filter(|(family, ty)| self.nested.iter().any(|n| n.name == *family && n.family.types.contains_key(ty))) {
+                    self.placing = Some(chosen.clone());
+                    self.last_component = Some(chosen);
+                }
+            }
             _ => {}
         }
+        Ok(())
     }
 
     /// Whether something of the family's own is selected that Delete takes away: a form, a plane of its own (a datum stays), a
@@ -276,7 +284,7 @@ impl FamilyEditor {
     }
 
     /// Whether a dialog of the document's is open: Family Types, Family Category and Parameters, or an association.
-    fn modal(&self) -> bool {
+    pub(crate) fn modal(&self) -> bool {
         self.dialog.is_some()
             || self.purging()
             || self.associating.is_some()
@@ -900,6 +908,7 @@ impl BimApp {
                             .clicked()
                         {
                             ed.modeller.tool = Draw::Move { from: None, copy: false };
+                            ed.last_tool = None;
                         }
                         let tip = msg!("Copy (CO): copies of what is selected, from a point clicked to another");
                         if ui
@@ -910,6 +919,7 @@ impl BimApp {
                             .clicked()
                         {
                             ed.modeller.tool = Draw::Move { from: None, copy: true };
+                            ed.last_tool = None;
                         }
                         let tip = msg!("Rotate (RO): what is selected, about its centre, by the angle between two clicks");
                         if ui
@@ -922,6 +932,7 @@ impl BimApp {
                             && let Some(centre) = adaptive_view::selection_centre(d, &ed.modeller, &values)
                         {
                             ed.modeller.tool = Draw::Rotate { centre, start: None };
+                            ed.last_tool = None;
                         }
                         later_small(ui, Icon::Trim, msg!("Trim/Extend"));
                         later_small(ui, Icon::Split, msg!("Split Element"));
@@ -1997,7 +2008,9 @@ impl BimApp {
             && ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Enter))
         {
             if let Some(ed) = self.active_family_mut() {
-                ed.repeat_last_tool();
+                if let Err(text) = ed.repeat_last_tool() {
+                    self.status = Status { text, error: true };
+                }
             }
         }
         // FE-14: the window's Copy, Cut and Paste (Ctrl+C, Ctrl+X and Ctrl+V), in a family that isn't adaptive, at once and
@@ -2359,6 +2372,7 @@ fn draw_panel(ui: &mut Ui, ed: &mut FamilyEditor) {
                 let tip = msg!("Line: click points, or the work plane, in turn; the first again closes a profile");
                 if crate::small_button(ui, Icon::Line, "Line", line, tip).clicked() {
                     ed.modeller.tool = Draw::Line(Vec::new());
+                    ed.last_tool = None;
                 }
                 later_small(ui, Icon::Rectangle, "Rectangle");
                 later_small(ui, Icon::Inscribed, msg!("Inscribed Polygon"));
@@ -2374,6 +2388,7 @@ fn draw_panel(ui: &mut Ui, ed: &mut FamilyEditor) {
                 let tip = msg!("Point Element: click the work plane for a reference point, or a line for one hosted on it");
                 if crate::small_button(ui, Icon::PointElement, msg!("Point Element"), ed.modeller.tool == Draw::Point, tip).clicked() {
                     ed.modeller.tool = Draw::Point;
+                    ed.last_tool = None;
                 }
                 later_small(ui, Icon::PickLines, msg!("Pick Lines"));
                 later_small(ui, Icon::PickFaces, msg!("Pick Faces"));

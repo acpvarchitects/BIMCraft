@@ -114,6 +114,7 @@ impl FamilyEditor {
                 let (family, type_name) = (n.family.clone(), n.type_name.clone());
                 self.component_tool();
                 self.placing = Some((family, type_name));
+                self.last_component = self.placing.clone();
             }
         }
         Ok(())
