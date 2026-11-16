@@ -13,7 +13,7 @@ use bimcraft_core::family::views::Which;
 const FRONT_BACK: &str = "9e3c0a10-1f0b-4d8c-8a5e-0000000000a2";
 
 /// The Movers family (box A from 100 to 500 square and 300 high, box B west of it) in its {3D}, drawn.
-fn in_3d() -> Harness<'static, BimApp> {
+pub(super) fn in_3d() -> Harness<'static, BimApp> {
     let (mut h, _) = open(&family_with(""), "Movers");
     view(&mut h, None);
     for _ in 0..4 {
@@ -24,12 +24,12 @@ fn in_3d() -> Harness<'static, BimApp> {
 }
 
 /// A click in {3D} where family point `p` shows.
-fn click3(h: &mut Harness<BimApp>, p: [f64; 3]) {
+pub(super) fn click3(h: &mut Harness<BimApp>, p: [f64; 3]) {
     let at = h.state().family_screen3(p).expect("{3D} drawn");
     click_at(h, at);
 }
 
-fn tool(h: &Harness<BimApp>) -> Option<M> {
+pub(super) fn tool(h: &Harness<BimApp>) -> Option<M> {
     editor(h).modify_in_hand()
 }
 

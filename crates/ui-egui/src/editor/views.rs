@@ -78,6 +78,8 @@ pub(crate) struct Views {
     /// Where a Modify tool in hand in {3D} would put the forms it takes (FE-24): their boxes, for the picture to draw with
     /// its depth in the next frame.
     pub(crate) ghost_3d: Vec<bimcraft_core::view3d::PlaneMark>,
+    /// What a Modify tool's point snaps to on {3D}'s work plane (FE-24b), and what it was found for.
+    pub(crate) traces_3d: Option<(u64, std::sync::Arc<Vec<(P2, P2)>>)>,
     /// The Modify tools' Options Bar, kept for the session.
     pub(crate) modify_options: super::modify::Options,
     /// Whether the pointer was last over something selected that a drag would move, with no tool in hand: what the status

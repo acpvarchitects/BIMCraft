@@ -315,6 +315,9 @@ fn boxed(space: &Space, points: &[[f64; 3]]) -> Option<[(P2, f64); 8]> {
     Some(std::array::from_fn(|i| (P2(pick(i & 1, 0), pick((i >> 1) & 1, 1)), pick((i >> 2) & 1, 2))))
 }
 
+/// How far from a trace, in pixels, a Modify tool's point in {3D} snaps onto it, as a plan's (FE-24b).
+const SNAP_REACH: f32 = 6.0;
+
 /// The turn from `from` to `to` about `centre`, degrees counter-clockwise, snapped to the Snaps' angle as the project's Rotate.
 fn turn(centre: P2, from: P2, to: P2, snaps: &bimcraft_core::snap::Snaps) -> f64 {
     crate::canvas::angle_between(centre, from, to, snaps.angle)
@@ -689,6 +692,16 @@ impl FamilyEditor {
             }
             Ok(space.coords(q).0)
         };
+        // The point snapped on the plane to what the view shows crossing it (FE-24b), as a plan's is; Offset's is the side
+        // clicked, as clicked.
+        let traces = self.traces_3d();
+        let snaps = self.snaps;
+        let offsetting = matches!(self.views.modify.as_ref().map(|m| m.tool), Some(Tool::Offset));
+        let snapped = |p: Pos2| -> Result<P2, &'static str> {
+            let q = at(p)?;
+            let reach = at(p + egui::vec2(SNAP_REACH, 0.0)).map(|r| r.dist(q)).ok().filter(|r| r.is_finite()).unwrap_or(0.0);
+            Ok(if offsetting { q } else { bimcraft_core::snap::on_traces(q, &traces, reach, &snaps) })
+        };
         // What of the selection the tool takes: what a plan would, but a form the view hides (Hide Elements, Temporary
         // Hide/Isolate), which stays where it is.
         let out_of_view = self.forms_out_of_view();
@@ -722,7 +735,7 @@ impl FamilyEditor {
             said = self.modify_typed(space, &shown);
         }
         if let Some(p) = click {
-            match at(p) {
+            match snapped(p) {
                 Ok(q) => {
                     // A point picked: a snap override waiting for one is used up by it (FE-21).
                     self.took_point = true;
@@ -741,7 +754,7 @@ impl FamilyEditor {
         // The marks, the rubber band and what is taken where the click would put it.
         let Some(m) = self.views.modify.as_ref() else { return said };
         let (tool, o, snaps) = (m.tool, self.views.modify_options.clone(), self.snaps);
-        let hover = response.hover_pos().filter(|p| pane.contains(*p)).and_then(|p| at(p).ok());
+        let hover = response.hover_pos().filter(|p| pane.contains(*p)).and_then(|p| snapped(p).ok());
         // Drawn only while every point of it is on screen: one behind the eye would draw a line across the view.
         let seen = |q: P2| project(space.point(q)).filter(|p| pane.expand(2000.0).contains(*p));
         let points: Vec<P2> = match tool {
@@ -769,6 +782,39 @@ impl FamilyEditor {
             }
         }
         said
+    }
+
+    /// What a Modify tool's point snaps to on {3D}'s work plane (FE-24b): `Family::work_plane_traces`, sized as the view
+    /// draws the family, with neither what Temporary Hide/Isolate nor what the view hides for good; found again only when the
+    /// family, its values, the plane or what is hidden changes.
+    fn traces_3d(&mut self) -> std::sync::Arc<Vec<(P2, P2)>> {
+        use std::hash::{Hash, Hasher};
+        let Ok(f) = self.family() else { return Default::default() };
+        let values = self.values();
+        let host = self.views.work_plane();
+        let hidden: Vec<Guid> = (f.planes.iter().map(|p| p.guid))
+            .chain(f.lines.iter().map(|l| l.guid))
+            .chain(f.model_lines.iter().map(|l| l.guid))
+            .filter(|g| self.temp_hidden_plane(*g))
+            .collect();
+        let forms_hidden: Vec<bool> = (0..f.forms.len()).map(|i| self.temp_hidden_form(i)).collect();
+        let key = {
+            let mut h = std::collections::hash_map::DefaultHasher::new();
+            serde_json::to_string(&f).unwrap_or_default().hash(&mut h);
+            format!("{values:?} {host:?}").hash(&mut h);
+            (&hidden, &forms_hidden).hash(&mut h);
+            h.finish()
+        };
+        if let Some((k, t)) = &self.views.traces_3d
+            && *k == key
+        {
+            return t.clone();
+        }
+        let shown = |g: Guid| !hidden.contains(&g);
+        let form_shown = |i: usize| !forms_hidden.get(i).copied().unwrap_or(false);
+        let t = std::sync::Arc::new(f.work_plane_traces(&values, &host, &shown, &form_shown));
+        self.views.traces_3d = Some((key, t.clone()));
+        t
     }
 
     /// What a Modify tool takes in {3D}, as `space`'s plane has it: the box of each form of `shown`, and the two ends of
