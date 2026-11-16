@@ -820,6 +820,74 @@ pub fn part_at_3d(family: &Family, values: &BTreeMap<String, Val>, cam: &view3d:
     best.map(|(_, part)| part)
 }
 
+/// A reference {3D} picks (FE-24b): a reference plane, by the line it was drawn as; a reference line; a model line; or an edge
+/// of form `usize` as drawn.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Reference3d {
+    Plane(Guid),
+    Line(Guid),
+    ModelLine(Guid),
+    Edge(usize),
+}
+
+/// The reference of `family` (sized by `values`) seen nearest pixel `px` of a picture taken through `cam`, within `reach`
+/// pixels, and its two ends in the family's axes: what Mirror - Pick Axis, Offset and Align pick in {3D} (FE-24b). One a
+/// solid stands in front of there doesn't show, so it isn't picked; nor is what the view hides: a plane, a reference line or
+/// a model line `shown` says no to by its GUID, a form `form_shown` says no to by its place. The datums, never drawn, aren't.
+pub fn reference_at_3d(
+    family: &Family,
+    values: &BTreeMap<String, Val>,
+    cam: &view3d::Camera,
+    px: (f64, f64),
+    reach: f64,
+    shown: &dyn Fn(Guid) -> bool,
+    form_shown: &dyn Fn(usize) -> bool,
+) -> Option<(Reference3d, (P3, P3))> {
+    let flexed = family.flexed(values).ok()?;
+    let mut read = HashMap::new();
+    let mut solids: Vec<[P3; 3]> = Vec::new();
+    let mut candidates: Vec<(Reference3d, (P3, P3))> = Vec::new();
+    for i in 0..flexed.forms.len() {
+        if flexed.forms[i].void || !form_shown(i) {
+            continue;
+        }
+        if let Some(piece) = flexed.solid(i, values, &mut read).ok().flatten() {
+            candidates.extend(super::sketch::creases(&piece.tris).into_iter().map(|e| (Reference3d::Edge(i), e)));
+            solids.extend(piece.tris);
+        }
+    }
+    candidates.extend(flexed.planes.iter().filter(|p| !p.datum() && shown(p.guid)).map(|p| (Reference3d::Plane(p.guid), (p.start, p.end))));
+    candidates.extend(flexed.lines.iter().filter(|l| shown(l.guid)).map(|l| (Reference3d::Line(l.guid), (l.start, l.end))));
+    candidates.extend(flexed.model_lines.iter().filter(|l| shown(l.guid)).map(|l| (Reference3d::ModelLine(l.guid), (l.start, l.end))));
+    // The nearest solid's surface at a pixel, if any covers it.
+    let surface = |at: (f64, f64)| solids.iter().filter_map(|t| depth_at(t.map(|p| cam.project(p)), at)).reduce(f64::max);
+    let at = P2(px.0, px.1);
+    let mut best: Option<(f64, Reference3d, (P3, P3))> = None;
+    for (r, (a, b)) in candidates {
+        let [Some(pa), Some(pb)] = [a, b].map(|p| {
+            let (x, y, z) = cam.project(p);
+            (x.is_finite() && y.is_finite() && z.is_finite()).then_some((P2(x, y), z))
+        }) else {
+            continue;
+        };
+        // The point of it on screen nearest the pixel, and how near the eye it is there.
+        let d = pb.0 - pa.0;
+        let len2 = d.dot(d);
+        let k = if len2 > 1e-12 { ((at - pa.0).dot(d) / len2).clamp(0.0, 1.0) } else { 0.0 };
+        let on = pa.0 + d * k;
+        let dist = on.dist(at);
+        if dist > reach || best.is_some_and(|(b, ..)| dist >= b) {
+            continue;
+        }
+        let z = pa.1 + (pb.1 - pa.1) * k;
+        if surface((on.0, on.1)).is_some_and(|s| s > z + 1.0 + z.abs() * 1e-6) {
+            continue;
+        }
+        best = Some((dist, r, (a, b)));
+    }
+    best.map(|(_, r, e)| (r, e))
+}
+
 /// How near the eye triangle `q` (its corners projected: pixel and nearness) is at pixel `p`, where it covers it.
 fn depth_at(q: [(f64, f64, f64); 3], p: (f64, f64)) -> Option<f64> {
     if q.iter().any(|(x, y, z)| !(x.is_finite() && y.is_finite() && z.is_finite())) {

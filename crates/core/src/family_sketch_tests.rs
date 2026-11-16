@@ -521,3 +521,45 @@ fn a_point_on_the_3d_work_plane_snaps_to_what_the_view_shows_on_it() {
         assert!(near(at, to), "{from:?} to {at:?}, not {to:?}");
     }
 }
+
+#[test]
+fn a_reference_is_picked_in_3d_where_it_shows_and_never_behind_a_solid() {
+    use crate::family::ModelLine;
+    use crate::family::views::{Reference3d, reference_at_3d};
+    use crate::ids::Guid;
+    let (mut s, r) = sketched(json!([{"sketch": rect(500.0, 300.0, 1000.0, 600.0), "to": 200}]));
+    r.unwrap();
+    // Edge (x -400), a reference line beside the box and one under it.
+    run(
+        &mut s,
+        "family",
+        json!({"name": "S", "ref_planes": [{"name": "Edge", "start": [-400, -2000, 0], "end": [-400, 2000, 0], "up": [0, 0, 1]}],
+               "ref_lines": [{"start": [-200, 1200, 0], "end": [200, 1200, 0]}, {"start": [600, 450, 0], "end": [900, 450, 0]}]}),
+    );
+    let mut f = family(&s).clone();
+    let ml = Guid::new();
+    f.model_lines.push(ModelLine { guid: ml, start: [1500.0, -300.0, 0.0], end: [1500.0, 300.0, 0.0], ..Default::default() });
+    let values = f.values("A", &BTreeMap::new()).unwrap();
+    let edge = f.planes.iter().find(|p| p.name == "Edge").unwrap().guid;
+    // Looking down on the box from 5 m over it.
+    let cam = crate::view3d::Camera::at([750.0, 450.0, 5000.0], [750.0, 450.0, 0.0], 50.0, 800, 800);
+    let px = |p: P3| {
+        let (x, y, _) = cam.project(p);
+        (x + 2.0, y + 1.0)
+    };
+    let pick = |p: P3| reference_at_3d(&f, &values, &cam, px(p), 6.0, &|_| true, &|_| true);
+    assert!(matches!(pick([-400.0, 500.0, 0.0]), Some((Reference3d::Plane(g), _)) if g == edge), "Edge, by the line it was drawn as");
+    assert!(matches!(pick([0.0, 1200.0, 0.0]), Some((Reference3d::Line(_), _))), "the reference line beside the box");
+    assert!(matches!(pick([1500.0, 0.0, 0.0]), Some((Reference3d::ModelLine(g), _)) if g == ml), "the model line");
+    // The box's east edge on its top, nearer the eye; the one under it is behind the top.
+    let (r, (a, b)) = pick([1000.0, 450.0, 200.0]).expect("an edge");
+    assert!(matches!(r, Reference3d::Edge(0)) && [a, b].iter().all(|p| p[0] == 1000.0 && p[2] == 200.0), "{r:?} {a:?} {b:?}");
+    // The reference line under the box's top shows nowhere: nothing is picked over it.
+    assert_eq!(pick([750.0, 450.0, 0.0]), None);
+    // What the view hides is never picked.
+    assert_eq!(reference_at_3d(&f, &values, &cam, px([1500.0, 0.0, 0.0]), 6.0, &|g| g != ml, &|_| true), None);
+    assert!(!matches!(
+        reference_at_3d(&f, &values, &cam, px([1000.0, 450.0, 200.0]), 6.0, &|_| true, &|_| false),
+        Some((Reference3d::Edge(_), _))
+    ));
+}
