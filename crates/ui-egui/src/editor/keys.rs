@@ -44,6 +44,8 @@ pub(crate) const FAMILY_SHORTCUTS: &[(&str, &str)] = &[
     ("FG", "Finish Edit Mode"),
     ("CG", "Cancel Edit Mode"),
     ("KS", "Keyboard Shortcuts"),
+    ("CH", "Close Inactive Views"),
+    ("RC", "Repeat Last Command"),
     ("3D", "3D View"),
     ("ZE", "Zoom to Fit"),
     ("ZF", "Zoom to Fit"),
@@ -243,6 +245,19 @@ impl BimApp {
         }
         // What the window does for the document: its palettes, dialogs and the view's Temporary Hide/Isolate.
         let asked = match action {
+            "Close Inactive Views" => {
+                self.close_inactive_family_views();
+                return true;
+            }
+            "Repeat Last Command" => {
+                if !self.keys_taken(&Context::default())
+                    && let Some(ed) = self.active_family_mut().filter(|ed| ed.sketch.is_none() && !ed.modal())
+                    && let Err(text) = ed.repeat_last_tool()
+                {
+                    self.status = Status { text, error: true };
+                }
+                return true;
+            }
             "Properties" => {
                 self.toggle_properties();
                 return true;
@@ -376,12 +391,14 @@ impl BimApp {
             // Modify's Move, Copy and Rotate, enabled while something is selected in an adaptive family's view.
             "Move" | "Copy" if !ed.modeller.selection.is_empty() => {
                 ed.modeller.tool = Draw::Move { from: None, copy: action == "Copy" };
+                ed.last_tool = None;
             }
             "Rotate" => {
                 let values = ed.values();
                 let centre = ed.adaptive.as_ref().and_then(|d| adaptive_view::selection_centre(d, &ed.modeller, &values));
                 if let Some(centre) = centre.filter(|_| !ed.modeller.selection.is_empty()) {
                     ed.modeller.tool = Draw::Rotate { centre, start: None };
+                    ed.last_tool = None;
                 }
             }
             // Delete, as the Delete key: the lines picked while a form is sketched, else what is selected.
