@@ -117,6 +117,8 @@ pub struct Staged {
     /// The heights the floor plan sees, mm, lowest and highest: what its View Range sets (FE-18). None, every form whatever
     /// its height, as a family's plan sees until its View Range is set.
     pub seen: Option<(f64, f64)>,
+    /// The level's own view range, as it was staged: what a plan draws by while `seen` is none.
+    range: crate::model::ViewRange,
 }
 
 /// How far the elevations stand outside what they look at.
@@ -283,7 +285,8 @@ pub fn stage(mut m: Model, family: &Family, values: &BTreeMap<String, Val>, show
     }
     let lines = family.lines.iter().map(|l| (l.start, l.end)).collect();
     let model_lines = family.model_lines.iter().filter(|l| shown(l.guid)).map(|l| (l.start, l.end)).collect();
-    Staged { model: m, level, elevations, planes, room, lines, model_lines, seen: None }
+    let range = m.level(level).map(|l| l.view_range).unwrap_or_default();
+    Staged { model: m, level, elevations, planes, room, lines, model_lines, seen: None, range }
 }
 
 /// What one of a family's views draws, for a front end that paints it as vectors: its frame, its drawing (what picks), and
@@ -403,11 +406,12 @@ impl Staged {
     /// View `which` fitted in a `width` by `height` picture: the frame zoom and pan start from, which a front end may keep while
     /// only they change.
     ///
-    /// The room fitted; then, in a plan or the ceiling plan, an elevation mark the picture cuts at its edge (its name reaches
-    /// past the room, beyond the narrow view's side: UI-1) brought wholly in, the frame shrunk about what those marks and the
-    /// room take, in a few passes, as lettering keeps its size on paper while the frame shrinks; a mark a pass brings partly in is
-    /// brought wholly in by the next. A mark wholly outside stays out, so a view wide enough keeps the room's frame. An elevation makes room for its levels' names by itself
-    /// (`frame`), and its planes run from edge to edge of the picture, their names along its top, whatever the frame.
+    /// The room fitted; then, in a plan or the ceiling plan, every elevation mark the picture leaves out or cuts at its edge
+    /// (its name reaches past the room, beyond a narrow view's side: UI-1) brought wholly in, as Revit's template shows all
+    /// four (UI-3): the frame shrunk about what the marks and the room take, in a few passes, as lettering keeps its size on
+    /// paper while the frame shrinks. A view that shows them all keeps the room's frame. An elevation makes room for its levels'
+    /// names by itself (`frame`), and its planes run from edge to edge of the picture, their names along its top, whatever the
+    /// frame.
     pub fn fitted(&mut self, which: Which, width: u32, height: u32) -> View {
         const MARGIN: f32 = 8.0;
         let room = self.frame(which, width, height, 1.0, P2(0.0, 0.0));
@@ -428,9 +432,9 @@ impl Staged {
             }
             by
         };
-        // The marks the room's frame shows a part of, and whether it cuts any.
+        // UI-3: every mark, as Revit's template shows all four; whether the room's frame leaves any out or cuts it.
         let first = marks(self, room);
-        let mut shown: Vec<Id> = first.iter().filter(|(_, pts)| pts.iter().any(|p| inside(*p))).map(|(id, _)| *id).collect();
+        let mut shown: Vec<Id> = first.keys().copied().collect();
         let cut = |pts: &[(f32, f32)]| pts.iter().any(|p| p.0 < lo.0 || p.1 < lo.1 || p.0 > hi.0 || p.1 > hi.1);
         if !shown.iter().any(|id| first.get(id).is_some_and(|pts| cut(pts))) {
             return room;
@@ -468,6 +472,15 @@ impl Staged {
         let n = (crate::sheet::DENSITY / fitted.scale).clamp(1.0, 1e5);
         if let Some(g) = self.view_id(which).and_then(|id| self.model.elements.get_mut(id)).and_then(crate::graphics::graphics_mut) {
             g.scale = Some(n);
+        }
+        // The project's plan under the family's own sees as it does (FE-18): `seen` is its depth and its top, so a component
+        // wholly outside them is drawn by neither.
+        let range = match self.seen {
+            Some((lo, hi)) => crate::model::ViewRange { top: Some(hi), bottom: lo, depth: lo, ..self.range },
+            None => self.range,
+        };
+        if let Some(Element::Level(l)) = self.model.elements.get_mut(self.level) {
+            l.view_range = range;
         }
         let m = &self.model;
         let view = View { scale: fitted.scale * zoom.clamp(0.05, 50.0), cx: fitted.cx + pan.0, cy: fitted.cy + pan.1, ..fitted };
@@ -1153,6 +1166,9 @@ mod tests {
         // One through it sees it.
         st.seen = Some((0.0, 3500.0));
         assert!(dark(&st.draw(Which::Plan, 400, 400, 1.0, P2(0.0, 0.0)).unwrap()));
+        // However large the view draws it (UI-3: the project's plan under it drew the box whatever the range).
+        st.seen = Some((2500.0, 3500.0));
+        assert!(!dark(&st.draw(Which::Plan, 900, 900, 1.0, P2(0.0, 0.0)).unwrap()), "left out at 900 too");
     }
 
     /// FE-20, Revit's Select Elements by Face: off, a form or a nested instance is taken by an edge of its outline alone; on,
@@ -1748,7 +1764,7 @@ mod tests {
     /// wholly inside, 8 px clear of the edges, or wholly outside; a wide one keeps the room's frame. An elevation draws all it
     /// draws inside its picture.
     #[test]
-    fn a_fitted_view_cuts_no_elevation_mark_at_its_edge() {
+    fn a_fitted_view_shows_every_elevation_mark_whole() {
         use crate::render::Prim;
         let mut st = staged(&boxed(0.0, 2000.0));
         let views = [Which::Plan, Which::Ceiling].into_iter().chain(Side::ALL.iter().map(|s| Which::Elevation(*s)));
@@ -1771,16 +1787,13 @@ mod tests {
                     }
                 }
                 assert_eq!(marks.len(), 4, "{which:?}: four marks");
+                // UI-3: all four shown, each whole, as Revit's template shows them.
                 for (id, pts) in &marks {
                     let within = |p: &(f32, f32)| (7.5..=wf - 7.5).contains(&p.0) && (7.5..=hf - 7.5).contains(&p.1);
-                    let seen = |p: &(f32, f32)| (0.0..=wf).contains(&p.0) && (0.0..=hf).contains(&p.1);
-                    assert!(pts.iter().all(within) || !pts.iter().any(seen), "{which:?} {w}x{h}: mark {id} cut at the edge");
+                    assert!(pts.iter().all(within), "{which:?} {w}x{h}: mark {id} not wholly in");
                 }
                 let room = st.frame(which, w, h, 1.0, P2(0.0, 0.0));
                 refitted += usize::from(lines.view != room);
-                if w == 2400 {
-                    assert_eq!(lines.view, room, "{which:?}: wide enough, the room's frame");
-                }
                 assert_eq!(st.draw_lines(which, w, h, 1.0, P2(0.0, 0.0)).unwrap().view, lines.view);
             }
         }
