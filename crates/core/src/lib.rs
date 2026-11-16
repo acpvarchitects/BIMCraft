@@ -39,6 +39,7 @@ pub mod crosscheck;
 pub mod crs;
 mod csg;
 pub mod curves;
+pub mod decay;
 pub mod demand;
 pub mod derived;
 pub mod dims;
@@ -61,8 +62,11 @@ pub mod engine;
 pub mod export;
 #[cfg(test)]
 mod export_tests;
+pub mod face;
 #[cfg(test)]
 mod face_host_tests;
+#[cfg(test)]
+mod face_tests;
 #[cfg(test)]
 mod face_void_tests;
 pub mod falls;

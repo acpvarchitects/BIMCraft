@@ -427,7 +427,7 @@ impl Model {
     }
 
     /// A floor's, a ceiling's or a roof's pieces in plan, each with the planes of its underside and its top.
-    fn slab_pieces(&self, e: &Element) -> Vec<(Vec<P2>, walls::Plane, walls::Plane)> {
+    pub(crate) fn slab_pieces(&self, e: &Element) -> Vec<(Vec<P2>, walls::Plane, walls::Plane)> {
         match e {
             Element::Floor(f) => self.floor_prisms(f),
             Element::Roof(r) => self.roof_prisms(r),
