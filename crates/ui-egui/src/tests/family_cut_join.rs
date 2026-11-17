@@ -277,69 +277,78 @@ fn editor_sketch(h: &mut Harness<BimApp>) {
     h.run();
 }
 
-/// The tool in use, saved where `BIMCRAFT_FE16B_DUMP` says (only then).
+/// A (100 to 500 square, 300 high) and B (300 to 700 square, 450 high) overlapping it by 200 in both ways, no void; or, with
+/// `apart`, B west of A and clear of it.
+fn two_solids(apart: bool) -> String {
+    let (x0, y0) = if apart { (-1000, 100) } else { (300, 300) };
+    format!(
+        r#"family {{"name": "Movers", "category": "generic", "types": {{"T": {{}}}}, "forms": [{{"guid": "{A}", "profile": [[100, 100], [500, 100], [500, 500], [100, 500]], "from": 0, "to": 300}}, {{"guid": "{B}", "profile": [[{x0}, {y0}], [{}, {y0}], [{}, {}], [{x0}, {}]], "from": 0, "to": 450}}]}}"#,
+        x0 + 400,
+        x0 + 400,
+        y0 + 400,
+        y0 + 400
+    )
+}
+
+/// The tool in use, saved where `BIMCRAFT_FE16B_DUMP` says (only then): the panel, picks and a refusal in plan on the void
+/// family; its void's notch in {3D} cut and uncut; overlapping solids joined in plan and {3D}; and solids that miss each other
+/// joined, which leaves both whole.
 #[test]
 fn family_cut_join_screenshots() {
     let Ok(folder) = std::env::var("BIMCRAFT_FE16B_DUMP") else { return };
     std::fs::create_dir_all(&folder).unwrap();
-    let mut h = app(&cutters());
-    h.set_size(egui::vec2(1800.0, 1000.0));
-    h.state_mut().edit_family("Movers");
-    h.run();
-    view(&mut h, Some(Which::Plan));
-    topmost(&mut h, "Modify");
+    let opened = |script: &str| {
+        let mut h = app(script);
+        h.set_size(egui::vec2(1800.0, 1000.0));
+        h.state_mut().edit_family("Movers");
+        h.run();
+        view(&mut h, Some(Which::Plan));
+        topmost(&mut h, "Modify");
+        h
+    };
     let save = |h: &mut Harness<BimApp>, name: &str| {
         h.run();
         h.run();
         h.render().unwrap().save(std::path::Path::new(&folder).join(format!("fe16b-{name}.png"))).unwrap();
     };
+    let to_3d = |h: &mut Harness<BimApp>| {
+        view(h, None);
+        for _ in 0..4 {
+            h.run();
+        }
+    };
+    // The void family: the panel, a refusal, and the void's notch cut and uncut.
+    let mut h = opened(&cutters());
     press(&mut h, "Cut");
     save(&mut h, "geometry-panel");
     press(&mut h, "Cut Geometry");
     click_family(&mut h, ON_A);
-    save(&mut h, "plan-first-pick");
-    click_family(&mut h, ON_B);
-    save(&mut h, "plan-cut-done");
+    row(&mut h, 3, "Extrusion (void)");
+    to_3d(&mut h);
+    save(&mut h, "3d-void-cut");
     run(&mut h, "Uncut Geometry");
-    click_family(&mut h, ON_A);
-    click_family(&mut h, ON_B);
+    click3(&mut h, [300.0, 300.0, 300.0]);
+    row(&mut h, 3, "Extrusion (void)");
+    save(&mut h, "3d-void-uncut");
+    view(&mut h, Some(Which::Plan));
     shortcut(&mut h, "JO");
     click_family(&mut h, ON_A);
     row(&mut h, 3, "Extrusion (void)");
     save(&mut h, "plan-refusal");
-    view(&mut h, None);
-    for _ in 0..4 {
-        h.run();
-    }
+    // Overlapping solids, joined.
+    let mut h = opened(&two_solids(false));
     shortcut(&mut h, "JO");
-    click3(&mut h, [300.0, 300.0, 300.0]);
-    save(&mut h, "3d-first-pick");
-    click3(&mut h, [-800.0, 300.0, 300.0]);
-    save(&mut h, "3d-joined");
-}
-
-#[test]
-fn a_family_cut_or_joined_still_stages_in_3d() {
-    // {3D} stages each form as a family of its own: their GUIDs are made their own, so the lists naming them still hold.
-    let mut h = plan();
-    shortcut(&mut h, "CU");
+    click_family(&mut h, [200.0, 200.0, 0.0]);
+    save(&mut h, "plan-first-pick");
+    click_family(&mut h, [650.0, 650.0, 0.0]);
+    save(&mut h, "plan-joined-overlap");
+    to_3d(&mut h);
+    save(&mut h, "3d-joined-overlap");
+    // Solids that miss each other, joined: both whole.
+    let mut h = opened(&two_solids(true));
+    shortcut(&mut h, "JO");
     click_family(&mut h, ON_A);
     click_family(&mut h, ON_B);
-    view(&mut h, None);
-    for _ in 0..4 {
-        h.run();
-    }
-    assert_eq!(editor(&h).problem, None);
-    // Joined, the same.
-    run(&mut h, "Uncut Geometry");
-    click3(&mut h, [300.0, 300.0, 300.0]);
-    click3(&mut h, [-800.0, 300.0, 300.0]);
-    shortcut(&mut h, "JO");
-    click3(&mut h, [300.0, 300.0, 300.0]);
-    click3(&mut h, [-800.0, 300.0, 300.0]);
-    assert_eq!(family(&h).forms[0].joined_by.len(), 1, "{}", status(&h));
-    for _ in 0..4 {
-        h.run();
-    }
-    assert_eq!(editor(&h).problem, None);
+    to_3d(&mut h);
+    save(&mut h, "3d-joined-apart");
 }

@@ -276,9 +276,35 @@ fn alone(f: &Family, p: Part) -> Family {
             n.visible = off();
         }
     }
+    if let Part::Form(k) = p
+        && f.forms.get(k).is_some_and(|x| !x.void)
+    {
+        solid_cutters_as_voids(f, &mut g, k);
+    }
     // Its symbols are drawn in plans only.
     g.symbols.clear();
     g
+}
+
+/// Part `k` (a solid form) of `f` is `g` with the other solids hidden, and a hidden form cuts nothing: so the solids that cut
+/// it (`cut_by`, `joined_by`, FE-16) are made voids in `g`, which are never drawn but cut as they cut it in the family. A void
+/// listed after it cuts it by the order, one listed before it by `cut_by`. The other forms' lists go, as they are hidden.
+fn solid_cutters_as_voids(f: &Family, g: &mut Family, k: usize) {
+    let cutters: Vec<usize> = f.cutters(k).into_iter().filter(|m| !f.forms[*m].void).collect();
+    for (i, form) in g.forms.iter_mut().enumerate().filter(|(i, _)| *i != k) {
+        (form.cut_by, form.uncut_by, form.joined_by) = Default::default();
+        if cutters.contains(&i) {
+            form.void = true;
+            form.visible = f.forms[i].visible.clone();
+        }
+    }
+    let named: Vec<bimcraft_core::ids::Guid> = cutters.iter().map(|m| f.forms[*m].guid).collect();
+    let target = &mut g.forms[k];
+    target.joined_by.clear();
+    target.cut_by.retain(|x| !named.contains(x));
+    for m in cutters.into_iter().filter(|m| *m < k) {
+        target.cut_by.push(f.forms[m].guid);
+    }
 }
 
 /// Family `g` with each form's GUID made one of its own, from `salt`, and every `cut_by`, `uncut_by` and `joined_by` naming a form
@@ -364,5 +390,64 @@ fn datum_mark(cam: &Camera, f: &Family, lit: Lit, c: Color32, extents: ([f64; 3]
             })
         }
         Lit::Part(_) => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const A: &str = "fe16b000-0000-4000-8000-00000000000a";
+    const B: &str = "fe16b000-0000-4000-8000-00000000000b";
+
+    fn volume(tris: &[[[f64; 3]; 3]]) -> f64 {
+        tris.iter()
+            .map(|[a, b, c]| {
+                let cross = [b[1] * c[2] - b[2] * c[1], b[2] * c[0] - b[0] * c[2], b[0] * c[1] - b[1] * c[0]];
+                (a[0] * cross[0] + a[1] * cross[1] + a[2] * cross[2]) / 6.0
+            })
+            .sum()
+    }
+
+    /// Solid A (100 to 500 square, 300 high) and solid B (`x0` to `x0 + 400` east-west, 300 high) with `lists` on A.
+    fn pair(x0: i32, lists: &str) -> Family {
+        let sq = |x0: i32| format!("[[{x0}, 100], [{}, 100], [{}, 500], [{x0}, 500]]", x0 + 400, x0 + 400);
+        serde_json::from_value(
+            serde_json::from_str::<Value>(&format!(
+                r#"{{"types": {{"T": {{}}}}, "forms": [{{"guid": "{A}", {lists} "profile": {}, "from": 0, "to": 300}}, {{"guid": "{B}", "profile": {}, "from": 0, "to": 300}}]}}"#,
+                sq(100),
+                sq(x0)
+            ))
+            .unwrap(),
+        )
+        .unwrap()
+    }
+
+    /// What {3D} builds for form 0: its part's volume, and the family's own piece for it.
+    fn volumes(f: &Family) -> (f64, f64) {
+        let values = BTreeMap::new();
+        let mut part = alone(f, Part::Form(0));
+        rekey(&mut part, 1);
+        let whole = f.pieces(&values).unwrap();
+        let own = part.pieces(&values).unwrap();
+        assert_eq!(own.len(), 1, "the part is the form alone");
+        (volume(&own[0].tris), volume(&whole[0].tris))
+    }
+
+    #[test]
+    fn a_part_cut_or_joined_by_a_solid_that_misses_it_is_the_whole_form_and_one_it_overlaps_loses_the_overlap() {
+        let whole = 400.0 * 400.0 * 300.0;
+        for lists in [format!(r#""cut_by": ["{B}"],"#), format!(r#""joined_by": ["{B}"],"#)] {
+            // Far apart: unchanged, in the part as in the family.
+            let (part, family) = volumes(&pair(-1000, &lists));
+            assert!((part - whole).abs() < 1.0 && (family - whole).abs() < 1.0, "{lists}: {part} {family}");
+            // Overlapping by 200 mm: exactly the overlap (200 x 400 x 300) comes out.
+            let (part, family) = volumes(&pair(300, &lists));
+            let left = whole - 200.0 * 400.0 * 300.0;
+            assert!((part - left).abs() < 1.0 && (family - left).abs() < 1.0, "{lists}: {part} {family}");
+        }
+        // Nothing listed: nothing cuts, though B overlaps it.
+        let (part, family) = volumes(&pair(300, ""));
+        assert!((part - whole).abs() < 1.0 && (family - whole).abs() < 1.0);
     }
 }
