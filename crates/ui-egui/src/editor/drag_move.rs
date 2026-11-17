@@ -414,6 +414,8 @@ impl FamilyEditor {
             }
             self.dimensions.push(m);
         }
+        // Where the copies landed, some of what they were told is stale (FE-16).
+        self.tidy_cutting();
         (moved, selected, origin)
     }
 

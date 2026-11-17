@@ -196,7 +196,9 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// `{"family", "type"}`, which a build that reads up to 20 would leave out (the label) or refuse every command over (the
 /// values); a file of 20 holds neither, null values and no labels. And a family's dimension may measure to one of its model
 /// lines (`{"model_line": guid}`, with a `point` for an end; FE-15), a reference a build that reads up to 20 would refuse as a
-/// key its references don't have.
+/// key its references don't have. And a solid form of a family may name the forms that cut it beyond the list's order
+/// (`cut_by`, `uncut_by` and `joined_by`, lists of form GUIDs; FE-16), which a build that reads up to 20 would refuse as keys a
+/// form doesn't have; a file of 20 holds none, and a family with none builds as it did.
 pub const FORMAT: u32 = 21;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;

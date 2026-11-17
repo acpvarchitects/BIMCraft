@@ -50,6 +50,17 @@ cut round the opening) and what a form reaching higher covers, in the category's
 edge the cut's line runs along already is left to it (`render::below_cut`). So a frame across the wall shows its lower rail
 between its cut jambs, and a sill board outside the wall its edge; nothing above the cut is drawn. A family's plan is the
 project's drawing of its scratch model, so it shows the same. Past `MAX_BELOW` triangles, each form's outline stands for it.
+Three optional lists of form GUIDs on a solid form change what cuts it (FE-16, `family/cutting.rs`; FORMAT 21, nothing to
+migrate, left out of a file where empty): `cut_by` names more cutters than the voids listed after it (a void listed before it,
+or a solid form, so a solid cuts a solid), `uncut_by` names voids listed after it that must not cut it, and `joined_by` names
+solid forms joined to it: each cuts it and both are drawn, so where they overlap the listed form's material stays. A solid
+cuts as it stands before any cutting, so a loop of `cut_by` and `joined_by` is refused (`Family::check`, with a GUID no form
+has, the form itself, a void as a target or in `joined_by`, an `uncut_by` that would not cut anyway, a nil GUID, and more
+than `MAX_JOINS` in a list); a cutter that is hidden cuts nothing, as a hidden void never did. Removing a form takes it from
+every list; a copy names the copies where both ends are copied and drops the rest, and, since it lands after the family's
+forms, is named in the `cut_by` of the voids that cut the original. `Family::tidy_cutting` takes out what moving forms about leaves stale (an `uncut_by` void now listed before its form, a `cut_by` void
+now listed after it), and runs after a `family` command, a reorder, a copy and a paste, while `check` stays strict. `Family::cut`, `uncut`, `join`, `unjoin` and
+`switch_join_order` edit them and say why they refuse; the `family` command sets and clears them in a `form` patch.
 
 F10d, part of FORMAT 18: a void's `cuts` (`family::Cuts`): `both` (left out of the file) cuts the solid forms listed before it that it
 reaches and, in a door's or a window's family, the wall wherever it reaches into it, whatever its place in the list; `host`
@@ -2052,6 +2063,7 @@ planes, components hosted on them or on faces (Place on Face), and where a compo
   isn't parallel; `family/constraints/moving.rs`, what a drag moves together through them (FE-7); `family/constraints/copying.rs`,
   the copies a Ctrl+drag makes (FE-4); `family/constraints/transform.rs`, what Rotate, Mirror and Scale do (FE-8).
 - `family/clipboard.rs`: what the clipboard holds and what each paste adds (FE-14).
+- `family/cutting.rs`: what cuts what among the forms beyond the list's order: `cut_by`, `uncut_by`, `joined_by` and their checks (FE-16; tests `family_cutting_tests.rs`).
 - `family/nested.rs`: nested families and their instances, built into the host.
 - `family/visibility.rs`: Visibility Settings: which views and detail levels draw a form, a symbol or a nested instance.
 - `family/select.rs`: what a family document selects (`Picked`), and what its selection's commands find: Filter's kinds,

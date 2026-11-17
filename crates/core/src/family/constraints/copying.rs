@@ -92,6 +92,54 @@ impl Copies {
     }
 }
 
+impl Copies {
+    /// The copied forms' cutting lists (FE-16) as their copies' own, where `originals` are the family's forms and `taken`
+    /// the places of those copied, in the order of `self.forms`. Both ends copied: the list names the copy. Only one: the
+    /// reference is dropped, as an Align lock is. But a copy lands after the family's own forms, so the voids listed after
+    /// the original, which cut it, would be listed before the copy and cut it no longer: each is named in the copy's `cut_by`
+    /// (a copy of one listed after the copy cuts it by the order); a copy lands beside its original in the editor, where they
+    /// are redundant, and [`Family::tidy_cutting`] takes them out. `uncut_by` is kept the same way.
+    fn carry_cuts(&mut self, originals: &[Form], taken: &[usize]) {
+        let taken: Vec<usize> = taken.iter().copied().filter(|i| originals.get(*i).is_some()).collect();
+        let pos: BTreeMap<Guid, usize> =
+            taken.iter().enumerate().filter(|(_, i)| !originals[**i].guid.is_nil()).map(|(k, i)| (originals[*i].guid, k)).collect();
+        let copy_of = |g: &Guid| self.guids.get(g).copied().filter(|_| pos.contains_key(g));
+        let mut carried = Vec::new();
+        for (k, &i) in taken.iter().enumerate() {
+            let f = &originals[i];
+            // A copy of a void listed after the copy cuts it by the order, so naming it would be redundant.
+            let redundant =
+                |g: &Guid| originals.iter().any(|v| v.guid == *g && v.void && v.cuts().forms()) && pos.get(g).is_some_and(|p| *p > k);
+            let mut by: Vec<Guid> = f.cut_by.iter().filter(|g| !redundant(g)).filter_map(copy_of).collect();
+            let joined: Vec<Guid> = f.joined_by.iter().filter_map(copy_of).collect();
+            // What it was told not to be cut by stays off the copy: a copy of a void listed after the copy (a copy of one before
+            // it cuts nothing of it), and a void that isn't copied, which an editor that puts the copy beside the original
+            // lists after it. Where a copy lands before such a void, [`Family::tidy_cutting`] takes the entry out.
+            let uncut: Vec<Guid> =
+                f.uncut_by.iter().filter(|g| pos.get(g).is_none_or(|p| *p > k)).map(|g| copy_of(g).unwrap_or(*g)).collect();
+            if !f.void {
+                for v in originals.iter().skip(i + 1).filter(|v| v.void && v.cuts().forms() && !v.guid.is_nil()) {
+                    if f.uncut_by.contains(&v.guid) {
+                        continue;
+                    }
+                    match pos.get(&v.guid) {
+                        // Listed after the copy, it cuts it by the order.
+                        Some(p) if *p > k => {}
+                        Some(_) => by.extend(copy_of(&v.guid)),
+                        None => by.push(v.guid),
+                    }
+                }
+            }
+            let mut seen = BTreeSet::new();
+            by.retain(|g| seen.insert(*g));
+            carried.push((by, uncut, joined));
+        }
+        for (c, (by, uncut, joined)) in self.forms.iter_mut().zip(carried) {
+            (c.cut_by, c.uncut_by, c.joined_by) = (by, uncut, joined);
+        }
+    }
+}
+
 impl Family {
     /// The copies of what `copying` takes, made where the originals are; or why not.
     pub fn copies(&self, copying: &Copying) -> Result<Copies, CopyRefused> {
@@ -177,6 +225,7 @@ impl Family {
             }
             out.forms.push(c);
         }
+        out.carry_cuts(&self.forms, &copying.forms);
         for &i in &copying.symbols {
             let Some(s) = self.symbols.get(i) else { continue };
             out.symbols.push(Symbol { id: 0, pinned: false, guid: if s.guid.is_nil() { s.guid } else { Guid::new() }, ..s.clone() });

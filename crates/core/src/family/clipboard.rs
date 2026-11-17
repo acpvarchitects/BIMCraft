@@ -166,6 +166,22 @@ impl Family {
         };
         // Copied once already, so nothing in it is a datum, the origin's plane or what a pivot turns.
         let mut out = h.copies(&all).map_err(|_| PasteRefused::Kind)?;
+        // What cut a form copied (its `cut_by`, FE-16) and is a form of this family still cuts its copy here.
+        for (copy, held) in out.forms.iter_mut().zip(&h.forms) {
+            for g in &held.cut_by {
+                // Only what `check` would take: a void of this family that cuts forms, which is listed before the copy.
+                let cuts = self.forms.iter().any(|x| x.guid == *g && x.void && x.cuts().forms());
+                if !h.forms.iter().any(|x| x.guid == *g) && cuts && !copy.cut_by.contains(g) {
+                    copy.cut_by.push(*g);
+                }
+            }
+        }
+        // A void told not to cut a form copied stays off its copy, where this family still has it or the paste brings its copy.
+        let brought: Vec<Guid> = out.forms.iter().map(|f| f.guid).collect();
+        let has = |g: &Guid| self.forms.iter().any(|x| x.guid == *g && x.void && x.cuts().forms());
+        for copy in &mut out.forms {
+            copy.uncut_by.retain(|g| brought.contains(g) || has(g));
+        }
         out.selected = out
             .dimensions
             .iter()
