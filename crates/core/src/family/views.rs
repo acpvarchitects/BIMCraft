@@ -577,6 +577,13 @@ pub fn new_line(st: &Staged, which: Which, on: &super::Frame, a: P2, b: P2) -> R
     Ok(Some((onto(a), onto(b))))
 }
 
+/// Where the level plane at height `z` cuts closed mesh `tris`, as its outlines in plan (mm): each loop the plane cuts its
+/// skin in, an outline and its holes alike, what the cut is drawn with ([`view3d::slice_loops`]). A ring cut is its two
+/// circles, never the pieces a region with a hole is made of.
+pub fn plan_cut_outlines(tris: &[[P3; 3]], z: f64) -> Vec<Vec<P2>> {
+    view3d::level_outlines(tris, z)
+}
+
 /// Where the level plane at height `z` cuts closed mesh `tris`, as rings in plan (mm). The same slicing a section's cut is
 /// ([`view3d::slice`]), on the mesh turned so its height is the section's depth.
 pub fn plan_cut(tris: &[[P3; 3]], z: f64) -> Vec<Vec<P2>> {
@@ -1126,6 +1133,49 @@ mod tests {
         s.execute("component", &json!({"family": "Box", "type": "T", "at": [0, 0]})).unwrap();
         let values = f.values("T", &BTreeMap::new()).unwrap();
         stage(std::sync::Arc::unwrap_or_clone(s.model.clone()), f, &values, &|_| true)
+    }
+
+    /// A plan of a revolve (a ring 100 in and 300 out, 500 high, below the cut) draws its two circles and nothing across its
+    /// flat top: the triangles a flat face is made of leave no line inside it.
+    #[test]
+    fn a_revolves_plan_draws_its_rings_and_nothing_across_its_flat_top() {
+        let rect = |x0: f64, y0: f64, x1: f64, y1: f64| {
+            json!([
+                {"start": [x0, y0], "end": [x1, y0]}, {"start": [x1, y0], "end": [x1, y1]},
+                {"start": [x1, y1], "end": [x0, y1]}, {"start": [x0, y1], "end": [x0, y0]}
+            ])
+        };
+        // Below the cut and across it, whole and part of a turn.
+        for (high, turn) in [(500.0, 360.0), (2000.0, 360.0), (500.0, 270.0), (2000.0, 270.0)] {
+            let mut lines = rect(100.0, 0.0, 300.0, high).as_array().cloned().unwrap();
+            lines.push(json!({"start": [0, 0], "end": [0, 1], "axis": true}));
+            let f: Family = serde_json::from_value(json!({
+                "category": "generic", "types": {"T": {}},
+                "forms": [{"host": {"plane": crate::family::CENTER_FRONT_BACK}, "sketch": lines, "to": turn}],
+            }))
+            .unwrap();
+            let mut st = staged(&f);
+            let shown = st.draw_lines(Which::Plan, 800, 800, 1.0, P2(0.0, 0.0)).unwrap();
+            let mut across = Vec::new();
+            let mut on_rings = 0;
+            for prim in &shown.drawing.prims {
+                let crate::render::Prim::Line { pts, .. } = prim else { continue };
+                for w in pts.windows(2) {
+                    let (a, b) = (shown.view.mm(w[0]), shown.view.mm(w[1]));
+                    let (ra, rb) = (a.0.hypot(a.1), b.0.hypot(b.1));
+                    let ring = |r: f64| (r - 100.0).abs() < 8.0 || (r - 300.0).abs() < 8.0;
+                    // From one ring to the other: only a part-turn's end, which runs straight out from the axis.
+                    let radial = (a.1.atan2(a.0) - b.1.atan2(b.0)).abs() < 1e-3;
+                    if ring(ra) && ring(rb) && (ra - rb).abs() > 50.0 && !(turn < 360.0 && radial) {
+                        across.push((a, b));
+                    } else if ring(ra) && ring(rb) {
+                        on_rings += 1;
+                    }
+                }
+            }
+            assert!(on_rings >= 16, "{high} {turn}: its rings drawn: {on_rings}");
+            assert!(across.is_empty(), "{high} {turn}: {} lines across its flat top: {:?}", across.len(), &across[..across.len().min(4)]);
+        }
     }
 
     fn pixel(s: &Shown, at: (f32, f32)) -> [u8; 4] {
