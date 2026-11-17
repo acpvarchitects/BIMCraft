@@ -29,6 +29,7 @@ pub mod demand;
 pub mod derived;
 pub mod dims;
 pub mod dims3d;
+pub mod divide;
 pub mod dps;
 pub mod dr;
 pub mod drainage;
@@ -89,6 +90,8 @@ mod openings_past_top_tests;
 mod oracle_tests;
 pub mod paint;
 pub mod parts;
+#[cfg(test)]
+mod parts_divide_tests;
 #[cfg(test)]
 mod parts_schedule_tests;
 #[cfg(test)]

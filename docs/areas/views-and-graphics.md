@@ -767,3 +767,68 @@ key beside it, with Make Text (`TitleBlock::make_text`: back to plain text, the 
 text has Make Field, keyed by what it says (`TitleBlock::free_key`, numbered past the keys there are) as each sheet's. An
 MTEXT's colour is the one its formatting sets before its first word (`\C`, `\c`), over the entity's. The stroke lettering has the
 ordinals º and ª.
+
+## Parts in views
+
+Parts Visibility. A view says which of an element and the parts it was taken apart into ([parts](parts.md)) it draws, as
+Revit's Parts Visibility: Show Original (`original`, what a view does unless it says), Show Parts (`parts`: an element that has
+parts as those parts and no more of it, one that has none whole) or Show Both (`both`). It is `Graphics::parts_visibility`
+(`graphics::PartsVisibility`, `graphics/parts.rs`), set by `graphics {view, parts_visibility}` on a plan, a ceiling plan, a
+section, an elevation or a 3D view, and by Properties' Parts Visibility in the desktop (`graphics_properties`); a view holds
+none for Show Original, so a project that never asks is saved as it always was, and an older BIMCraft leaves the field out.
+A view template is no `Group` of `controls` for it (a new one in that list an older BIMCraft could not read): a template that
+holds a Parts Visibility (`template {parts_visibility}`, Show Original too; null to hold none; `from` a view that shows parts
+takes it) sets it for the views that follow it (`Graphics::resolved`, `parts_controlled_by`), which then can't say otherwise
+(`check_followed`, and the `graphics` command, which names the template).
+
+The view's `Look` says it all (`Look::parts`, after everything else is known): a part is hidden unless the view shows parts,
+it is one to draw (`parts::drawable`: not excluded, its recipe holding, not divided into other parts, which stand for it) and
+the view draws its host; so a part follows its host's phase, design option, category and own hiding, and is painted as its
+host is, then as each view filter that picks it says (a filter may hide it). Showing parts alone, an element with a part to
+draw is hidden in its turn, but one with a part in conflict, which stays whole (and its good parts are drawn over it), so
+nothing of it goes missing; an element whose parts are all excluded is drawn whole too. `parts::holds` is the conflict a view
+asks after each time it is drawn: `Model::part_conflict` without the solid (a host with no solid there is the one it leaves
+out). Since the look hides and paints by id, every view agrees with no rule of its own, and what a view hides isn't snapped
+to or tagged: in Show Parts a wall's faces aren't snapped to, and its tag isn't drawn.
+
+How a part is drawn. The 3D scene holds every drawable part's solid beside its host's (`view3d::part_solids`: the prisms of
+`Model::part_prisms`, in the part's material's colour and texture as a layer's are; a component's part, its family's forms),
+whatever any view shows, and the look picks: so `Scene::update` makes a part again when its host, what its host joins or holds,
+the part or a part divided from it changes (a part points at its host and its parent, which the update follows both ways), a
+type's change being a whole scene as ever. A part's planes are numbered apart from every other element's
+(`PlaneTable::apart`), so the edge between two parts that share a plane (two parts of one face of a wall) is drawn, in 3D and
+in an elevation. A section cuts a part's prisms as it cuts a wall's, and an elevation sees them, a part hiding what is behind
+it as a wall does; where it is cut it is poché and, a layer of its host's type in a view that isn't coarse, drawn as that
+layer is (`render::parts::layer`, `cut_layer`: its material's cut pattern where it is wide enough, else lighter where it isn't
+its host's structure; in the part's own material where it has one). The outline of what is cut keeps the line between two
+parts (`cut_edges`' `apart`: a part's pieces join each other and nothing else). A plan (`render/parts.rs`) draws each prism of
+a part's solid the cut plane passes through as its ring there (clipped under a sloped top), cut, the same way; one whose top
+lies from the view depth up to the cut plane it sees, in projection: outlined, the lowest first, and filled only where the
+view fills its surface (the theme, below), so a floor's finish reads from above; a ceiling plan sees those whose underside
+lies from its cut up to its range's top. A component's part is drawn as the component is. Every primitive and every triangle
+is the part's own, so `Drawing::pick`, a 3D pick and a selection's highlight are the part's. Show Both draws both: in a plan
+the parts lie over the original (Tab cycles to it), in 3D the original's faces are the ones seen where the two coincide (it
+is drawn first).
+
+The theme: decay maps and maps of periods. A view that shows parts may colour them by a value they hold (`Graphics::theme`,
+`graphics::parts::Theme`, set by `theme {view, by, colors?, legend?, off?}` and held by a template that holds a Parts
+Visibility): `by` is one of the heritage set (`Decay_Pathology`, `Historical_Period`, `Decay_Severity`, `Intervention_Type`,
+`SU_Code`), `Material` or a project parameter of parts (`Theme::names`). `Look::parts` fills each part it draws, cut and seen,
+in the colour of what it holds, over its host's look and the view's filters, so a plan, a section, an elevation and the 3D
+view agree. The colours are the same in every view and run (`Theme::colours`): a named decay's its own of `DECAYS`, by
+its place in `Decay::NAMED` (26 colours picked each the farthest in CIELAB from those before it and from the grey of none, so
+any two decays a survey uses are told apart; a test holds them 40 apart in RGB), `Decay_Severity` a ramp from pale yellow (1)
+to dark red (5), any other value a slot of a palette of 24 hues in three lightnesses by its own text's hash (FNV-1a), the next
+free where two of a project's values meet; a part with none is grey (`NOT_SET`); `colors` chooses others by value (`""`: the parts with none), and a new
+`by` forgets them. The legend (`parts::legend`: a row for each value among the parts the view draws, `drawn_in`, with its
+colour, count and net area, named decays in the list's order, numbers by value, the rest in order, none last) is what
+`theme` replies, and with `legend: true` a key in the drawing's top left corner (`render::parts::key`, the view's own, so a
+sheet prints it; a plan, a section or an elevation, not a ceiling plan). A section or an elevation counts only the parts it
+shows, as a survey's key does: those with a pixel of its picture (the view fitted to 2400 by 1600, `PICTURE`) in front of all else,
+and a section's cut by its line; a part hidden behind another, or seen edge on, is in no row.
+
+What is approximate, or left for later: a plan doesn't hide what a seen part covers; a part that is all of a layered host
+is poché, not its layers; a part can't be hidden or overridden on its own in a view (nothing but a part may point at a part
+until the file format takes its step), only by a view filter or by excluding it; parts aren't snapped to or dimensioned;
+`Model::part_prisms` looks through every element for a wall's doors and windows, once a part, which a project of very many
+parts will feel in its scene and its plans.

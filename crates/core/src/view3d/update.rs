@@ -134,6 +134,14 @@ impl Scene {
         }
         let rules = rules_of(after, made.keys().copied());
         let mut table = self.table.clone();
+        // The parts among what was made are numbered apart, as the whole scene numbers them; what is one no more, with the rest.
+        for id in made.keys() {
+            if matches!(after.elements.get(*id), Some(Element::Part(_))) {
+                table.apart.insert(*id);
+            } else {
+                table.apart.remove(id);
+            }
+        }
         let n = self.tris.len() + made.values().map(Vec::len).sum::<usize>();
         let mut out = Parts {
             tris: Vec::with_capacity(n),
@@ -305,6 +313,7 @@ fn draws(e: &Element) -> bool {
                 | Element::Railing(_)
                 | Element::Door(_)
                 | Element::Window(_)
+                | Element::Part(_)
         )
 }
 
@@ -468,6 +477,79 @@ mod tests {
 
     fn of(s: &Session, category: &str) -> Vec<Id> {
         s.model.elements.iter().filter(|(_, e)| e.category() == category).map(|(id, _)| *id).collect()
+    }
+
+    /// The parts of building elements are their hosts' as they stand: an edit of a host, of what it joins, of what is in
+    /// it, of the part itself or of the parts divided from it makes the part again, as the whole scene would.
+    #[test]
+    fn a_scene_with_parts_brought_up_to_date_is_the_scene_made_whole() {
+        let mut s = Session::new();
+        s.script(
+            r##"material {"name": "Lime Plaster", "color": "#e8e0d0"}
+               material {"name": "Rubble Masonry", "color": "#9a8f80"}
+               type {"category": "wall", "name": "Historic", "layers": [{"function": "finish", "material": "Lime Plaster", "thickness": 40}, {"function": "structure", "material": "Rubble Masonry", "thickness": 460}]}
+               wall {"points": [[0,0],[8000,0],[8000,6000]], "type": "Historic"}
+               wall {"points": [[0,6000],[0,0]]}
+               floor {"boundary": [[0,0],[8000,0],[8000,6000],[0,6000]]}
+               component {"family": "Table", "type": "1600 x 900", "at": [2000, 3000]}"##,
+        )
+        .unwrap();
+        let (walls, floor, table) = (of(&s, "wall"), of(&s, "floor")[0], of(&s, "component")[0]);
+        let mut scene = Scene::new(&s.model);
+        let mut go = |s: &mut Session, cmd: &str, p: Value| -> Value {
+            let before = Arc::clone(&s.model);
+            let r = s.execute(cmd, &p).unwrap_or_else(|e| panic!("{cmd} {p}: {e}"));
+            let up = scene.update(&before, &s.model);
+            same(&up, &Scene::new(&s.model), &format!("{cmd} {p}"));
+            scene = up;
+            r
+        };
+        let made = go(&mut s, "create_parts", json!({"ids": [walls[0], walls[1]]}));
+        let parts: Vec<Id> = made["ids"].as_array().unwrap().iter().map(|v| v.as_u64().unwrap()).collect();
+        assert_eq!(parts.len(), 4, "two walls of two layers");
+        go(&mut s, "create_parts", json!({"ids": [floor, table, walls[2]]}));
+        // A host moved, stretched, cut by a window, and the wall it joins moved away from it.
+        go(&mut s, "move", json!({"ids": [walls[1]], "by": [500, 0]}));
+        go(&mut s, "modify", json!({"id": walls[0], "height": 4000}));
+        go(&mut s, "window", json!({"wall": walls[0], "offset": 3000}));
+        go(&mut s, "move", json!({"ids": [walls[2]], "by": [-2000, 0]}));
+        go(&mut s, "move", json!({"ids": [table], "by": [1000, 500]}));
+        go(&mut s, "shaft", json!({"boundary": [[3000, 3000], [4000, 3000], [4000, 4000], [3000, 4000]]}));
+        // The part itself: left out, brought back, of another material.
+        go(&mut s, "part", json!({"id": parts[0], "excluded": true}));
+        go(&mut s, "part", json!({"id": parts[0], "excluded": false, "material": "Rubble Masonry"}));
+        // A part divided from another stands for it, and gives it back when it goes.
+        let before = Arc::clone(&s.model);
+        let (host, source, parent) = match s.model.elements.get(parts[1]) {
+            Some(Element::Part(p)) => (p.host, p.source, s.model.guid(parts[1])),
+            _ => panic!("no part"),
+        };
+        let child = s
+            .model_mut()
+            .insert(Element::Part(crate::parts::BuildingPart { parent: Some(parent), ..crate::parts::BuildingPart::new(host, source) }));
+        assert_eq!(s.model.check(), Ok(()));
+        let up = scene.update(&before, &s.model);
+        same(&up, &Scene::new(&s.model), "a part divided from another");
+        assert!(up.span(parts[1]).is_none() && up.span(child).is_some(), "the divided part gives way to its child");
+        scene = up;
+        let mut go = |s: &mut Session, cmd: &str, p: Value| {
+            let before = Arc::clone(&s.model);
+            s.execute(cmd, &p).unwrap_or_else(|e| panic!("{cmd} {p}: {e}"));
+            let up = scene.update(&before, &s.model);
+            same(&up, &Scene::new(&s.model), &format!("{cmd} {p}"));
+            scene = up;
+        };
+        go(&mut s, "delete", json!({"ids": [child]}));
+        // Its host's type changed, of another type (its parts in conflict), and gone.
+        go(
+            &mut s,
+            "type",
+            json!({"category": "wall", "name": "Historic", "layers": [{"function": "finish", "material": "Lime Plaster", "thickness": 60}, {"function": "structure", "material": "Rubble Masonry", "thickness": 300}]}),
+        );
+        go(&mut s, "modify", json!({"id": walls[1], "type": "Generic - 200mm"}));
+        go(&mut s, "undo", json!({}));
+        go(&mut s, "delete", json!({"ids": [parts[3]]}));
+        go(&mut s, "delete", json!({"ids": [walls[0]]}));
     }
 
     #[test]
