@@ -218,7 +218,8 @@ impl CapSource {
                 for (i, ring) in self.face(axis, at).iter() {
                     let Some(p) = self.pieces.get(*i) else { continue };
                     let owner = p.solid.owner();
-                    if !plain && !look.shows(owner) {
+                    // An infill only where the view's phase fills its opening (T25).
+                    if !plain && !look.shows(owner) || !look.forms_show(p.solid.vis(), true) {
                         continue;
                     }
                     let ring = [(P2(1.0, 0.0), lo[a]), (P2(-1.0, 0.0), -hi[a]), (P2(0.0, 1.0), lo[b]), (P2(0.0, -1.0), -hi[b])]

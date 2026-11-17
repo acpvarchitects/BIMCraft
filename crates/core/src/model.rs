@@ -7643,7 +7643,13 @@ impl Model {
                     if b.start > a.end + TOL {
                         break;
                     }
-                    if a.end > b.start + TOL && a.head > b.sill + TOL && b.head > a.sill + TOL {
+                    // One that comes down before the other is made, or in the phase it is, is replaced by it (T25).
+                    let stand = |id| self.elements.get(id).map(|e| crate::phasing::openings::lifetime(self, e));
+                    let together = match (stand(a.id), stand(b.id)) {
+                        (Some(x), Some(y)) => crate::phasing::openings::coexist(x, y),
+                        _ => true,
+                    };
+                    if a.end > b.start + TOL && a.head > b.sill + TOL && b.head > a.sill + TOL && together {
                         return Err(format!("{} {} and {} {} overlap in wall {host}", self.cat(a.id), a.id, self.cat(b.id), b.id));
                     }
                 }

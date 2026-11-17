@@ -19,6 +19,8 @@ use crate::graphics::{Dash, Graphics, Override, Style};
 use crate::language::Language;
 use crate::model::{Element, Id, MAX_TEXT, Model};
 
+pub(crate) mod openings;
+
 /// The parameters an element holds its phase and its design option in.
 pub const CREATED: &str = "Phase Created";
 pub const DEMOLISHED: &str = "Phase Demolished";

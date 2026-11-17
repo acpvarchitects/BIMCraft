@@ -1076,6 +1076,9 @@ pub struct Look {
     display: crate::view3d::DisplayOptions,
     /// How it looks at a family's forms and at what detail, which their Visibility Settings read (F8).
     forms: crate::family::visibility::FormView,
+    /// The phase it shows, as its place in the project's order, and its phase filter: which openings it fills (T25). None
+    /// where nothing in the project is phased, so no opening needs filling.
+    phase: Option<(usize, Option<crate::phasing::PhaseFilter>)>,
 }
 
 /// `c` halfway to the paper.
@@ -1130,7 +1133,21 @@ impl Look {
     /// Whether it draws a triangle or a solid whose Visibility Settings are packed as `vis`
     /// ([`crate::family::visibility::packed`]): in projection, or (`cut`) as a section's poché.
     pub fn forms_show(&self, vis: u32, cut: bool) -> bool {
+        if let Some(life) = crate::phasing::openings::infill_of(vis) {
+            return self.phase.as_ref().is_some_and(|(at, filter)| crate::phasing::openings::filled(life, *at, filter.as_ref()));
+        }
         vis == 0 || self.forms.shows(vis, cut)
+    }
+
+    /// The phase it shows, as its place in the project's order; none where nothing in the project is phased.
+    pub(crate) fn phase_at(&self) -> Option<usize> {
+        self.phase.as_ref().map(|(at, _)| *at)
+    }
+
+    /// Whether it fills the opening door or window `e` leaves in `wall` (T25): where the opening isn't there in its phase, or
+    /// its phase filter doesn't display it.
+    pub(crate) fn fills(&self, m: &Model, e: &Element, wall: &Element) -> bool {
+        crate::phasing::openings::infill_bits(m, e, wall).is_some_and(|bits| self.forms_show(bits, false))
     }
 
     /// How a 3D view draws its edges and shadows: its Graphic Display Options.
@@ -1169,6 +1186,7 @@ impl Look {
         // The phase it shows, as where it stands in the project's order, and how its phase filter shows each status.
         let at = g.phase.as_deref().and_then(|n| crate::phasing::index(m, n)).unwrap_or(m.phases.len().saturating_sub(1));
         let filter = g.phase_filter.as_deref().and_then(|n| m.phase_filters.get(n));
+        look.phase = Some((at, filter.cloned()));
         // Each applied filter, and the elements it picks out.
         let applied: Vec<(&Applied, BTreeSet<Id>)> =
             g.filters.iter().filter_map(|a| Some((a, m.view_filters.get(&a.filter)?.matching(m)))).collect();

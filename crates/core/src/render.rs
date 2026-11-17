@@ -3576,13 +3576,23 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
     let graphics = crate::graphics::graphics_of(m, key).map_or_else(Default::default, |g| g.resolved(m).into_owned());
     for (&id, e) in all() {
         // The opening is the wall's: with neither the wall nor the opening shown, there is nothing to leave a gap in.
+        // Nor where the view's phase fills it (T25): the door isn't there yet, or is gone, or its phase filter doesn't show it.
+        // In the phase it comes down in, what fills it is new: drawn by its category, whatever the view does to its wall.
         if let Element::Door(o) | Element::Window(o) = e
             && let Some(w) = m.wall(o.host)
             && m.spans(w, range.cut)
             && (shown(id) || m.elements.id(o.host).is_some_and(shown))
         {
-            d.owner = Some(id);
-            opening(&mut d, m, e, o, w, range.cut, shown(id), &|sub| graphics.hides(sub));
+            let wall = m.elements.id(o.host).and_then(|h| m.elements.get(h));
+            if !wall.is_some_and(|wall| look.fills(m, e, wall)) {
+                d.owner = Some(id);
+                opening(&mut d, m, e, o, w, range.cut, shown(id), &|sub| graphics.hides(sub));
+            } else if m.elements.id(o.host).is_some_and(shown)
+                && look.phase_at().is_some_and(|at| crate::phasing::openings::lifetime(m, e).1 == Some(at))
+            {
+                d.owner = None;
+                infill(&mut d, m, e, o, w, range.cut);
+            }
         }
         // A component on one of a wall's faces whose voids cut it (T16b): the wall cleared where the cut plane passes through
         // them, as a door's voids clear it. The hole is the wall's: the component hidden, it is still there.
@@ -4587,6 +4597,20 @@ fn below_tris(tris: &[[view3d::P3; 3]], cut: f64) -> Vec<[view3d::P3; 3]> {
         }
     }
     out
+}
+
+/// What fills door or window `e`'s opening in wall `w` in the phase it comes down in (T25), where the cut plane passes through
+/// it: new wall, filled and outlined as a wall cut is, owned by no one.
+fn infill(d: &mut Drawing, m: &Model, e: &Element, o: &Opening, w: &Wall, cut: f64) {
+    let Some(h) = walls::hole(m, w, e, o) else { return };
+    if !(h.bottom <= cut && cut < h.top) {
+        return;
+    }
+    let (axis, (ext, int)) = (Axis::of(w), walls::faces(m, w));
+    let mut ring: Vec<P2> = axis.points(h.s0, h.s1, int).into_iter().chain(axis.points(h.s1, h.s0, ext)).collect();
+    d.fill(std::slice::from_ref(&ring), POCHE);
+    ring.extend(ring.first().copied());
+    d.line(&ring, Pen::HEAVY, INK, false);
 }
 
 /// A door or window the cut plane at height `cut` passes through: a gap in the wall, jambs, and

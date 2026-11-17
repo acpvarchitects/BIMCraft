@@ -515,6 +515,35 @@ mod tests {
         }
     }
 
+    /// A door's or its wall's phases, and the project's, change where its opening is filled (T25): each edit brings the
+    /// infill up to date, as the scene made whole has it.
+    #[test]
+    fn phasing_a_door_brings_its_walls_infill_up_to_date() {
+        let mut s = Session::new();
+        s.script(
+            r#"wall {"points": [[0,0],[8000,0],[8000,6000],[0,6000]], "closed": true}
+               door {"at": [2000, 0]}"#,
+        )
+        .unwrap();
+        let mut scene = Scene::new(&s.model);
+        let door = of(&s, "door")[0];
+        let wall = of(&s, "wall")[0];
+        let edits = [
+            ("modify", json!({"id": door, "params": {"Phase Demolished": "New Construction"}})),
+            ("phase", json!({"name": "Fit-out"})),
+            ("modify", json!({"id": door, "params": {"Phase Demolished": "Fit-out"}})),
+            ("modify", json!({"id": wall, "params": {"Phase Created": "New Construction"}})),
+            ("modify", json!({"id": door, "params": {"Phase Created": "Fit-out", "Phase Demolished": null}})),
+            ("phase", json!({"name": "Fit-out", "delete": true, "into": "New Construction"})),
+            ("modify", json!({"id": door, "params": {"Phase Created": null}})),
+        ];
+        for (cmd, p) in &edits {
+            let before = Arc::clone(&s.model);
+            scene = held(&mut s, scene, cmd, p);
+            assert!(!Arc::ptr_eq(&before, &s.model), "{cmd} {p} ran");
+        }
+    }
+
     /// A window rising past its wall's top (issue #215) notches the wall: each edit of the window, of the wall's height or of
     /// what its top follows brings the notch up to date, as the scene made whole has it.
     #[test]

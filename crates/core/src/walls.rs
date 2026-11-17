@@ -845,7 +845,7 @@ pub(crate) fn prisms_rect_in(m: &Model, id: Id, index: Option<&Index>) -> Vec<Pr
 }
 
 /// The doors and windows in wall `id`, or the openings `index` lists in it.
-fn openings_of<'a>(m: &'a Model, id: Id, index: Option<&'a Index>) -> Box<dyn Iterator<Item = &'a Element> + 'a> {
+pub(crate) fn openings_of<'a>(m: &'a Model, id: Id, index: Option<&'a Index>) -> Box<dyn Iterator<Item = &'a Element> + 'a> {
     let guid = m.guid(id);
     match index {
         Some(index) => Box::new(index.openings(guid).iter().filter_map(|id| m.elements.get(*id))),
