@@ -86,10 +86,8 @@ uses for forms of decay, or `Custom(text)`; the words only, never a standard's d
 **Parts don't go to IFC yet**: a host with parts is exported as it always was, with its own body, and its parts are left
 out. Their export (`IfcBuildingElementPart`, the host the sum of its parts by `IfcRelAggregates` with no `Body` of its own, its
 area and volume left out) comes in one step with reading them back, so that a file BIMCraft writes comes back whole: today's
-import leaves out a wall with no body, and its doors and windows with it (the maintainers' answer on #440). A material that
-says its weight or its heat carries `Pset_MaterialCommon` (`MassDensity`) and `Pset_MaterialThermal` (`ThermalConductivity`,
-`SpecificHeatCapacity`) as `IfcMaterialProperties`, and the project's units then name kg/m³, W/(m·K) and J/(kg·K); the import
-does not read them back yet.
+import leaves out a wall with no body, and its doors and windows with it (the maintainers' answer on #440). A material's
+weight and heat go with them (`Pset_MaterialCommon`, `Pset_MaterialThermal`).
 
 ## The file
 
