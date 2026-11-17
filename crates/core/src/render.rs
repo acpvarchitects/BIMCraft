@@ -3446,8 +3446,9 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
         let ink = if top > range.bottom - TOL { INK } else { FAINT };
         d.line(&o, BY_CATEGORY, ink, true);
         // A door or window rising past a wall's top notches it: the notch's sides, seen from above.
-        if matches!(m.elements.get(id), Some(Element::Wall(_))) {
-            for side in walls::notches(m, id) {
+        // Not of one the view's phase fills (T25).
+        if let Some(wall @ Element::Wall(_)) = m.elements.get(id) {
+            for side in walls::notches_of(m, id, |e| !look.fills(m, e, wall)) {
                 d.line(&side, BY_CATEGORY, ink, false);
             }
         }
@@ -3576,13 +3577,23 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
     let graphics = crate::graphics::graphics_of(m, key).map_or_else(Default::default, |g| g.resolved(m).into_owned());
     for (&id, e) in all() {
         // The opening is the wall's: with neither the wall nor the opening shown, there is nothing to leave a gap in.
+        // Nor where the view's phase fills it (T25): the door isn't there yet, or is gone, or its phase filter doesn't show it.
+        // In the phase it comes down in, what fills it is new: drawn by its category, whatever the view does to its wall.
         if let Element::Door(o) | Element::Window(o) = e
             && let Some(w) = m.wall(o.host)
             && m.spans(w, range.cut)
             && (shown(id) || m.elements.id(o.host).is_some_and(shown))
         {
-            d.owner = Some(id);
-            opening(&mut d, m, e, o, w, range.cut, shown(id), &|sub| graphics.hides(sub));
+            let wall = m.elements.id(o.host).and_then(|h| m.elements.get(h));
+            if !wall.is_some_and(|wall| look.fills(m, e, wall)) {
+                d.owner = Some(id);
+                opening(&mut d, m, e, o, w, range.cut, shown(id), &|sub| graphics.hides(sub));
+            } else if m.elements.id(o.host).is_some_and(shown)
+                && look.phase_at().is_some_and(|at| crate::phasing::openings::lifetime(m, e).1 == Some(at))
+            {
+                d.owner = None;
+                infill(&mut d, m, e, o, w, range.cut);
+            }
         }
         // A component on one of a wall's faces whose voids cut it (T16b): the wall cleared where the cut plane passes through
         // them, as a door's voids clear it. The hole is the wall's: the component hidden, it is still there.
@@ -4589,6 +4600,20 @@ fn below_tris(tris: &[[view3d::P3; 3]], cut: f64) -> Vec<[view3d::P3; 3]> {
     out
 }
 
+/// What fills door or window `e`'s opening in wall `w` in the phase it comes down in (T25), where the cut plane passes through
+/// it: new wall, filled and outlined as a wall cut is, owned by no one.
+fn infill(d: &mut Drawing, m: &Model, e: &Element, o: &Opening, w: &Wall, cut: f64) {
+    let Some(h) = walls::hole(m, w, e, o) else { return };
+    if !(h.bottom <= cut && cut < h.top) {
+        return;
+    }
+    let (axis, (ext, int)) = (Axis::of(w), walls::faces(m, w));
+    let mut ring: Vec<P2> = axis.points(h.s0, h.s1, int).into_iter().chain(axis.points(h.s1, h.s0, ext)).collect();
+    d.fill(std::slice::from_ref(&ring), POCHE);
+    ring.extend(ring.first().copied());
+    d.line(&ring, Pen::HEAVY, INK, false);
+}
+
 /// A door or window the cut plane at height `cut` passes through: a gap in the wall, jambs, and
 /// a leaf with its swing, or glass.
 #[allow(clippy::too_many_arguments)]
@@ -4640,10 +4665,12 @@ fn opening(d: &mut Drawing, m: &Model, e: &Element, o: &Opening, w: &Wall, cut: 
                 d.line(&piece.outline, BY_CATEGORY, INK, true);
                 cut_rings.push(piece.outline.clone());
             }
-            for ring in rings {
+            // Drawn by its outlines (a frame's cut round its opening is two rings, not the pieces it is covered by); what
+            // it covers by its regions.
+            for ring in view3d::level_outlines(&piece.tris, cut) {
                 d.line(&ring, BY_CATEGORY, INK, true);
-                cut_rings.push(ring);
             }
+            cut_rings.extend(rings);
         }
         d.part(Part::Projection);
         // What lies below the cut plane (F10b: a sill member, the frame's lower rail between its jambs), seen from it in
@@ -5833,7 +5860,7 @@ pub fn rgba(d: &Drawing, under: Option<&view3d::Image>) -> Result<Vec<u8>, Strin
 
 /// A family's floor plan (F4), as Revit's family editor draws it: the project's plan of `level` (`draw`), and over it each
 /// component's forms seen from above whatever their height (a family's plan sees all of it), and where a form crosses the
-/// cut plane, its cut outline in the cut pen ([`crate::family::views::plan_cut`]). Project plans never cut a component. Once
+/// cut plane, its cut outline in the cut pen ([`crate::family::views::plan_cut_outlines`]). Project plans never cut a component. Once
 /// its View Range is set (FE-18), `seen` the heights it sees, lowest and highest: a form wholly below or above them is left out.
 pub(crate) fn family_plan(m: &Model, level: Id, view: View, seen: Option<(f64, f64)>) -> Drawing {
     let mut d = draw(m, level, view);
@@ -5853,7 +5880,8 @@ pub(crate) fn family_plan(m: &Model, level: Id, view: View, seen: Option<(f64, f
         component(&mut extra, m, &pieces);
         extra.part(Part::Cut);
         for p in pieces.iter().filter(|p| p.bottom < cut && p.top > cut) {
-            for ring in crate::family::views::plan_cut(&p.tris, cut) {
+            // Its outlines, never the pieces of a region with a hole (a ring's cut is two circles).
+            for ring in crate::family::views::plan_cut_outlines(&p.tris, cut) {
                 extra.line(&ring, Pen::CUT, INK, true);
             }
         }
