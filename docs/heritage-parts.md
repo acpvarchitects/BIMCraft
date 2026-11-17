@@ -19,22 +19,29 @@ from `release/family-editor` or `followups/family-editor`, and it touches differ
 
 ## 1. Where things stand
 
-Integration branch on the fork: **`feature/heritage-parts`**, 7 commits on upstream `main` f202abd (FORMAT 18); the
-steps after HP-1 are fork PRs into it, each with green CI, waiting for review (2026-11-12).
-Compare: <https://github.com/acpvarchitects/BIMCraft/compare/f202abd...feature/heritage-parts>
+Two integration branches on the fork, both reviewed and merged with Vincenzo's OK (2026-11-17):
+- **`feature/heritage-parts`**, on upstream `main` f202abd (FORMAT 18): HP-1 to HP-6, merged in the order #19, #16,
+  #34 (retargeted from #16's branch), #20, #17. #20 and #17 took the branch in first and their conflicts (docs, `lib.rs`,
+  the catalogs) were resolved there, with full checks and CI green. Compare:
+  <https://github.com/acpvarchitects/BIMCraft/compare/f202abd...feature/heritage-parts>
+- **`feature/heritage-parts-0.13`**, on upstream `main` 3e08223f (0.12, FORMAT 20): HP-9 (#70), HP-1 ported, parts in
+  `elements` at FORMAT 21, the decay words in `decay.rs`, byte for byte the file Survey Areas uses.
+
+Next: HP-1's follow-up and HP-2 to HP-6 move from the first branch onto the second, then the upstream PRs go in #440's
+order. Nothing is upstream yet.
 
 | Step | What | Where | State |
 |---|---|---|---|
-| HP-1 | The part element, its solid and quantities, its values by name, `create_parts` / `part` / `parts`, IFC export, material values, `docs/areas/parts.md` | `feature/heritage-parts` (b7a9847) | **Done**, waiting for review |
-| HP-1 fix | A part measured on the face it shows: a wall's interior plaster on the interior face, a ceiling's plaster on its underside (Vincenzo's decision, 10.2) | [#19](https://github.com/acpvarchitects/BIMCraft/pull/19), `vp/heritage-parts-net-area` | **Done**, in review |
-| HP-2 | The division engine: a part's solid cut by planes, lines drawn on a face, extruded profiles; gaps and offsets; measuring | [#16](https://github.com/acpvarchitects/BIMCraft/pull/16), `vp/heritage-parts-divide`, `docs/areas/parts-geometry.md` | **Done**, in review |
-| HP-3 | `divide_parts`: HP-1 and HP-2 wired together; the division kept in the host's own coordinates, pieces as parts with keys | [#34](https://github.com/acpvarchitects/BIMCraft/pull/34), `vp/heritage-parts-divide-cmd`, stacked on #16 | **Done**, in review |
-| HP-4 | Parts Visibility per view: Show Original, Show Parts, Show Both | [#20](https://github.com/acpvarchitects/BIMCraft/pull/20), `vp/heritage-parts-views` | **Done**, in review |
-| HP-5 | Colour maps (`theme`) by `Decay_Pathology`, `Historical_Period` or any part value, with a legend | same PR | **Done**, in review |
-| HP-6 | Schedules of parts: the bill of quantities (Restoration Quantities), CSV and xlsx | [#17](https://github.com/acpvarchitects/BIMCraft/pull/17), `vp/heritage-parts-schedules` | **Done**, in review |
+| HP-1 | The part element, its solid and quantities, its values by name, `create_parts` / `part` / `parts`, IFC export, material values, `docs/areas/parts.md` | `feature/heritage-parts` (b7a9847); ported to 0.13 by HP-9 | **Done** |
+| HP-1 fix | A part measured on the face it shows: a wall's interior plaster on the interior face, a ceiling's plaster on its underside (Vincenzo's decision, 10.2) | [#19](https://github.com/acpvarchitects/BIMCraft/pull/19), `vp/heritage-parts-net-area` | **Merged** (eb104ae) |
+| HP-2 | The division engine: a part's solid cut by planes, lines drawn on a face, extruded profiles; gaps and offsets; measuring | [#16](https://github.com/acpvarchitects/BIMCraft/pull/16), `vp/heritage-parts-divide`, `docs/areas/parts-geometry.md` | **Merged** (2a8147b) |
+| HP-3 | `divide_parts`: HP-1 and HP-2 wired together; the division kept in the host's own coordinates, pieces as parts with keys | [#34](https://github.com/acpvarchitects/BIMCraft/pull/34), `vp/heritage-parts-divide-cmd`, stacked on #16, retargeted | **Merged** (3585857) |
+| HP-4 | Parts Visibility per view: Show Original, Show Parts, Show Both | [#20](https://github.com/acpvarchitects/BIMCraft/pull/20), `vp/heritage-parts-views` | **Merged** (4d65dee) |
+| HP-5 | Colour maps (`theme`) by `Decay_Pathology`, `Historical_Period` or any part value, with a legend | same PR | **Merged** (4d65dee) |
+| HP-6 | Schedules of parts: the bill of quantities (Restoration Quantities), CSV and xlsx | [#17](https://github.com/acpvarchitects/BIMCraft/pull/17), `vp/heritage-parts-schedules` | **Merged** (624491c) |
 | HP-7 | Desktop: Create Parts, Divide Parts (sketch on the face), Properties of a part | | Not started |
 | HP-8 | IFC import of parts | | Not started |
-| HP-9 | Parts in `elements`, FORMAT 21 (21–32 reservation narrowed to 22–32), HP-1 ported onto main 3e08223f without its IFC export | [#70](https://github.com/acpvarchitects/BIMCraft/pull/70), `vp/heritage-parts-hp9` → `feature/heritage-parts-0.13` | **Done**, in review |
+| HP-9 | Parts in `elements`, FORMAT 21 (21–32 reservation narrowed to 22–32), HP-1 ported onto main 3e08223f without its IFC export, `decay.rs` shared with Survey Areas | [#70](https://github.com/acpvarchitects/BIMCraft/pull/70), `vp/heritage-parts-hp9` → `feature/heritage-parts-0.13` | **Merged** (d154dc2) |
 
 What HP-1 was checked with, on b7a9847:
 - `cargo fmt --check`, `cargo clippy --workspace --all-targets -D warnings` and `cargo i18n check` are clean.
