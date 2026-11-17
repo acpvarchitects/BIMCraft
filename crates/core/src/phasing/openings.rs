@@ -23,9 +23,15 @@ pub(crate) fn coexist(a: Lifetime, b: Lifetime) -> bool {
     !gone_by(a, b) && !gone_by(b, a)
 }
 
-/// Marks an infill's `vis` ([`crate::view3d`]'s triangles and solids): a family form's Visibility Settings set bit 31 and
-/// never this one, and 0 is drawn everywhere.
-const INFILL: u32 = 1 << 30;
+/// The bit that marks an infill's `vis` ([`crate::view3d`]'s triangles and solids, which a view's `Look` reads). The bits of a
+/// `vis` in use:
+/// - 0: drawn everywhere (no bit set);
+/// - a family form's Visibility Settings ([`crate::family::visibility::packed`]): bit 31 set, its seven flags in bits 0 to 6,
+///   its component's angle in bits 8 to 23; never bit 30;
+/// - an infill's: bit 30 set and bit 31 clear, the phase its opening is made in in bits 0 to 7 and the one it comes down in
+///   in bits 8 to 15 ([`NEVER`] for none).
+pub(crate) const INFILL: u32 = 1 << 30;
+/// The bit a family form's Visibility Settings set: a `vis` with it is never an infill's.
 const SETTINGS: u32 = 1 << 31;
 /// No phase, in the eight bits that hold one.
 const NEVER: u32 = 0xff;
@@ -242,6 +248,37 @@ mod tests {
         door(&mut s, None);
         assert!(open(&mut s, NEW, None));
         assert!(!filled_in_3d(&s, walls[0], &Look::of_3d(&s.model)));
+    }
+
+    /// No family form's Visibility Settings, at any angle, packs bit 30 or reads as an infill's; an infill's reads back as it
+    /// was packed, and is never read as settings.
+    #[test]
+    fn an_infills_bit_is_no_form_settings_bit() {
+        use crate::family::visibility::{Visibility, packed, unpacked};
+        use crate::geom::P2;
+        for flags in 0u32..128 {
+            let on = |k: u32| flags & (1 << k) == 0;
+            let v = Visibility {
+                plan: on(0),
+                front_back: on(1),
+                left_right: on(2),
+                coarse: on(3),
+                medium: on(4),
+                fine: on(5),
+                only_when_cut: !on(6),
+            };
+            for turn in [0.0, 0.3, 1.0, 1.5, 2.9, 3.1] {
+                let bits = packed(Some(v), P2(f64::cos(turn), f64::sin(turn)));
+                assert_eq!(bits & super::INFILL, 0, "{v:?} at {turn}");
+                assert_eq!(super::infill_of(bits), None);
+            }
+        }
+        assert_eq!(packed(None, P2(1.0, 0.0)), 0);
+        for life in [(0, None), (1, Some(1)), (0, Some(3)), (253, Some(254))] {
+            let bits = super::INFILL | life.0 as u32 | (life.1.map_or(0xff, |d: usize| d as u32) << 8);
+            assert_eq!(super::infill_of(bits), Some(life));
+            assert_eq!(unpacked(bits), None, "an infill's bits are no settings");
+        }
     }
 
     /// The pictures of T25's PR: a house whose south wall has a door taken down and replaced in New Construction, a new door

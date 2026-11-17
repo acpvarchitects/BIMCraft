@@ -544,6 +544,19 @@ mod tests {
         }
     }
 
+    /// A project with nothing phased builds no infill (T25): no triangle's `vis` has its bit, so it draws as before; one with a
+    /// door taken down does.
+    #[test]
+    fn only_a_phased_opening_gives_its_wall_an_infill() {
+        let mut s = Session::new();
+        s.script(crate::sample::SAMPLE).unwrap();
+        let infill = |s: &Session| Scene::new(&s.model).tris.iter().filter(|t| t.vis & crate::phasing::openings::INFILL != 0).count();
+        assert_eq!(infill(&s), 0);
+        let door = of(&s, "door")[0];
+        s.execute("modify", &json!({"id": door, "params": {"Phase Demolished": "New Construction"}})).unwrap();
+        assert!(infill(&s) > 0);
+    }
+
     /// A window rising past its wall's top (issue #215) notches the wall: each edit of the window, of the wall's height or of
     /// what its top follows brings the notch up to date, as the scene made whole has it.
     #[test]
