@@ -88,7 +88,7 @@ fn a_view_draws_the_originals_unless_it_says_and_names_its_parts_visibility() {
         assert_eq!(r["parts_visibility"], name, "{given}");
     }
     run(&mut s, "graphics", json!({"view": level, "parts_visibility": "parts"}));
-    assert!(s.model.to_json().unwrap().contains(r#""parts_visibility": "parts""#));
+    assert!(s.model.to_json().unwrap().contains(r#""parts_visibility":"parts""#));
     // It is saved with the project and read back, and is one step to undo.
     let back = Model::from_json(&s.model.to_json().unwrap()).unwrap();
     assert_eq!(super::graphics_of(&back, level).unwrap().parts_visibility, Some(PartsVisibility::Parts));
