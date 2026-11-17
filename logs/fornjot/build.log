@@ -1,0 +1,90 @@
+load before build: 46.61 52.31 57.58 30/44769 2645425
+   Compiling autocfg v1.5.1
+   Compiling proc-macro2 v1.0.107
+   Compiling libm v0.2.16
+   Compiling quote v1.0.47
+   Compiling unicode-ident v1.0.27
+   Compiling bytemuck v1.25.2
+   Compiling paste v1.0.15
+   Compiling smallvec v1.16.5
+   Compiling serde_core v1.0.229
+   Compiling either v1.19.0
+   Compiling rawpointer v0.2.1
+   Compiling foldhash v0.2.0
+   Compiling allocator-api2 v0.2.21
+   Compiling equivalent v1.0.3
+   Compiling robust v1.2.0
+   Compiling typenum v1.20.1
+   Compiling crossbeam-utils v0.8.23
+   Compiling serde v1.0.229
+   Compiling downcast-rs v1.2.1
+   Compiling slab v0.4.12
+   Compiling arrayvec v0.7.8
+   Compiling libc v0.2.191
+   Compiling crossbeam-epoch v0.9.21
+   Compiling rustc-hash v1.1.0
+   Compiling bitflags v1.3.2
+   Compiling crossbeam-deque v0.8.8
+   Compiling parking_lot_core v0.9.12
+   Compiling rayon-core v1.13.0
+   Compiling cfg-if v1.0.5
+   Compiling scopeguard v1.2.0
+   Compiling thiserror v1.0.69
+   Compiling rustc-hash v2.1.3
+   Compiling lock_api v0.4.14
+   Compiling type-map v0.5.1
+   Compiling itertools v0.12.1
+   Compiling safe_arch v0.7.4
+   Compiling num-traits v0.2.19
+   Compiling matrixmultiply v0.3.11
+   Compiling hashbrown v0.16.1
+   Compiling wide v0.7.33
+   Compiling syn v2.0.119
+   Compiling syn v3.0.10
+   Compiling parking_lot v0.12.5
+   Compiling rayon v1.12.0
+   Compiling num-complex v0.4.6
+   Compiling approx v0.5.1
+   Compiling num-integer v0.1.47
+   Compiling spade v2.15.1
+   Compiling approx v0.3.2
+   Compiling num-rational v0.4.2
+   Compiling simba v0.8.1
+   Compiling serde_derive v1.0.229
+   Compiling nalgebra-macros v0.2.2
+   Compiling num-derive v0.4.2
+   Compiling thiserror-impl v1.0.69
+   Compiling decorum v0.3.1
+   Compiling nalgebra v0.32.6
+   Compiling parry2d-f64 v0.13.8
+   Compiling parry3d-f64 v0.13.8
+   Compiling fj-math v0.49.0
+   Compiling fj-interop v0.49.0
+   Compiling fj-core v0.49.0
+   Compiling fj-t v0.1.0 (/mnt/data/emiliano_capasso/bench-kernels/fj-t)
+    Finished `release` profile [optimized] target(s) in 20.58s
+	Command being timed: "cargo build --release"
+	User time (seconds): 88.15
+	System time (seconds): 7.45
+	Percent of CPU this job got: 464%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 0:20.60
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 499724
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 311
+	Minor (reclaiming a frame) page faults: 2112049
+	Voluntary context switches: 28359
+	Involuntary context switches: 3232
+	Swaps: 0
+	File system inputs: 128
+	File system outputs: 682520
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 0
+load after build: 42.84 51.10 57.07 18/44805 2654610
+221M	/mnt/data/emiliano_capasso/cargo-targets/bench-fornjot

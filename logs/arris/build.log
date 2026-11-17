@@ -1,0 +1,122 @@
+load before build: 56.80 59.01 50.21 115/44980 1734302
+    Updating crates.io index
+ Downloading crates ...
+  Downloaded embedded-io v0.4.0
+  Downloaded embedded-io v0.6.1
+  Downloaded cobs v0.3.0
+  Downloaded itoa v1.0.19
+  Downloaded simba v0.10.2
+  Downloaded arris-math v0.11.1
+  Downloaded postcard v1.1.3
+  Downloaded safe_arch v1.2.0
+  Downloaded num-bigint v0.4.8
+  Downloaded arris-mesh v0.11.1
+  Downloaded arris v0.11.1
+  Downloaded arris-check v0.11.1
+  Downloaded arris-topo v0.11.1
+  Downloaded wide v1.7.1
+  Downloaded arris-io v0.11.1
+  Downloaded arris-ops v0.11.1
+  Downloaded nalgebra v0.35.0
+  Downloaded arris-geom v0.11.1
+  Downloaded glam v0.31.1
+  Downloaded glam v0.32.1
+  Downloaded glam v0.30.10
+  Downloaded glam v0.33.12
+   Compiling proc-macro2 v1.0.107
+   Compiling autocfg v1.5.1
+   Compiling quote v1.0.47
+   Compiling unicode-ident v1.0.27
+   Compiling serde_core v1.0.229
+   Compiling serde v1.0.229
+   Compiling bytemuck v1.25.2
+   Compiling libm v0.2.16
+   Compiling thiserror v2.0.21
+   Compiling rawpointer v0.2.1
+   Compiling typenum v1.20.1
+   Compiling robust v1.2.0
+   Compiling zmij v1.0.23
+   Compiling serde_json v1.0.154
+   Compiling memchr v2.8.3
+   Compiling itoa v1.0.19
+   Compiling safe_arch v1.2.0
+   Compiling num-traits v0.2.19
+   Compiling matrixmultiply v0.3.11
+   Compiling wide v1.7.1
+   Compiling syn v3.0.10
+   Compiling approx v0.5.1
+   Compiling num-integer v0.1.47
+   Compiling num-rational v0.4.2
+   Compiling serde_derive v1.0.229
+   Compiling thiserror-impl v2.0.21
+   Compiling cobs v0.3.0
+   Compiling num-complex v0.4.6
+   Compiling postcard v1.1.3
+   Compiling simba v0.10.2
+   Compiling nalgebra v0.35.0
+   Compiling arris-math v0.11.1
+   Compiling arris-geom v0.11.1
+   Compiling arris-topo v0.11.1
+   Compiling arris-check v0.11.1
+   Compiling arris-mesh v0.11.1
+   Compiling arris-ops v0.11.1
+   Compiling arris-io v0.11.1
+   Compiling arris v0.11.1
+   Compiling arris-t v0.1.0 (/mnt/data/emiliano_capasso/bench-kernels/arris-t)
+    Finished `release` profile [optimized] target(s) in 48.26s
+	Command being timed: "cargo build --release"
+	User time (seconds): 213.20
+	System time (seconds): 8.97
+	Percent of CPU this job got: 460%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 0:48.29
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 881168
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 117
+	Minor (reclaiming a frame) page faults: 2524211
+	Voluntary context switches: 17163
+	Involuntary context switches: 17765
+	Swaps: 0
+	File system inputs: 1880
+	File system outputs: 827432
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 0
+   Compiling crossbeam-utils v0.8.23
+   Compiling crossbeam-epoch v0.9.21
+   Compiling crossbeam-deque v0.8.8
+   Compiling rayon-core v1.13.0
+   Compiling either v1.19.0
+   Compiling rayon v1.12.0
+   Compiling arris-perf v0.1.0 (/mnt/data/emiliano_capasso/bench-kernels/arris-perf)
+    Finished `release` profile [optimized] target(s) in 7.02s
+	Command being timed: "cargo build --release"
+	User time (seconds): 16.05
+	System time (seconds): 1.42
+	Percent of CPU this job got: 248%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 0:07.04
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 293528
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 68
+	Minor (reclaiming a frame) page faults: 350439
+	Voluntary context switches: 7367
+	Involuntary context switches: 2810
+	Swaps: 0
+	File system inputs: 0
+	File system outputs: 88120
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 0
+load after build: 44.09 55.30 49.46 32/44901 1759796
+264M	/mnt/data/emiliano_capasso/cargo-targets/bench-arris

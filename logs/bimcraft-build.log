@@ -1,0 +1,170 @@
+warning: missing `[lints]` to inherit `[workspace.lints]`
+  --> crates/plugin-sdk/Cargo.toml
+   = note: `cargo::missing_lints_inheritance` is set to `warn` by default
+help: to inherit `workspace.lints, add:
+   |
+18 ~ path = "src/lib.rs"
+19 + [lints]
+20 + workspace = true
+   |
+help: to clarify your intent to not inherit, add:
+   |
+18 ~ path = "src/lib.rs"
+19 + [lints]
+   |
+warning: `bimcraft-plugin-sdk` (manifest) generated 1 warning
+   Compiling proc-macro2 v1.0.107
+   Compiling unicode-ident v1.0.27
+   Compiling quote v1.0.47
+   Compiling once_cell v1.21.4
+   Compiling pin-project-lite v0.2.17
+   Compiling cfg-if v1.0.5
+   Compiling simd-adler32 v0.3.10
+   Compiling crc32fast v1.5.2
+   Compiling adler2 v2.0.1
+   Compiling arrayvec v0.7.8
+   Compiling crossbeam-utils v0.8.23
+   Compiling libc v0.2.190
+   Compiling bitflags v2.13.2
+   Compiling rustversion v1.0.23
+   Compiling autocfg v1.5.1
+   Compiling crossbeam-epoch v0.9.21
+   Compiling log v0.4.34
+   Compiling strict-num v0.1.1
+   Compiling equivalent v1.0.3
+   Compiling arrayref v0.3.9
+   Compiling smallvec v1.16.3
+   Compiling hashbrown v0.17.1
+   Compiling serde_core v1.0.229
+   Compiling crossbeam-deque v0.8.8
+   Compiling memchr v2.8.3
+   Compiling zune-core v0.5.3
+   Compiling alloc-no-stdlib v2.0.4
+   Compiling thiserror v2.0.21
+   Compiling rayon-core v1.13.0
+   Compiling rustix v1.1.5
+   Compiling itoa v1.0.18
+   Compiling getrandom v0.4.3
+   Compiling zmij v1.0.23
+   Compiling getrandom v0.3.4
+   Compiling byteorder-lite v0.1.0
+   Compiling serde v1.0.229
+   Compiling ryu v1.0.23
+   Compiling bimcraft-i18n v0.12.0 (/mnt/data/emiliano_capasso/bench-pr81/crates/i18n)
+   Compiling rustc-hash v2.1.3
+   Compiling bitflags v1.3.2
+   Compiling color_quant v1.1.0
+   Compiling quick-error v2.0.1
+   Compiling serde_json v1.0.154
+   Compiling stable_deref_trait v1.2.1
+   Compiling linux-raw-sys v0.12.1
+   Compiling weezl v0.1.12
+   Compiling bumpalo v3.20.3
+   Compiling scopeguard v1.2.0
+   Compiling either v1.19.0
+   Compiling multiversion_no_op v1.0.0
+   Compiling proj4rs-geodesic v0.2.0
+   Compiling core_detect v1.0.0
+   Compiling simdutf8 v0.1.5
+   Compiling siphasher v1.0.4
+   Compiling imagesize v0.14.0
+   Compiling fastrand v2.5.0
+   Compiling xmp-writer v0.3.3
+   Compiling base64 v0.22.1
+   Compiling jpeg-encoder v0.7.1
+   Compiling crs-definitions v0.6.0
+   Compiling ttf-parser v0.25.1
+   Compiling cap v0.1.2
+   Compiling miniz_oxide v0.9.1
+   Compiling fdeflate v0.3.7
+   Compiling miniz_oxide v0.8.9
+   Compiling polycool v0.4.0
+   Compiling tracing-core v0.1.36
+   Compiling alloc-stdlib v0.2.4
+   Compiling brotli-decompressor v5.0.3
+   Compiling image-webp v0.2.4
+   Compiling gif v0.14.2
+   Compiling num-traits v0.2.19
+   Compiling bimcraft-core v0.12.0 (/mnt/data/emiliano_capasso/bench-pr81/crates/core)
+   Compiling zune-jpeg v0.5.15
+   Compiling zune-jpegxl v0.5.2
+   Compiling kurbo v0.13.1
+   Compiling tracing v0.1.44
+   Compiling flate2 v1.1.10
+   Compiling pdf-writer v0.15.0
+   Compiling encoding_rs v0.8.42
+   Compiling jxl-bitstream v1.1.0
+   Compiling jxl-grid v0.6.2
+   Compiling jxl-threadpool v1.0.0
+   Compiling indexmap v2.14.2
+   Compiling syn v3.0.9
+   Compiling jxl-oxide-common v1.0.0
+   Compiling jxl-coding v1.0.1
+   Compiling jxl-image v0.13.0
+   Compiling png v0.18.1
+   Compiling png v0.17.16
+   Compiling float-cmp v0.9.0
+   Compiling jxl-modular v0.11.3
+   Compiling jxl-color v0.11.0
+   Compiling rayon v1.12.0
+   Compiling jxl-vardct v0.11.1
+   Compiling tempfile v3.27.0
+   Compiling jxl-frame v0.13.3
+   Compiling synstructure v0.14.0
+   Compiling bytemuck_derive v1.12.1
+   Compiling thiserror-impl v2.0.21
+   Compiling serde_derive v1.0.229
+   Compiling zerofrom-derive v0.1.8
+   Compiling yoke-derive v0.8.4
+   Compiling jxl-jbr v0.2.1
+   Compiling zerofrom v0.1.8
+   Compiling yoke v0.8.3
+   Compiling bytemuck v1.25.2
+   Compiling proj4rs v0.3.0
+   Compiling font-types v0.11.3
+   Compiling tiny-skia-path v0.11.4
+   Compiling tiny-skia-path v0.12.0
+   Compiling jxl-render v0.12.4
+   Compiling read-fonts v0.39.2
+   Compiling tiny-skia v0.11.4
+   Compiling jxl-oxide v0.12.6
+   Compiling write-fonts v0.48.1
+   Compiling skrifa v0.42.1
+   Compiling subsetter v0.2.6
+   Compiling krilla v0.8.2
+    Finished `release` profile [optimized] target(s) in 5m 39s
+  Executable unittests src/lib.rs (/mnt/data/emiliano_capasso/cargo-targets/bench-bimcraft/release/build/bimcraft-core/73e7552bcfcc5dd3/out/bimcraft_core-73e7552bcfcc5dd3)
+  Executable tests/agent_docs.rs (/mnt/data/emiliano_capasso/cargo-targets/bench-bimcraft/release/build/bimcraft-core/514fdfa49cfa0ced/out/agent_docs-514fdfa49cfa0ced)
+  Executable tests/bounds_cache.rs (/mnt/data/emiliano_capasso/cargo-targets/bench-bimcraft/release/build/bimcraft-core/4ba831b3dbde5d9a/out/bounds_cache-4ba831b3dbde5d9a)
+  Executable tests/component_preparation.rs (/mnt/data/emiliano_capasso/cargo-targets/bench-bimcraft/release/build/bimcraft-core/9fdb0d17e609b222/out/component_preparation-9fdb0d17e609b222)
+  Executable tests/compound_corner.rs (/mnt/data/emiliano_capasso/cargo-targets/bench-bimcraft/release/build/bimcraft-core/c4f352100bebcb9a/out/compound_corner-c4f352100bebcb9a)
+  Executable tests/drawing_lettering.rs (/mnt/data/emiliano_capasso/cargo-targets/bench-bimcraft/release/build/bimcraft-core/59fb8bb31d1c7fad/out/drawing_lettering-59fb8bb31d1c7fad)
+  Executable tests/family_overwrite.rs (/mnt/data/emiliano_capasso/cargo-targets/bench-bimcraft/release/build/bimcraft-core/8eeea3554afc1cd3/out/family_overwrite-8eeea3554afc1cd3)
+  Executable tests/ifc_grids.rs (/mnt/data/emiliano_capasso/cargo-targets/bench-bimcraft/release/build/bimcraft-core/129167976ef1e81d/out/ifc_grids-129167976ef1e81d)
+  Executable tests/ifc_supplementary_quantities.rs (/mnt/data/emiliano_capasso/cargo-targets/bench-bimcraft/release/build/bimcraft-core/fc0d3b39d1515335/out/ifc_supplementary_quantities-fc0d3b39d1515335)
+  Executable tests/ifc_wall_authoring.rs (/mnt/data/emiliano_capasso/cargo-targets/bench-bimcraft/release/build/bimcraft-core/c6ab7b791feddb41/out/ifc_wall_authoring-c6ab7b791feddb41)
+  Executable tests/industrial_doors.rs (/mnt/data/emiliano_capasso/cargo-targets/bench-bimcraft/release/build/bimcraft-core/1972b8379941534d/out/industrial_doors-1972b8379941534d)
+  Executable tests/memory_budget.rs (/mnt/data/emiliano_capasso/cargo-targets/bench-bimcraft/release/build/bimcraft-core/cb9497661cddacb5/out/memory_budget-cb9497661cddacb5)
+  Executable tests/opening_elevation.rs (/mnt/data/emiliano_capasso/cargo-targets/bench-bimcraft/release/build/bimcraft-core/2563527b4565f2b2/out/opening_elevation-2563527b4565f2b2)
+  Executable tests/opening_level.rs (/mnt/data/emiliano_capasso/cargo-targets/bench-bimcraft/release/build/bimcraft-core/77608a42a5f0e7d1/out/opening_level-77608a42a5f0e7d1)
+  Executable tests/primitive_fragments.rs (/mnt/data/emiliano_capasso/cargo-targets/bench-bimcraft/release/build/bimcraft-core/260b97e212d93c6a/out/primitive_fragments-260b97e212d93c6a)
+  Executable tests/property_boundaries.rs (/mnt/data/emiliano_capasso/cargo-targets/bench-bimcraft/release/build/bimcraft-core/4dc169d9054243af/out/property_boundaries-4dc169d9054243af)
+  Executable tests/revision_metadata.rs (/mnt/data/emiliano_capasso/cargo-targets/bench-bimcraft/release/build/bimcraft-core/800bf455a2058404/out/revision_metadata-800bf455a2058404)
+  Executable tests/roof_overhang.rs (/mnt/data/emiliano_capasso/cargo-targets/bench-bimcraft/release/build/bimcraft-core/26e1007745dc4066/out/roof_overhang-26e1007745dc4066)
+  Executable tests/scan_framing.rs (/mnt/data/emiliano_capasso/cargo-targets/bench-bimcraft/release/build/bimcraft-core/dde691de6c8eceff/out/scan_framing-dde691de6c8eceff)
+  Executable tests/script_references.rs (/mnt/data/emiliano_capasso/cargo-targets/bench-bimcraft/release/build/bimcraft-core/20393cffcbce9e02/out/script_references-20393cffcbce9e02)
+  Executable tests/select_instances.rs (/mnt/data/emiliano_capasso/cargo-targets/bench-bimcraft/release/build/bimcraft-core/49579852c0619eff/out/select_instances-49579852c0619eff)
+  Executable tests/separator_wall_end.rs (/mnt/data/emiliano_capasso/cargo-targets/bench-bimcraft/release/build/bimcraft-core/d461f6bf31534e06/out/separator_wall_end-d461f6bf31534e06)
+  Executable tests/sheet_custom_paper.rs (/mnt/data/emiliano_capasso/cargo-targets/bench-bimcraft/release/build/bimcraft-core/48f61c5d5f2e2f4e/out/sheet_custom_paper-48f61c5d5f2e2f4e)
+  Executable tests/sheet_fit.rs (/mnt/data/emiliano_capasso/cargo-targets/bench-bimcraft/release/build/bimcraft-core/f7bf941b11a83ac0/out/sheet_fit-f7bf941b11a83ac0)
+  Executable tests/sheet_paper.rs (/mnt/data/emiliano_capasso/cargo-targets/bench-bimcraft/release/build/bimcraft-core/285bef58b1cc94d0/out/sheet_paper-285bef58b1cc94d0)
+  Executable tests/sheet_title_block.rs (/mnt/data/emiliano_capasso/cargo-targets/bench-bimcraft/release/build/bimcraft-core/ebe8ec9863e0be04/out/sheet_title_block-ebe8ec9863e0be04)
+  Executable tests/sheet_title_fitting.rs (/mnt/data/emiliano_capasso/cargo-targets/bench-bimcraft/release/build/bimcraft-core/cff14e519130a834/out/sheet_title_fitting-cff14e519130a834)
+  Executable tests/spatial_cache.rs (/mnt/data/emiliano_capasso/cargo-targets/bench-bimcraft/release/build/bimcraft-core/3bec9d16c7aa5bca/out/spatial_cache-3bec9d16c7aa5bca)
+  Executable tests/steel_profiles.rs (/mnt/data/emiliano_capasso/cargo-targets/bench-bimcraft/release/build/bimcraft-core/4816cec2d4ef9af1/out/steel_profiles-4816cec2d4ef9af1)
+  Executable tests/timber_framing.rs (/mnt/data/emiliano_capasso/cargo-targets/bench-bimcraft/release/build/bimcraft-core/52a78dfca5c53fef/out/timber_framing-52a78dfca5c53fef)
+  Executable tests/viewport_placement.rs (/mnt/data/emiliano_capasso/cargo-targets/bench-bimcraft/release/build/bimcraft-core/9a4e85648c968158/out/viewport_placement-9a4e85648c968158)
+
+real	5m40.068s
+user	34m37.131s
+sys	1m6.397s

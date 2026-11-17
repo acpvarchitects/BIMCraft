@@ -20,6 +20,7 @@ fn xy(z: f64) -> Frame { fr(Point3::new(0.0, 0.0, z), Vec3::z(), Vec3::x()) }
 fn bx(m: &mut Model, a: [f64; 3], b: [f64; 3]) -> Body { ops::primitive_box(m, a, b, &C).unwrap().0 }
 
 fn report(name: &str, m: &mut Model, f: impl FnOnce(&mut Model) -> Result<(Body, Provenance), OpError>) {
+    if let Some(a) = std::env::args().nth(1) { if a != name { return; } }
     let t = Instant::now();
     let r = catch_unwind(AssertUnwindSafe(|| f(m)));
     let dt = t.elapsed();
@@ -39,16 +40,19 @@ fn report(name: &str, m: &mut Model, f: impl FnOnce(&mut Model) -> Result<(Body,
         *ek.entry(k).or_default() += 1;
     }
     let chk = if arris::check::check(m, body, arris::check::Level::Full).is_ok() { "valid" } else { "INVALID" };
-    let t2 = Instant::now();
-    let mesh = arris::mesh::tessellate(m, body, 0.5, &C);
-    let dt2 = t2.elapsed();
-    let ms = match mesh { Ok(me) => format!("{} tris, {:.2} ms, closed={}", me.triangles().len(), dt2.as_secs_f64()*1e3, me.is_closed()), Err(e) => format!("mesh ERR {e}") };
+    let mut ms = String::new();
+    for chord in [2.0, 0.5] {
+        let t2 = Instant::now();
+        let mesh = catch_unwind(AssertUnwindSafe(|| arris::mesh::tessellate(m, body, chord, &C)));
+        let dt2 = t2.elapsed();
+        ms += &match mesh { Ok(Ok(me)) => format!("@{chord}mm {} tris, {:.2} ms, closed={}; ", me.triangles().len(), dt2.as_secs_f64()*1e3, me.is_closed()), Ok(Err(e)) => format!("@{chord}mm mesh ERR {e}; "), Err(_) => format!("@{chord}mm mesh PANIC; ") };
+    }
     println!("| {name} | ok ({chk}) | {} faces {:?} | {} edges {:?} | {:.2} ms | {ms} |", fk.values().sum::<usize>(), fk, ek.values().sum::<usize>(), ek, dt.as_secs_f64()*1e3);
 }
 
 fn main() {
     let mut m = Model::default();
-    println!("| test | result | faces | edges | op time | tess 0.5mm |\n|---|---|---|---|---|---|");
+    let step_only = std::env::args().nth(1).as_deref() == Some("STEP");
     report("1a extrude rect", &mut m, |m| ops::extrude(m, &poly(xy(0.0), &[(0.,0.),(1000.,0.),(1000.,600.),(0.,600.)]), Vec3::z(), 750.0, &C));
     report("1b extrude L", &mut m, |m| ops::extrude(m, &poly(xy(0.0), &[(0.,0.),(1000.,0.),(1000.,200.),(200.,200.),(200.,600.),(0.,600.)]), Vec3::z(), 750.0, &C));
     let xz = fr(Point3::origin(), -Vec3::y(), Vec3::x());
@@ -76,6 +80,7 @@ fn main() {
     report("hostile: NaN extrude", &mut m, |m| ops::extrude(m, &poly(xy(0.0), &[(0.,0.),(f64::NAN,0.),(1.,1.)]), Vec3::z(), 750.0, &C));
     report("hostile: zero-length extrude", &mut m, |m| ops::extrude(m, &poly(xy(0.0), &[(0.,0.),(10.,0.),(10.,10.)]), Vec3::z(), 0.0, &C));
     report("hostile: self-intersecting", &mut m, |m| ops::extrude(m, &poly(xy(0.0), &[(0.,0.),(10.,10.),(10.,0.),(0.,10.)]), Vec3::z(), 5.0, &C));
+    if std::env::args().nth(1).is_some() && !step_only { return; }
     let b = bx(&mut m, [0.,0.,0.],[1.,1.,1.]);
     let c = ops::primitive_cylinder(&mut m, Axis::z_at(Point3::new(0.5,0.5,-1.)), 0.2, 3., &C).unwrap().0;
     let (r, _) = ops::cut(&mut m, b, c, &C).unwrap();

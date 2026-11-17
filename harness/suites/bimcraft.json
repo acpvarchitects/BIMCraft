@@ -1,0 +1,86 @@
+[
+{
+"group": "panels",
+"name": "geo_bench-10000-t1",
+"bin": "/mnt/data/emiliano_capasso/cargo-targets/bench-bimcraft/release/build/bimcraft-core/73e7552bcfcc5dd3/out/bimcraft_core-73e7552bcfcc5dd3",
+"args": [
+"geo_bench",
+"--ignored",
+"--nocapture"
+],
+"threads": 1,
+"env": {
+"GEO_PANELS": "10000"
+}
+},
+{
+"group": "panels",
+"name": "geo_bench-10000-t8",
+"bin": "/mnt/data/emiliano_capasso/cargo-targets/bench-bimcraft/release/build/bimcraft-core/73e7552bcfcc5dd3/out/bimcraft_core-73e7552bcfcc5dd3",
+"args": [
+"geo_bench",
+"--ignored",
+"--nocapture"
+],
+"threads": 8,
+"env": {
+"GEO_PANELS": "10000"
+}
+},
+{
+"group": "panels",
+"name": "geo_bench-10000-t72",
+"bin": "/mnt/data/emiliano_capasso/cargo-targets/bench-bimcraft/release/build/bimcraft-core/73e7552bcfcc5dd3/out/bimcraft_core-73e7552bcfcc5dd3",
+"args": [
+"geo_bench",
+"--ignored",
+"--nocapture"
+],
+"threads": 72,
+"env": {
+"GEO_PANELS": "10000"
+}
+},
+{
+"group": "panels",
+"name": "geo_bench-1000-t1",
+"bin": "/mnt/data/emiliano_capasso/cargo-targets/bench-bimcraft/release/build/bimcraft-core/73e7552bcfcc5dd3/out/bimcraft_core-73e7552bcfcc5dd3",
+"args": [
+"geo_bench",
+"--ignored",
+"--nocapture"
+],
+"threads": 1,
+"env": {
+"GEO_PANELS": "1000"
+}
+},
+{
+"group": "panels",
+"name": "geo_bench-1000-t8",
+"bin": "/mnt/data/emiliano_capasso/cargo-targets/bench-bimcraft/release/build/bimcraft-core/73e7552bcfcc5dd3/out/bimcraft_core-73e7552bcfcc5dd3",
+"args": [
+"geo_bench",
+"--ignored",
+"--nocapture"
+],
+"threads": 8,
+"env": {
+"GEO_PANELS": "1000"
+}
+},
+{
+"group": "panels",
+"name": "geo_bench-1000-t72",
+"bin": "/mnt/data/emiliano_capasso/cargo-targets/bench-bimcraft/release/build/bimcraft-core/73e7552bcfcc5dd3/out/bimcraft_core-73e7552bcfcc5dd3",
+"args": [
+"geo_bench",
+"--ignored",
+"--nocapture"
+],
+"threads": 72,
+"env": {
+"GEO_PANELS": "1000"
+}
+}
+]

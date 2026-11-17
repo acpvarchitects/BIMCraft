@@ -1,0 +1,113 @@
+
+thread 'main' (2654792) panicked at /home/emiliano_capasso/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/fj-core-0.49.0/src/objects/kinds/cycle.rs:80:9:
+internal error: entered unreachable code: Encountered invalid cycle: Cycle {
+    half_edges: ObjectSet {
+        inner: [
+            HalfEdge @ 0x7351b85df010 => HalfEdge {
+                path: Line(
+                    Line {
+                        origin: [
+                            0.0,
+                            0.0,
+                        ],
+                        direction: [
+                            10.0,
+                            10.0,
+                        ],
+                    },
+                ),
+                boundary: CurveBoundary {
+                    inner: [
+                        [
+                            0.0,
+                        ],
+                        [
+                            1.0,
+                        ],
+                    ],
+                },
+                curve: Curve @ 0x557f26a3b6a0 => Curve,
+                start_vertex: Vertex @ 0x557f26a3f9d0 => Vertex,
+            },
+            HalfEdge @ 0x7351b85df098 => HalfEdge {
+                path: Line(
+                    Line {
+                        origin: [
+                            10.0,
+                            10.0,
+                        ],
+                        direction: [
+                            0.0,
+                            -10.0,
+                        ],
+                    },
+                ),
+                boundary: CurveBoundary {
+                    inner: [
+                        [
+                            0.0,
+                        ],
+                        [
+                            1.0,
+                        ],
+                    ],
+                },
+                curve: Curve @ 0x557f26a3b6a1 => Curve,
+                start_vertex: Vertex @ 0x557f26a3f9d1 => Vertex,
+            },
+            HalfEdge @ 0x7351b85df120 => HalfEdge {
+                path: Line(
+                    Line {
+                        origin: [
+                            10.0,
+                            0.0,
+                        ],
+                        direction: [
+                            -10.0,
+                            10.0,
+                        ],
+                    },
+                ),
+                boundary: CurveBoundary {
+                    inner: [
+                        [
+                            0.0,
+                        ],
+                        [
+                            1.0,
+                        ],
+                    ],
+                },
+                curve: Curve @ 0x557f26a3b6a2 => Curve,
+                start_vertex: Vertex @ 0x557f26a3f9d2 => Vertex,
+            },
+            HalfEdge @ 0x7351b85df1a8 => HalfEdge {
+                path: Line(
+                    Line {
+                        origin: [
+                            0.0,
+                            10.0,
+                        ],
+                        direction: [
+                            0.0,
+                            -10.0,
+                        ],
+                    },
+                ),
+                boundary: CurveBoundary {
+                    inner: [
+                        [
+                            0.0,
+                        ],
+                        [
+                            1.0,
+                        ],
+                    ],
+                },
+                curve: Curve @ 0x557f26a3b6a3 => Curve,
+                start_vertex: Vertex @ 0x557f26a3f9d3 => Vertex,
+            },
+        ],
+    },
+}
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
