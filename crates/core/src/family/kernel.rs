@@ -137,6 +137,8 @@ pub type Silhouette = (Vec<P2>, Vec<Vec<P2>>);
 /// What builds a family's forms. See the module's notes.
 pub trait FormKernel: Send + Sync {
     type Solid: Send + Sync + Clone;
+    /// Whether it reads the curves as drawn ([`Loops::curves`], [`Path::curves`]): where it doesn't, nobody works them out.
+    const EXACT: bool = true;
     /// `profile`, in `frame`'s plane, swept along its normal from `from` to `to`.
     fn extrude(&self, profile: &Loops, frame: &Frame, from: f64, to: f64) -> Result<Self::Solid, KernelError>;
     /// `profile`, in `frame`'s plane, turned about the line through `axis` (in that plane) from `start` to `end` degrees.
@@ -173,6 +175,8 @@ pub struct MeshKernel;
 
 impl FormKernel for MeshKernel {
     type Solid = MeshSolid;
+    /// Its solids are the chorded regions' and paths', so the exact curves go unread.
+    const EXACT: bool = false;
 
     fn extrude(&self, profile: &Loops, frame: &Frame, from: f64, to: f64) -> Result<MeshSolid, KernelError> {
         let (tris, caps) = super::sweep(&profile.regions, from, to, frame)?;
@@ -294,5 +298,65 @@ mod tests {
         assert!(from.abs() < 1e-9 && (to - std::f64::consts::FRAC_PI_2).abs() < 1e-9, "{from} {to}");
         assert_eq!(c[1], Curve2::Line { start: P2(0.0, 0.0), end: P2(10.0, 0.0) });
         assert_eq!(c[2], Curve2::Circle { centre: P2(5.0, 5.0), radius: 2.0 });
+    }
+
+    /// The mesh kernel, but one that reads the curves as drawn: what it was handed, a sweep's profile's and path's.
+    struct Spy(std::sync::Mutex<Vec<usize>>);
+
+    impl FormKernel for Spy {
+        type Solid = MeshSolid;
+        fn extrude(&self, profile: &Loops, frame: &Frame, from: f64, to: f64) -> Result<MeshSolid, KernelError> {
+            MeshKernel.extrude(profile, frame, from, to)
+        }
+        fn revolve(&self, profile: &Loops, axis: [P2; 2], frame: &Frame, start: f64, end: f64) -> Result<MeshSolid, KernelError> {
+            MeshKernel.revolve(profile, axis, frame, start, end)
+        }
+        fn sweep(&self, profile: &Loops, path: &Path, host: &Frame) -> Result<MeshSolid, KernelError> {
+            self.0.lock().unwrap().extend([profile.curves.len(), path.curves.len()]);
+            MeshKernel.sweep(profile, path, host)
+        }
+        fn loft(&self, sections: &Sections) -> Result<MeshSolid, KernelError> {
+            MeshKernel.loft(sections)
+        }
+        fn cut(&self, body: &MeshSolid, tool: &MeshSolid, budget: &mut Budget) -> Result<MeshSolid, KernelError> {
+            MeshKernel.cut(body, tool, budget)
+        }
+        fn fuse(&self, a: &MeshSolid, b: &MeshSolid, budget: &mut Budget) -> Result<MeshSolid, KernelError> {
+            MeshKernel.fuse(a, b, budget)
+        }
+        fn silhouette(&self, s: &MeshSolid) -> Option<Silhouette> {
+            MeshKernel.silhouette(s)
+        }
+        fn bounds(&self, s: &MeshSolid) -> Option<[P3; 2]> {
+            MeshKernel.bounds(s)
+        }
+        fn tessellate(&self, s: &MeshSolid, chord: f64) -> Mesh {
+            MeshKernel.tessellate(s, chord)
+        }
+        fn edges(&self, s: &MeshSolid) -> Vec<ExactEdge> {
+            MeshKernel.edges(s)
+        }
+        fn faces(&self, s: &MeshSolid) -> Vec<ExactFace> {
+            MeshKernel.faces(s)
+        }
+    }
+
+    #[test]
+    fn the_curves_as_drawn_are_worked_out_only_for_a_kernel_that_reads_them() {
+        let form: super::super::Form = serde_json::from_value(serde_json::json!({
+            "sketch": [{"start": [1000, 0], "end": [0, 1000], "turn": 90}],
+            "sweep": {"profile": [{"centre": [0, 0], "radius": 50}]}
+        }))
+        .unwrap();
+        let mut num = |e: &Expr| match e {
+            Expr::Number(x) => Ok(*x),
+            Expr::Formula(f) => Err(format!("{f}: no parameters here")),
+        };
+        let spy = Spy(std::sync::Mutex::new(Vec::new()));
+        let seen = forms::build(&form, &Frame::LEVEL, &mut num, &spy).unwrap().unwrap();
+        assert_eq!(*spy.0.lock().unwrap(), [1, 1], "the circle and the arc, exact");
+        let mesh = forms::build(&form, &Frame::LEVEL, &mut num, &MeshKernel).unwrap().unwrap();
+        assert_eq!(seen, mesh, "the same solid: the mesh kernel builds from the chords alone");
+        assert!(!MeshKernel::EXACT && Spy::EXACT);
     }
 }

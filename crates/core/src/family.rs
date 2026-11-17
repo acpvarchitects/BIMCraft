@@ -2937,14 +2937,17 @@ impl Family {
         // Through the mesh kernel (GEO-1), spending `cuts`.
         use kernel::FormKernel;
         let k = kernel::MeshKernel;
-        let solid_of = |tris: &Vec<[P3; 3]>| kernel::MeshSolid { mesh: kernel::Mesh { tris: tris.clone(), caps: 0 }, plan: None };
+        // Each as the kernel's solid once, the piece being cut moved in and out of one: no triangles copied a cut.
+        let solid_of = |tris: Vec<[P3; 3]>| kernel::MeshSolid { mesh: kernel::Mesh { tris, caps: 0 }, plan: None };
+        let voids: HashMap<usize, kernel::MeshSolid> = voids.into_iter().map(|(i, t)| (i, solid_of(t))).collect();
+        let solids: HashMap<usize, kernel::MeshSolid> = solids.into_iter().map(|(i, t)| (i, solid_of(t))).collect();
         for (piece, &form) in out.iter_mut().zip(&of) {
             for by in self.cutters(form) {
                 let Some(cutter) = voids.get(&by).or_else(|| solids.get(&by)) else { continue };
-                let tris = k
-                    .cut(&solid_of(&piece.tris), &solid_of(cutter), cuts)
-                    .map(|s| s.mesh.tris)
-                    .map_err(|e| format!("form {}: {}", by + 1, e.0))?;
+                let body = solid_of(std::mem::take(&mut piece.tris));
+                let cut = k.cut(&body, cutter, cuts).map(|s| s.mesh.tris);
+                piece.tris = body.mesh.tris;
+                let tris = cut.map_err(|e| format!("form {}: {}", by + 1, e.0))?;
                 if tris != piece.tris {
                     let (bottom, top) = heights(&tris);
                     *piece = Piece {
@@ -2997,13 +3000,13 @@ impl Family {
             Piece { caps: tris.len(), tris, outline, holes, bottom, top, material, round: false, vis: None, nested: Vec::new() }
         } else {
             let regions = form.loops(&mut num)?;
-            // The curves drawn, exact beside the chorded regions (GEO-1): read where they can be, else none, so they change
-            // nothing the regions build.
-            let curves = kernel::curves(form.boundary(), &mut num).unwrap_or_default();
-            let loops = kernel::Loops { regions, curves };
-            let regions = &loops.regions;
             use kernel::FormKernel;
             let k = kernel::MeshKernel;
+            // The curves drawn, exact beside the chorded regions (GEO-1), for a kernel that reads them: read where they can
+            // be, else none, so they change nothing the regions build.
+            let curves = if kernel::MeshKernel::EXACT { kernel::curves(form.boundary(), &mut num).unwrap_or_default() } else { Vec::new() };
+            let loops = kernel::Loops { regions, curves };
+            let regions = &loops.regions;
             let (from, to) = (num(&form.from)?, num(&form.to)?);
             if to <= from {
                 let unit = if form.revolves() { " degrees" } else { "" };

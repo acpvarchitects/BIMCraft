@@ -690,15 +690,16 @@ pub fn swept_blend(a: &[P2], b: &[P2], twist: i32, path: &Path, host: &Frame) ->
 
 /// Form `form`'s triangles when it is a Blend, a Sweep or a Swept Blend (none for another kind), on `host`, its numbers
 /// read by `num`.
-pub(crate) fn build<'a>(
+pub(crate) fn build<'a, K: FormKernel<Solid = MeshSolid>>(
     form: &'a Form,
     host: &Frame,
     num: &mut dyn FnMut(&'a Expr) -> Result<f64, String>,
-    kernel: &impl FormKernel<Solid = MeshSolid>,
+    kernel: &K,
 ) -> Result<Option<Built>, String> {
-    // The curves drawn, exact beside the chorded ones (GEO-1): read where they can be, else none.
+    // The curves drawn, exact beside the chorded ones (GEO-1), for a kernel that reads them: read where they can be, else
+    // none.
     let exact = |lines: &'a [FormLine], num: &mut dyn FnMut(&'a Expr) -> Result<f64, String>| {
-        super::kernel::curves(lines.iter(), num).unwrap_or_default()
+        if K::EXACT { super::kernel::curves(lines.iter(), num).unwrap_or_default() } else { Vec::new() }
     };
     let made = match form.kind() {
         FormKind::Extrusion | FormKind::Revolve => return Ok(None),
