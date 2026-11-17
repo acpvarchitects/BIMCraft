@@ -9,6 +9,7 @@ use std::f64::consts::{PI, TAU};
 
 mod compound;
 mod index;
+pub mod shape;
 pub(crate) use index::{Index, reach};
 
 use crate::geom::{self, P2};
@@ -194,6 +195,92 @@ pub fn faces(m: &Model, w: &Wall) -> (f64, f64) {
     (ext, ext - t)
 }
 
+/// A wall's exterior and interior faces at height `z`: [`faces`], each moved by its shape there ([`shape`]).
+pub fn faces_at(m: &Model, w: &Wall, z: f64) -> (f64, f64) {
+    let (ext, int) = faces(m, w);
+    match shape::Shaper::of(m, w) {
+        Some(s) => (s.offset(ext, z), s.offset(int, z)),
+        None => (ext, int),
+    }
+}
+
+/// Whether any wall of `m` has a shaped face: if none does, every wall is as its prisms make it.
+pub(crate) fn any_shaped(m: &Model) -> bool {
+    match m.derived.made(&m.elements) {
+        Some(look) => look.any_shaped(),
+        None => m.elements.values().any(|e| matches!(e, Element::Wall(w) if !w.shape.is_empty())),
+    }
+}
+
+/// Wall `id`'s deformation, its caps joined to the walls `keep` keeps: if it is shaped, or ends on the face of one that is.
+pub(crate) fn shaper(m: &Model, id: Id, index: Option<&Index>, keep: &impl Fn(&Wall) -> bool) -> Option<shape::Shaper> {
+    if !any_shaped(m) {
+        return None;
+    }
+    shape::Shaper::of_id(m, id, index, keep)
+}
+
+/// `ring` (wall `id`'s outline or a layer's band, in plan) as it lies at height `z`: of a shaped wall, or one ending on a
+/// shaped wall's face, its faces, layers and ends where their shapes put them there; of any other, as it is.
+pub(crate) fn at_height(m: &Model, id: Id, ring: Vec<P2>, z: f64, index: Option<&Index>) -> Vec<P2> {
+    at_height_filtered(m, id, ring, z, index, &|_| true)
+}
+
+/// [`at_height`], the wall's caps joined only to the walls `keep` keeps (as `ring` was made).
+pub(crate) fn at_height_filtered(
+    m: &Model,
+    id: Id,
+    ring: Vec<P2>,
+    z: f64,
+    index: Option<&Index>,
+    keep: &impl Fn(&Wall) -> bool,
+) -> Vec<P2> {
+    match shaper(m, id, index, keep) {
+        Some(s) => s.ring(&ring, z),
+        None => ring,
+    }
+}
+
+/// Wall `id`'s `prisms` as closed triangles each, its faces (and ends) following their shapes; none for a wall neither shaped
+/// nor ending on one.
+pub(crate) fn shaped_meshes(m: &Model, id: Id, prisms: &[Prism], index: Option<&Index>) -> Option<Vec<Vec<[[f64; 3]; 3]>>> {
+    let s = shaper(m, id, index, &|_| true)?;
+    Some(prisms.iter().map(|p| s.mesh(&p.ring, p.bottom, p.top)).collect())
+}
+
+/// Wall `id`'s volume, mm³: its solid's, with or without its openings, shaped or not.
+pub fn volume(m: &Model, id: Id, openings: bool) -> f64 {
+    volume_in(m, id, openings, None)
+}
+
+/// [`volume`], the walls' joins and openings found through `index` when there is one.
+pub(crate) fn volume_in(m: &Model, id: Id, openings: bool, index: Option<&Index>) -> f64 {
+    let ps = prisms_in(m, id, openings, index);
+    match shaped_meshes(m, id, &ps, index) {
+        Some(meshes) => meshes.iter().map(|t| shape::volume(t)).sum(),
+        None => ps.iter().map(prism_volume).sum(),
+    }
+}
+
+/// A prism's volume, mm³: its area times its height at its centroid (its top and bottom are planes).
+fn prism_volume(p: &Prism) -> f64 {
+    let a = geom::area(&p.ring);
+    if p.ring.is_empty() || a == 0.0 {
+        return 0.0;
+    }
+    // The centroid of the ring's area.
+    let n = p.ring.len();
+    let (mut cx, mut cy) = (0.0, 0.0);
+    for i in 0..n {
+        let (q, r) = (p.ring[i], p.ring[(i + 1) % n]);
+        let k = q.cross(r);
+        cx += (q.0 + r.0) * k;
+        cy += (q.1 + r.1) * k;
+    }
+    let c = P2(cx / (6.0 * a), cy / (6.0 * a));
+    a.abs() * (p.top.at(c) - p.bottom.at(c))
+}
+
 /// How far to the left of its location line a wall's centre line lies.
 pub fn centre(m: &Model, w: &Wall) -> f64 {
     let (ext, int) = faces(m, w);
@@ -343,7 +430,7 @@ pub fn cap(m: &Model, id: Id, at_end: bool) -> Vec<P2> {
     cap_in(m, id, at_end, None)
 }
 
-fn cap_in(m: &Model, id: Id, at_end: bool, index: Option<&Index>) -> Vec<P2> {
+pub(crate) fn cap_in(m: &Model, id: Id, at_end: bool, index: Option<&Index>) -> Vec<P2> {
     end_geometry(m, id, at_end, index, &|_| true).outline
 }
 
@@ -351,12 +438,26 @@ fn cap_in(m: &Model, id: Id, at_end: bool, index: Option<&Index>) -> Vec<P2> {
 struct WallEnd {
     outline: Vec<P2>,
     butt: Option<compound::Butt>,
+    /// The neighbours' face lines its first and last corners lie on (a point and the way the line runs), where a neighbour's
+    /// face made the corner: a shaped face moved past the corner ends on that line.
+    lines: [Option<(P2, P2)>; 2],
+    /// The wall it ends on, through its face: that wall's id, and whether it meets its exterior face (the one to its left).
+    on: Option<(Id, bool)>,
 }
 
 impl WallEnd {
     fn plain(outline: Vec<P2>) -> Self {
-        Self { outline, butt: None }
+        Self { outline, butt: None, lines: [None, None], on: None }
     }
+}
+
+/// Wall `id`'s cap at its start (or end), joined only to walls `keep` keeps, with the neighbours' face lines its corners lie
+/// on and the wall it ends on, through its face, if it does: what a shaped wall's deformation slides along.
+pub(crate) type CapInfo = (Vec<P2>, [Option<(P2, P2)>; 2], Option<(Id, bool)>);
+
+pub(crate) fn cap_info(m: &Model, id: Id, at_end: bool, index: Option<&Index>, keep: &impl Fn(&Wall) -> bool) -> CapInfo {
+    let e = end_geometry(m, id, at_end, index, keep);
+    (e.outline, e.lines, e.on)
 }
 
 /// [`cap`] and how a compound corner shares it, joined only to walls `keep` keeps.
@@ -382,10 +483,21 @@ fn end_geometry(m: &Model, id: Id, at_end: bool, index: Option<&Index>, keep: &i
     let meet = |face: P2, other: P2, other_way: P2| {
         geom::line_intersection(face, face + me.way, other, other + other_way)
             .filter(|c| (-limit..=limit).contains(&(*c - node).dot(me.way)))
-            .unwrap_or(face)
     };
     let (cw, ccw) = (meet(me.cw, prev.ccw, prev.way), meet(me.ccw, next.cw, next.way));
-    WallEnd::plain(if through { vec![cw, ccw] } else { vec![cw, node, ccw] })
+    let lines = [cw.map(|_| (prev.ccw, prev.way)), ccw.map(|_| (next.cw, next.way))];
+    let (cw, ccw) = (cw.unwrap_or(me.cw), ccw.unwrap_or(me.ccw));
+    if through {
+        // The wall it ends on, and which of its faces it meets: the one on the side it leaves toward.
+        let on = arms.iter().find(|a| a.id != id && arms.iter().filter(|b| b.id == a.id).count() == 2).and_then(|a| {
+            let o = m.wall(a.id)?;
+            let ax = Axis::of(o);
+            let (s, _) = ax.project(node);
+            Some((a.id, me.way.dot(ax.tangent(s).perp()) > 0.0))
+        });
+        return WallEnd { outline: vec![cw, ccw], butt: None, lines: [None, None], on };
+    }
+    WallEnd { outline: vec![cw, node, ccw], butt: None, lines, on: None }
 }
 
 /// Wall `id`'s centre line, an arc as chords: each end it joins others at run on (or back) to the

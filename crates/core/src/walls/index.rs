@@ -188,7 +188,8 @@ impl Index {
 pub(crate) fn reach(m: &Model, w: &crate::model::Wall) -> Option<[f64; 4]> {
     let axis = super::Axis::of(w);
     let (ext, int) = super::faces(m, w);
-    let grow = ext.abs().max(int.abs()) + 2.0 * TOL;
+    // A shaped face reaches as far again as it leans.
+    let grow = ext.abs().max(int.abs()) + super::shape::reach(m, w) + 2.0 * TOL;
     let [x0, y0, x1, y1] = match axis.arc() {
         Some((c, r, _, _)) => [c.0 - r, c.1 - r, c.0 + r, c.1 + r],
         None => [w.start.0.min(w.end.0), w.start.1.min(w.end.1), w.start.0.max(w.end.0), w.start.1.max(w.end.1)],

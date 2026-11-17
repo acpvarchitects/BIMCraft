@@ -48,6 +48,8 @@ pub struct Lookup {
     rare: BTreeMap<&'static str, Arc<BTreeSet<Id>>>,
     /// The elements phased, or in a design option: with a value of a name [`crate::phasing::reserved`] keeps.
     phased: Arc<BTreeSet<Id>>,
+    /// The walls whose faces are shaped (battered).
+    shaped: Arc<BTreeSet<Id>>,
     /// The levels: walls' heights are of them, so when one changes the lookup is made again.
     levels: Arc<BTreeSet<Id>>,
     /// Components and runs by [`Group`], each group by band of the heights the elements' own values give: a component's
@@ -316,6 +318,9 @@ impl Lookup {
         if e.params().is_some_and(|p| p.keys().any(|k| crate::phasing::reserved(k))) {
             Arc::make_mut(&mut self.phased).insert(id);
         }
+        if matches!(e, Element::Wall(w) if !w.shape.is_empty()) {
+            Arc::make_mut(&mut self.shaped).insert(id);
+        }
     }
 
     fn take(&mut self, id: Id) {
@@ -355,6 +360,7 @@ impl Lookup {
             &mut self.everywhere,
             &mut self.levels,
             &mut self.phased,
+            &mut self.shaped,
             &mut self.other,
         ] {
             if set.contains(&id) {
@@ -497,6 +503,11 @@ impl Lookup {
     /// The elements of category `cat`, one of [`RARE`], by id; none of another.
     pub fn rare(&self, cat: &str) -> impl Iterator<Item = Id> + '_ {
         self.rare.get(cat).into_iter().flat_map(|s| s.iter().copied())
+    }
+
+    /// Whether a wall's faces are shaped.
+    pub fn any_shaped(&self) -> bool {
+        !self.shaped.is_empty()
     }
 
     /// Whether an element is phased or in a design option.

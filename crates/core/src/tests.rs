@@ -2705,6 +2705,12 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"name": "T", "drawing_area": [[50, 50], [10, 10]], "template_border": "x"}),
         json!({"name": "T", "drawing_area": [[0, 0], [f64::MAX, 1e300]]}),
         json!({"name": "T", "drawing_area": [[0, 0]], "template_border": true}),
+        // A wall's face battered past what a number holds, or out of order, or crossing the other face.
+        json!({"id": 100002, "face": "exterior", "angle": 1e300, "top": "x"}),
+        json!({"id": 100002, "face": "interior", "profile": [[1e300, 5], [-1, f64::MAX]]}),
+        json!({"id": 100002, "face": "exterior", "top": -1e9}),
+        json!({"id": 100002, "face": "interior", "profile": [[100, -1e6]], "angle": null}),
+        json!({"id": 100002, "face": 5}),
     ];
     let mut base = Session::new();
     house(&mut base);
