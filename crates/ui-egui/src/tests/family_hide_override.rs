@@ -35,8 +35,9 @@ fn untouched(h: &Harness<BimApp>, before: &(String, String, usize, bool)) -> boo
 }
 
 /// Magenta, Reveal Hidden Elements' colour.
+/// Magenta, however light a thin pen draws it: red and blue well over green.
 fn magenta(c: &Color32) -> bool {
-    c.r() > 180 && c.b() > 180 && c.g() < 120
+    c.r() > 180 && c.b() > 180 && u16::from(c.g()) + 60 < u16::from(c.r().min(c.b()))
 }
 
 fn green(c: &Color32) -> bool {
