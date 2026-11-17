@@ -14,7 +14,7 @@ use bimcraft_core::family::DimKind;
 /// project has too means the same command here (`the_family_table_gives_no_project_key_another_meaning`); the others (DD, AN,
 /// WP, WW, FA, AA, PL, FG, CG, ZX, FE-3's ZR, ZZ, ZO, ZV, ZP, ZC, FE-8's RE, FE-20's FF, PR, ID, SV, BF, and FE-18's VR) are the family's
 /// alone; FE-21's snap overrides are the project's. Trim/Extend Single and Multiple Elements have no key, as in Revit: Keyboard Shortcuts gives them one; nor has
-/// Drag Elements on Selection ([`FAMILY_KEYLESS`]).
+/// Drag Elements on Selection ([`FAMILY_KEYLESS`]), nor Uncut Geometry, Unjoin Geometry or Switch Join Order (FE-16b).
 pub(crate) const FAMILY_SHORTCUTS: &[(&str, &str)] = &[
     ("MD", "Modify"),
     ("PP", "Properties"),
@@ -78,6 +78,9 @@ pub(crate) const FAMILY_SHORTCUTS: &[(&str, &str)] = &[
     // Measure and Create Similar, as the project's.
     ("ME", "Measure"),
     ("CS", "Create Similar"),
+    // FE-16b: Cut Geometry and Join Geometry as the project's; Uncut, Unjoin and Switch Join Order have no key ([`FAMILY_KEYLESS`]).
+    ("CU", "Cut Geometry"),
+    ("JO", "Join Geometry"),
     // FE-18: view graphics, each view's for the session (`view_graphics.rs`); VR the family's alone.
     ("VV", "Visibility/Graphics"),
     ("VG", "Visibility/Graphics"),
@@ -128,6 +131,9 @@ pub(crate) const FAMILY_KEYLESS: &[&str] = &[
     "Purge Unused",
     "Reference Line",
     "Model Line",
+    "Uncut Geometry",
+    "Unjoin Geometry",
+    "Switch Join Order",
 ];
 
 /// Whether `action` is a command the family document has: one its table gives a key, or one it has with none.
@@ -477,6 +483,12 @@ impl BimApp {
             "Select All Instances" => ed.select_instances(true),
             "Select All Instances: In Entire Family" => ed.select_instances(false),
             "Measure" => ed.measure_tool(),
+            // FE-16b: Cut and Join, each where its button is enabled; else why not.
+            "Cut Geometry" | "Uncut Geometry" | "Join Geometry" | "Unjoin Geometry" | "Switch Join Order" => {
+                if let Some(mode) = super::cutting::CutTool::of(action) {
+                    said = Some(ed.cutting_tool(mode));
+                }
+            }
             "Create Similar" => said = Some(ed.create_similar()),
             "Pin" => ed.pin_selected(true),
             "Unpin" => ed.pin_selected(false),

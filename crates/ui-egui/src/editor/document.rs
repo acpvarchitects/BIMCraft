@@ -194,6 +194,7 @@ impl FamilyEditor {
             && self.placing.is_none()
             && self.views.drawing.is_none()
             && self.views.measuring.is_none()
+            && self.views.cutting.is_none()
             && self.views.picking.is_none()
             && self.views.dimensioning.is_none()
             && self.views.aligning.is_none()
@@ -209,6 +210,9 @@ impl FamilyEditor {
         let Some(action) = self.last_tool else { return Ok(()) };
         if let Some(tool) = super::modify::Tool::of(action) {
             return self.modify_tool_on(tool);
+        }
+        if let Some(mode) = super::cutting::CutTool::of(action) {
+            return self.cutting_tool(mode);
         }
         match action {
             "Reference Plane" => self.reference_plane_tool(),
@@ -257,6 +261,7 @@ impl FamilyEditor {
         self.modeller.picking_plane = false;
         self.views.drawing = None;
         self.views.measuring = None;
+        self.views.cutting = None;
         self.views.picking = None;
         self.views.dimensioning = None;
         self.views.aligning = None;
@@ -278,7 +283,7 @@ impl FamilyEditor {
             v.drawing.is_some(),
             v.drawing_line,
             v.drawing_model,
-            v.measuring.is_some(),
+            (v.measuring.is_some(), v.cutting.map(|c| c.mode)),
             v.modify.as_ref().map(|m| d(&m.tool)),
             v.dimensioning.is_some(),
             v.aligning.is_some(),
@@ -1085,6 +1090,62 @@ impl BimApp {
                             .on_disabled_hover_text(t("Measure works in a plan or an elevation, not while a form is sketched."));
                     }
                 });
+                // FE-16b: Geometry's Cut and Join, each one small button dropping down its tools, as the project's panel has them; small,
+                // so the ribbon keeps the room it had at 1600 px.
+                let mut cutting: Option<super::cutting::CutTool> = None;
+                ribbon::panel(ui, msg!("Geometry"), |ui| {
+                    use super::cutting::CutTool;
+                    let why = ed.cutting_blocked();
+                    let hand = ed.views.cutting.map(|c| c.mode);
+                    let groups = [
+                        (
+                            [(CutTool::Cut, msg!("Cut Geometry")), (CutTool::Uncut, msg!("Uncut Geometry"))].as_slice(),
+                            (Icon::CutGeometry, "Cut"),
+                            msg!("Cut Geometry (CU): pick a form, then the form or void that cuts it; Uncut Geometry takes a cut back"),
+                        ),
+                        (
+                            [
+                                (CutTool::Join, msg!("Join Geometry")),
+                                (CutTool::Switch, msg!("Switch Join Order")),
+                                (CutTool::Unjoin, msg!("Unjoin Geometry")),
+                            ]
+                            .as_slice(),
+                            (Icon::JoinGeometry, "Join Geometry"),
+                            msg!(
+                                "Join Geometry (JO): pick a solid form, then another that cuts it where they overlap; Switch Join Order flips which cuts which, and Unjoin Geometry takes the join back"
+                            ),
+                        ),
+                    ];
+                    for (tools, (icon, label), tip) in groups {
+                        let active = hand.filter(|m| tools.iter().any(|(t, _)| t == m));
+                        let icon = match active {
+                            Some(CutTool::Uncut) => Icon::UncutGeometry,
+                            Some(CutTool::Switch) => Icon::SwitchJoinOrder,
+                            Some(CutTool::Unjoin) => Icon::UnjoinGeometry,
+                            _ => icon,
+                        };
+                        let r = ui.add_enabled_ui(why.is_none(), |ui| crate::small_button(ui, icon, label, active.is_some(), tip));
+                        let button = match why.as_deref() {
+                            Some(why) => r.inner.on_disabled_hover_text(why),
+                            None => r.inner,
+                        };
+                        ribbon::choices(ui, &button, false, |ui| {
+                            for (mode, name) in tools {
+                                if ui.button(t(name)).clicked() {
+                                    cutting = Some(*mode);
+                                }
+                            }
+                        });
+                    }
+                    // Small buttons only: the panel keeps the ribbon's height, its name on the others' baseline.
+                    ribbon::full_height(ui);
+                });
+                if let Some(mode) = cutting {
+                    match ed.cutting_tool(mode) {
+                        Ok(()) => self.status = Status::default(),
+                        Err(e) => self.status = Status { text: e, error: true },
+                    }
+                }
                 if tab == DocTab::Context {
                     if let Some(i) = ed.selected_nested() {
                         self.nested_mode_panel(ui, ed, i);
@@ -1589,7 +1650,13 @@ impl BimApp {
         let Some(ed) = self.active_family_mut() else { return };
         match asked {
             // Selected, as Revit's browser selects what it lists: its Properties show.
-            Some(Asked::Form(i)) => ed.select_only_form(i),
+            Some(Asked::Form(i)) => match ed.cutting_click(Some(i)) {
+                // Cut, Join and their undoing tools in hand (FE-16b): the row is a pick, a void's too.
+                Some(Ok(said)) if !said.is_empty() => self.status = Status { text: said, error: false },
+                Some(Err(e)) => self.status = Status { text: e, error: true },
+                Some(Ok(_)) => {}
+                None => ed.select_only_form(i),
+            },
             Some(Asked::Symbol(i)) => ed.select_symbol(i),
             Some(Asked::Move(i, by)) => ed.move_form(i, by),
             Some(Asked::DeleteForm(i)) => ed.remove_form(i),
@@ -1988,6 +2055,10 @@ impl BimApp {
             }
             return Some(super::sketch::prompt(s, &ed.views.modify_options));
         }
+        // Cut, Join or one of their undoing tools in hand (FE-16b): what to pick next.
+        if let (None, Some(text)) = (ed.adaptive.as_ref(), ed.cutting_prompt()) {
+            return Some(text);
+        }
         // A Modify tool in hand (FE-8): what to click next.
         // A Modify tool in hand, in a plan, an elevation or {3D} (FE-24): its own prompt.
         if let (None, Some(m)) = (ed.adaptive.as_ref(), ed.views.modify.as_ref()) {
@@ -2255,6 +2326,7 @@ impl BimApp {
                 || ed.views.pivoting.take().is_some()
                 || ed.modify_escape()
                 || ed.measure_escape()
+                || ed.cutting_escape()
             {
             } else if let Some(refs) = ed.views.dimensioning.as_mut() {
                 if refs.is_empty() {
@@ -2774,6 +2846,22 @@ impl BimApp {
         if ed.sketching() {
             ed.views.hover3d = None;
             ed.connector_hover = None;
+        } else if ed.views.cutting.is_some() {
+            // Cut, Join and their undoing tools (FE-16b): the form clicked in the picture; a void is picked from the forms list.
+            ed.views.hover3d = None;
+            ed.connector_hover = None;
+            let click = response.clicked().then(|| response.interact_pointer_pos()).flatten().or(self.canvas.quick_press());
+            if let Some(p) = click.filter(|p| !crate::orbit::Orbit::on_cube(pane, *p) && !cube.hovered()) {
+                let form = match part_at(ed, p) {
+                    Some(bimcraft_core::family::views::Part::Form(i)) => Some(i),
+                    _ => None,
+                };
+                match ed.cutting_click(form) {
+                    Some(Ok(said)) if !said.is_empty() => self.status = Status { text: said, error: false },
+                    Some(Err(e)) => self.status = Status { text: e, error: true },
+                    _ => {}
+                }
+            }
         } else if ed.views.modify.is_some() || ed.views.aligning.is_some() {
             ed.views.hover3d = None;
             ed.connector_hover = None;
