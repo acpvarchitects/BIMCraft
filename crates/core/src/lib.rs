@@ -39,6 +39,7 @@ pub mod crosscheck;
 pub mod crs;
 mod csg;
 pub mod curves;
+pub mod decay;
 pub mod demand;
 pub mod derived;
 pub mod dims;
