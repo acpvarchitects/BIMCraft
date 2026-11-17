@@ -1,0 +1,37 @@
+﻿
+=== a 1000 1  peak working set ~ 85 MB
+kind=a(no boolean) n=1000 threads=1 errors=0
+build wall 3326 ms (3.326 ms/def wall); op cpu sum 3323 ms: extrude 236, revolve 162, loft 2926, boolean 0 (0%)
+=== a 1000 8  peak working set ~ 90 MB
+kind=a(no boolean) n=1000 threads=8 errors=0
+build wall 855 ms (0.855 ms/def wall); op cpu sum 6495 ms: extrude 474, revolve 284, loft 5738, boolean 0 (0%)
+=== a 10000 1  peak working set ~ 768 MB
+kind=a(no boolean) n=10000 threads=1 errors=0
+build wall 38406 ms (3.841 ms/def wall); op cpu sum 38381 ms: extrude 2898, revolve 1968, loft 33515, boolean 0 (0%)
+=== a 10000 8 full  peak working set ~ 1524 MB
+kind=a(no boolean) n=10000 threads=8 errors=0
+build wall 6766 ms (0.677 ms/def wall); op cpu sum 48313 ms: extrude 3663, revolve 2490, loft 42160, boolean 0 (0%)
+full regen wall 5431 ms
+incremental: 10 changed, diff+rebuild 7.89 ms
+tess 2 mm: 6916300 tris (692/panel), 3498150 verts, wall 49629 ms, GPU ~251 MB
+tess 0.5 mm: 21296312 tris (2130/panel), 10688156 verts, wall 59495 ms, GPU ~769 MB
+plan edges: 280000 primitives (28/panel), wall 28.8 ms
+probe: box slab - cylinder through it 58.23 ms; cylinder missing the slab 33.09 ms; slab - box void 0.59 ms
+probe: slab extruded from a profile with a circular hole (no boolean) 0.15 ms; slab - 32-gon prism 4.11 ms; cylinder alone 0.010 ms
+=== b 1000 1  peak working set ~ 208 MB
+kind=b(void cut) n=1000 threads=1 errors=0
+build wall 57709 ms (57.709 ms/def wall); op cpu sum 57706 ms: extrude 186, revolve 141, loft 2556, boolean 54823 (95%)
+=== b 1000 8  peak working set ~ 237 MB
+kind=b(void cut) n=1000 threads=8 errors=0
+build wall 13791 ms (13.791 ms/def wall); op cpu sum 104645 ms: extrude 354, revolve 215, loft 4241, boolean 99834 (95%)
+=== b 10000 8 full  peak working set ~ 4153 MB
+kind=b(void cut) n=10000 threads=8 errors=0
+build wall 255205 ms (25.520 ms/def wall); op cpu sum 2041244 ms: extrude 16765, revolve 2414, loft 40108, boolean 1981957 (97%)
+full regen wall 804626 ms
+incremental: 10 changed, diff+rebuild 681.81 ms
+tess 2 mm: 7357660 tris (736/panel), 3698830 verts, wall 60011 ms, GPU ~266 MB
+tess 0.5 mm: 22118352 tris (2212/panel), 11079176 verts, wall 76660 ms, GPU ~797 MB
+plan edges: 300000 primitives (30/panel), wall 38.1 ms
+probe: box slab - cylinder through it 135.86 ms; cylinder missing the slab 77.53 ms; slab - box void 1.36 ms
+probe: slab extruded from a profile with a circular hole (no boolean) 0.83 ms; slab - 32-gon prism 6.22 ms; cylinder alone 0.573 ms
+DONE
