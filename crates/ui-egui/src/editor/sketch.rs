@@ -1679,6 +1679,23 @@ pub(crate) fn prompt(s: &FormSketch, o: &super::modify::Options) -> &'static str
             _ => msg!("Sketch Path or Pick Path for the path, Edit Profile for the profile; Finish Edit Mode makes the sweep."),
         };
     }
+    // A Blend (FE-27b): its base closed, Edit Top is next; on its top, the plane at its Second End, then Finish.
+    if s.kind == FormKind::Blend && s.trim.is_none() && s.tool.is_some_and(|t| t != Shape::PickLines) {
+        let closed = |p: Part| {
+            let lines = s.part_lines(p);
+            !lines.is_empty() && fs::finish_check(lines, None, false).is_ok()
+        };
+        match s.part {
+            Part::Top if closed(Part::Top) => {
+                return msg!("The top is closed: Finish Edit Mode makes the blend, or Edit Base to change its base.");
+            }
+            Part::Top => return msg!("Draw the top, on the plane at the blend's Second End; then Finish Edit Mode."),
+            Part::Main if closed(Part::Main) && !closed(Part::Top) => {
+                return msg!("The base is closed: Edit Top to sketch the top, at the blend's Second End.");
+            }
+            _ => {}
+        }
+    }
     match s.trim {
         Some(None) => return msg!("Pick the first line, on the part to keep."),
         Some(Some(_)) => return msg!("Pick the second line, on the part to keep."),
