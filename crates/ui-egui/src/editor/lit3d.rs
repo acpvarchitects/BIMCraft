@@ -423,28 +423,37 @@ impl BimApp {
         let base = Arc::clone(&self.session.model);
         let Some(doc) = self.active_doc() else { return };
         let Some(ed) = self.active_family_mut() else { return };
+        let chosen = !ed.selection.is_empty();
         ed.stage_3d(&base);
         let parts: Vec<Part> = ed.selected_3d().into_iter().filter_map(|l| if let Lit::Part(p) = l { Some(p) } else { None }).collect();
+        // Nothing selected: the box goes. Something selected that isn't a form or a nested instance (a reference plane, a
+        // dimension): the box, if there is one, stays as it was.
+        let said = |text: &str| Status { text: format!("{text} {}", t("The box is unchanged.")), error: true };
         if parts.is_empty() {
-            if ed.views.kept.section_box.take().is_none() {
+            if chosen {
+                self.status = said(t("Selection Box boxes forms and nested instances:"));
+            } else if ed.views.kept.section_box.take().is_none() {
                 let text = t("Selection Box: select the forms or nested instances to box first").to_string();
                 self.status = Status { text, error: false };
             }
             return;
         }
-        let Some(scene) = ed.scene3d.as_ref() else { return };
-        let mut bounds = bimcraft_core::bounds::BoundsCache::default();
+        let Some(scene) = ed.scene3d.as_ref() else {
+            let problem = ed.problem.clone().unwrap_or_default();
+            self.status = said(&format!("{} {problem}", t("Selection Box: {3D} can't be drawn.")));
+            return;
+        };
+        // From what the staged scene draws of each part selected: a void's cut, a nested instance, a revolve as drawn.
+        let ids: std::collections::HashSet<Id> = scene.part.iter().filter(|(_, p)| parts.contains(p)).map(|(id, _)| *id).collect();
+        let boxes = bimcraft_core::view3d::Scene::new(&scene.model).boxes(&ids);
         let (mut lo, mut hi) = ([f64::INFINITY; 3], [f64::NEG_INFINITY; 3]);
-        for (id, _) in scene.part.iter().filter(|(_, p)| parts.contains(p)) {
-            if let bimcraft_core::bounds::Bounds::Box([a, b]) = bounds.get(&scene.model, *id) {
-                for k in 0..3 {
-                    (lo[k], hi[k]) = (lo[k].min(a[k]).min(b[k]), hi[k].max(a[k]).max(b[k]));
-                }
+        for (a, b) in boxes.values() {
+            for k in 0..3 {
+                (lo[k], hi[k]) = (lo[k].min(a[k]), hi[k].max(b[k]));
             }
         }
         if !(lo.iter().chain(&hi).all(|v| v.is_finite())) {
-            let text = t("Selection Box: what is selected has no extent to box").to_string();
-            self.status = Status { text, error: true };
+            self.status = said(t("Selection Box: what is selected draws nothing in {3D} to box."));
             return;
         }
         let side = (0..3).map(|k| hi[k] - lo[k]).fold(0.0, f64::max);

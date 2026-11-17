@@ -3,6 +3,7 @@
 //! other graphics are: not saved, no step of the history, no unsaved change; the inactive {3D} tile draws it too.
 use super::preview_visibility::{Pictures, differ, preview};
 use super::*;
+use crate::editor::select_box::Picked;
 use bimcraft_core::family::views::Which;
 
 /// Preview Visibility's Cabinet, its two forms side by side (x 0 to 1000 and 2000 to 3000), on a screen tall enough for the
@@ -44,9 +45,10 @@ fn bx_cuts_3d_to_a_box_round_the_form_selected_and_bx_on_nothing_takes_it_away()
     let cut = preview(&h, &pictures);
     let gone = differ(&shown, &cut);
     assert!(gone.iter().filter(|&&i| cut.pixels[i] == ground).count() > 500, "the second form is gone");
-    // Not the family's: no unsaved change, and nothing to undo.
+    // Not the family's: no unsaved change, and no step of the history.
     let ed = h.state().active_family().unwrap();
     assert!(!ed.unsaved());
+    assert_eq!(ed.steps(), 0);
     // BX on nothing: the box goes, and {3D} is drawn as it was.
     key(&mut h, Key::Escape);
     shortcut(&mut h, "BX");
@@ -87,6 +89,50 @@ fn the_box_goes_with_the_family() {
     h.state_mut().edit_family("Cabinet");
     h.run();
     assert!(boxed(&h).is_none(), "the view's for the session: opened again, no box");
+}
+
+/// A family with a solid a void cuts (x 0 to 1000), a leg nested at x 2500 (200 square), and a solid far off at x 4000 to
+/// 5000, open in {3D}.
+fn mixed() -> Harness<'static, BimApp> {
+    let leg = r#"{"types": {"A": {}}, "forms": [{"profile": [[-100, -100], [100, -100], [100, 100], [-100, 100]], "to": 500}]}"#;
+    let family = format!(
+        r#"family {{"name": "Mixed", "category": "generic", "types": {{"T": {{}}}}, "nested": [{{"name": "Leg", "family": {leg}}}], "nested_instances": [{{"family": "Leg", "type": "A", "at": [2500, 0]}}], "forms": [{{"profile": [[0, -250], [1000, -250], [1000, 250], [0, 250]], "to": 500}}, {{"void": true, "profile": [[200, -100], [800, -100], [800, 100], [200, 100]], "to": 500}}, {{"profile": [[4000, -250], [5000, -250], [5000, 250], [4000, 250]], "to": 500}}]}}"#
+    );
+    let mut h = app(&format!("{BOX}\n{family}"));
+    h.set_size(vec2(1600.0, 1000.0));
+    h.run();
+    h.state_mut().edit_family("Mixed");
+    h.run();
+    h
+}
+
+/// BX on `items`: the box it keeps.
+fn bx_on(h: &mut Harness<BimApp>, items: &[Picked]) -> Option<([f64; 3], [f64; 3])> {
+    super::family_drag_move::pick(h, items);
+    shortcut(h, "BX");
+    boxed(h)
+}
+
+#[test]
+fn bx_boxes_a_solid_a_void_cuts_a_nested_instance_and_both() {
+    let mut h = mixed();
+    let (lo, hi) = bx_on(&mut h, &[Picked::Form(0)]).expect("a solid a void cuts has a box");
+    assert!(lo[0] < 0.0 && (1000.0..2400.0).contains(&hi[0]), "{lo:?} {hi:?}");
+    let (lo, hi) = bx_on(&mut h, &[Picked::Nested(0)]).expect("a nested instance has a box");
+    assert!((1000.0..2400.0).contains(&lo[0]) && (2600.0..4000.0).contains(&hi[0]), "{lo:?} {hi:?}");
+    let (lo, hi) = bx_on(&mut h, &[Picked::Form(0), Picked::Nested(0)]).expect("both");
+    assert!(lo[0] < 0.0 && (2600.0..4000.0).contains(&hi[0]), "both whole, the far solid out: {lo:?} {hi:?}");
+}
+
+#[test]
+fn a_bx_that_boxes_nothing_keeps_the_box_and_says_why() {
+    let mut h = mixed();
+    let kept = bx_on(&mut h, &[Picked::Form(0)]).expect("a box");
+    // A reference plane alone: no form, no nested instance, so no box; the one there was stays, with a note saying so.
+    let after = bx_on(&mut h, &[Picked::Plane(super::family_drag_move::g(super::family_drag_move::CENTER_LR))]);
+    assert_eq!(after, Some(kept));
+    let status = h.state().status.clone();
+    assert!(status.error && status.text.contains("unchanged"), "{status:?}");
 }
 
 /// The pictures of FE-23a's PR: {3D} before and after BX on the first form, written to the folder `BIMCRAFT_FE23_DUMP` names.

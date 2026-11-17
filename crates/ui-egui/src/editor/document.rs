@@ -2160,6 +2160,10 @@ impl BimApp {
         if matches!(self.sheet, crate::Sheet::Family(_, None)) {
             out.push("Zoom to Fit");
         }
+        // FE-23a: Selection Box, from any of its views.
+        if ed.adaptive.is_none() {
+            out.push("Section Box");
+        }
         out.extend(["Properties", "Project Browser", "Keyboard Shortcuts"]);
         out
     }
@@ -2172,6 +2176,7 @@ impl BimApp {
         let temp = |category| super::temp_hide::Asked::Hide { category };
         let isolate = |category| super::temp_hide::Asked::Isolate { category };
         match action {
+            "Section Box" => self.family_selection_box(),
             "Delete" => {
                 let Some(ed) = self.active_family_mut() else { return false };
                 // A sketch's lines picked, else what is selected, as the Delete key does.
