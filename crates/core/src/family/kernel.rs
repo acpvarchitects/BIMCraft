@@ -8,12 +8,9 @@
 //! with exact beside the chorded regions the mesh is made of, for a kernel that builds them exactly.
 //!
 //! Where the trait doesn't fit the code yet (for the design note's review): a revolve's axis lies in its profile's plane, so
-//! it takes the frame too; booleans spend one budget a whole family's build shares ([`crate::csg::Meter`]), so a kernel
-//! carries it; a blend and a swept blend are recipes ([`Sections`]: two rings mapped by a twist, and a swept blend's path),
-//! not a list of placed sections; what a sweep or a revolve covers seen from above comes from how it was built
-//! ([`MeshSolid::plan`]), not from the solid; nothing builds a fuse yet (a join cuts), so the mesh kernel has none.
-
-use std::sync::Mutex;
+//! it takes the frame too; booleans spend one budget a whole family's build shares, so they take it ([`Budget`]); a blend and a swept blend are recipes ([`Sections`]: two rings mapped by a twist, and a swept blend's path),
+//! not a list of placed sections; what a sweep or a revolve covers seen from above comes from how it was built, so a solid
+//! keeps it for [`FormKernel::silhouette`]; nothing builds a fuse yet (a join cuts), so the mesh kernel has none.
 
 use crate::csg;
 use crate::geom::{P2, Region};
@@ -131,6 +128,12 @@ pub enum ExactFace {
     Plane { normal: P3, offset: f64, tris: Vec<[P3; 3]> },
 }
 
+/// What booleans may still cost, which one family's build spends together: today's [`csg::Meter`].
+pub type Budget = csg::Meter;
+
+/// What a solid covers seen from above: its outline (counter-clockwise) and its holes (clockwise).
+pub type Silhouette = (Vec<P2>, Vec<Vec<P2>>);
+
 /// What builds a family's forms. See the module's notes.
 pub trait FormKernel: Send + Sync {
     type Solid: Send + Sync + Clone;
@@ -142,10 +145,12 @@ pub trait FormKernel: Send + Sync {
     fn sweep(&self, profile: &Loops, path: &Path, host: &Frame) -> Result<Self::Solid, KernelError>;
     /// A blend's or a swept blend's solid.
     fn loft(&self, sections: &Sections) -> Result<Self::Solid, KernelError>;
-    /// `body` less `tool`.
-    fn cut(&self, body: &Self::Solid, tool: &Self::Solid) -> Result<Self::Solid, KernelError>;
-    /// `a` and `b` as one.
-    fn fuse(&self, a: &Self::Solid, b: &Self::Solid) -> Result<Self::Solid, KernelError>;
+    /// `body` less `tool`, spending `budget`.
+    fn cut(&self, body: &Self::Solid, tool: &Self::Solid, budget: &mut Budget) -> Result<Self::Solid, KernelError>;
+    /// `a` and `b` as one, spending `budget`.
+    fn fuse(&self, a: &Self::Solid, b: &Self::Solid, budget: &mut Budget) -> Result<Self::Solid, KernelError>;
+    /// What it covers seen from above, where it knows that (none: whoever asks works it out from its triangles).
+    fn silhouette(&self, s: &Self::Solid) -> Option<Silhouette>;
     /// Its least and greatest corners; none for a solid of nothing.
     fn bounds(&self, s: &Self::Solid) -> Option<[P3; 2]>;
     /// Its triangles, no chord longer off its surface than `chord` mm where it is curved.
@@ -162,23 +167,9 @@ pub struct MeshSolid {
     pub plan: Option<forms::Plan>,
 }
 
-/// Today's code behind the trait: see the module's notes. Its booleans spend the budget it carries.
-#[derive(Default)]
-pub struct MeshKernel {
-    meter: Mutex<csg::Meter>,
-}
-
-impl MeshKernel {
-    /// One that spends `meter` on its booleans, given back by [`MeshKernel::into_meter`].
-    pub fn metered(meter: csg::Meter) -> MeshKernel {
-        MeshKernel { meter: Mutex::new(meter) }
-    }
-
-    /// What is left of its budget.
-    pub fn into_meter(self) -> csg::Meter {
-        self.meter.into_inner().unwrap_or_else(std::sync::PoisonError::into_inner)
-    }
-}
+/// Today's code behind the trait: see the module's notes.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct MeshKernel;
 
 impl FormKernel for MeshKernel {
     type Solid = MeshSolid;
@@ -207,14 +198,17 @@ impl FormKernel for MeshKernel {
         Ok(MeshSolid { mesh: Mesh { caps: tris.len(), tris }, plan })
     }
 
-    fn cut(&self, body: &MeshSolid, tool: &MeshSolid) -> Result<MeshSolid, KernelError> {
-        let mut meter = self.meter.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-        let tris = csg::subtract(&body.mesh.tris, &tool.mesh.tris, &mut meter)?;
+    fn cut(&self, body: &MeshSolid, tool: &MeshSolid, budget: &mut Budget) -> Result<MeshSolid, KernelError> {
+        let tris = csg::subtract(&body.mesh.tris, &tool.mesh.tris, budget)?;
         Ok(MeshSolid { mesh: Mesh { caps: tris.len(), tris }, plan: body.plan.clone() })
     }
 
-    fn fuse(&self, _: &MeshSolid, _: &MeshSolid) -> Result<MeshSolid, KernelError> {
+    fn fuse(&self, _: &MeshSolid, _: &MeshSolid, _: &mut Budget) -> Result<MeshSolid, KernelError> {
         Err(KernelError("the mesh kernel joins no solids: a join cuts one by the other".into()))
+    }
+
+    fn silhouette(&self, s: &MeshSolid) -> Option<Silhouette> {
+        s.plan.clone()
     }
 
     fn bounds(&self, s: &MeshSolid) -> Option<[P3; 2]> {
@@ -266,20 +260,22 @@ mod tests {
 
     #[test]
     fn the_mesh_kernel_gives_a_boxs_bounds_six_faces_and_twelve_edges() {
-        let k = MeshKernel::default();
+        let k = MeshKernel;
+        let mut budget = Budget::default();
         let b = k.extrude(&square(), &Frame::LEVEL, 0.0, 50.0).unwrap();
         assert_eq!(k.bounds(&b), Some([[0.0, 0.0, 0.0], [100.0, 100.0, 50.0]]));
         assert_eq!(k.faces(&b).len(), 6);
         assert_eq!(k.edges(&b).len(), 12);
         assert_eq!(k.tessellate(&b, 0.5), b.mesh);
-        assert!(k.fuse(&b, &b).is_err(), "no fuse yet");
+        assert!(k.fuse(&b, &b, &mut budget).is_err(), "no fuse yet");
+        assert_eq!(k.silhouette(&b), None, "an extrusion's is worked out from its profile");
         // A box less a smaller one through it: a hole, so more faces.
         let small = Loops {
             regions: vec![Region { outer: vec![P2(25.0, 25.0), P2(75.0, 25.0), P2(75.0, 75.0), P2(25.0, 75.0)], holes: Vec::new() }],
             curves: Vec::new(),
         };
         let tool = k.extrude(&small, &Frame::LEVEL, -10.0, 60.0).unwrap();
-        let cut = k.cut(&b, &tool).unwrap();
+        let cut = k.cut(&b, &tool, &mut budget).unwrap();
         assert!(k.faces(&cut).len() > 6);
     }
 

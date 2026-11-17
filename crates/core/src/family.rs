@@ -2934,39 +2934,34 @@ impl Family {
         // Each solid cut by what cuts it ([`Family::cutters`]: the voids listed before it, as always, and what FE-16 adds) that
         // is built and reaches it. A cut solid is no longer one round surface, and its outline seen from above is as it was.
         // ponytail: a notch or a hole doesn't show in plan; trace it if it must.
-        // Through the mesh kernel (GEO-1), which spends `cuts`, given back however the cutting ends.
+        // Through the mesh kernel (GEO-1), spending `cuts`.
         use kernel::FormKernel;
-        let k = kernel::MeshKernel::metered(std::mem::take(cuts));
+        let k = kernel::MeshKernel;
         let solid_of = |tris: &Vec<[P3; 3]>| kernel::MeshSolid { mesh: kernel::Mesh { tris: tris.clone(), caps: 0 }, plan: None };
-        let cutting = (|| -> Result<(), String> {
-            for (piece, &form) in out.iter_mut().zip(&of) {
-                for by in self.cutters(form) {
-                    let Some(cutter) = voids.get(&by).or_else(|| solids.get(&by)) else { continue };
-                    let tris = k
-                        .cut(&solid_of(&piece.tris), &solid_of(cutter))
-                        .map(|s| s.mesh.tris)
-                        .map_err(|e| format!("form {}: {}", by + 1, e.0))?;
-                    if tris != piece.tris {
-                        let (bottom, top) = heights(&tris);
-                        *piece = Piece {
-                            caps: tris.len(),
-                            tris,
-                            bottom,
-                            top,
-                            round: false,
-                            outline: std::mem::take(&mut piece.outline),
-                            holes: std::mem::take(&mut piece.holes),
-                            material: std::mem::take(&mut piece.material),
-                            vis: piece.vis,
-                            nested: std::mem::take(&mut piece.nested),
-                        };
-                    }
+        for (piece, &form) in out.iter_mut().zip(&of) {
+            for by in self.cutters(form) {
+                let Some(cutter) = voids.get(&by).or_else(|| solids.get(&by)) else { continue };
+                let tris = k
+                    .cut(&solid_of(&piece.tris), &solid_of(cutter), cuts)
+                    .map(|s| s.mesh.tris)
+                    .map_err(|e| format!("form {}: {}", by + 1, e.0))?;
+                if tris != piece.tris {
+                    let (bottom, top) = heights(&tris);
+                    *piece = Piece {
+                        caps: tris.len(),
+                        tris,
+                        bottom,
+                        top,
+                        round: false,
+                        outline: std::mem::take(&mut piece.outline),
+                        holes: std::mem::take(&mut piece.holes),
+                        material: std::mem::take(&mut piece.material),
+                        vis: piece.vis,
+                        nested: std::mem::take(&mut piece.nested),
+                    };
                 }
             }
-            Ok(())
-        })();
-        *cuts = k.into_meter();
-        cutting?;
+        }
         out.retain(|p| !p.tris.is_empty());
         Ok(out)
     }
@@ -2994,7 +2989,7 @@ impl Family {
             mesh(&form.mesh, material)?
         } else if form.kind() != forms::FormKind::Extrusion && form.kind() != forms::FormKind::Revolve {
             let frame = self.frame(&form.host).map_err(|e| format!("its host: {e}"))?;
-            let (tris, plan) = forms::build(form, &frame, &mut num, &kernel::MeshKernel::default())?.unwrap_or_default();
+            let (tris, plan) = forms::build(form, &frame, &mut num, &kernel::MeshKernel)?.unwrap_or_default();
             let (bottom, top) = heights(&tris);
             // Seen from above: a sweep on a level plane, the band it covers; else the hull of what it builds.
             let (outline, holes) =
@@ -3008,7 +3003,7 @@ impl Family {
             let loops = kernel::Loops { regions, curves };
             let regions = &loops.regions;
             use kernel::FormKernel;
-            let k = kernel::MeshKernel::default();
+            let k = kernel::MeshKernel;
             let (from, to) = (num(&form.from)?, num(&form.to)?);
             if to <= from {
                 let unit = if form.revolves() { " degrees" } else { "" };
@@ -3022,7 +3017,8 @@ impl Family {
                     }
                     let axis = [P2(num(&p[0])?, num(&p[1])?), P2(num(&q[0])?, num(&q[1])?)];
                     let made = k.revolve(&loops, axis, &frame, from, to)?;
-                    let (tris, outline) = (made.mesh.tris, made.plan.map(|(o, _)| o).unwrap_or_default());
+                    let outline = k.silhouette(&made).map(|(o, _)| o).unwrap_or_default();
+                    let tris = made.mesh.tris;
                     let (bottom, top) = heights(&tris);
                     Piece {
                         caps: tris.len(),

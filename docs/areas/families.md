@@ -2067,7 +2067,7 @@ planes, components hosted on them or on faces (Place on Face), and where a compo
 - `family/sketch.rs`: forms' sketches. `family/handles.rs`: shape handles on a profile's edges (FE-5).
 - `family/forms.rs`: Blend, Sweep and Swept Blend: their kinds, paths, vertex mapping and triangles.
 - `family/kernel.rs`: what the forms are built through (GEO-1: the design note `docs/brep-plan.md`, #74): the `FormKernel`
-  trait (extrude, revolve, sweep, loft, cut, fuse, bounds, tessellate, edges, faces) over BIMCraft's own types (`Loops` and
+  trait (extrude, revolve, sweep, loft, cut and fuse spending a `Budget`, bounds, silhouette, tessellate, edges, faces) over BIMCraft's own types (`Loops` and
   `Path`, which keep the arcs and circles drawn exact beside the chorded regions; `Sections`, a blend's and a swept blend's
   recipe), and `MeshKernel`, the code that built them before, behind it bit for bit (`family_kernel_tests` hashes every
   piece of the sample, the starter fixtures and forms of every kind).
