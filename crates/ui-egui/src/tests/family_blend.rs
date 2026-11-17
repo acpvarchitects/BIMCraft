@@ -261,3 +261,31 @@ fn family_blend_screenshots() {
     button(&mut h, "Cancel Edit Mode");
     button(&mut h, "Cancel Edit Mode");
 }
+
+/// FE-27b: a Blend says what comes next. Its base not yet closed, the shape's own prompt; closed, Edit Top; on the top, to
+/// draw it at the Second End and Finish; a Finish with no top puts the top on screen, its base drawn grey under it.
+#[test]
+fn a_blend_says_edit_top_once_its_base_closes_and_finish_on_the_top() {
+    let mut h = open();
+    view(&mut h, Some(Which::Plan));
+    button(&mut h, "Blend");
+    let said = |h: &Harness<BimApp>| {
+        let ed = editor(h);
+        crate::editor::sketch::prompt(ed.sketch.as_ref().unwrap(), &ed.views.modify_options).to_string()
+    };
+    assert!(!said(&h).contains("Edit Top"), "nothing drawn yet: {}", said(&h));
+    // A base of three lines, open: not yet.
+    button(&mut h, "Line");
+    for q in [P2(-500.0, -500.0), P2(500.0, -500.0), P2(500.0, 500.0), P2(-500.0, 500.0)] {
+        click_plane(&mut h, q);
+    }
+    assert!(!said(&h).contains("Edit Top"), "open: {}", said(&h));
+    // Closed: Edit Top is next.
+    click_plane(&mut h, P2(-500.0, -500.0));
+    assert!(said(&h).contains("Edit Top"), "closed: {}", said(&h));
+    // A Finish with no top: refused, the top on screen and its prompt, the base waiting grey on its own plane.
+    button(&mut h, "Finish Edit Mode");
+    assert_eq!(title(&h), "Modify | Create Blend Top Boundary");
+    assert!(said(&h).contains("Second End") && said(&h).contains("Finish Edit Mode"), "{}", said(&h));
+    assert_eq!(editor(&h).other_parts().len(), 1, "the base, grey");
+}
