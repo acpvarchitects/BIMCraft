@@ -2,7 +2,8 @@
 //! of every family here, for each of its types, hashed bit for bit (its triangles, caps, outline, holes, heights, roundness,
 //! material and Visibility Settings) and held to the hash the code made before the kernel was put between it and the forms.
 //! The families: the sample house's, the starter fixtures, and forms of every kind (extrusions with arcs and holes, a
-//! revolve, blends, sweeps along a bent path, an arc and a circle, swept blends, and voids and solids cutting them).
+//! revolve, blends, sweeps along a bent path, an arc and a circle, swept blends, voids and solids cutting them, a join, a
+//! void through `cut_by` and one kept off by `uncut_by`, flexed by their types), and what a door cuts in its wall.
 
 use std::collections::BTreeMap;
 
@@ -42,6 +43,17 @@ fn hash_family(h: &mut Fnv, name: &str, f: &Family) {
             h.bytes(b"no values");
             continue;
         };
+        // What it cuts in its host, where it is hosted.
+        match f.host_voids(&values) {
+            Err(e) => h.bytes(e.as_bytes()),
+            Ok(voids) => {
+                h.n(voids.len());
+                for v in &voids {
+                    h.n(v.len());
+                    v.iter().flatten().flatten().for_each(|x| h.f(*x));
+                }
+            }
+        }
         match f.pieces(&values) {
             Err(e) => h.bytes(e.as_bytes()),
             Ok(pieces) => {
@@ -90,6 +102,23 @@ fn rect(x0: f64, y0: f64, x1: f64, y1: f64) -> Vec<Value> {
     vec![line([x0, y0], [x1, y0]), line([x1, y0], [x1, y1]), line([x1, y1], [x0, y1]), line([x0, y1], [x0, y0])]
 }
 
+/// A form's GUID, the `n`th of these.
+fn guid(n: u32) -> String {
+    format!("9e01c000-0000-4000-8000-{n:012}")
+}
+
+/// A square `w` (a formula) across, its corner at (300, 300).
+fn square_of(w: &str) -> Vec<Value> {
+    let (a, b) = (json!(300), json!(format!("300 + {w}")));
+    let at = |x: &Value, y: &Value| json!([x, y]);
+    vec![
+        json!({"start": at(&a, &a), "end": at(&b, &a)}),
+        json!({"start": at(&b, &a), "end": at(&b, &b)}),
+        json!({"start": at(&b, &b), "end": at(&a, &b)}),
+        json!({"start": at(&a, &b), "end": at(&a, &a)}),
+    ]
+}
+
 /// Forms of every kind, each a family of its own with two types.
 fn kinds() -> Vec<(&'static str, Value)> {
     let mut rounded = rect(-500.0, -300.0, 300.0, 300.0);
@@ -121,6 +150,30 @@ fn kinds() -> Vec<(&'static str, Value)> {
             "swept blend along an arc",
             json!([{"sketch": [arc([1000.0, 0.0], [0.0, 1000.0], 90.0)], "sweep": {"profile": rect(-100.0, 0.0, 100.0, 200.0), "end": [{"centre": [0, 100], "radius": 50}]}}]),
         ),
+        // FE-16's cuts beyond the list's order, sized by W so the two types flex them: a solid joined to another, a void
+        // listed before the solid it cuts (`cut_by`), and a void listed after one it doesn't (`uncut_by`).
+        (
+            "a join",
+            json!([
+                {"guid": guid(1), "sketch": rect(0.0, 0.0, 1000.0, 1000.0), "from": 0, "to": 100, "joined_by": [guid(2)]},
+                {"guid": guid(2), "sketch": square_of("W"), "from": 50, "to": 150}
+            ]),
+        ),
+        (
+            "a void cutting through cut_by",
+            json!([
+                {"guid": guid(3), "sketch": square_of("W"), "from": -10, "to": 110, "void": true},
+                {"guid": guid(4), "sketch": rect(0.0, 0.0, 1000.0, 1000.0), "from": 0, "to": 100, "cut_by": [guid(3)]}
+            ]),
+        ),
+        (
+            "a void kept off by uncut_by",
+            json!([
+                {"guid": guid(5), "sketch": rect(0.0, 0.0, 1000.0, 1000.0), "from": 0, "to": 100, "uncut_by": [guid(6)]},
+                {"guid": guid(7), "sketch": rect(0.0, 0.0, 1000.0, 1000.0), "from": 200, "to": 300},
+                {"guid": guid(6), "sketch": square_of("W"), "from": -10, "to": 310, "void": true}
+            ]),
+        ),
         (
             "voids and a solid cutting",
             json!([
@@ -147,6 +200,21 @@ fn built() -> u64 {
         )
         .unwrap_or_else(|e| panic!("{name}: {e}"));
     }
+    // A door: its leaf, and the opening it cuts in its wall, sized by Width.
+    s.execute(
+        "family",
+        &json!({"name": "a door's wall void", "category": "door",
+        "parameters": [{"name": "Width", "value": 900}, {"name": "Height", "value": 2100}],
+        "types": {"A": {}, "B": {"Width": 800}},
+        "forms": [
+            {"sketch": rect(0.0, -20.0, 900.0, 20.0), "from": 0, "to": 2100},
+            {"sketch": [
+                {"start": [0, -200], "end": ["Width", -200]}, {"start": ["Width", -200], "end": ["Width", 200]},
+                {"start": ["Width", 200], "end": [0, 200]}, {"start": [0, 200], "end": [0, -200]}
+            ], "from": 0, "to": "Height", "void": true, "cuts": "host"}
+        ]}),
+    )
+    .unwrap_or_else(|e| panic!("door: {e}"));
     let mut families: Vec<(String, Family)> = s.model.families.iter().map(|(n, f)| (n.clone(), f.clone())).collect();
     for (name, def) in crate::fixtures::library(crate::language::Language::English) {
         if let Ok(f) = serde_json::from_value::<Family>(def) {
@@ -162,6 +230,11 @@ fn built() -> u64 {
             let pieces = f.pieces(&values).unwrap_or_else(|e| panic!("{name} {t}: {e}"));
             assert!(!pieces.is_empty() && pieces.iter().all(|p| !p.tris.is_empty()), "{name} {t} builds pieces");
         }
+    }
+    let door = &s.model.families["a door's wall void"];
+    for t in door.types.keys() {
+        let values = door.values(t, &BTreeMap::new()).unwrap();
+        assert_eq!(door.host_voids(&values).unwrap().len(), 1, "the door cuts its wall, type {t}");
     }
     let (mut forms, mut built, mut errors) = (0, 0, 0);
     for (name, f) in &families {
@@ -180,8 +253,8 @@ fn built() -> u64 {
     h.0
 }
 
-/// What `built` came to before `MeshKernel`, on followups f1c1a64a.
-const BEFORE: u64 = 0x013c_6ea1_1c31_54d0;
+/// What `built` came to before `MeshKernel`, on followups f1c1a64a (this file run there).
+const BEFORE: u64 = 0x1398_ea93_dcfb_0c31;
 
 #[test]
 fn every_form_builds_bit_for_bit_as_before_the_kernel() {
