@@ -58,19 +58,23 @@ fn bx_cuts_3d_to_a_box_round_the_form_selected_and_bx_on_nothing_takes_it_away()
 fn the_inactive_3d_tile_draws_the_box_too() {
     let (mut h, pictures) = cabinet();
     let doc = h.state().active_doc().unwrap();
+    // The first form selected in {3D}, and the tile drawn with that selection, before BX: the same selection on both sides.
+    press(&mut h, "1. Extrusion");
     super::family_views::view(&mut h, Some(Which::Plan));
     shortcut(&mut h, "WT");
     h.run();
     let whole = tile(&h, &pictures);
     h.state_mut().open_sheet(Sheet::Family(doc, None));
     h.run();
-    press(&mut h, "1. Extrusion");
+    assert!(!h.state().active_family().unwrap().selected_3d().is_empty(), "still selected");
     shortcut(&mut h, "BX");
     assert!(boxed(&h).is_some());
     super::family_views::view(&mut h, Some(Which::Plan));
     h.run();
     let cut = tile(&h, &pictures);
-    assert!(differ(&whole, &cut).len() > 500, "the tile is drawn again, cut to the box");
+    let ground = whole.pixels[0];
+    let gone = differ(&whole, &cut);
+    assert!(gone.iter().filter(|&&i| cut.pixels[i] == ground).count() > 200, "BX took the second form out of the tile");
 }
 
 #[test]
