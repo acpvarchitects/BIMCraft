@@ -154,12 +154,29 @@ fn built() -> u64 {
         }
     }
     families.sort_by(|a, b| a.0.cmp(&b.0));
-    let mut kinds_seen = 0;
+    // Each hand-made kind builds, both its types, into pieces: an error hashes too, so one that didn't would prove nothing.
+    for (name, _) in kinds() {
+        let f = &s.model.families[name];
+        for t in f.types.keys() {
+            let values = f.values(t, &BTreeMap::new()).unwrap_or_else(|e| panic!("{name} {t}: {e}"));
+            let pieces = f.pieces(&values).unwrap_or_else(|e| panic!("{name} {t}: {e}"));
+            assert!(!pieces.is_empty() && pieces.iter().all(|p| !p.tris.is_empty()), "{name} {t} builds pieces");
+        }
+    }
+    let (mut forms, mut built, mut errors) = (0, 0, 0);
     for (name, f) in &families {
-        kinds_seen += f.forms.len();
+        forms += f.forms.len();
+        for t in f.types.keys() {
+            match f.values(t, &BTreeMap::new()).map(|v| f.pieces(&v)) {
+                Ok(Ok(p)) => built += p.len(),
+                _ => errors += 1,
+            }
+        }
         hash_family(&mut h, name, f);
     }
-    assert!(families.len() > 20 && kinds_seen > 40, "{} families, {kinds_seen} forms: the set is what it should be", families.len());
+    assert!(families.len() > 20 && forms > 40, "{} families, {forms} forms: the set is what it should be", families.len());
+    // Most of it builds: the hash is of pieces, the few types that can't build (a fixture's on its own) hashing their errors.
+    assert!(built > 100 && errors * 10 < built, "{built} pieces built, {errors} types refused");
     h.0
 }
 
