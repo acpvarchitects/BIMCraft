@@ -243,4 +243,42 @@ mod tests {
         assert!(open(&mut s, NEW, None));
         assert!(!filled_in_3d(&s, walls[0], &Look::of_3d(&s.model)));
     }
+
+    /// The pictures of T25's PR: a house whose south wall has a door taken down and replaced in New Construction, a new door
+    /// in it and a window taken down in the east wall, in plan through each phase filter, a section and the 3D view; written
+    /// to the folder `BIMCRAFT_T25_DUMP` names, and nothing without it.
+    #[test]
+    fn t25_screenshots() {
+        let Ok(dir) = std::env::var("BIMCRAFT_T25_DUMP") else { return };
+        let mut s = Session::new();
+        house(&mut s);
+        let old = door(&mut s, None);
+        run(&mut s, "modify", json!({"id": old, "params": {"Phase Demolished": NEW}}));
+        door(&mut s, Some(NEW));
+        s.phase = Some(NEW.into());
+        run(&mut s, "door", json!({"at": [5500, 0]}));
+        s.phase = None;
+        let window = id(run(&mut s, "window", json!({"at": [8000, 3000]})));
+        run(&mut s, "modify", json!({"id": window, "params": {"Phase Demolished": NEW}}));
+        run(&mut s, "section", json!({"start": [2000, -1500], "end": [2000, 1500]}));
+        let shots: [(&str, &str, Option<&str>); 5] = [
+            ("existing", "Existing", None),
+            ("demolition", NEW, Some("Show Previous + Demolished")),
+            ("new", NEW, Some("Show Previous + New")),
+            ("complete", NEW, Some("Show Complete")),
+            ("all", NEW, Some("Show All")),
+        ];
+        for (name, phase, filter) in shots {
+            for view in ["Level 1", "Section 1", "{3D}"] {
+                run(&mut s, "graphics", json!({"view": view, "phase": phase, "phase_filter": filter}));
+                let file = format!("{dir}/{}-{name}.png", view.replace(['{', '}', ' '], ""));
+                let mut p = json!({"view": view, "width": 1000, "height": 700, "path": file});
+                if view == "{3D}" {
+                    p["azimuth"] = json!(200);
+                    p["elevation"] = json!(15);
+                }
+                run(&mut s, "render", p);
+            }
+        }
+    }
 }
