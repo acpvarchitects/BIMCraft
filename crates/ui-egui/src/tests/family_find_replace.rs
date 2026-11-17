@@ -90,4 +90,23 @@ fn find_replace_is_keyless_in_the_family_and_listed_in_keyboard_shortcuts() {
     assert!(crate::editor::keys::FAMILY_KEYLESS.contains(&"Find/Replace"));
     assert!(crate::shortcuts::ACTIONS.contains(&"Find/Replace"));
     assert!(crate::editor::keys::FAMILY_SHORTCUTS.iter().all(|(k, a)| *k != "FR" || *a != "Find/Replace"));
+    // A key Keyboard Shortcuts gives it runs it through the family's table, and Find Actions offers it.
+    let mut h = open();
+    assert!(h.state_mut().family_action("Find/Replace"));
+    h.run();
+    assert!(h.state().active_family().unwrap().finding());
+    press(&mut h, "Close");
+    assert!(h.state().family_find_actions().contains(&"Find/Replace"));
+}
+
+#[test]
+fn a_brace_in_what_replaces_it_is_refused() {
+    let mut h = open();
+    let before = texts(&h);
+    ask(&mut h, "Door", "{Width}", false, true);
+    press(&mut h, "Replace All");
+    let status = h.state().status.clone();
+    assert!(status.error && status.text.contains('{'), "{status:?}");
+    press(&mut h, "Close");
+    assert_eq!(texts(&h), before);
 }

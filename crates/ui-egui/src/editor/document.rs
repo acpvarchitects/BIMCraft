@@ -839,14 +839,17 @@ impl BimApp {
                         if big_button(ui, Icon::Text, "Text", false, tip).clicked() {
                             ed.add_symbol(Part::Text);
                         }
+                        // FE-23b: Find/Replace in the family's text, as Revit's beside Text; greyed while a form is sketched, as
+                        // its keyboard path is.
+                        let tip = msg!("Find/Replace: find text in the family's labels, and replace it");
+                        let free = ed.sketch.is_none();
+                        let find = ui.add_enabled_ui(free, |ui| big_button(ui, Icon::Text, msg!("Find/Replace"), false, tip)).inner;
+                        if find.on_disabled_hover_text(t("Finish or cancel the sketch first.")).clicked() {
+                            ed.open_find_replace();
+                        }
                         let tip = msg!("Dot: a filled circle the family's plans draw");
                         if big_button(ui, Icon::PointElement, msg!("Dot"), false, tip).clicked() {
                             ed.add_symbol(Part::Dot);
-                        }
-                        // FE-23b: Find/Replace in the family's text, as Revit's beside Text.
-                        let tip = msg!("Find/Replace: find text in the family's labels, and replace it");
-                        if big_button(ui, Icon::Text, msg!("Find/Replace"), false, tip).clicked() {
-                            ed.open_find_replace();
                         }
                     });
                 }
@@ -2166,6 +2169,10 @@ impl BimApp {
         if matches!(self.sheet, crate::Sheet::Family(_, None)) {
             out.push("Zoom to Fit");
         }
+        // FE-23b: Find/Replace on its text, outside a sketch.
+        if ed.adaptive.is_none() && ed.sketch.is_none() {
+            out.push("Find/Replace");
+        }
         out.extend(["Properties", "Project Browser", "Keyboard Shortcuts"]);
         out
     }
@@ -2178,6 +2185,11 @@ impl BimApp {
         let temp = |category| super::temp_hide::Asked::Hide { category };
         let isolate = |category| super::temp_hide::Asked::Isolate { category };
         match action {
+            "Find/Replace" => {
+                if let Some(ed) = self.active_family_mut() {
+                    ed.open_find_replace();
+                }
+            }
             "Delete" => {
                 let Some(ed) = self.active_family_mut() else { return false };
                 // A sketch's lines picked, else what is selected, as the Delete key does.

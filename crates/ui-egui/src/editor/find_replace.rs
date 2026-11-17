@@ -96,6 +96,14 @@ impl FamilyEditor {
             });
         });
         let mut said = None;
+        // A brace in what goes in would name a parameter, or leave one open that hides the rest of the text from later finds.
+        if replace_all && (d.with.contains('{') || d.with.contains('}')) {
+            said = Some(Said {
+                text: t("Find/Replace: what replaces it can't hold { or }, which name a parameter.").to_string(),
+                error: true,
+            });
+            replace_all = false;
+        }
         if find_all || replace_all {
             let found: Vec<usize> = self
                 .symbols
@@ -148,5 +156,10 @@ mod tests {
         assert_eq!(replaced("aaa", "aa", "b", true, false), ("ba".into(), 1));
         assert_eq!(replaced("x", "", "b", true, false), ("x".into(), 0));
         assert_eq!(replaced("Ünïcode ünïcode", "ÜNÏCODE", "u", false, true), ("u u".into(), 2));
+        // An underscore or a digit is part of a word: no whole word there.
+        assert_eq!(replaced("a_Door Door1 Door", "Door", "X", true, true), ("a_Door Door1 X".into(), 1));
+        assert_eq!(replaced("a_Door Door1 Door", "Door", "X", true, false), ("a_X X1 X".into(), 3));
+        // A brace already in the text stays where it is, and what follows it past the closing one is found again.
+        assert_eq!(replaced("{Door} Door", "Door", "X", true, true), ("{Door} X".into(), 1));
     }
 }
