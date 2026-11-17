@@ -326,6 +326,7 @@ impl FamilyEditor {
     pub(crate) fn modal(&self) -> bool {
         self.dialog.is_some()
             || self.purging()
+            || self.finding()
             || self.associating.is_some()
             || self.views.unsatisfied.is_some()
             || self.views.creating.is_some()
@@ -841,6 +842,11 @@ impl BimApp {
                         let tip = msg!("Dot: a filled circle the family's plans draw");
                         if big_button(ui, Icon::PointElement, msg!("Dot"), false, tip).clicked() {
                             ed.add_symbol(Part::Dot);
+                        }
+                        // FE-23b: Find/Replace in the family's text, as Revit's beside Text.
+                        let tip = msg!("Find/Replace: find text in the family's labels, and replace it");
+                        if big_button(ui, Icon::Text, msg!("Find/Replace"), false, tip).clicked() {
+                            ed.open_find_replace();
                         }
                     });
                 }
@@ -2387,6 +2393,10 @@ impl BimApp {
         ed.visibility_dialog(ctx);
         // FE-19: Manage > Purge Unused, on the draft.
         ed.purge_dialog(ctx);
+        // FE-23b: Annotate > Find/Replace, on the family's text.
+        if let Some(said) = ed.find_replace_dialog(ctx) {
+            self.status = Status { text: said.text, error: said.error };
+        }
         // FE-20: Filter, Select by ID and IDs of Selection.
         if let Some(said) = ed.selection_dialogs(ctx) {
             self.status = said;

@@ -134,6 +134,7 @@ pub(crate) const FAMILY_KEYLESS: &[&str] = &[
     "Uncut Geometry",
     "Unjoin Geometry",
     "Switch Join Order",
+    "Find/Replace",
 ];
 
 /// Whether `action` is a command the family document has: one its table gives a key, or one it has with none.
@@ -402,6 +403,8 @@ impl BimApp {
             "Object Styles" if !sketching => ed.ask.manage = Some(super::Manage::ObjectStyles),
             "Materials" if !sketching => ed.ask.manage = Some(super::Manage::Materials),
             "Purge Unused" if !sketching => ed.ask.manage = Some(super::Manage::Purge),
+            // FE-23b: Annotate's Find/Replace, on the family's text; keyless, as the project's FR is Filled Region.
+            "Find/Replace" if !sketching && ordinary => ed.open_find_replace(),
             "Project Units" if !sketching => {
                 ed.doc_tab = super::DocTab::Manage;
                 self.open_units = true;
