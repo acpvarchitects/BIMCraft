@@ -45,6 +45,8 @@ pub(crate) const FAMILY_SHORTCUTS: &[(&str, &str)] = &[
     ("CG", "Cancel Edit Mode"),
     ("KS", "Keyboard Shortcuts"),
     ("CH", "Close Inactive Views"),
+    ("TW", "Tab Windows"),
+    ("WT", "Tile Windows"),
     ("RC", "Repeat Last Command"),
     ("3D", "3D View"),
     ("ZE", "Zoom to Fit"),
@@ -245,6 +247,12 @@ impl BimApp {
         }
         // What the window does for the document: its palettes, dialogs and the view's Temporary Hide/Isolate.
         let asked = match action {
+            "Tab Windows" | "Tile Windows" => {
+                if let Some(ed) = self.active_family_mut() {
+                    ed.views.tiled = action == "Tile Windows";
+                }
+                return true;
+            }
             "Close Inactive Views" => {
                 self.close_inactive_family_views();
                 return true;
