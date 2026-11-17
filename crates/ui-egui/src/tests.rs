@@ -7376,6 +7376,7 @@ mod family_drag_move;
 mod family_draw_snaps;
 mod family_edges_not_hull;
 mod family_exit;
+mod family_find_replace;
 mod family_handle_params;
 mod family_handle_review;
 mod family_handle_snap;

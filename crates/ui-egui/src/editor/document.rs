@@ -327,6 +327,7 @@ impl FamilyEditor {
     pub(crate) fn modal(&self) -> bool {
         self.dialog.is_some()
             || self.purging()
+            || self.finding()
             || self.associating.is_some()
             || self.views.unsatisfied.is_some()
             || self.views.creating.is_some()
@@ -838,6 +839,14 @@ impl BimApp {
                         let tip = msg!("Text: a label the family's plans draw");
                         if big_button(ui, Icon::Text, "Text", false, tip).clicked() {
                             ed.add_symbol(Part::Text);
+                        }
+                        // FE-23b: Find/Replace in the family's text, as Revit's beside Text; greyed while a form is sketched, as
+                        // its keyboard path is.
+                        let tip = msg!("Find/Replace: find text in the family's labels, and replace it");
+                        let free = ed.sketch.is_none();
+                        let find = ui.add_enabled_ui(free, |ui| big_button(ui, Icon::Text, msg!("Find/Replace"), false, tip)).inner;
+                        if find.on_disabled_hover_text(t("Finish or cancel the sketch first.")).clicked() {
+                            ed.open_find_replace();
                         }
                         let tip = msg!("Dot: a filled circle the family's plans draw");
                         if big_button(ui, Icon::PointElement, msg!("Dot"), false, tip).clicked() {
@@ -2165,6 +2174,10 @@ impl BimApp {
         if ed.adaptive.is_none() {
             out.push("Section Box");
         }
+        // FE-23b: Find/Replace on its text, outside a sketch.
+        if ed.adaptive.is_none() && ed.sketch.is_none() {
+            out.push("Find/Replace");
+        }
         out.extend(["Properties", "Project Browser", "Keyboard Shortcuts"]);
         out
     }
@@ -2178,6 +2191,11 @@ impl BimApp {
         let isolate = |category| super::temp_hide::Asked::Isolate { category };
         match action {
             "Section Box" => self.family_selection_box(),
+            "Find/Replace" => {
+                if let Some(ed) = self.active_family_mut() {
+                    ed.open_find_replace();
+                }
+            }
             "Delete" => {
                 let Some(ed) = self.active_family_mut() else { return false };
                 // A sketch's lines picked, else what is selected, as the Delete key does.
@@ -2396,6 +2414,10 @@ impl BimApp {
         ed.visibility_dialog(ctx);
         // FE-19: Manage > Purge Unused, on the draft.
         ed.purge_dialog(ctx);
+        // FE-23b: Annotate > Find/Replace, on the family's text.
+        if let Some(said) = ed.find_replace_dialog(ctx) {
+            self.status = Status { text: said.text, error: said.error };
+        }
         // FE-20: Filter, Select by ID and IDs of Selection.
         if let Some(said) = ed.selection_dialogs(ctx) {
             self.status = said;
