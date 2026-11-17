@@ -170,6 +170,10 @@ sketch forms (F5 and F6, below). Each of the six has an icon of its own (`icons.
 round top, a ring on its axis, a tube, a horn, a solid in dots), and a selected form's Properties are headed by its tool's
 (`FormText::icon`); Model Text, Connector and Show have theirs too, and Reference Plane and Set the project's own tools'.
 Undo and Redo are the document's own (`Draft`), and never undo the project.
+Find/Replace, beside Text on Annotate's Detail panel (FE-23b, `editor/find_replace.rs`), works on the family's text as Revit's
+on a project's: Find and Replace with, Match case, Match whole word only; Find All selects the texts it is found in, Replace All
+replaces it in every one, the dialog's visit one step of the history. What a text names in braces (`{Width}`, a parameter) is
+neither found nor changed. It has no key: the project's FR is Filled Region; Keyboard Shortcuts gives it one.
 Family Types is Revit's (`editor/types_dialog.rs`): Type name, a drop-down of the types with New Type (a name asked, the type
 shown copied), Rename Type and Delete Type (refused for the last, saying why); Search parameters (by name, case aside); one table,
 Parameter, Value, Formula and Lock, under the groups' headings in `Group::ALL`'s order (the Properties palette's), each folding.
