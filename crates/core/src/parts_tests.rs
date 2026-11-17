@@ -589,6 +589,10 @@ fn walls_that_join_give_their_parts_their_ends_and_curved_ones_their_bow() {
     assert!(area <= face && area > 0.999 * face, "{area} of {face}");
     let ring = (radius - 240.0) * sweep * 20.0 * 3000.0;
     assert!((volume - ring).abs() < 0.002 * ring, "{volume} of {ring}");
+    // Its interior plaster is measured on the interior face, the arc on the other side of the wall.
+    let (_, area, _) = measured(&s.model, s.model.parts_of(bow)[2]);
+    let face = (radius + 250.0) * sweep * 3000.0;
+    assert!(area <= face && area > 0.999 * face, "{area} of {face}");
 }
 
 #[test]
@@ -750,6 +754,15 @@ fn a_roofs_a_ceilings_and_a_components_part_have_their_solids_too() {
     let (tris, area, v) = measured(&s.model, plaster);
     assert!(near(area, 7800.0 * 5800.0) && near(v, 7800.0 * 5800.0 * 15.0));
     assert!(near(extent(&tris).0[2], 2600.0) && near(extent(&tris).1[2], 2615.0));
+    // Measured on the face it shows, the underside, as a wall's interior plaster is on the wall's interior face; the
+    // laths above it, the structure, on their top.
+    let lath = put(&mut s, |m| BuildingPart::new(m.guid(ceiling), Source::Layer(layer(m, "ceiling", "Lath and Plaster", 0))));
+    let face = |m: &Model, id: Id| match m.elements.get(id) {
+        Some(Element::Part(p)) => m.part_facing(p).unwrap(),
+        _ => panic!("part {id} is gone"),
+    };
+    assert_eq!(face(&s.model, plaster), Some(solid::Facing::Along(vec![[0.0, 0.0, -1.0]])));
+    assert_eq!(face(&s.model, lath), Some(solid::Facing::Along(vec![[0.0, 0.0, 1.0]])));
     // A component is all of itself: its family's forms where it stands, a volume and no face to name.
     let fixture = put(&mut s, |m| BuildingPart::new(m.guid(wc), Source::Whole));
     let p = part(&s.model, fixture);
@@ -949,7 +962,7 @@ fn a_parts_values_are_fields_read_by_name_as_any_elements() {
     let kind = |name: &str| fields.iter().find(|(n, _)| n == name).unwrap().1;
     assert_eq!(
         [kind("SU_Code"), kind("Decay_Severity"), kind("Net Area"), kind("Net Volume"), kind("Thickness"), kind("Excluded")],
-        [Kind::Text, Kind::Number, Kind::Area, Kind::Number, Kind::Length, Kind::YesNo]
+        [Kind::Text, Kind::Number, Kind::Area, Kind::Volume, Kind::Length, Kind::YesNo]
     );
     // The heritage set's names are the ones it is shown by everywhere.
     assert!(Heritage::NAMES.iter().all(|n| names.contains(n)));
@@ -967,7 +980,7 @@ fn a_parts_values_are_fields_read_by_name_as_any_elements() {
     );
     assert_eq!(
         of(ids[0], &["Thickness", "Net Area", "Net Volume", "Predefined Type", "Excluded"]),
-        some(&["20", "12.00", "0.24", "notdefined", "No"])
+        some(&["20", "12.00", "0.240", "notdefined", "No"])
     );
     assert_eq!(of(ids[0], &["Object Type", "Conflict", "Phase Demolished"]), [None, None, None]);
     assert_eq!(text(ids[2], "Decay_Pathology").as_deref(), Some("Lacuna in the fresco"));
@@ -975,15 +988,15 @@ fn a_parts_values_are_fields_read_by_name_as_any_elements() {
     // A part of all of a plain wall: no layer, no function, no material its type names.
     assert_eq!(
         of(whole, &["Layer", "Function", "Material", "Thickness", "Net Volume"]),
-        [None, None, None, Some("200".into()), Some("2.4".into())]
+        [None, None, None, Some("200".into()), Some("2.400".into())]
     );
     assert_eq!(text(wall, "SU_Code"), None, "a wall has no such field");
     // A name a part has of its own is no name for a project parameter of parts.
     let mut t = s.clone();
     let e = fails(&mut t, "parameter", json!({"name": "SU_Code", "categories": ["part"]}));
     assert!(e.contains("parts have a `SU_Code` of their own; name it otherwise"), "{e}");
-    // There is no schedule of parts yet: only their values by name.
-    assert!(!schedule::categories().contains(&"part") && !schedule::built().contains(&"part"));
+    // Parts are a category schedules are of (`parts_schedule_tests.rs`), and none a multi-category one lists.
+    assert!(schedule::categories().contains(&"part") && !schedule::built().contains(&"part"));
 }
 
 #[test]
@@ -1572,4 +1585,32 @@ fn a_materials_weight_and_heat_are_numbers_above_nothing_and_within_reason() {
         x.conductivity = Some(f64::NAN);
     }
     assert_eq!(m.check().unwrap_err(), "material `Lime Plaster`: conductivity is W/(m·K), above 0 and at most 10000, not NaN");
+}
+
+/// A wall's part is measured on its own side of the wall: a layer outside the wall's structure on its exterior face, one
+/// inside it on its interior face, and the structure, as a single layer is, on its exterior face. Round a room's corner
+/// the interior plaster's face is the shorter by the wall's thickness.
+#[test]
+fn a_wall_part_is_measured_on_the_face_of_its_own_side() {
+    let mut s = Session::new();
+    run(
+        &mut s,
+        "type",
+        json!({"category": "wall", "name": "Three", "layers": [
+            {"function": "finish", "thickness": 20}, {"function": "structure", "thickness": 460}, {"function": "finish", "thickness": 15}
+        ]}),
+    );
+    // Drawn clockwise, so each wall's exterior, its left, is outside the room.
+    let walls = made(&run(
+        &mut s,
+        "wall",
+        json!({"points": [[0, 0], [0, 6000], [8000, 6000], [8000, 0]], "closed": true, "type": "Three", "height": 3000}),
+    ));
+    let west = walls[0];
+    run(&mut s, "create_parts", json!({"ids": [west]}));
+    let listed = run(&mut s, "parts", json!({"host": west}));
+    let areas: Vec<f64> = listed["parts"].as_array().unwrap().iter().map(|p| p["area_m2"].as_f64().unwrap()).collect();
+    // 6 m between the axes' corners, the wall 495 mm thick: outside 6.495 m long, its masonry's outer face 6.455 m, the
+    // room's face 5.505 m.
+    assert_eq!(areas, [19.485, 19.365, 16.515]);
 }

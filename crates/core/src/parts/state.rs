@@ -28,6 +28,44 @@ pub struct PartState {
     pub conflict: Option<String>,
 }
 
+/// An element's own coordinates ([`Model::element_frame`]): its origin in the model, and its x, level and of length one. Its
+/// y is its x turned a quarter counter-clockwise, its z the model's.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct HostFrame {
+    pub origin: P3,
+    pub x: P2,
+}
+
+impl HostFrame {
+    /// A model point in its coordinates.
+    pub fn local(&self, p: P3) -> P3 {
+        let d = [p[0] - self.origin[0], p[1] - self.origin[1], p[2] - self.origin[2]];
+        self.turned(d, -1.0)
+    }
+
+    /// A point in its coordinates, in the model.
+    pub fn model(&self, q: P3) -> P3 {
+        let d = self.turned(q, 1.0);
+        [d[0] + self.origin[0], d[1] + self.origin[1], d[2] + self.origin[2]]
+    }
+
+    /// Direction `d` turned by its x (`way` 1) or back (`way` -1).
+    fn turned(&self, d: P3, way: f64) -> P3 {
+        let (c, s) = (self.x.0, self.x.1 * way);
+        [d[0] * c - d[1] * s, d[0] * s + d[1] * c, d[2]]
+    }
+
+    /// A division given in the model, in its coordinates.
+    pub fn local_recipe(&self, r: &crate::divide::Recipe) -> crate::divide::Recipe {
+        r.moved(&|p| self.local(p), &|d| self.turned(d, -1.0))
+    }
+
+    /// A division in its coordinates, in the model.
+    pub fn model_recipe(&self, r: &crate::divide::Recipe) -> crate::divide::Recipe {
+        r.moved(&|p| self.model(p), &|d| self.turned(d, 1.0))
+    }
+}
+
 /// A part's solid before it is triangles: prisms side by side, or the triangles a family's forms are.
 enum Shape {
     Prisms(Vec<Prism>, Facing),
@@ -159,6 +197,9 @@ impl Model {
     /// in plan as its host gives it: what [`Model::part_solid`] closes into one surface. None for a component's part,
     /// which is triangles from the start. For what divides a part in plan, where a prism is easier to cut than a mesh.
     pub fn part_prisms(&self, p: &BuildingPart) -> Result<Option<Vec<Prism>>, String> {
+        if p.piece.is_some() {
+            return Ok(None);
+        }
         Ok(match self.part_recipe(p)? {
             Shape::Prisms(prisms, _) => Some(prisms),
             Shape::Mesh(_) => None,
@@ -182,6 +223,9 @@ impl Model {
     /// The way part `p`'s main face looks: what [`solid::facing`] takes the area of on its solid, or on a division of
     /// it. None for a component's part.
     pub fn part_facing(&self, p: &BuildingPart) -> Result<Option<Facing>, String> {
+        if p.piece.is_some() {
+            return self.part_shape(p).map(|(_, facing)| facing);
+        }
         Ok(match self.part_recipe(p)? {
             Shape::Prisms(_, facing) => Some(facing),
             Shape::Mesh(_) => None,
@@ -209,6 +253,9 @@ impl Model {
 
     /// Part `p`'s solid and the way its main face looks.
     fn part_shape(&self, p: &BuildingPart) -> Result<(Vec<[P3; 3]>, Option<Facing>), String> {
+        if let Some(key) = &p.piece {
+            return self.piece_shape(p, key);
+        }
         let (tris, facing) = match self.part_recipe(p)? {
             Shape::Prisms(prisms, facing) => (solid::mesh(&prisms), Some(facing)),
             Shape::Mesh(tris) => (tris, None),
@@ -218,6 +265,55 @@ impl Model {
             return Err(format!("there is nothing of it: {host} {} has no solid there; exclude it or delete it", self.shown(p.host)));
         }
         Ok((tris, facing))
+    }
+
+    /// Element `host`'s own coordinates, which a part's division is kept in: where it starts, at its level's elevation,
+    /// and the way it sets off, level. A wall's from its start toward its end; a floor's, a roof's or a ceiling's from
+    /// the first corner of its outline along its first side; a component's from where it stands, the way it is turned.
+    /// None for what has no such place (a wall of no length), or isn't there.
+    pub fn element_frame(&self, host: impl Key) -> Option<HostFrame> {
+        let e = self.elements.get(host)?;
+        let (at, x, level) = match e {
+            Element::Wall(w) => (w.start, w.end - w.start, w.level),
+            Element::Floor(f) => (*f.boundary.first()?, *f.boundary.get(1)? - *f.boundary.first()?, f.level),
+            Element::Roof(r) => (*r.boundary.first()?, *r.boundary.get(1)? - *r.boundary.first()?, r.level),
+            Element::Ceiling(c) => (*c.boundary.first()?, *c.boundary.get(1)? - *c.boundary.first()?, c.level),
+            Element::Component(c) => {
+                let (sin, cos) = c.angle.to_radians().sin_cos();
+                (c.at, P2(cos, sin), c.level)
+            }
+            _ => return None,
+        };
+        let length = x.length();
+        (length > crate::model::TOL && length.is_finite() && at.0.is_finite() && at.1.is_finite())
+            .then(|| HostFrame { origin: [at.0, at.1, self.elevation(level)], x: P2(x.0 / length, x.1 / length) })
+    }
+
+    /// What part `p`'s division makes of `solid`, its solid in the model: the pieces in its host's own coordinates, with
+    /// the cuts and offsets that no longer meet it left out and listed. An error for a part that isn't divided, or whose
+    /// division can't be made at all.
+    pub fn part_division(&self, p: &BuildingPart, solid: &[[P3; 3]]) -> Result<crate::divide::Outcome, String> {
+        let recipe = p.division.as_ref().ok_or("it isn't divided")?;
+        let frame = self.element_frame(p.host).ok_or("its host has no place to keep its division in")?;
+        let local: Vec<[P3; 3]> = solid.iter().map(|t| t.map(|q| frame.local(q))).collect();
+        crate::divide::regenerate(&local, recipe).map_err(|e| e.to_string())
+    }
+
+    /// Part `p`, the piece `key` of its parent's division: its solid, brought back to the model, and the way its parent's
+    /// main face looks.
+    fn piece_shape(&self, p: &BuildingPart, key: &crate::divide::PieceKey) -> Result<(Vec<[P3; 3]>, Option<Facing>), String> {
+        let g = p.parent.ok_or("it is a piece of a division with no part divided")?;
+        let Some(Element::Part(parent)) = self.elements.get(g) else {
+            return Err(format!("the part it was divided from, {}, is gone: delete it", self.shown(g)));
+        };
+        let who = self.shown(g);
+        let (solid, facing) = self.part_shape(parent).map_err(|e| format!("part {who}, which it was divided from, is in conflict: {e}"))?;
+        let outcome = self.part_division(parent, &solid).map_err(|e| format!("part {who}'s division can't be made: {e}"))?;
+        let piece = outcome.piece(key).ok_or_else(|| {
+            format!("part {who}'s division no longer makes its piece, {key}: divide part {who} again (`divide_parts`), or delete this one")
+        })?;
+        let frame = self.element_frame(p.host).ok_or("its host has no place to keep its division in")?;
+        Ok((piece.mesh.iter().map(|t| t.map(|q| frame.model(q))).collect(), facing))
     }
 
     /// What part `p` is of its host, as prisms or triangles: its recipe followed, or why it can't be.
@@ -270,23 +366,29 @@ impl Model {
         Ok(match host {
             Element::Wall(w) => {
                 let axis = Axis::of(w);
+                // Measured on its own side: a layer inside the structure on the interior face, any other on the exterior.
+                let inside = k.is_some_and(|k| interior(self.type_layers("wall", &w.type_name), k));
                 let facing = match axis.arc() {
                     // Its exterior side is to its left: turning left, toward the arc's centre.
-                    Some((centre, _, _, sweep)) => Facing::Round { centre, inward: sweep > 0.0 },
+                    Some((centre, _, _, sweep)) => Facing::Round { centre, inward: (sweep > 0.0) != inside },
                     None => {
-                        let out = axis.tangent(0.0).perp();
+                        let out = axis.tangent(0.0).perp() * if inside { -1.0 } else { 1.0 };
                         Facing::Along(vec![[out.0, out.1, 0.0]])
                     }
                 };
                 Shape::Prisms(self.wall_prisms(id, w, k), facing)
             }
             Element::Floor(f) => {
-                self.slab_shape(self.floor_prisms(f), self.type_layers("floor", &f.type_name), self.floor_under(f).map(|u| u.1), k)
+                self.slab_shape(self.floor_prisms(f), self.type_layers("floor", &f.type_name), self.floor_under(f).map(|u| u.1), k, false)
             }
             Element::Roof(r) => {
-                self.slab_shape(self.roof_prisms(r), self.type_layers("roof", &r.type_name), self.roof_under(r).map(|u| u.1), k)
+                self.slab_shape(self.roof_prisms(r), self.type_layers("roof", &r.type_name), self.roof_under(r).map(|u| u.1), k, false)
             }
-            Element::Ceiling(c) => self.slab_shape(self.ceiling_prisms(c), self.type_layers("ceiling", &c.type_name), None, k),
+            Element::Ceiling(c) => {
+                // Measured as it is seen: a layer under its structure on its underside.
+                let layers = self.type_layers("ceiling", &c.type_name);
+                self.slab_shape(self.ceiling_prisms(c), layers, None, k, k.is_some_and(|k| interior(layers, k)))
+            }
             Element::Component(c) => Shape::Mesh(self.component_pieces(c).into_iter().flat_map(|piece| piece.tris).collect()),
             other => return Err(format!("{} {id} has no parts", other.category())),
         })
@@ -332,14 +434,15 @@ impl Model {
     /// A floor's, a roof's or a ceiling's `pieces` (each a ring in plan from its underside's plane up to its top's), less
     /// the shafts through them, or with `layer`, that layer of each: its type's `layers` from the top down, each its
     /// share of the way down, or under a `variable` layer, those above it following the top, those below it the level
-    /// underside and the variable one between (`Variable::bounds`). The main face is the top: every plane a piece's top
-    /// lies in.
+    /// underside and the variable one between (`Variable::bounds`). The main face is the top, every plane a piece's top
+    /// lies in, or with `underside`, the bottom, looking down: a ceiling's finish under its structure, the face it shows.
     fn slab_shape(
         &self,
         pieces: Vec<(Vec<P2>, Plane, Plane)>,
         layers: &[Layer],
         variable: Option<Variable>,
         layer: Option<usize>,
+        underside: bool,
     ) -> Shape {
         let mut prisms = Vec::new();
         for (ring, bottom, top) in pieces {
@@ -365,7 +468,8 @@ impl Model {
             prisms.extend(rings.into_iter().map(|ring| Prism { ring, bottom, top }));
         }
         let mut ways: Vec<P3> = Vec::new();
-        for way in prisms.iter().map(|p| solid::normal(&p.top)) {
+        let face = |p: &Prism| if underside { solid::normal(&p.bottom).map(|v| -v) } else { solid::normal(&p.top) };
+        for way in prisms.iter().map(face) {
             if !ways.iter().any(|w| crate::view3d::dot(*w, way) >= 1.0 - 1e-12) {
                 ways.push(way);
             }
@@ -422,6 +526,22 @@ pub(crate) fn json(m: &Model, id: Id, p: &BuildingPart, extra: &mut Map<String, 
     } else {
         extra.insert("divisions".into(), json!(divisions));
     }
+    // Which piece of its parent's division it is, as its key reads; and how it is divided, in the model, with what of it
+    // no longer meets it.
+    if let Some(key) = &p.piece {
+        extra.insert("piece".into(), json!(key.to_string()));
+    }
+    if let (Some(recipe), Some(frame)) = (&p.division, m.element_frame(p.host)) {
+        extra.insert("division".into(), json!(frame.model_recipe(recipe)));
+        let made = m.part_solid(p).and_then(|solid| m.part_division(p, &solid));
+        let conflicts: Vec<String> = match made {
+            Ok(outcome) => outcome.conflicts.iter().map(|(at, c)| format!("{at}: {c}")).collect(),
+            Err(e) => vec![e],
+        };
+        if !conflicts.is_empty() {
+            extra.insert("division_conflicts".into(), json!(conflicts));
+        }
+    }
     let h = &p.heritage;
     let [su, period, decay, severity, intervention] = Heritage::NAMES;
     for (name, text) in [(su, &h.su_code), (period, &h.historical_period), (intervention, &h.intervention_type)] {
@@ -454,4 +574,15 @@ pub(crate) fn json(m: &Model, id: Id, p: &BuildingPart, extra: &mut Map<String, 
     if let Some(conflict) = state.conflict {
         extra.insert("conflict".into(), json!(conflict));
     }
+}
+
+/// Whether layer `k` of a wall's `layers` (from its exterior in), or a ceiling's (from its top down), lies on the interior
+/// side of its structure, so that its area is its interior face's, a ceiling's underside: past the last structure layer,
+/// or, with none, past the thickest (the first of the thickest).
+fn interior(layers: &[crate::model::Layer], k: usize) -> bool {
+    let core = layers
+        .iter()
+        .rposition(|l| l.function == crate::model::Function::Structure)
+        .or_else(|| layers.iter().enumerate().max_by(|a, b| a.1.thickness.total_cmp(&b.1.thickness).then(b.0.cmp(&a.0))).map(|(i, _)| i));
+    core.is_some_and(|c| k > c)
 }

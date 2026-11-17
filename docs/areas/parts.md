@@ -31,8 +31,11 @@ and IFC calls a closed face set. `Model::part_prisms` gives the prisms themselve
 `Model::part_quantities` reads the **net volume** and the **net area** off that solid, so openings, shafts, joins and, later,
 divisions, gaps and offsets are in them with no code of their own. The volume is the solid's (`solid::volume`). The area is
 that of the solid's faces that lie in the plane of the layer's own face and look the way it does (`solid::facing`,
-`Model::part_facing`): for a wall's part the face toward the wall's exterior side (its elevation, less doors and windows), for
-a floor's, a roof's or a ceiling's part its top (less openings and shafts; a sloped one's along its slope). A component's part
+`Model::part_facing`): for a wall's part the face on its own side of the wall (its elevation, less doors and windows): a layer past the last
+structure layer, the interior plaster, on the wall's interior face, any other on its exterior face (the structure, as all of a
+wall is, on its exterior one; a type with no structure layer has its thickest stand for it; `parts/state.rs`'s `interior`), for
+a floor's, a roof's or a ceiling's part its top (less openings and shafts; a sloped one's along its slope), but for a
+ceiling's layer under its structure, its plaster, the underside, the face it shows. A component's part
 has a volume and no area. `part_layer`, `part_material` (its own, else its layer's, else its host's structure's),
 `part_thickness`, `parts_of`, `part_divisions` and `part_state` (all of it at once) give the rest. A material may say how heavy
 it is and how it carries and holds heat (`Material::density`, kg/m³, `conductivity`, W/(m·K), `specific_heat`, J/(kg·K); the
@@ -64,6 +67,26 @@ has parts gets those it lacks; refused when none lacks any. `part {id | ids, …
 `predefined_type`, `object_type`, `excluded`, the heritage set (keys in any case) and `layer`. `parts {host?, ids?, conflicts?}`
 lists them with what they hold and what they are now. `modify` and `elements` work on a part as on any element.
 
+## Divide Parts
+
+`divide_parts {id | ids, cuts, offsets?}` (Revit's Divide Parts) cuts a part into pieces with the engine of `divide.rs`
+([parts-geometry](parts-geometry.md)): the command takes a `Recipe`'s `cuts` and `offsets` as the engine serializes them,
+in model millimetres, divides the part's solid strictly (`divide::divide`: a cut that misses is refused, nothing changes),
+and keeps the recipe on the part (`BuildingPart::division`) in its host's own coordinates (`Model::element_frame`: a wall's
+start and the way it runs, a slab's first corner and side, a component's place and angle, at its level's elevation;
+`HostFrame::local_recipe` and `model_recipe`). Each piece is a part of its own with the same host and source, its
+`parent` the divided part and `piece` its `PieceKey`; it starts with the divided part's material, kind, heritage values and
+parameters. Its solid is worked out when asked for (`Model::part_division`, then the piece by its key, brought back to the
+model), so the pieces follow the host as the part does; a cut that no longer meets the solid is left out
+(`divide::regenerate`), listed on the divided part as `division_conflicts`, and a piece it no longer makes is in conflict.
+Divided again, a part keeps the pieces whose keys the new recipe still makes (ids and values) and the others are deleted,
+with what was divided from them; `cuts: []` makes it whole. A part divided by hand (`parent` without `piece`) is refused,
+since its pieces would be counted with the division's. The divided part is the sum of its pieces, as HP-1 already counted
+it: listings and schedules count the pieces.
+
+What is approximate: each piece works its parent's division out again, so a part of n pieces is divided n times when all
+are drawn or listed; a mirrored component's frame doesn't mirror, so a division of one follows it turned, not mirrored.
+
 ## The heritage set
 
 Five values every part may have (`Heritage`), shown everywhere under `Heritage::NAMES`: `SU_Code` (the stratigraphic unit's
@@ -77,9 +100,16 @@ uses for forms of decay, or `Custom(text)`; the words only, never a standard's d
 `parts::json` (what `elements` shows): `Id`, `Host`, `Host Category`, `Host Type`, `Level`, `Layer`, `Function`, `Material`,
 `Thickness`, `Net Area`, `Net Volume`, `Density`, `Mass`, `Thermal Conductivity`, `Thermal Resistance`, `Specific Heat`,
 `Predefined Type`, `Object Type`, `Excluded`, the five heritage names, `Conflict`,
-`Count`, the phases and the design option. A value nobody gave is no value, never 0 (`From::Held`). `part` is in
-`schedule::MORE`: there is no schedule of parts and no view filter of them yet. A part that parts were divided from lists them
-(`divisions`) and no area or volume: they hold them.
+`Count`, the phases and the design option. A value nobody gave is no value, never 0 (`From::Held`). A part that parts were
+divided from lists them (`divisions`) and no area or volume: they hold them.
+
+## Schedules
+
+Parts are a category schedules are of (`schedule {category: "parts"}`), and a schedule of them grouped by `Intervention_Type`
+or `Decay_Pathology`, with its net areas, net volumes and counts totalled, is the restoration's bill of quantities:
+`schedule {starter: "restoration-quantities"}` makes it in one go, and `path` writes it as CSV or a workbook. Excluded parts
+are left out; parts in conflict are listed with no area or volume, and named in the table's `notes`. The detail is in
+[schedules](schedules.md#parts-the-restorations-bill-of-quantities).
 
 ## IFC
 
@@ -96,9 +126,14 @@ rather than leaving the parts out and dropping them when it saves. A project par
 Builds of the heritage fork kept parts under a top-level `parts` key in a file of 18; that key is one this BIMCraft doesn't
 know, so it leaves it out and names it (`left_out`).
 
+## In views
+
+A view draws an element whole, as its parts, or both: Revit's Parts Visibility (`graphics {view, parts_visibility: original |
+parts | both}`, Properties' Parts Visibility), Show Original unless it says. How a plan, a section, an elevation and the 3D
+view draw and pick a part, what stands for what, and what is left for later are in
+[views and graphics](views-and-graphics.md#parts-in-views).
+
 ## Next
 
-Divide Parts (the engine is `divide.rs`; the divided part holds its cuts, in the host's own coordinates, and the divided
-part the sum of its divisions), edge offsets and gaps, parts in plans, sections and the 3D view with Parts Visibility (Show
-Original, Show Parts, Show Both) and colours by `Decay_Pathology` or `Historical_Period`, schedules and tags of parts, the
-desktop's tools (the material's weight and heat among them), and parts and a material's values to IFC and back.
+Divide Parts in the desktop (a sketch on the part's face), tags of parts, the desktop's tools (the material's weight and
+heat among them), and parts and a material's values to IFC and back.

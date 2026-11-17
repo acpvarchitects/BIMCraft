@@ -44,6 +44,7 @@ pub mod demand;
 pub mod derived;
 pub mod dims;
 pub mod dims3d;
+pub mod divide;
 mod doors;
 pub mod dps;
 pub mod dr;
@@ -157,6 +158,10 @@ pub mod panel_schedule;
 mod parameter_tests;
 pub mod parameters;
 pub mod parts;
+#[cfg(test)]
+mod parts_divide_tests;
+#[cfg(test)]
+mod parts_schedule_tests;
 #[cfg(test)]
 mod parts_tests;
 pub mod pat;

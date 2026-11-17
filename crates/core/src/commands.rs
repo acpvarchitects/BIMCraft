@@ -2369,10 +2369,13 @@ other_files(
         "schedule",
         ui_msg!("Schedule"),
         &[],
-        "{name?, category?, categories?, fields?, filters?, sort?, grouped?, path?} a schedule view, as Revit's View > Schedules makes one, \
+        "{name?, category?, categories?, fields?, filters?, sort?, grouped?, starter?, path?} a schedule view, as Revit's View > Schedules makes one, \
          and its table: columns, rows, the `elements` each row lists, and totals (and a .csv file with a path, or an .xlsx workbook for a path ending .xlsx). A new one needs `name` and `category`: rooms, \
          doors, windows, walls, floors, ceilings, roofs, columns, structural columns, footings, beams, strip footings, components, \
-         stairs, ramps, railings, levels or sheets, or `multicategory`, as Revit's Multi-Category Schedule: a row for each element of \
+         stairs, ramps, railings, levels, sheets or parts (the parts elements were taken apart into, `create_parts`, with their Net \
+         Area in m², Net Volume in m³ and the heritage set: grouped by `Intervention_Type` or `Decay_Pathology` with totals, \
+         the restoration's bill of quantities; excluded parts are left out unless a filter is on `Excluded`, and parts in \
+         conflict are listed with no area or volume and named in `notes`), or `multicategory`, as Revit's Multi-Category Schedule: a row for each element of \
          `categories` ([\"walls\", \"doors\"…]; none, every built one but rooms, levels, masses and sheets), with the fields they share \
          (Category, Family, Type, Level, Count, Width, Height, Length, Thickness, Area: a wall's length by its height, a door's \
          width by its height; Material: its type's structure layer's, a run's type's, a family's), each empty where its \
@@ -2386,8 +2389,11 @@ other_files(
          begins-with|not-begins-with|ends-with|not-ends-with|has-value|has-no-value, value}, …], the elements all of them \
          keep (text in any case, numbers as the schedule shows them, an unset yes or no as no). `sort`: [field or {field, descending?}, …], in turn (its first column unless it says; Phase Created \
          and Phase Demolished in the project's order of phases, a phase never demolished after the last); \
-         `grouped`, a row for each set of the sort fields' values: Count and totals summed, and a field whose values differ \
-         left empty. Each one given replaces the last; `fields: []` goes back to its category's",
+         `grouped`, a row for each set of the sort fields' values: Count and totals summed (no value where none of them has \
+         a number), and a field whose values differ left empty. Each one given replaces the last; `fields: []` goes back to \
+         its category's. `starter: restoration-quantities` makes the schedule Restoration Quantities in one go (under `name`, \
+         if given), or reads it once the project has it: the parts by Intervention_Type then Decay_Pathology, grouped, with \
+         SU_Code, Host Type, Material and the totals of Net Area, Net Volume and Count",
         schedule,
         Files::Write,
     ),
@@ -2399,6 +2405,7 @@ other_files(
          …], show?: […], hide_elements?: [id, …], show_elements?: […], categories?: {category: override | null, …}, elements?: \
          {id: override | null, …}, filters?: [{filter, hidden?, projection?, cut?, halftone?, transparency?}, …], phase?: name \
          | null, phase_filter?: name | null, options?: {set: option | null, …}, layers?: {drawing: [layer, …] | null, …}, template?: name | null, \
+         parts_visibility?: original | parts | both | null, theme?: {by, colors?, legend?} | null, \
          background_grid?: {visible?, main?: {enabled?, color?: [r,g,b], pen?: 0..16}, sub?: {enabled?, color?, pen?}, \
          spacing?: [X,Y] (mm), divisions?: [X,Y] (1..1000), rotation?: degrees (-360..360)} | null, \
          orientation?: project_north|true_north (a plan's: which north is up; true north turns it on screen by the active \
@@ -2425,7 +2432,17 @@ other_files(
          `template` follows a view template; `reset` takes away all of the view's own settings. `phase` is the phase the view \
          shows (the project's last unless it says) and `phase_filter` how it shows each status of what's in it (see `phase`); \
          `options` chooses the design option it shows of a set (the set's primary unless it says; see `option`); `layers` the \
-         layers of each CAD drawing it hides, by the drawing's name (null shows them all again)",
+         layers of each CAD drawing it hides, by the drawing's name (null shows them all again). `parts_visibility` is Revit's \
+         Parts Visibility, in a plan, a ceiling plan, a section, an elevation and a 3D view alike: `original` (Show Original, \
+         what a view does unless it says, and what null goes back to) draws every element whole and no part; `parts` (Show \
+         Parts) draws an element that has parts as those parts and no more of it, and one that has none whole; `both` (Show \
+         Both) draws every element whole and its parts too. A part is drawn where its view draws its host (its phase, its \
+         design option, its category and the element itself not hidden), as the cut of its solid in a plan and a section and \
+         its solid in a 3D view, made of its material, and is picked by its own id. One excluded, one in conflict and one \
+         divided into other parts are not drawn; an element with a part in conflict stays whole, so nothing of it goes \
+         missing. A view filter that picks parts (category `part`, rules on its fields: Decay_Severity, Material…) hides or \
+         overrides them as it does any element. `theme` colours the parts the view shows by a value they hold (see `theme`, \
+         which also returns its legend); null takes it away",
         view_graphics,
     ),
     edit(
@@ -2510,6 +2527,32 @@ other_files(
         view_filter,
     ),
     edit(
+        "theme",
+        "Parts Theme",
+        &[],
+        "{view?: a level's, section's or elevation's name or id, or {3D} (the lowest level's plan unless given), by?: \
+         Decay_Pathology | Historical_Period | Decay_Severity | Intervention_Type | SU_Code | Material | a project \
+         parameter of parts, colors?: {value: colour | null, …} | null, legend?: true | false, off?: true} a view's theme: \
+         the parts it shows, each filled in the colour of what it holds of one value, which makes a thematic drawing of the \
+         view (a decay map by `Decay_Pathology`, the building's periods by `Historical_Period`); and its legend. The \
+         colour fills a part where a plan or a section cuts it, where a plan sees it from above, its faces in an elevation \
+         and in the 3D view, over whatever the view's categories and filters say. It shows only in a view whose \
+         `parts_visibility` is parts or both (`graphics`), on the parts that view draws. The colours are the same in every \
+         view and every run: each named decay has its own, by its place in the list; Decay_Severity runs from pale \
+         yellow (1) to dark red (5); any other value takes the colour its own text comes to, so it keeps it as the survey \
+         grows (two values of the project that come to one colour: the later in order takes the next free); a part with \
+         no value is a neutral grey. `colors` chooses others, by value ([r, g, b] or \"#rrggbb\"; \"\" is the parts with \
+         no value; null gives a value its automatic colour back, and `colors: null` all of them); a new `by` forgets \
+         them. `legend: true` draws the legend on the view, a key in its top left corner (a plan's, a section's or an \
+         elevation's, so a sheet the view is placed on prints it). `off: true` takes the theme away. With `view` alone \
+         it reads. Replies with `theme` (null for none), the view's `parts_visibility`, `available` (what parts can be \
+         coloured by) and the legend, `rows`: for each value among the parts the view draws (a plan: those it cuts or \
+         sees, in its crop; a section or an elevation: those it shows from its line to its far clip, a part hidden \
+         behind others left out, and a section's cut by its line; a 3D view: all it shows, in its section box) its `value` (null: not set), `label`, `color`, `count` and \
+         `area_m2`, the net area of their main faces together; and `parts` and `area_m2`, their totals",
+        view_theme,
+    ),
+    edit(
         "template",
         "View Template",
         &[],
@@ -2517,6 +2560,7 @@ other_files(
          kind?: plan | section | 3d | null, rename?, controls?: [categories, filters, range, \
          phase, options, scale, detail, style, background_grid], view_range?: {top?, cut?, bottom?, depth?}, phase?, phase_filter?, options?, \
          scale?: 1 | … | 100000, detail?: coarse | medium | fine, visual_style?: shaded | hidden_line | wireframe, \
+         parts_visibility?: original | parts | both | null, theme?: {by, colors?, legend?} | null, \
          background_grid?: grid settings as in graphics, hide?, show?, categories?, filters?, reset?, delete?: true} a view template, as Revit's: settings under a name for \
          views to follow with `graphics {template}`. `kind` is the views it is for (plans, elevations and sections, or 3D \
          views; null, any), which `from` sets; `like` makes a new one a copy of another (Duplicate); `rename` names it anew, \
@@ -2526,8 +2570,11 @@ other_files(
          categories, its filters, a plan's view range, its phase with its phase filter, its design options, its scale (`scale` \
          command), its detail level (`detail`), its visual style (`visual_style`). `hide`, `show`, `categories`, `filters`, \
          `phase`, `phase_filter`, `options`, `scale`, `detail`, `visual_style`, `background_grid` and `reset` change it as they change a view; \
-         `view_range` merges into its range. Changed, every view following it follows. Gone, they keep their own settings. \
-         `name` alone reads one",
+         `view_range` merges into its range. `parts_visibility` (see `graphics`) is no group of `controls`: a template that \
+         holds one sets it for the views that follow it, Show Original too, and with null it leaves it to each view (as a \
+         template starts, unless `from` is a view that shows parts). Its `theme` (see `theme`) goes with it: a template \
+         that holds a Parts Visibility sets its views' theme too, one or none. Changed, every view following it follows. Gone, they \
+         keep their own settings. `name` alone reads one",
         view_template,
     ),
     edit(
@@ -2905,6 +2952,31 @@ other_files(
          where its layers' would. Deleting an element deletes its parts; copying one copies them. Returns `ids` (the parts \
          made, in the order of the elements and of their layers) and `existing` (those the elements had)",
         create_parts,
+    ),
+    edit(
+        "divide_parts",
+        "Divide Parts",
+        &[],
+        "{id | ids: [id, …], cuts: [{cut, gap?, of?}, …], offsets?: [{piece, face, distance}, …]} divides parts into \
+         pieces that are parts of their own, as Revit's Divide Parts: a zone of damp or detached plaster outlined on a \
+         face, a stratigraphic unit, a wall out of plumb, a lacuna. Each `cut`, in model millimetres, is one of \
+         `{plane: {point: [x, y, z], normal: [x, y, z]}}` (what the normal points to is `front`, the rest `back`); \
+         `{sketch: {frame: {origin, x, normal}, points: [[x, y], …], closed?, depth?}}`, a line drawn on a face in the \
+         frame's coordinates (x along `x`, y along normal × x; the normal pointing out of the part): closed, an outline \
+         (`inside` and `outside`), through the part or `depth` mm in from the face; open, a line across the face from \
+         edge to edge (`left` and `right`); or `{profile: {frame, points, from?, to?}}`, a closed profile extruded \
+         along the frame's normal (`inside`, `outside`). `gap` takes a joint that wide out along the cut; `of` names the \
+         piece it divides (as `pieces` gives keys), else it divides every piece it meets. An offset moves a face of a \
+         finished piece (`piece`, its key) in by `distance` mm: `face` is `{cut: n}`, the face cut n made, or `{plane: {point, normal}}`. \
+         Each piece is named by the cuts that made it (`0.front.0/1.inside.0`) and starts with what its part says (its \
+         material, kind, heritage values and parameters). The division is kept in the host's own coordinates, so the \
+         pieces follow the host as it moves, turns or stretches; a cut that no longer meets the part after that puts \
+         the pieces it made in conflict (`parts` shows `division_conflicts`) until it is divided again. Given again, a \
+         part keeps the pieces the new cuts still make, ids and values, and loses the others; `cuts: []` makes it whole \
+         again. A divided part is the sum of its pieces: it is counted and scheduled in them. Refused, with \
+         nothing changed, when a cut misses the part or the cuts can't be made. Returns `pieces` (each `id`, `of`, `key` \
+         and `volume_m3`) and `deleted`",
+        divide_parts,
     ),
     edit(
         "part",
@@ -4782,6 +4854,21 @@ fn schedule(s: &mut Session, p: &Value) -> R {
         }
         k => k.map(|k| category(&k)),
     };
+    // A ready-made one: made as it comes unless the project has one of its name, which is read as any other.
+    let starter = match string(c, p, "starter")? {
+        Some(key) => Some(
+            schedule::starter(m, &key)
+                .ok_or_else(|| bad(c, format!("`{key}` isn't a starter schedule; there are: {}", schedule::STARTERS.join(", "))))?,
+        ),
+        None => None,
+    };
+    if let (Some(st), Some(k)) = (&starter, &cat)
+        && *k != category(&st.of)
+    {
+        return Err(bad(c, format!("starter `{}` schedules {}s, not {k}s; leave `category` out", st.name, st.of)));
+    }
+    let name = name.or_else(|| starter.as_ref().map(|st| st.name.clone()));
+    let cat = cat.or_else(|| starter.as_ref().map(|st| category(&st.of)));
     let builtin = schedule::builtin(name.as_deref(), cat.as_deref());
     let found = name.as_deref().and_then(|n| schedule::named(m, n)).or_else(|| builtin.and_then(|(_, n)| schedule::named(m, n)));
     let mut sc = match (found, builtin, &name, &cat) {
@@ -4790,7 +4877,10 @@ fn schedule(s: &mut Session, p: &Value) -> R {
             _ => return Err(bad(c, format!("element {id} isn't a schedule"))),
         },
         (None, Some((of, n)), _, _) => Schedule { name: m.language.word(n).to_string(), of: of.to_string(), ..Schedule::default() },
-        (None, None, Some(n), Some(k)) => Schedule { name: n.clone(), of: k.clone(), ..Schedule::default() },
+        (None, None, Some(n), Some(k)) => match starter {
+            Some(st) => Schedule { name: n.clone(), ..st },
+            None => Schedule { name: n.clone(), of: k.clone(), ..Schedule::default() },
+        },
         (None, None, Some(n), None) => return Err(bad(c, format!("there's no schedule `{n}`; a new one needs `category` too"))),
         (None, None, None, Some(k)) => Schedule { of: k.clone(), ..Schedule::default() },
         (None, None, None, None) => return Err(bad(c, "`name` or `category` is required")),
@@ -4866,7 +4956,7 @@ fn schedule(s: &mut Session, p: &Value) -> R {
     if let Some(totals) = t.totals {
         out["totals"] = json!(totals);
     }
-    Ok(out)
+    Ok(with_notes(out, &t.notes))
 }
 
 /// A list of category names, as `key` gives them: each as views draw it.
@@ -4980,6 +5070,18 @@ fn edit_graphics(c: &str, m: &Model, p: &Value, g: &mut Graphics, of_template: b
             }
         }
     }
+    if !flag(c, p, "reset")?
+        && (p.get("parts_visibility").is_some() || p.get("theme").is_some())
+        && controlled.is_some_and(|t| t.graphics.parts_visibility.is_some())
+    {
+        let t = template_then.clone().unwrap_or_default();
+        return Err(bad(
+            c,
+            format!(
+                "its parts visibility and theme follow view template `{t}`; change the template, or `template: null` to stop following it"
+            ),
+        ));
+    }
     if flag(c, p, "reset")? {
         *g = Graphics::default();
     }
@@ -4989,6 +5091,75 @@ fn edit_graphics(c: &str, m: &Model, p: &Value, g: &mut Graphics, of_template: b
         Some(Value::String(o)) if o == "true_north" || o == "true" => g.orientation = graphics::Orientation::TrueNorth,
         Some(v) => return Err(bad(c, format!("`orientation` is project_north or true_north, not {v}"))),
         None => {}
+    }
+    // Which of an element and its parts it draws. Show Original is what a view does unless it says, so a view holds none
+    // for it; a template that holds it sets it for its views.
+    match p.get("parts_visibility") {
+        None => {}
+        Some(Value::Null) => g.parts_visibility = None,
+        Some(Value::String(n)) => {
+            let v = graphics::PartsVisibility::parse(n).ok_or_else(|| {
+                bad(c, format!("`parts_visibility` is original, parts or both (Show Original, Show Parts, Show Both), not `{n}`"))
+            })?;
+            g.parts_visibility = Some(v).filter(|v| of_template || v.shows_parts());
+        }
+        Some(v) => return Err(bad(c, format!("`parts_visibility` is original, parts or both, or null, not {v}"))),
+    }
+    // The theme it colours its parts by: what it goes by, the colours it chooses and whether it draws its key, merged
+    // into the one it has; null, none.
+    match p.get("theme") {
+        None => {}
+        Some(Value::Null) => g.theme = None,
+        Some(Value::Object(o)) => {
+            if let Some(k) = o.keys().find(|k| !["by", "colors", "legend"].contains(&k.as_str())) {
+                return Err(bad(c, format!("`theme` is {{by, colors?, legend?}}; it has no `{k}`")));
+            }
+            let mut t = g.theme.clone().unwrap_or_default();
+            if let Some(by) = o.get("by") {
+                let names = graphics::Theme::names(m);
+                let key = |n: &str| n.chars().filter(|c| c.is_alphanumeric()).flat_map(char::to_lowercase).collect::<String>();
+                let found = by
+                    .as_str()
+                    .and_then(|given| names.iter().find(|n| key(n) == key(given)))
+                    .ok_or_else(|| bad(c, format!("`theme`: parts aren't coloured by {by}; they are by one of: {}", names.join(", "))))?;
+                if *found != t.by {
+                    t.colors.clear();
+                }
+                t.by = found.clone();
+            }
+            if t.by.is_empty() {
+                return Err(bad(c, "a theme needs `by`, what it colours parts by: Decay_Pathology, Historical_Period…"));
+            }
+            match o.get("colors") {
+                None => {}
+                Some(Value::Null) => t.colors.clear(),
+                Some(Value::Object(chosen)) if chosen.len() <= graphics::parts::MAX_COLOURS => {
+                    for (value, given) in chosen {
+                        if given.is_null() {
+                            t.colors.remove(value);
+                        } else {
+                            let rgb = colour(given).ok_or_else(|| {
+                                bad(
+                                    c,
+                                    format!(
+                                        "`theme`: the colour of `{value}` is [r, g, b], each 0 to 255, or \"#rrggbb\", or null, not {given}"
+                                    ),
+                                )
+                            })?;
+                            t.colors.insert(value.clone(), rgb);
+                        }
+                    }
+                }
+                Some(v) => return Err(bad(c, format!("`theme`: `colors` is {{value: colour | null, …}}, or null, not {v}"))),
+            }
+            match o.get("legend") {
+                None => {}
+                Some(Value::Bool(b)) => t.legend = *b,
+                Some(v) => return Err(bad(c, format!("`theme`: `legend` is true or false, not {v}"))),
+            }
+            g.theme = Some(t);
+        }
+        Some(v) => return Err(bad(c, format!("`theme` is {{by, colors?, legend?}}, or null, not {v}"))),
     }
     if let Some(patch) = p.get("background_grid") {
         if patch.is_null() {
@@ -5154,6 +5325,7 @@ fn graphics_reply(g: &Graphics) -> Value {
         "phase": g.phase, "phase_filter": g.phase_filter, "options": g.options,
         "scale": g.scale, "detail": g.detail, "visual_style": g.style,
         "background_grid": g.background_grid, "orientation": g.orientation,
+        "parts_visibility": g.parts_visibility, "theme": g.theme,
     })
 }
 
@@ -5193,6 +5365,8 @@ fn view_graphics(s: &mut Session, p: &Value) -> R {
         g.template.as_ref().and_then(|n| m.view_templates.get(n)).map(|t| t.controls.iter().copied().collect()).unwrap_or_default();
     reply["view"] = json!(view);
     reply["name"] = json!(view.and_then(|v| m.view_name(v)).unwrap_or("{3D}"));
+    // A view always has one: the originals, unless it or its template says.
+    reply["parts_visibility"] = json!(in_force.parts_visibility.unwrap_or_default());
     // Elements by their ids, as the command takes them.
     reply["hidden_elements"] = json!(g.elements.iter().filter(|(_, o)| o.hidden).filter_map(|(g, _)| m.elements.id(g)).collect::<Vec<_>>());
     reply["elements"] = json!(g.elements.iter().filter_map(|(g, o)| Some((m.elements.id(g)?.to_string(), o))).collect::<BTreeMap<_, _>>());
@@ -5595,6 +5769,8 @@ fn view_template(s: &mut Session, p: &Value) -> R {
         "detail",
         "visual_style",
         "background_grid",
+        "parts_visibility",
+        "theme",
     ];
     let makes = keys.iter().any(|k| !absent(p.get(k))) || p.get("template").is_some();
     if was.is_none() && !makes {
@@ -5639,6 +5815,8 @@ fn view_template(s: &mut Session, p: &Value) -> R {
             detail: resolved.detail,
             style: resolved.style,
             background_grid: resolved.background_grid,
+            parts_visibility: resolved.parts_visibility,
+            theme: resolved.parts_visibility.and(resolved.theme.clone()),
             ..Graphics::default()
         };
         t.view_range = match m.elements.get(view) {
@@ -5673,6 +5851,12 @@ fn view_template(s: &mut Session, p: &Value) -> R {
         None => {}
     }
     edit_graphics(c, m, p, &mut t.graphics, true)?;
+    if t.graphics.theme.is_some() && t.graphics.parts_visibility.is_none() {
+        return Err(bad(
+            c,
+            "a template's theme goes with its `parts_visibility`: give it one (parts or both), or the theme shows in no view",
+        ));
+    }
     if let Some(scale) = scale_param(c, p)? {
         t.graphics.scale = Some(scale);
     }
@@ -5711,6 +5895,48 @@ fn view_template(s: &mut Session, p: &Value) -> R {
     Ok(reply)
 }
 
+/// A view's theme, set as `graphics {theme}` sets it, and its legend.
+fn view_theme(s: &mut Session, p: &Value) -> R {
+    let c = "theme";
+    let mut patch = serde_json::Map::new();
+    if let Some(v) = p.get("view") {
+        patch.insert("view".into(), v.clone());
+    }
+    let given: serde_json::Map<String, Value> =
+        ["by", "colors", "legend"].iter().filter_map(|k| Some(((*k).to_string(), p.get(*k)?.clone()))).collect();
+    if flag(c, p, "off")? {
+        patch.insert("theme".into(), Value::Null);
+    } else if !given.is_empty() {
+        patch.insert("theme".into(), Value::Object(given));
+    }
+    let r = view_graphics(s, &Value::Object(patch)).map_err(|e| e.replacen("graphics", c, 1))?;
+    let m = &s.model;
+    let legend = r["view"].as_u64().and_then(|view| graphics::parts::legend(m, view));
+    let unset = m.language.word(msg!("not set"));
+    // To the square centimetre, as a part's own area is listed.
+    let m2 = |mm2: f64| (mm2 / 1e2).round() / 1e4;
+    let rows: Vec<Value> = legend
+        .iter()
+        .flat_map(|l| &l.rows)
+        .map(|row| {
+            json!({
+                "value": row.value, "label": row.value.as_deref().unwrap_or(unset), "color": row.color,
+                "count": row.count, "area_m2": m2(row.area),
+            })
+        })
+        .collect();
+    let (count, area) = legend.iter().flat_map(|l| &l.rows).fold((0, 0.0), |(n, a), row| (n + row.count, a + row.area));
+    let mut reply = json!({
+        "view": r["view"], "name": r["name"], "parts_visibility": r["parts_visibility"], "theme": r["theme"],
+        "available": graphics::Theme::names(m), "rows": rows, "parts": count, "area_m2": m2(area),
+    });
+    if !r["theme"].is_null() && r["parts_visibility"] == "original" {
+        reply["note"] =
+            json!("the view shows the originals, so its theme colours nothing: set `parts_visibility` to parts or both (`graphics`)");
+    }
+    Ok(reply)
+}
+
 fn view_filter(s: &mut Session, p: &Value) -> R {
     let c = "filter";
     let name = string(c, p, "name")?.map(|n| n.trim().to_string()).filter(|n| !n.is_empty()).ok_or_else(|| bad(c, "`name` is required"))?;
@@ -5743,12 +5969,12 @@ fn view_filter(s: &mut Session, p: &Value) -> R {
                 .map(|v| {
                     let given = v.as_str().ok_or_else(|| bad(c, format!("`categories`: {v} is not a category")))?;
                     let name = category(given);
-                    if schedule::categories().contains(&name.as_str()) {
+                    if graphics::filterable().contains(&name.as_str()) {
                         Ok(name)
                     } else {
                         Err(bad(
                             c,
-                            format!("`{given}` isn't a category filters pick from; there are: {}", schedule::categories().join(", ")),
+                            format!("`{given}` isn't a category filters pick from; there are: {}", graphics::filterable().join(", ")),
                         ))
                     }
                 })
@@ -18988,6 +19214,88 @@ fn create_parts(s: &mut Session, p: &Value) -> R {
     let m = s.model_mut();
     let ids: Vec<Id> = wanted.into_iter().map(|part| m.insert(Element::Part(part))).collect();
     Ok(json!({"ids": ids, "existing": existing}))
+}
+
+fn divide_parts(s: &mut Session, p: &Value) -> R {
+    use crate::divide::{MAX_CUTS, PieceKey, Recipe};
+    use crate::parts::BuildingPart;
+    let c = "divide_parts";
+    only(c, p, &["id", "ids", "cuts", "offsets"])?;
+    let m = &s.model;
+    let ids = ids_param(c, m, p)?;
+    let cuts = p.get("cuts").ok_or_else(|| bad(c, "give `cuts`, the cuts that divide the parts, in order (`[]` makes them whole)"))?;
+    let mut given = json!({"cuts": cuts, "offsets": p.get("offsets").cloned().unwrap_or_else(|| json!([]))});
+    if [&given["cuts"], &given["offsets"]].iter().any(|v| v.as_array().is_some_and(|a| a.len() > MAX_CUTS)) {
+        return Err(bad(c, format!("a division has {MAX_CUTS} cuts and {MAX_CUTS} offsets at most")));
+    }
+    // A piece named as a reply names it, `0.back.0`, is read as the key it is.
+    for (list, key) in [("cuts", "of"), ("offsets", "piece")] {
+        for item in given[list].as_array_mut().into_iter().flatten() {
+            if let Some(Value::String(text)) = item.get(key) {
+                let parsed = PieceKey::parse(text)
+                    .ok_or_else(|| bad(c, format!("`{key}`: `{text}` is no piece; a piece is named as `0.front.0/1.inside.0`")))?;
+                item[key] = json!(parsed);
+            }
+        }
+    }
+    let recipe: Recipe = serde_json::from_value(given).map_err(|e| bad(c, format!("`cuts` or `offsets`: {e}")))?;
+    let whole = recipe.cuts.is_empty() && recipe.offsets.is_empty();
+    // Each part's division in its host's coordinates, and the pieces it makes: all worked out before anything changes.
+    type Plan = (Id, Option<Recipe>, Vec<(PieceKey, f64)>);
+    let mut plans: Vec<Plan> = Vec::new();
+    for &id in &ids {
+        let Some(Element::Part(part)) = m.elements.get(id) else {
+            let cat = m.elements.get(id).map_or("nothing", Element::category);
+            return Err(bad(c, format!("{cat} {id} isn't a part; `create_parts` takes an element apart into parts first")));
+        };
+        let by_hand: Vec<Id> = m
+            .part_divisions(id)
+            .into_iter()
+            .filter(|d| matches!(m.elements.get(*d), Some(Element::Part(x)) if x.piece.is_none()))
+            .collect();
+        if !by_hand.is_empty() {
+            return Err(bad(c, format!("part {id} has parts divided from it by hand ({by_hand:?}): delete them first")));
+        }
+        if whole {
+            plans.push((id, None, Vec::new()));
+            continue;
+        }
+        let solid = m.part_solid(part).map_err(|e| bad(c, format!("part {id} is in conflict: {e}")))?;
+        let outcome = crate::divide::divide(&solid, &recipe).map_err(|e| bad(c, format!("part {id}: {e}")))?;
+        let frame = m.element_frame(part.host).ok_or_else(|| bad(c, format!("part {id}: its host has no place to keep a division in")))?;
+        let pieces = outcome.pieces.into_iter().map(|piece| (piece.key, piece.volume)).collect();
+        plans.push((id, Some(frame.local_recipe(&recipe)), pieces));
+    }
+    let (mut made, mut gone) = (Vec::new(), Vec::new());
+    for (id, division, pieces) in plans {
+        let m = &s.model;
+        let Some(Element::Part(part)) = m.elements.get(id) else { continue };
+        let template = BuildingPart { parent: Some(m.guid(id)), division: None, excluded: false, ..part.clone() };
+        let had: Vec<(Id, Option<PieceKey>)> = m
+            .part_divisions(id)
+            .into_iter()
+            .filter_map(|d| match m.elements.get(d) {
+                Some(Element::Part(x)) => Some((d, x.piece.clone())),
+                _ => None,
+            })
+            .collect();
+        gone.extend(had.iter().filter(|(_, k)| !pieces.iter().any(|(key, _)| Some(key) == k.as_ref())).map(|(d, _)| *d));
+        let m = s.model_mut();
+        if let Some(Element::Part(part)) = m.elements.get_mut(id) {
+            part.division = division;
+        }
+        for (key, volume) in pieces {
+            let piece = match had.iter().find(|(_, k)| k.as_ref() == Some(&key)) {
+                Some((d, _)) => *d,
+                None => m.insert(Element::Part(BuildingPart { piece: Some(key.clone()), ..template.clone() })),
+            };
+            made.push(json!({"id": piece, "of": id, "key": key.to_string(), "volume_m3": (volume / 1e3).round() / 1e6}));
+        }
+    }
+    if !gone.is_empty() {
+        delete(s, &json!({"ids": gone}))?;
+    }
+    Ok(json!({"pieces": made, "deleted": gone}))
 }
 
 /// The keys `part` takes beside the parts themselves, each in lower case: the heritage set's are given in any case.
