@@ -293,6 +293,7 @@ pub fn category(category: &str, several: bool) -> String {
         "railing" => (msg!("category", "Railing"), msg!("category-plural", "Railings")),
         "propertyline" => (msg!("category", "Property Line"), msg!("category-plural", "Property Lines")),
         "roomseparator" => (msg!("category", "Room Separator"), msg!("category-plural", "Room Separators")),
+        "surveyarea" => (msg!("category", "Survey Area"), msg!("category-plural", "Survey Areas")),
         "beam" => (msg!("category", "Beam"), msg!("category-plural", "Beams")),
         "structuralcolumn" => (msg!("category", "Structural Column"), msg!("category-plural", "Structural Columns")),
         "footing" => (msg!("category", "Footing"), msg!("category-plural", "Footings")),

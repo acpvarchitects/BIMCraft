@@ -158,6 +158,22 @@ pub fn slab_side(n: P3) -> Option<FaceRole> {
     }
 }
 
+/// The piece of a face under plan point `q`, and whether `q` is on the face: the piece whose ring holds `q` (or passes within
+/// [`TOL`] of it) and no hole of `holes` does; else, in a hole, the first piece, and past every piece the nearest; `ring`
+/// reads a piece's ring. What Place on Face and face coordinates (`face.rs`) both find a top's or a bottom's height by.
+pub(crate) fn piece_at<'a, T>(pieces: &'a [T], ring: impl Fn(&T) -> &[P2], holes: &[Vec<P2>], q: P2) -> Option<(&'a T, bool)> {
+    let near = |r: &[P2]| geom::contains(r, q) || geom::ring_edges(r).any(|(a, b)| geom::dist_to_segment(q, a, b) <= TOL);
+    let found = pieces.iter().find(|p| near(ring(p))).filter(|_| !holes.iter().any(|h| geom::contains(h, q)));
+    match found {
+        Some(p) => Some((p, true)),
+        None if !holes.is_empty() && pieces.iter().any(|p| near(ring(p))) => Some((pieces.first()?, false)),
+        None => {
+            let away = |r: &[P2]| geom::ring_edges(r).map(|(a, b)| geom::dist_to_segment(q, a, b)).fold(f64::INFINITY, f64::min);
+            Some((pieces.iter().min_by(|a, b| away(ring(a)).total_cmp(&away(ring(b))))?, false))
+        }
+    }
+}
+
 /// **Always Vertical, the one rule (T16).** The z a hosted component stands with, given its host's normal `n` where it
 /// stands and its family's Always Vertical: `Some(z)` keeps it plumb with that z; `None` lets it follow the host, its z the
 /// normal. As Revit's work plane-based families: Always Vertical on, z stays up on every host, a sloped one, an upright
@@ -394,18 +410,9 @@ impl Model {
         }
         let q = P2(uv[0], uv[1]);
         let pieces = self.slab_pieces(e);
-        let near = |r: &[P2]| geom::contains(r, q) || geom::ring_edges(r).any(|(a, b)| geom::dist_to_segment(q, a, b) <= TOL);
         // A ceiling's openings are holes in its one piece; a floor's and a roof's pieces leave theirs out already.
         let holes: &[Vec<P2>] = if let Element::Ceiling(c) = e { &c.openings } else { &[] };
-        let found = pieces.iter().find(|(r, ..)| near(r)).filter(|_| !holes.iter().any(|h| geom::contains(h, q)));
-        let (piece, on) = match found {
-            Some(p) => (p, true),
-            None if !holes.is_empty() && pieces.iter().any(|(r, ..)| near(r)) => (pieces.first()?, false),
-            None => {
-                let away = |r: &[P2]| geom::ring_edges(r).map(|(a, b)| geom::dist_to_segment(q, a, b)).fold(f64::INFINITY, f64::min);
-                (pieces.iter().min_by(|a, b| away(&a.0).total_cmp(&away(&b.0)))?, false)
-            }
-        };
+        let (piece, on) = piece_at(&pieces, |p| &p.0, holes, q)?;
         let plane = if face == FaceRole::Top { piece.2 } else { piece.1 };
         let up = view3d_unit([-plane.g.0, -plane.g.1, 1.0]);
         let normal = if face == FaceRole::Top { up } else { up.map(|v| -v) };
@@ -432,7 +439,7 @@ impl Model {
     }
 
     /// A floor's, a ceiling's or a roof's pieces in plan, each with the planes of its underside and its top.
-    fn slab_pieces(&self, e: &Element) -> Vec<(Vec<P2>, walls::Plane, walls::Plane)> {
+    pub(crate) fn slab_pieces(&self, e: &Element) -> Vec<(Vec<P2>, walls::Plane, walls::Plane)> {
         match e {
             Element::Floor(f) => self.floor_prisms(f),
             Element::Roof(r) => self.roof_prisms(r),

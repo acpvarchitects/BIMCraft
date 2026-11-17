@@ -28,6 +28,9 @@ struct Plan {
 /// A level's rooms, in order of id.
 type Placed<'a> = Rc<Vec<(Id, &'a Room)>>;
 
+/// Faces by element and face, each worked out once, or none where there's no such face.
+type Charts = HashMap<(Guid, crate::face::FaceId), Option<Rc<crate::face::Chart>>>;
+
 /// The boundaries of a model's rooms, each level's found once.
 pub struct Rooms<'a> {
     m: &'a Model,
@@ -37,6 +40,8 @@ pub struct Rooms<'a> {
     placed: RefCell<HashMap<Guid, Placed<'a>>>,
     /// Each room's boundary at its walls' centre lines, found once: what [`Rooms::room_at`] asks of many points.
     regions: RefCell<HashMap<Id, Option<Rc<Region>>>>,
+    /// The faces survey areas are on, each worked out once ([`Rooms::chart`]).
+    charts: RefCell<Charts>,
 }
 
 impl<'a> Rooms<'a> {
@@ -47,7 +52,19 @@ impl<'a> Rooms<'a> {
             plans: RefCell::new(HashMap::new()),
             placed: RefCell::new(HashMap::new()),
             regions: RefCell::new(HashMap::new()),
+            charts: RefCell::new(HashMap::new()),
         }
+    }
+
+    /// Face `face` of element `element` ([`Model::face_chart`]), worked out once for every survey area a listing or a
+    /// schedule reads on it.
+    pub fn chart(&self, element: Guid, face: crate::face::FaceId) -> Option<Rc<crate::face::Chart>> {
+        if let Some(c) = self.charts.borrow().get(&(element, face)) {
+            return c.clone();
+        }
+        let c = self.m.face_chart(element, face).map(Rc::new);
+        self.charts.borrow_mut().insert((element, face), c.clone());
+        c
     }
 
     fn plan(&self, level: Guid, at: RoomArea) -> Rc<Plan> {

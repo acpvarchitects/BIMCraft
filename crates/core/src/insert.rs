@@ -469,6 +469,7 @@ fn copy_definition(to: &mut Model, from: &Model, kind: &Kind, name: &str) -> boo
         Kind::TitleBlock => one(&mut to.title_blocks, Some(&from.title_blocks), name),
         Kind::PrintSet => one(&mut to.print_sets, Some(&from.print_sets), name),
         Kind::PublishSet => one(&mut to.publish_sets, Some(&from.publish_sets), name),
+        Kind::Survey => one(&mut to.surveys, Some(&from.surveys), name),
         Kind::Dictionary => one(&mut to.dictionaries, Some(&from.dictionaries), name),
         _ => false,
     }

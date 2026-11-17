@@ -2212,6 +2212,11 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"point": [2000, 2000], "frozen": "x", "top_level": [], "limit_offset": 1e308, "base_offset": -1e308}),
         json!({"point": [2000, 2000], "frozen": true, "limit_offset": -2500}),
         json!({"view": 100000, "show": ["roomreference"], "categories": {"roomreference": {"shown": 5}}}),
+        // Survey areas, surveys and faces.
+        json!({"host": 100002, "face": "exterior", "outline": [[0, 0], [1e9, 0], [1e9, 1e9], [0, 1e9]], "depth": 1e300, "severity": 255, "condition": {"custom": ""}, "photos": ["/etc/passwd"]}),
+        json!({"host": 100002, "face": {"side": 4294967295u32}, "outline": [[0, 0], [1, 0], [1, 1]], "holes": [[[0, 0]]], "item": ""}),
+        json!({"name": "S", "date": "9999-99-99", "method": {"custom": "x"}, "rename": ""}),
+        json!({"id": 100002, "face": "top", "at": [[1e300, 0], [0, 0]]}),
         json!({"elevation": "high"}),
         json!({"elevation": 1e300}),
         json!({"crs": "EPSG:31983", "eastings": 1e300, "rotation": "x", "scale": -1, "clear": "yes", "map_zone": 5}),
