@@ -701,6 +701,7 @@ impl FamilyEditor {
     pub(super) fn drop_tools(&mut self) {
         self.views.drawing = None;
         self.views.measuring = None;
+        self.views.cutting = None;
         self.views.picking = None;
         self.views.dimensioning = None;
         self.views.dim_kind = DimKind::Aligned;

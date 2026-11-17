@@ -55,6 +55,8 @@ pub(crate) struct Views {
     pub(crate) drawing_model: bool,
     /// The Measure tool, on (FE-17): its first click and the ruler last laid.
     pub(crate) measuring: Option<super::measure::Measuring>,
+    /// Cut Geometry, Uncut Geometry, Join Geometry, Unjoin Geometry or Switch Join Order in hand (FE-16b), with its first pick.
+    pub(crate) cutting: Option<super::cutting::Cutting>,
     /// The plane being dragged: where the pointer was, in the view's millimetres, and the view as the drag began, which the
     /// pointer is read through while it goes on (the view refitting round the plane would otherwise change its scale under
     /// the hand).
@@ -1534,6 +1536,7 @@ impl FamilyEditor {
         let mut on_dims: Option<(Clicked, Vec<f64>)> = None;
         let mut modify_at: Option<super::modify::Click> = None;
         let mut measure_at: Option<P2> = None;
+        let mut cut_at: Option<Option<usize>> = None;
         let mut drew_at = false;
         let mut paste_at: Option<P2> = None;
         let mut clicked_any = false;
@@ -1541,6 +1544,7 @@ impl FamilyEditor {
         let edit = (editable
             && response.double_clicked()
             && self.views.measuring.is_none()
+            && self.views.cutting.is_none()
             && self.views.drawing.is_none()
             && self.views.picking.is_none()
             && self.views.modify.is_none()
@@ -1580,6 +1584,9 @@ impl FamilyEditor {
                 // Measure (FE-17): a ruler by two clicks, snapped as a Modify tool's points are; Shift keeps it square.
                 let first = self.views.measuring.as_ref().and_then(|m| m.first);
                 measure_at = Some(second(first, p));
+            } else if self.views.cutting.is_some() {
+                // Cut, Join and their undoing tools (FE-16b): the form clicked, done once the view is drawn.
+                cut_at = Some(scene.as_ref().and_then(|s| s.form_pick(q)));
             } else if let Some(first) = self.views.drawing {
                 // A plane's or a line's points snap as a Modify tool's do (FE-21b).
                 let q = second(first, p);
@@ -1711,6 +1718,7 @@ impl FamilyEditor {
         let is_pinned = |p: Picked| family.as_ref().is_some_and(|f| bimcraft_core::family::select::pinned(f, p));
         let tools_free = editable
             && self.views.measuring.is_none()
+            && self.views.cutting.is_none()
             && self.views.drawing.is_none()
             && self.views.picking.is_none()
             && self.views.pivoting.is_none()
@@ -1766,6 +1774,7 @@ impl FamilyEditor {
         let free = editable
             && pressed.is_none()
             && self.views.measuring.is_none()
+            && self.views.cutting.is_none()
             && self.views.drawing.is_none()
             && self.views.picking.is_none()
             && self.views.pivoting.is_none()
@@ -1995,6 +2004,15 @@ impl FamilyEditor {
             && let Some(text) = self.measure_click(at, which, base.units)
         {
             self.views.said = Some(text);
+        }
+        if let Some(form) = cut_at
+            && let Some(done) = self.cutting_click(form)
+        {
+            match done {
+                Ok(said) if !said.is_empty() => self.views.said = Some(said),
+                Ok(_) => {}
+                Err(e) => problem = Some(e),
+            }
         }
         if let Some((q, axis, offset)) = modify_at
             && let Some(e) =

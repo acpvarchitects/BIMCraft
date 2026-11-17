@@ -2093,4 +2093,4 @@ In `crates/ui-egui`, the Family Editor:
   Ctrl+V, Paste Aligned (FE-14).
 - `editor/selection.rs`: the selection's commands (FE-20): Filter, Select Previous, Select by ID, IDs of Selection, Select All
   Instances, Select Elements by Face and Drag Elements on Selection.
-- `editor/pin.rs`: Pin and Unpin, and what a pin refuses (FE-17). `editor/measure.rs`: Measure and Create Similar (FE-17).
+- `editor/cutting.rs`: Cut Geometry (CU), Uncut Geometry, Join Geometry (JO), Unjoin Geometry and Switch Join Order in a family document (FE-16b; tests `tests/family_cut_join.rs`): two picks, the form cut or joined, then the one that cuts it (a form clicked in a view, a void by its row in the forms list), each pair one step of the history. `editor/pin.rs`: Pin and Unpin, and what a pin refuses (FE-17). `editor/measure.rs`: Measure and Create Similar (FE-17).

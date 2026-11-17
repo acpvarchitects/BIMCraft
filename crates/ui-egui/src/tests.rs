@@ -7398,6 +7398,7 @@ mod family_box_select;
 mod family_canvas_clear;
 mod family_category_dialog;
 mod family_clipboard;
+mod family_cut_join;
 mod family_dimensions;
 mod family_document;
 mod family_drag_copy;

@@ -6,6 +6,7 @@ mod association;
 pub(crate) mod clipboard;
 pub(crate) mod connector_marks;
 pub(crate) mod connectors;
+pub(crate) mod cutting;
 pub(crate) mod dimensions;
 pub(crate) mod document;
 mod drag_move;

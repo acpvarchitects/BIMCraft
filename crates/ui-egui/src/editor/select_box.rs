@@ -554,6 +554,12 @@ impl Scene<'_> {
         face.or_else(|| self.form_edge(q, self.reach()))
     }
 
+    /// The solid form a click at `q` takes with Cut or Join in hand (FE-16b): by its face or by an edge, whether faces select or
+    /// not, as the tool clicks a form rather than an element of any kind.
+    pub(super) fn form_pick(&self, q: P2) -> Option<usize> {
+        self.form_face(q).or_else(|| self.form_edge(q, self.reach()))
+    }
+
     /// The nested instance whose face a click at `q` is on, while Select Elements by Face is on: what a click takes before
     /// a reference line or a plane there, as it always did.
     pub(super) fn nested_face(&self, q: P2) -> Option<usize> {
