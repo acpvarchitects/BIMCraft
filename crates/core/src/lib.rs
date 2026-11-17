@@ -39,6 +39,7 @@ pub mod crosscheck;
 pub mod crs;
 mod csg;
 pub mod curves;
+pub mod decay;
 pub mod demand;
 pub mod derived;
 pub mod dims;
@@ -155,6 +156,9 @@ pub mod panel_schedule;
 #[cfg(test)]
 mod parameter_tests;
 pub mod parameters;
+pub mod parts;
+#[cfg(test)]
+mod parts_tests;
 pub mod pat;
 pub mod pdf;
 pub mod pen;

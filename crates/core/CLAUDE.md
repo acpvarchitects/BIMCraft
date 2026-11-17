@@ -14,7 +14,10 @@ is in the root `CLAUDE.md`; the write-ups by area are in `docs/areas/`, which th
   nothing, and one undo step (`script_atomic` is a script in one; `script_dry_run` runs one and takes it back, and says what it
   would have made, changed and removed).
 - **A new kind of element** is a variant of `Element` and its arms in the places that match on it (`category`, `params`,
-  `level_of`, `element_json`, copy and delete, IFC, import, the schedules' `OWN` table): the compiler lists them.
+  `level_of`, `element_json`, copy and delete, IFC, import, the schedules' `OWN` table): the compiler lists them. A part of
+  an element (`Element::Part`, `parts.rs`) is one: it points at its host and at the part it was divided from by GUID
+  (`visit_refs!`), names its own material as a library entry (`Element::lib_refs_mut`), and holds its layer by the layer's
+  own GUID (a `HasPart` GUID, which is no element reference).
 - **Scripts can reference results**: `@name = command {params}` names a line; later whole-string values `@name`, `$last`,
   `$-2` use an earlier result's `id`, or a path such as `@walls.ids.0` reads a field. `engine::script_line` reads the same
   syntax for execution and control-port preflight. Expand parameters before calling `execute`, keeping validation,
@@ -65,7 +68,14 @@ changes. A copy is a new element: a new id and a new GUID. IFC writes the GUID a
 | Beams, columns, footings, pipes, conduits, fixtures | [structure and MEP](../../docs/areas/structure-and-mep.md), [disciplines](../../docs/disciplines.md) |
 | IFC export or import | [looking at the result](../../docs/areas/looking-at-results.md): the IfcOpenShell checks; [grid exchange](../../docs/areas/ifc-exchange.md) |
 | Coordinates: base and survey points, locations, shared coordinates | [coordinates](../../docs/areas/coordinates.md) |
+| Parts of elements, the heritage set, a part's solid and quantities | [parts](../../docs/areas/parts.md) |
 | Autosave and recovery | [autosave](../../docs/autosave.md) |
+
+## What four sizing commands follow
+
+Moved from the root's module map, word for word: `hydrant_size` follows IT 22/2025's Tabelas 1 to 3, Hazen-Williams; `demand`,
+CPFL's GED 13; Enel's ET 1569 and Celesc's N-321.0001 by installed load; `dps_check` says when, where, connection, currents;
+`storm_size` uses Manning, the downpipe abacuses.
 
 ## Testing
 

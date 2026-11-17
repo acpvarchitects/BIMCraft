@@ -173,7 +173,8 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// (`library`), and what names a library entry holds its GUID. 1: elements have GUIDs, ids six digits, and what points at
 /// an element holds its GUID. None (0): a file from before.
 /// 20 (0.12's, which every change since 19 shares; the Family Editor's unreleased builds wrote 20 to 32 too, and a file of
-/// theirs stamped 20 opens as one of 0.12's, 21 and up as newer): rooms have types (`types.room`), which may name a floor type and a ceiling type, and a room holds the floor and the
+/// theirs stamped 20 opens as one of 0.12's; 21 is parts' now, and nobody keeps a file of those builds stamped 21, so 22 and
+/// up are refused as newer): rooms have types (`types.room`), which may name a floor type and a ceiling type, and a room holds the floor and the
 /// ceiling made for it (`floor`, `ceiling`); a build that reads up to 19 would lose the links and leave the finishes behind. And
 /// project parameters may be of kinds 19 doesn't know (`integer`, `area`, `volume`, `angle`), a type's (`scope`, `type_values`),
 /// from a `.bimparams` dictionary (`dictionaries`), grouped under a heading of the project's own, and the project's information
@@ -185,7 +186,10 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// georeference and lose where the project stands; and it would read spot coordinates (a spot's `coordinate`, `type`, `origin`,
 /// `leader`, `shoulder` and `end`) and a level's `elevation_base` as spot elevations from the Project Base Point. A file of 19
 /// needs no step: its georeference is the active site, both points at the internal origin.
-pub const FORMAT: u32 = 20;
+/// 21: parts of elements (`part`, `parts.rs`) are elements, and project parameters may be for them (`part`); nothing in a file of
+/// 20 changes, but a build that reads up to 20 would answer a part with a serde error ("unknown variant"), or, reading it
+/// leniently, leave every part out and drop them when it saves, not "saved by a newer BIMCraft".
+pub const FORMAT: u32 = 21;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -588,6 +592,26 @@ pub struct Material {
     /// How much of what lies behind its surfaces shows through them in the 3D view, percent: 0 (opaque) to 100.
     #[serde(default, skip_serializing_if = "is_clear")]
     pub transparency: u8,
+    /// How heavy it is, kg/m³: what a part made of it weighs by. None, not said.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub density: Option<f64>,
+    /// How well it carries heat, W/(m·K): what a layer of it resists heat by. None, not said.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub conductivity: Option<f64>,
+    /// How much heat it holds, J/(kg·K). None, not said.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub specific_heat: Option<f64>,
+}
+
+impl Material {
+    /// What a material may say of its weight and its heat: each value's key, its unit and the most it may be (above 0).
+    pub const PHYSICS: [(&'static str, &'static str, f64); 3] =
+        [("density", "kg/m³", 1e5), ("conductivity", "W/(m·K)", 1e4), ("specific_heat", "J/(kg·K)", 1e6)];
+
+    /// Its values of [`Material::PHYSICS`], in that order.
+    pub fn physics(&self) -> [Option<f64>; 3] {
+        [self.density, self.conductivity, self.specific_heat]
+    }
 }
 
 fn is_clear(x: &u8) -> bool {
@@ -604,6 +628,9 @@ impl Default for Material {
             surface_pattern: None,
             texture: None,
             transparency: 0,
+            density: None,
+            conductivity: None,
+            specific_heat: None,
         }
     }
 }
@@ -2405,6 +2432,11 @@ macro_rules! visit_refs {
                 f(& $($m)? rb.level);
                 if let Some(g) = & $($m)? rb.host { f(g) }
             }
+            // Its layer is a part of a type, no element: it is no reference.
+            Element::Part(p) => {
+                f(& $($m)? p.host);
+                if let Some(g) = & $($m)? p.parent { f(g) }
+            }
         }
     }};
 }
@@ -2488,6 +2520,9 @@ pub enum Element {
     /// The project's information (Revit's Project Information): one in a project at most.
     #[serde(rename = "project")]
     ProjectInfo(crate::project_info::ProjectInfo),
+    /// A part of a wall, a floor, a roof, a ceiling or a component: a layer of it, or all of it, as an element of its own;
+    /// of Revit's Parts.
+    Part(crate::parts::BuildingPart),
 }
 
 impl Element {
@@ -2511,6 +2546,7 @@ impl Element {
             | Element::Ramp(Ramp { params, .. })
             | Element::Railing(Railing { params, .. })
             | Element::ProjectInfo(crate::project_info::ProjectInfo { params, .. }) => Some(params),
+            Element::Part(crate::parts::BuildingPart { params, .. }) => Some(params),
             _ => None,
         }
     }
@@ -2535,6 +2571,7 @@ impl Element {
             | Element::Ramp(Ramp { params, .. })
             | Element::Railing(Railing { params, .. })
             | Element::ProjectInfo(crate::project_info::ProjectInfo { params, .. }) => Some(params),
+            Element::Part(crate::parts::BuildingPart { params, .. }) => Some(params),
             _ => None,
         }
     }
@@ -2715,6 +2752,7 @@ impl Element {
             Element::Ramp(_) => "ramp",
             Element::Railing(_) => "railing",
             Element::Roof(_) => "roof",
+            Element::Part(_) => "part",
         }
     }
 }
@@ -3110,7 +3148,7 @@ pub struct Classification {
 pub const MAX_PROJECT_PARAMETERS: usize = 4096;
 
 /// The categories project parameters are for.
-pub const PARAMETER_CATEGORIES: [&str; 26] = [
+pub const PARAMETER_CATEGORIES: [&str; 27] = [
     "wall",
     "floor",
     "ceiling",
@@ -3137,6 +3175,7 @@ pub const PARAMETER_CATEGORIES: [&str; 26] = [
     "groundconductor",
     "cable",
     "project",
+    "part",
 ];
 
 impl ProjectParameter {
@@ -3764,7 +3803,8 @@ impl Model {
         params.iter().filter(|(k, _)| f.material_parameter(k)).filter_map(|(_, v)| v.as_str()).collect()
     }
 
-    /// What names material `name` besides the types' layers: a family, or a component of one.
+    /// What names material `name` besides the types' layers: a family, a component of one, the paint of an element, or a
+    /// part made of it in place of its layer's.
     pub fn material_user(&self, name: &str) -> Option<String> {
         if let Some((n, _)) = self.families.iter().find(|(_, f)| f.materials().contains(&name)) {
             return Some(format!("family `{n}`"));
@@ -3774,6 +3814,9 @@ impl Model {
         };
         if let Some((id, e)) = self.elements.iter().find(|(_, e)| painted(e)) {
             return Some(format!("the paint of {} {id}", e.category()));
+        }
+        if let Some((id, _)) = self.elements.iter().find(|(_, e)| matches!(e, Element::Part(p) if p.material.as_deref() == Some(name))) {
+            return Some(format!("part {id}"));
         }
         self.elements.iter().find(|(_, e)| self.component_materials(e).contains(&name)).map(|(id, _)| format!("component {id}"))
     }
@@ -3838,13 +3881,19 @@ impl Model {
         Ok(())
     }
 
-    /// Material `from`, renamed `to` in the families and their components.
+    /// Material `from`, renamed `to` in the families and their components, and in what else names it of the elements: their
+    /// paint, and a part's own material.
     pub fn rename_material_in_families(&mut self, from: &str, to: &str) {
         for f in self.families.values_mut() {
             f.rename_material(from, to);
         }
         let Model { families, elements, .. } = self;
         for e in elements.values_mut() {
+            if let Element::Part(p) = e
+                && p.material.as_deref() == Some(from)
+            {
+                p.material = Some(to.to_string());
+            }
             // Paint of it, on any face.
             if let Some(serde_json::Value::Object(paint)) = e.params_mut().and_then(|p| p.get_mut(crate::paint::KEY)) {
                 for v in paint.values_mut().filter(|v| v.as_str() == Some(from)) {
@@ -5303,6 +5352,8 @@ impl Model {
             Element::Tag(t) => self.elements.get(t.host).filter(|h| !matches!(h, Element::Tag(_))).and_then(|h| self.level_of(h)),
             // On the board's level: its plan is where it is drawn.
             Element::Circuit(c) => self.elements.get(c.panel).filter(|h| matches!(h, Element::Component(_))).and_then(|h| self.level_of(h)),
+            // A part stands where its host does.
+            Element::Part(p) => self.elements.get(p.host).filter(|h| !matches!(h, Element::Part(_))).and_then(|h| self.level_of(h)),
             // Notes and spot elevations in a level's plan.
             Element::Text(Note { view, .. })
             | Element::Spot(Spot { view, .. })
@@ -7390,6 +7441,11 @@ impl Model {
             if x.transparency > 100 {
                 return Err(format!("material `{n}`: transparency is a percent, 0 to 100, not {}", x.transparency));
             }
+            for ((key, unit, most), v) in Material::PHYSICS.iter().zip(x.physics()) {
+                if let Some(v) = v.filter(|v| !(*v > 0.0 && v <= most)) {
+                    return Err(format!("material `{n}`: {key} is {unit}, above 0 and at most {most}, not {v}"));
+                }
+            }
             if let Some(t) = &x.texture {
                 t.check(&self.images).map_err(|e| format!("material `{n}`: texture: {e}"))?;
             }
@@ -8906,6 +8962,7 @@ impl Model {
                 }
                 point(&format!("{who} offset"), t.offset)?;
             }
+            Element::Part(p) => crate::parts::check(self, &who, id, p)?,
         }
         Ok(())
     }
