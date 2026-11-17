@@ -981,12 +981,129 @@ fn wall_solids(m: &Model, id: Id, index: Option<&walls::Index>) -> Vec<Solid> {
         |p: walls::Prism| Solid::Prism { owner: id, color: WALL, tex: 0, ring: p.ring, bottom: p.bottom, top: p.top, curve: p.curve };
     let mut voids = walls::host_voids_in(m, id, index);
     voids.extend(join_voids(m, id, index));
-    let prisms = walls::prisms_in(m, id, true, index).into_iter().map(prism).collect();
-    if voids.is_empty() {
-        return prisms;
-    }
-    cut_by_voids(id, WALL, prisms, &voids).unwrap_or_else(|| walls::prisms_rect_in(m, id, index).into_iter().map(prism).collect())
+    let prisms: Vec<Solid> = walls::prisms_in(m, id, true, index).into_iter().map(prism).collect();
+    let mut out = if voids.is_empty() {
+        prisms
+    } else {
+        cut_by_voids(id, WALL, prisms, &voids).unwrap_or_else(|| walls::prisms_rect_in(m, id, index).into_iter().map(prism).collect())
+    };
+    out.extend(infills(m, id, index));
+    out
 }
+
+/// Wall `id`'s infills (T25): of each opening that doesn't stand whenever the wall does, what fills its hole where a view's
+/// phase leaves it out, as triangles whose `vis` says where it stands ([`crate::phasing::openings::pack`]), which the view's
+/// look reads. Its rectangle, kept within the wall ([`walls::within`]): the part no other opening's covers fills where it isn't
+/// there; the part another's covers too, only where neither is (a door replaced, then the new one taken down: the old one's
+/// hole is filled once both are gone), and nothing where that one always stands. Of an opening whose family cuts the wall with
+/// voids, what of the wall round it those voids take.
+fn infills(m: &Model, id: Id, index: Option<&walls::Index>) -> Vec<Solid> {
+    use crate::phasing::openings::{apart, pack};
+    let (Some(wall), Some(w)) = (m.elements.get(id), m.wall(id)) else { return Vec::new() };
+    let guid = m.guid(id);
+    let holes: Vec<(&Element, walls::Hole)> = walls::openings_of(m, id, index)
+        .filter_map(|e| match e {
+            Element::Door(o) | Element::Window(o) if o.host == guid => Some((e, walls::hole(m, w, e, o)?)),
+            _ => None,
+        })
+        .collect();
+    if holes.iter().all(|(e, _)| apart(m, e, wall).is_none()) {
+        return Vec::new();
+    }
+    let axis = Axis::of(w);
+    let (ext, int) = walls::faces(m, w);
+    let rect = |h: &walls::Hole| [h.s0, h.s1, h.bottom, h.top];
+    let block = |[s0, s1, bottom, top]: [f64; 4]| -> Vec<[P3; 3]> {
+        let ring: Vec<P2> = axis.points(s0, s1, ext).into_iter().chain(axis.points(s1, s0, int)).collect();
+        let solid = Solid::Prism { owner: id, color: WALL, tex: 0, ring, bottom: Plane::flat(bottom), top: Plane::flat(top), curve: None };
+        let mut made = Vec::new();
+        solid.tris(&mut made);
+        made.into_iter().map(|t| t.p).collect()
+    };
+    let mesh = |tris: Vec<[P3; 3]>, vis: u32| Solid::Mesh { owner: id, color: WALL, tex: 0, tris, caps: 0, round: false, cut: true, vis };
+    let mut meter = crate::csg::Meter::default();
+    let mut out = Vec::new();
+    for (i, (e, h)) in holes.iter().enumerate() {
+        let Some(life) = apart(m, e, wall) else { continue };
+        let Some(h) = walls::within(m, w, *h) else { continue };
+        let voids = m.opening_voids(e);
+        if !voids.is_empty() {
+            // What the voids take of the wall round the opening, within it: the block less what is left of it once they have
+            // cut it. None where another opening's hole meets its rectangle (one replacing it, say): its shape isn't cut in
+            // cells, so it stays open there rather than fill over one that stands.
+            let mine = rect(&h);
+            let met = holes
+                .iter()
+                .enumerate()
+                .filter(|(j, _)| *j != i)
+                .filter_map(|(_, (_, o))| walls::within(m, w, *o))
+                .any(|o| o.s0 < mine[1] - TOL && o.s1 > mine[0] + TOL && o.bottom < mine[3] - TOL && o.top > mine[2] + TOL);
+            if met {
+                continue;
+            }
+            let Some(vis) = pack(life, None) else { continue };
+            let Some(room) =
+                walls::within(m, w, walls::Hole { s0: h.s0 - VOID_REACH, s1: h.s1 + VOID_REACH, bottom: f64::MIN, top: f64::MAX })
+            else {
+                continue;
+            };
+            let room = block(rect(&room));
+            for v in &voids {
+                let Ok(rest) = crate::csg::subtract(&room, v, &mut meter) else { continue };
+                let Ok(tris) = crate::csg::subtract(&room, &rest, &mut meter) else { continue };
+                if !tris.is_empty() {
+                    out.push(mesh(tris, vis));
+                }
+            }
+            continue;
+        }
+        // Its rectangle in cells, cut where each other hole it meets begins and ends. A cell is filled where none of the
+        // openings whose holes cover it stands: so each packs where they stand, one or two; one covered by three or more, or by
+        // one there whenever its wall is, is never filled, so no infill hides an opening that stands. Each cell is made once,
+        // by the first opening covering it.
+        let mine = rect(&h);
+        let meets = |r: &[f64; 4]| r[0] < mine[1] - TOL && r[1] > mine[0] + TOL && r[2] < mine[3] - TOL && r[3] > mine[2] + TOL;
+        let others: Vec<(usize, [f64; 4])> = holes
+            .iter()
+            .enumerate()
+            .filter(|(j, _)| *j != i)
+            .filter_map(|(j, (_, o))| Some((j, rect(&walls::within(m, w, *o)?))))
+            .filter(|(_, r)| meets(r))
+            .collect();
+        let cuts = |a: usize, b: usize| {
+            let mut v: Vec<f64> = [mine[a], mine[b]].into_iter().chain(others.iter().flat_map(|(_, r)| [r[a], r[b]])).collect();
+            v.retain(|x| *x >= mine[a] - TOL && *x <= mine[b] + TOL);
+            v.sort_by(f64::total_cmp);
+            v.dedup_by(|x, y| (*x - *y).abs() < TOL);
+            v
+        };
+        let (along, up) = (cuts(0, 1), cuts(2, 3));
+        for sx in along.windows(2) {
+            for zx in up.windows(2) {
+                let (&[s0, s1], &[z0, z1]) = (sx, zx) else { continue };
+                let (sm, zm) = ((s0 + s1) / 2.0, (z0 + z1) / 2.0);
+                let covering: Vec<usize> =
+                    others.iter().filter(|(_, r)| r[0] < sm && sm < r[1] && r[2] < zm && zm < r[3]).map(|(j, _)| *j).collect();
+                if covering.iter().any(|j| *j < i) {
+                    continue;
+                }
+                let lives: Option<Vec<_>> = covering.iter().map(|j| holes.get(*j).and_then(|(o, _)| apart(m, o, wall))).collect();
+                let vis = match lives.as_deref() {
+                    Some([]) => pack(life, None),
+                    Some([theirs]) => pack(life, Some(*theirs)),
+                    _ => None,
+                };
+                if let Some(vis) = vis {
+                    out.push(mesh(block([s0, s1, z0, z1]), vis));
+                }
+            }
+        }
+    }
+    out
+}
+
+/// How far along a wall past an opening's rectangle its family's voids are looked for, for its infill.
+const VOID_REACH: f64 = 500.0;
 
 /// Whether `voids` take anything of wall `id`'s solids (its prisms round its doors' and windows' rectangles): some void whose
 /// box reaches a prism's takes more than a cubic centimetre of it ([`crate::csg::subtract`]), so a void whose box or outline

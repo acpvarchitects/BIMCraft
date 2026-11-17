@@ -218,7 +218,8 @@ impl CapSource {
                 for (i, ring) in self.face(axis, at).iter() {
                     let Some(p) = self.pieces.get(*i) else { continue };
                     let owner = p.solid.owner();
-                    if !plain && !look.shows(owner) {
+                    // An infill only where the view's phase fills its opening (T25).
+                    if !plain && !look.shows(owner) || !look.forms_show(p.solid.vis(), true) {
                         continue;
                     }
                     let ring = [(P2(1.0, 0.0), lo[a]), (P2(-1.0, 0.0), -hi[a]), (P2(0.0, 1.0), lo[b]), (P2(0.0, -1.0), -hi[b])]
@@ -412,6 +413,30 @@ mod tests {
         let mut off = s;
         off.execute("section_box", &json!({"on": false})).unwrap();
         assert!(caps_of(&off).is_empty());
+    }
+
+    /// A section box cuts a door's opening filled only where the view's phase fills it (T25): the caps honour the infill's
+    /// `vis`, as the picture does.
+    #[test]
+    fn a_section_box_caps_an_infill_only_where_the_views_phase_fills_it() {
+        let mut s = Session::new();
+        s.script(
+            r#"wall {"points": [[0,0],[8000,0],[8000,6000],[0,6000]], "closed": true}
+               door {"at": [2000, 0]}"#,
+        )
+        .unwrap();
+        let door = s.model.elements.iter().find(|(_, e)| matches!(e, Element::Door(_))).map(|(id, _)| *id).unwrap();
+        s.execute("modify", &json!({"id": door, "params": {"Phase Demolished": "New Construction"}})).unwrap();
+        s.execute("section_box", &json!({"on": true, "min": [-1000, -1000, -100], "max": [9000, 7000, 1000]})).unwrap();
+        let across = |s: &mut Session, filter: &str| {
+            s.execute("graphics", &json!({"view": "{3D}", "phase": "New Construction", "phase_filter": filter})).unwrap();
+            caps_of(s).tris.iter().any(|t| {
+                let c = [0, 1].map(|k| t.p.iter().map(|p| p[k]).sum::<f64>() / 3.0);
+                category(s, t.owner) == "wall" && (1700.0..2300.0).contains(&c[0]) && c[1].abs() < 100.0
+            })
+        };
+        assert!(!across(&mut s, "Show Previous + Demolished"), "the door's opening, where it comes down: no cap");
+        assert!(across(&mut s, "Show Previous + New"), "its infill, cut by the box");
     }
 
     #[test]

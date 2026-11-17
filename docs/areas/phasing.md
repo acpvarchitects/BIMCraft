@@ -40,6 +40,26 @@ tool (DW, `BimApp::demolish`, in the Modify tab's Phasing panel) runs `modify {p
 plan, a section or the 3D view: the phase of the view on screen (the project's last unless it has one), or null when the element
 already comes down in it, one undo step a click. A door or window that only follows its wall gets a note instead, and an element that
 holds no `params` (annotation, levels, grids, shafts) says so and changes nothing.
+A door's or a window's opening is there only where the door or window is (`phasing/openings.rs`, T25). In a view of a phase it
+isn't made in yet, or taken down before, the wall is whole; so it is where its phase filter doesn't display it (a new door in a
+demolition plan, a demolished one in a plan of what is built), as Revit fills a demolished door's opening with an infill wall.
+Where it comes down, that infill is new: a plan fills and outlines it by its category, whatever the view does to its existing
+wall. Hiding doors in Visibility/Graphics still leaves their openings. Nothing is stored: a wall's solids carry an infill
+for each opening that doesn't stand whenever the wall does (`view3d::infills`: its rectangle kept within the wall's base and
+top, `walls::within`, or what its family's voids take of the wall), whose `vis` packs where the opening stands
+(`openings::pack`). Its rectangle is cut in cells where the other holes it meets begin and end, and a cell fills only where
+none of the openings covering it stands: one covered by another packs where both stand (a door replaced and the new one
+taken down later, two doors one after the other at one spot); one covered by three or more, or by an opening there whenever
+its wall is, is never filled, so no infill hides a door that stands, at the cost of a hole in 3D where three are all gone
+(the plan is whole there). An opening whose family cuts its wall with voids is filled in its own shape, and not at all where
+another opening's hole meets it, for the same reason. Under
+a sloped or attached top the infill rises to the lowest top over its width, leaving a wedge open above it. Each view's
+`Look` (its phase and phase filter) shows it or not (`Look::forms_show`), in 3D, sections and the section box's caps alike;
+plans leave out the gap (`Look::fills`). So no cache is kept per phase. Two openings that share a place in a wall may both
+be there when one comes down before the other is made, or in the phase it is (`openings::coexist`): how a door is replaced,
+the old one demolished and the new one made in the same phase. IFC is as before: every opening cuts its wall, and each says
+its `Status`. OBJ, STL and glTF write what the view they are exported from shows, its infills with it. A curved wall's infill
+is straight; schedules, quantities and rooms don't read the infill.
 The view control bar's Renovation menu (`BimApp::renovation_menu`, `phasing.rs` in the desktop, the same in both profiles) says in plain
 words which phase of the work a plan, a section or the 3D view shows: All (no phase and no phase filter of its own, the view as it
 starts), Existing (the project's first phase, every status by its category), Demolition (the last phase through a filter that hides
