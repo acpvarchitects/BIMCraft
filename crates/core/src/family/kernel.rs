@@ -357,6 +357,6 @@ mod tests {
         assert_eq!(*spy.0.lock().unwrap(), [1, 1], "the circle and the arc, exact");
         let mesh = forms::build(&form, &Frame::LEVEL, &mut num, &MeshKernel).unwrap().unwrap();
         assert_eq!(seen, mesh, "the same solid: the mesh kernel builds from the chords alone");
-        assert!(!MeshKernel::EXACT && Spy::EXACT);
+        const { assert!(!MeshKernel::EXACT && Spy::EXACT) };
     }
 }
