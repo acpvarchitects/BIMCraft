@@ -24,7 +24,7 @@ use crate::rooms::Rooms;
 use crate::units::Units;
 
 /// What a field holds, and so how a schedule shows it and a formula reads it: text, a number, a
-/// length (mm), an area (m²), or yes or no (1 or 0 to a formula).
+/// length (mm), an area (m²), a volume (m³), or yes or no (1 or 0 to a formula).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Kind {
@@ -33,7 +33,15 @@ pub enum Kind {
     Number,
     Length,
     Area,
+    Volume,
     YesNo,
+}
+
+impl Kind {
+    /// Whether it is a quantity: a number, a length, an area or a volume, which totals and compares.
+    pub fn numeric(self) -> bool {
+        matches!(self, Kind::Number | Kind::Length | Kind::Area | Kind::Volume)
+    }
 }
 
 /// A schedule's column: one of its category's fields, or, with `formula`, a calculated one of its
@@ -42,7 +50,7 @@ pub enum Kind {
 #[serde(deny_unknown_fields)]
 pub struct Field {
     pub name: String,
-    /// A formula over the row's other fields, as a family's are: lengths in mm, areas in m².
+    /// A formula over the row's other fields, as a family's are: lengths in mm, areas in m², volumes in m³.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub formula: Option<String>,
     /// What a calculated field comes to: a number unless it says.
@@ -104,6 +112,7 @@ pub struct Column {
     pub kind: Kind,
 }
 
+#[derive(Default)]
 pub struct Table {
     pub columns: Vec<Column>,
     pub rows: Vec<Vec<Value>>,
@@ -111,6 +120,9 @@ pub struct Table {
     pub ids: Vec<Vec<Id>>,
     /// Its total fields' sums, each under its column, `null` under the rest; none without one.
     pub totals: Option<Vec<Value>>,
+    /// What its reader should know that its cells don't say: the parts it lists that are in conflict, and so measure
+    /// nothing.
+    pub notes: Vec<String>,
 }
 
 /// The schedules every project has, as views: each one's category, and its name. Each is the
@@ -158,6 +170,43 @@ pub fn standard(m: &Model, cat: &str) -> (Option<Id>, Schedule) {
     }
 }
 
+/// The schedules a project is offered ready-made, by the key `schedule {starter}` makes each with.
+pub const STARTERS: [&str; 1] = ["restoration-quantities"];
+
+/// What the restoration's bill of quantities is called, in the project's language.
+const RESTORATION: &str = msg!("Restoration Quantities");
+
+/// Starter schedule `key` (in any case, spaces and underscores as hyphens), as a project of `m`'s language is given it;
+/// none of that key. `restoration-quantities` is the works' bill of quantities: the parts by what is to be done to them
+/// (`Intervention_Type`) and how they have decayed (`Decay_Pathology`), a row for each pair, with the stratigraphic
+/// unit, the host's type and the material where the row's parts share them, and the net area, the net volume and the
+/// count summed in each row and in the totals.
+pub fn starter(m: &Model, key: &str) -> Option<Schedule> {
+    let key: String = key.trim().to_lowercase().chars().map(|c| if c == ' ' || c == '_' { '-' } else { c }).collect();
+    if key != STARTERS[0] {
+        return None;
+    }
+    let [su, _, decay, _, intervention] = Heritage::NAMES;
+    let field = |name: &str, total: bool| Field { name: name.to_string(), total, ..Field::default() };
+    Some(Schedule {
+        name: m.language.word(RESTORATION).to_string(),
+        of: "part".into(),
+        fields: vec![
+            field(intervention, false),
+            field(decay, false),
+            field(su, false),
+            field("Host Type", false),
+            field("Material", false),
+            field("Net Area", true),
+            field("Net Volume", true),
+            field("Count", true),
+        ],
+        sort: vec![Sort { field: intervention.into(), descending: false }, Sort { field: decay.into(), descending: false }],
+        grouped: true,
+        ..Schedule::default()
+    })
+}
+
 /// Where a category's own field comes from: its element's JSON (`element_json`) under a key (a
 /// number missing there is 0), its level's name, metres there in mm, a railing's path's length, or
 /// 1, to count it.
@@ -187,6 +236,9 @@ enum From {
     /// What its element's JSON holds under a key, whatever it holds, and no value where it holds none: a number that may
     /// not be there (a part's severity, which nobody gave; its area, which a part in conflict hasn't) is none, never 0.
     Held(&'static str),
+    /// What a part measures, under a key of its JSON: no value where it holds none, nor where the part is in conflict,
+    /// which measures nothing (a listing says 0 of its volume; a bill of quantities must not).
+    Measured(&'static str),
 }
 
 type Own = (&'static str, Kind, From);
@@ -215,6 +267,9 @@ const DESIGN_OPTION: Own = ("Design Option", Kind::Text, From::Param);
 const ROOM_NUMBER: Own = (msg!("Room Number"), Kind::Text, From::Key("room_number"));
 const ROOM_NAME: Own = (msg!("Room Name"), Kind::Text, From::Key("room_name"));
 const VOLUME: Own = (msg!("Volume"), Kind::Number, From::Key("volume_m3"));
+
+/// A part's field that says whether it is left out of what is counted and exported (`BuildingPart::excluded`).
+const EXCLUDED: &str = "Excluded";
 
 /// A multi-category schedule's category: a row for each element of the categories it lists (`Schedule::categories`),
 /// or of every built one (`built`) where it lists none.
@@ -501,6 +556,44 @@ const OWN: &[(&str, usize, &[Own])] = &[
         &[("Mass", Kind::Text, From::Key("mass")), LEVEL, AREA, ("Perimeter", Kind::Length, From::Metres("perimeter_m")), VOLUME, COUNT],
     ),
     ("level", 2, &[("Elevation", Kind::Length, From::Key("elevation")), NAME, COUNT]),
+    // A part of a building element (`parts.rs`), as Revit's Parts: what it is of its host now, what it measures, the
+    // heritage set under the names it is shown by, and its conflict, each read by name from what `parts::json` works out.
+    // A schedule of them is the works' bill of quantities (`sources` leaves out the excluded).
+    (
+        "part",
+        11,
+        &[
+            ID,
+            ("Host", Kind::Number, From::Ref("host")),
+            ("Host Category", Kind::Text, From::Key("host_category")),
+            ("Host Type", Kind::Text, From::Key("host_type")),
+            LEVEL,
+            ("Layer", Kind::Number, From::Held("layer")),
+            ("Function", Kind::Text, From::Key("function")),
+            (msg!("Material"), Kind::Text, From::Key("material")),
+            ("Thickness", Kind::Length, From::Held("thickness")),
+            ("Net Area", Kind::Area, From::Measured("area_m2")),
+            ("Net Volume", Kind::Volume, From::Measured("volume_m3")),
+            ("Density", Kind::Number, From::Held("density")),
+            ("Mass", Kind::Number, From::Held("mass_kg")),
+            ("Thermal Conductivity", Kind::Number, From::Held("conductivity")),
+            ("Thermal Resistance", Kind::Number, From::Held("thermal_resistance")),
+            ("Specific Heat", Kind::Number, From::Held("specific_heat")),
+            ("Predefined Type", Kind::Text, From::Key("predefined_type")),
+            ("Object Type", Kind::Text, From::Key("object_type")),
+            (EXCLUDED, Kind::YesNo, From::Flag("excluded")),
+            (Heritage::NAMES[0], Kind::Text, From::Key(Heritage::NAMES[0])),
+            (Heritage::NAMES[1], Kind::Text, From::Key(Heritage::NAMES[1])),
+            (Heritage::NAMES[2], Kind::Text, From::Key(Heritage::NAMES[2])),
+            (Heritage::NAMES[3], Kind::Number, From::Held(Heritage::NAMES[3])),
+            (Heritage::NAMES[4], Kind::Text, From::Key(Heritage::NAMES[4])),
+            ("Conflict", Kind::Text, From::Key("conflict")),
+            COUNT,
+            PHASE_CREATED,
+            PHASE_DEMOLISHED,
+            DESIGN_OPTION,
+        ],
+    ),
 ];
 
 /// The fields of what schedules aren't of: annotation, views and sheets, what Filter on a selection goes by
@@ -518,43 +611,6 @@ const MORE: &[(&str, usize, &[Own])] = &[
     ("elevation", 0, &[NAME]),
     ("sheet", 0, &[("Number", Kind::Text, From::Key("number")), NAME]),
     ("viewport", 0, &[(ui_msg!("Title"), Kind::Text, From::Key("title"))]),
-    // A part of a building element (`parts.rs`): what it is of its host now, the heritage set under the names it is shown
-    // by, and its conflict, each read by name from what `parts::json` works out. No schedule of parts yet.
-    (
-        "part",
-        0,
-        &[
-            ID,
-            ("Host", Kind::Number, From::Ref("host")),
-            ("Host Category", Kind::Text, From::Key("host_category")),
-            ("Host Type", Kind::Text, From::Key("host_type")),
-            LEVEL,
-            ("Layer", Kind::Number, From::Held("layer")),
-            ("Function", Kind::Text, From::Key("function")),
-            (msg!("Material"), Kind::Text, From::Key("material")),
-            ("Thickness", Kind::Length, From::Held("thickness")),
-            ("Net Area", Kind::Area, From::Held("area_m2")),
-            ("Net Volume", Kind::Number, From::Held("volume_m3")),
-            ("Density", Kind::Number, From::Held("density")),
-            ("Mass", Kind::Number, From::Held("mass_kg")),
-            ("Thermal Conductivity", Kind::Number, From::Held("conductivity")),
-            ("Thermal Resistance", Kind::Number, From::Held("thermal_resistance")),
-            ("Specific Heat", Kind::Number, From::Held("specific_heat")),
-            ("Predefined Type", Kind::Text, From::Key("predefined_type")),
-            ("Object Type", Kind::Text, From::Key("object_type")),
-            ("Excluded", Kind::YesNo, From::Flag("excluded")),
-            (Heritage::NAMES[0], Kind::Text, From::Key(Heritage::NAMES[0])),
-            (Heritage::NAMES[1], Kind::Text, From::Key(Heritage::NAMES[1])),
-            (Heritage::NAMES[2], Kind::Text, From::Key(Heritage::NAMES[2])),
-            (Heritage::NAMES[3], Kind::Number, From::Held(Heritage::NAMES[3])),
-            (Heritage::NAMES[4], Kind::Text, From::Key(Heritage::NAMES[4])),
-            ("Conflict", Kind::Text, From::Key("conflict")),
-            COUNT,
-            PHASE_CREATED,
-            PHASE_DEMOLISHED,
-            DESIGN_OPTION,
-        ],
-    ),
 ];
 
 /// The categories schedules are of, as `OWN` lists them.
@@ -562,10 +618,15 @@ pub fn categories() -> Vec<&'static str> {
     OWN.iter().map(|(c, _, _)| *c).collect()
 }
 
-/// The categories a multi-category schedule lists where it names none: what's built, not rooms, levels and masses.
+/// The categories a multi-category schedule lists where it names none: what's built, not rooms, levels and masses,
+/// nor parts, which are of what it lists and would be counted with it.
 pub fn built() -> Vec<&'static str> {
-    categories().into_iter().filter(|c| !matches!(*c, "room" | "level" | "mass" | "massfloor")).collect()
+    categories().into_iter().filter(|c| !matches!(*c, "room" | "level" | "mass" | "massfloor" | "part")).collect()
 }
+
+/// The categories a multi-category schedule doesn't list, though schedules are of them: rows that aren't elements of
+/// their own, and parts, which it would count beside what they are parts of.
+const NOT_LISTED: [&str; 2] = ["massfloor", "part"];
 
 /// The categories multi-category schedule `sc` lists, as elements name theirs.
 pub fn listed(sc: &Schedule) -> Vec<String> {
@@ -660,6 +721,7 @@ fn holding(k: Kind) -> &'static str {
         Kind::Number => "a number",
         Kind::Length => "a length",
         Kind::Area => "an area",
+        Kind::Volume => "a volume",
         Kind::YesNo => "yes or no",
     }
 }
@@ -678,8 +740,10 @@ pub fn check(m: &Model, sc: &Schedule) -> Result<(), String> {
     if sc.categories.len() > MAX_FIELDS {
         return Err(format!("it lists {} categories; a schedule lists up to {MAX_FIELDS}", sc.categories.len()));
     }
-    if let Some(c) = sc.categories.iter().find(|c| !categories().contains(&category(c).as_str()) || category(c) == "massfloor") {
-        let there: Vec<&str> = categories().into_iter().filter(|c| *c != "massfloor").collect();
+    if let Some(c) =
+        sc.categories.iter().find(|c| !categories().contains(&category(c).as_str()) || NOT_LISTED.contains(&category(c).as_str()))
+    {
+        let there: Vec<&str> = categories().into_iter().filter(|c| !NOT_LISTED.contains(c)).collect();
         return Err(format!("`{c}` isn't a category a multi-category schedule lists; there are: {}", there.join(", ")));
     }
     if let Some((of, name)) = builtin(Some(&sc.name), None).filter(|(of, _)| *of != cat) {
@@ -722,7 +786,10 @@ pub fn check(m: &Model, sc: &Schedule) -> Result<(), String> {
                     return Err(format!("calculated field `{}`: {cat}s have a field of that name; call it something else", f.name));
                 }
                 if f.kind == Some(Kind::Text) {
-                    return Err(format!("calculated field `{}`: a formula comes to a number, a length, an area or yes or no", f.name));
+                    return Err(format!(
+                        "calculated field `{}`: a formula comes to a number, a length, an area, a volume or yes or no",
+                        f.name
+                    ));
                 }
                 if formula.chars().count() > MAX_FORMULA {
                     return Err(format!("calculated field `{}`: a formula is up to {MAX_FORMULA} characters", f.name));
@@ -738,11 +805,9 @@ pub fn check(m: &Model, sc: &Schedule) -> Result<(), String> {
     for name in formulas.keys() {
         follow(name, &formulas, &kinds, &unknown, &mut Vec::new(), &mut depths)?;
     }
-    if let Some(f) =
-        fields.iter().find(|f| f.total && !matches!(kinds.get(f.name.as_str()), Some(Kind::Number | Kind::Length | Kind::Area)))
-    {
+    if let Some(f) = fields.iter().find(|f| f.total && !kinds.get(f.name.as_str()).is_some_and(|k| k.numeric())) {
         let k = kinds.get(f.name.as_str()).copied().unwrap_or_default();
-        return Err(format!("field `{}` holds {}; only numbers, lengths and areas total", f.name, holding(k)));
+        return Err(format!("field `{}` holds {}; only numbers, lengths, areas and volumes total", f.name, holding(k)));
     }
     for flt in &sc.filters {
         check_filter(flt, &kinds, &unknown)?;
@@ -774,13 +839,16 @@ fn check_filter(flt: &Filter, kinds: &BTreeMap<&str, Kind>, unknown: &dyn Fn(&st
         },
         (_, Kind::Text, Value::String(s)) => s.chars().count() <= MAX_TEXT,
         (_, Kind::YesNo, Value::Bool(_)) => true,
-        (_, Kind::Number | Kind::Length | Kind::Area, v) => v.as_f64().is_some_and(|x| x.is_finite() && x.abs() <= MAX_COORD),
+        (_, Kind::Number | Kind::Length | Kind::Area | Kind::Volume, v) => {
+            v.as_f64().is_some_and(|x| x.is_finite() && x.abs() <= MAX_COORD)
+        }
         _ => false,
     };
     if !fits {
         let unit = match k {
             Kind::Length => " (mm)",
             Kind::Area => " (m²)",
+            Kind::Volume => " (m³)",
             _ => "",
         };
         return Err(format!("{who}: it compares {}{unit}, not {}", holding(k), flt.value));
@@ -958,7 +1026,8 @@ impl Row<'_> {
                 From::Category => Value::String(self.e.category().to_string()),
                 From::Material => self.material(),
                 From::Shared => self.shared(name, *kind),
-                From::Held(k) => match j.get(k) {
+                From::Measured(_) if j.get("conflict").is_some_and(|c| !c.is_null()) => Value::Null,
+                From::Held(k) | From::Measured(k) => match j.get(k) {
                     Some(Value::String(s)) if s.is_empty() => Value::Null,
                     Some(v) => v.clone(),
                     None => Value::Null,
@@ -1061,7 +1130,16 @@ fn sources<'a>(m: &'a Model, sc: &Schedule, cat: &str) -> Vec<(Id, &'a Element, 
     }
     if cat != "massfloor" {
         let rooms = Rooms::new(m);
-        return m.elements.iter().filter(|(_, e)| e.category() == cat).map(|(id, e)| (*id, e, element_json_with(m, *id, &rooms))).collect();
+        // An excluded part is in no schedule, as Revit leaves it out of them, but one that filters by `Excluded`, which
+        // says for itself which it lists.
+        let by_excluded = sc.filters.iter().any(|f| f.field == EXCLUDED);
+        let left_out = |e: &Element| matches!(e, Element::Part(p) if p.excluded && !by_excluded);
+        return m
+            .elements
+            .iter()
+            .filter(|(_, e)| e.category() == cat && !left_out(e))
+            .map(|(id, e)| (*id, e, element_json_with(m, *id, &rooms)))
+            .collect();
     }
     let mut out = Vec::new();
     for (&id, e) in &m.elements {
@@ -1111,13 +1189,19 @@ pub fn table(m: &Model, sc: &Schedule) -> Result<Table, String> {
     };
     // Each element its filters keep: its cells, its sort fields' values, and itself.
     let mut rows: Vec<(Vec<Value>, Vec<Value>, Id)> = Vec::new();
+    // The parts among them whose recipe no longer applies: listed, and measuring nothing.
+    let mut conflicts: Vec<Id> = Vec::new();
     for (id, e, json) in sources(m, sc, &cat) {
         let mut row = Row { m, e, cat: &cat, json, formulas: &formulas, done: BTreeMap::new() };
         if sc.filters.iter().all(|f| keeps(f, &row.get(&f.field), kind_of(&f.field), m.units)) {
             let cells = fields.iter().map(|f| row.get(&f.name)).collect();
             rows.push((cells, sort.iter().map(|(n, _)| sorts_as(m, &cat, n, row.get(n))).collect(), id));
+            if matches!(e, Element::Part(_)) && row.json.get("conflict").is_some_and(|c| !c.is_null()) {
+                conflicts.push(id);
+            }
         }
     }
+    let notes = conflict_note(&conflicts).into_iter().collect();
     rows.sort_by(|(_, a, _), (_, b, _)| {
         for ((_, down), (x, y)) in sort.iter().zip(a.iter().zip(b)) {
             let o = natural(x, y);
@@ -1168,7 +1252,26 @@ pub fn table(m: &Model, sc: &Schedule) -> Result<Table, String> {
     } else {
         rows.into_iter().map(|(cells, _, id)| (cells, vec![id])).unzip()
     };
-    Ok(Table { columns, rows, ids, totals })
+    Ok(Table { columns, rows, ids, totals, notes })
+}
+
+/// What a schedule says of the parts in conflict it lists, `ids`: how many, which (the first of them), and where to
+/// read what to fix. None where it lists none.
+fn conflict_note(ids: &[Id]) -> Option<String> {
+    const NAMED: usize = 20;
+    let (n, first) = (ids.len(), ids.iter().take(NAMED).map(Id::to_string).collect::<Vec<_>>().join(", "));
+    let more = if n > NAMED { format!(" and {} more", n - NAMED) } else { String::new() };
+    match n {
+        0 => None,
+        1 => Some(format!(
+            "1 of its parts is in conflict and measures nothing, so it adds no area and no volume: {first}; its `Conflict` field, or \
+             `parts {{conflicts: true}}`, says what to fix"
+        )),
+        _ => Some(format!(
+            "{n} of its parts are in conflict and measure nothing, so they add no area and no volume: {first}{more}; their `Conflict` \
+             field, or `parts {{conflicts: true}}`, says what to fix"
+        )),
+    }
 }
 
 /// What field `name` of category `cat` sorts and groups by, where a row's value for it is `v`: a phase, its place
@@ -1180,9 +1283,10 @@ fn sorts_as(m: &Model, cat: &str, name: &str, v: Value) -> Value {
     serde_json::json!(v.as_str().and_then(|p| phasing::index(m, p)).unwrap_or(m.phases.len()))
 }
 
-/// The numbers among `values`, summed.
+/// The numbers among `values`, summed; no value where none of them is a number, since nothing isn't 0.
 fn sum<'a>(values: impl Iterator<Item = &'a Value>) -> Value {
-    serde_json::json!(fine(values.filter_map(Value::as_f64).sum::<f64>()))
+    let mut numbers = values.filter_map(Value::as_f64).peekable();
+    if numbers.peek().is_none() { Value::Null } else { serde_json::json!(fine(numbers.sum::<f64>())) }
 }
 
 /// Whether filter `f` keeps a value `v` of a field holding `kind`: text in any case; numbers as the
@@ -1221,22 +1325,25 @@ fn keeps(f: &Filter, v: &Value, kind: Option<Kind>, units: Units) -> bool {
     }
 }
 
-/// A column's heading as a schedule shows it in `units`: an area's says m² or ft².
+/// A column's heading as a schedule shows it in `units`: an area's says m² or ft², a volume's m³ or ft³.
 pub fn heading(units: Units, column: &Column) -> String {
     match column.kind {
         Kind::Area => format!(ui_msg!("{} ({})"), column.heading, units.area(0.0).1),
+        Kind::Volume => format!(ui_msg!("{} ({})"), column.heading, units.volume(0.0).1),
         _ => column.heading.clone(),
     }
 }
 
-/// A cell as a schedule shows it in `units`: lengths as drawings show them; areas to two places,
-/// so the column lines up; other numbers to the hundredth; yes or no as `Yes` or `No` (English,
-/// for the caller to say in its language); text as it is.
+/// A cell as a schedule shows it in `units`: lengths as drawings show them; areas to two places and
+/// volumes to three (a litre: a patch of plaster holds little), so the column lines up; other numbers
+/// to the hundredth; yes or no as `Yes` or `No` (English, for the caller to say in its language); text
+/// as it is.
 pub fn shown(units: Units, kind: Kind, v: &Value) -> String {
     match (v, kind) {
         (Value::Bool(b), _) => (if *b { msg!("Yes") } else { msg!("No") }).into(),
         (v, Kind::Length) if v.is_number() => units.length(v.as_f64().unwrap_or(0.0)),
         (v, Kind::Area) if v.is_number() => format!("{:.2}", units.area(v.as_f64().unwrap_or(0.0) * 1e6).0),
+        (v, Kind::Volume) if v.is_number() => format!("{:.3}", units.volume(v.as_f64().unwrap_or(0.0) * 1e9).0),
         (Value::Number(x), _) => format!("{}", (x.as_f64().unwrap_or(0.0) * 100.0).round() / 100.0 + 0.0),
         (v, _) => cell(v),
     }
@@ -1285,8 +1392,9 @@ pub fn to_csv(t: &Table) -> String {
     out
 }
 
-/// The table as a workbook of one sheet named `name`: its headings (in metric) in bold, its rows, then its totals. Numbers
-/// go in as numbers, so the spreadsheet sums them; text as text, never a formula.
+/// The table as a workbook of one sheet named `name`: its headings (in metric, each quantity's saying its unit) in bold,
+/// its rows, then its totals, in bold too. Numbers go in as numbers, as fine as the table holds them, so the spreadsheet
+/// sums and prices them; text as text, never a formula; no value as no cell.
 pub fn to_xlsx(t: &Table, name: &str) -> Vec<u8> {
     use crate::xlsx::Cell;
     let headings: Vec<String> = t.columns.iter().map(|c| heading(Units::Millimetres, c)).collect();
@@ -1304,7 +1412,8 @@ pub fn to_xlsx(t: &Table, name: &str) -> Vec<u8> {
                 .collect()
         })
         .collect();
-    crate::xlsx::workbook(name, &headings, &rows)
+    let totals: Vec<usize> = t.totals.iter().map(|_| t.rows.len()).collect();
+    crate::xlsx::workbook_with(name, &headings, &rows, &totals)
 }
 
 #[cfg(test)]
@@ -1393,7 +1502,7 @@ mod tests {
             columns: vec![Column { heading: "Name".into(), kind: Kind::Text }, Column { heading: "Offset".into(), kind: Kind::Length }],
             rows: vec![vec![json!("=1+1"), json!(-5.0)], vec![json!("@SUM(A1)"), json!(5.0)]],
             ids: Vec::new(),
-            totals: None,
+            ..Table::default()
         };
         assert_eq!(to_csv(&t), "Name,Offset\n'=1+1,-5.0\n'@SUM(A1),5.0\n");
     }
@@ -1495,6 +1604,7 @@ mod tests {
             rows: vec![vec![json!("A, B"), json!(1.5)], vec![json!("say \"hi\""), Value::Null]],
             ids: Vec::new(),
             totals: Some(vec![Value::Null, json!(1.5)]),
+            notes: Vec::new(),
         };
         assert_eq!(to_csv(&t), "Name,Area (m²)\n\"A, B\",1.5\n\"say \"\"hi\"\"\",\n,1.5\n");
     }

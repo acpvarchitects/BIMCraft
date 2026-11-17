@@ -20,13 +20,18 @@ const MAX_NAME: usize = 31;
 
 /// A workbook of one sheet named `name` (cut to what a sheet name may hold), its first row `headings` in bold, then `rows`.
 pub fn workbook(name: &str, headings: &[String], rows: &[Vec<Cell>]) -> Vec<u8> {
+    workbook_with(name, headings, rows, &[])
+}
+
+/// [`workbook`], with those of its `rows` at the places in `bold` (from 0) in bold too: a table's totals.
+pub fn workbook_with(name: &str, headings: &[String], rows: &[Vec<Cell>], bold: &[usize]) -> Vec<u8> {
     let parts = [
         ("[Content_Types].xml", CONTENT_TYPES.to_string()),
         ("_rels/.rels", RELS.to_string()),
         ("xl/workbook.xml", workbook_xml(&sheet_name(name))),
         ("xl/_rels/workbook.xml.rels", WORKBOOK_RELS.to_string()),
         ("xl/styles.xml", STYLES.to_string()),
-        ("xl/worksheets/sheet1.xml", sheet(headings, rows)),
+        ("xl/worksheets/sheet1.xml", sheet(headings, rows, bold)),
     ];
     zip(&parts)
 }
@@ -60,14 +65,14 @@ fn column(mut i: usize) -> String {
     String::from_utf8_lossy(&s).into_owned()
 }
 
-fn sheet(headings: &[String], rows: &[Vec<Cell>]) -> String {
+fn sheet(headings: &[String], rows: &[Vec<Cell>], bold: &[usize]) -> String {
     let mut out = String::from(
         r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>"#,
     );
     let head: Vec<Cell> = headings.iter().map(|h| Cell::Text(h.clone())).collect();
     for (r, row) in std::iter::once(&head).chain(rows).enumerate() {
-        let bold = r == 0;
+        let bold = r == 0 || bold.contains(&(r - 1));
         out.push_str(&format!("<row r=\"{}\">", r + 1));
         for (c, cell) in row.iter().enumerate() {
             let at = format!("{}{}", column(c), r + 1);

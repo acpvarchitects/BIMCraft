@@ -93,6 +93,8 @@ pub mod parts;
 #[cfg(test)]
 mod parts_divide_tests;
 #[cfg(test)]
+mod parts_schedule_tests;
+#[cfg(test)]
 mod parts_tests;
 pub mod pat;
 pub mod pdf;
