@@ -3611,19 +3611,30 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
         {
             lettered.marks.push(elevation_mark_box(&d.view, v));
         }
-        // And a form's outline (UI-3b): a name never lies over a form's lines.
-        if let Element::Component(c) = e {
-            for p in components.pieces(c) {
-                let px: Vec<(f32, f32)> = p.outline.iter().map(|q| d.view.px(*q)).collect();
-                lettered.lines.extend((0..px.len()).map(|i| (px[i], px[(i + 1) % px.len()])));
-            }
-        }
         if let Element::RefPlane(rp) = e
             && rp.upright()
         {
             let (a, b) = (P2(rp.start[0], rp.start[1]), P2(rp.end[0], rp.end[1]));
             if let Some((a, b)) = crop.map_or(Some((a, b)), |[lo, hi]| clip(a, b, lo, hi)) {
                 lettered.traces.push((id, d.view.px(a), d.view.px(b)));
+            }
+        }
+    }
+    // And the outlines the plan draws of its components' forms (UI-3b): a name never lies over a form's lines. Found only where
+    // a plane is named, and only what the plan draws and its picture shows.
+    let named = lettered.traces.iter().any(|(id, ..)| matches!(m.elements.get(*id), Some(Element::RefPlane(rp)) if !rp.name.is_empty()));
+    if named {
+        let (pw, ph) = (d.view.width as f32, d.view.height as f32);
+        let seen = |a: (f32, f32), b: (f32, f32)| a.0.max(b.0) >= 0.0 && a.0.min(b.0) <= pw && a.1.max(b.1) >= 0.0 && a.1.min(b.1) <= ph;
+        for (_, e) in all().filter(|(id, _)| shown(**id)) {
+            let Element::Component(c) = e else { continue };
+            let (bottom, top) = components.heights(c);
+            if up || bottom >= range.cut || top <= range.depth {
+                continue;
+            }
+            for p in components.pieces(c).iter().filter(|p| plan_draws(p, d.detail, range.cut)) {
+                let px: Vec<(f32, f32)> = p.outline.iter().map(|q| d.view.px(*q)).collect();
+                lettered.lines.extend((0..px.len()).map(|i| (px[i], px[(i + 1) % px.len()])).filter(|(a, b)| seen(*a, *b)));
             }
         }
     }
@@ -5512,7 +5523,7 @@ fn section_mark(d: &mut Drawing, v: &Section) {
 /// An elevation's marker in plan, where its mark stands (its line's middle unless it was moved apart): a circle with a flag pointing the way it
 /// looks, and its name behind it.
 /// The box an elevation mark takes in pixels (`[left, top, right, bottom]`), its ring, its arrow and its name, a gap round it.
-fn elevation_mark_box(view: &View, v: &Section) -> [f32; 4] {
+pub(crate) fn elevation_mark_box(view: &View, v: &Section) -> [f32; 4] {
     const R: f32 = 9.0;
     let c = view.px(crate::elevation::mark(v));
     let (lx, ly) = looking_px(view, v);
