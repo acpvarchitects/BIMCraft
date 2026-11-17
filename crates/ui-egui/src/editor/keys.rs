@@ -95,6 +95,8 @@ pub(crate) const FAMILY_SHORTCUTS: &[(&str, &str)] = &[
     ("EU", "Unhide Elements"),
     ("VU", "Unhide Category"),
     ("RH", "Reveal Hidden Elements"),
+    // FE-23a: Selection Box, the project's BX: {3D} cut to a box round what is selected, the view's for the session.
+    ("BX", "Section Box"),
     ("EO", "Override Graphics by Element"),
     // FE-21: the snap overrides, the project's, for the next point picked (`BimApp::snap_override`). SX and SW are no keys here:
     // a family has no points and no work plane grid to snap to.
@@ -322,6 +324,10 @@ impl BimApp {
             }
             "Graphic Display Options" => {
                 self.family_display();
+                return true;
+            }
+            "Section Box" => {
+                self.family_selection_box();
                 return true;
             }
             "View Range" => {

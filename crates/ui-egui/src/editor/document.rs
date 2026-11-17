@@ -2161,6 +2161,10 @@ impl BimApp {
         if matches!(self.sheet, crate::Sheet::Family(_, None)) {
             out.push("Zoom to Fit");
         }
+        // FE-23a: Selection Box, from any of its views.
+        if ed.adaptive.is_none() {
+            out.push("Section Box");
+        }
         out.extend(["Properties", "Project Browser", "Keyboard Shortcuts"]);
         out
     }
@@ -2173,6 +2177,7 @@ impl BimApp {
         let temp = |category| super::temp_hide::Asked::Hide { category };
         let isolate = |category| super::temp_hide::Asked::Isolate { category };
         match action {
+            "Section Box" => self.family_selection_box(),
             "Delete" => {
                 let Some(ed) = self.active_family_mut() else { return false };
                 // A sketch's lines picked, else what is selected, as the Delete key does.
@@ -2927,18 +2932,21 @@ impl BimApp {
                 mesh
             }
         };
-        let shot = crate::orbit::Shown {
-            model: &model,
-            scene: &scene,
-            cam,
-            tints: &tints,
-            marks: &plane_marks,
-            dragged: None,
-            cut: None,
-            caps: None,
-        };
+        // Selection Box (FE-23a): what the box cuts, filled as the project's 3D view fills it, once the worker has cut it.
+        let look3 = bimcraft_core::graphics::Look::of_3d(&model);
+        let boxed = look3.section_box();
+        let caps = boxed
+            .filter(|_| self.cut_fills_3d && look3.style() != bimcraft_core::graphics::VisualStyle::Wireframe)
+            .and_then(|cut| ed.orbit.caps_for(ui.ctx(), &model, cut));
+        let shot =
+            crate::orbit::Shown { model: &model, scene: &scene, cam, tints: &tints, marks: &plane_marks, dragged: None, cut: boxed, caps };
         if let Some(status) = ed.orbit.paint(ui.ctx(), &p, &mut self.card, mesh.as_ref(), shot) {
             self.status = status;
+        }
+        // The box's frame, with no grips: BX on another selection makes another.
+        if let Some(b) = boxed {
+            let at = on_pane(cam, size, pane);
+            crate::section_box::draw(&p, &cam, b, false, (None, None), |q| at(q).unwrap_or(egui::pos2(f32::NAN, f32::NAN)));
         }
         // The connectors over it, at their places in the family's axes.
         let lit = (crate::style::canvas_pal().accent, crate::style::canvas_pal().hover);
