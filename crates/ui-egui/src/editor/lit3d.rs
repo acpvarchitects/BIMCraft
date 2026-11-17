@@ -225,7 +225,8 @@ impl FamilyEditor {
             azimuth: AZIMUTH,
             elevation: ELEVATION,
             graphics,
-            section_box: None,
+            // Selection Box (FE-23a): the box BX keeps, while it keeps one.
+            section_box: self.views.kept.section_box.map(|(min, max)| bimcraft_core::model::SectionBox { min, max, on: true }),
             perspective: None,
             camera: None,
             display: self.views.kept.display,
@@ -408,6 +409,48 @@ fn datum_mark(cam: &Camera, f: &Family, lit: Lit, c: Color32, extents: ([f64; 3]
             })
         }
         Lit::Part(_) => None,
+    }
+}
+
+/// How much bigger than what it boxes a Selection Box is, each way: a share of its longest side, and at least so many mm.
+const BOX_GROWS: (f64, f64) = (0.05, 50.0);
+
+impl BimApp {
+    /// Selection Box (BX, FE-23a), as the project's: {3D} cut to a box round the forms and nested instances selected, a little
+    /// bigger, and opened. With nothing selected, a box it keeps is taken away; with none, a note says what to select. The
+    /// box is the view's for the session, as its other graphics are (`view_graphics.rs`): not saved, no step of the history.
+    pub(crate) fn family_selection_box(&mut self) {
+        let base = Arc::clone(&self.session.model);
+        let Some(doc) = self.active_doc() else { return };
+        let Some(ed) = self.active_family_mut() else { return };
+        ed.stage_3d(&base);
+        let parts: Vec<Part> = ed.selected_3d().into_iter().filter_map(|l| if let Lit::Part(p) = l { Some(p) } else { None }).collect();
+        if parts.is_empty() {
+            if ed.views.kept.section_box.take().is_none() {
+                let text = t("Selection Box: select the forms or nested instances to box first").to_string();
+                self.status = Status { text, error: false };
+            }
+            return;
+        }
+        let Some(scene) = ed.scene3d.as_ref() else { return };
+        let mut bounds = bimcraft_core::bounds::BoundsCache::default();
+        let (mut lo, mut hi) = ([f64::INFINITY; 3], [f64::NEG_INFINITY; 3]);
+        for (id, _) in scene.part.iter().filter(|(_, p)| parts.contains(p)) {
+            if let bimcraft_core::bounds::Bounds::Box([a, b]) = bounds.get(&scene.model, *id) {
+                for k in 0..3 {
+                    (lo[k], hi[k]) = (lo[k].min(a[k]).min(b[k]), hi[k].max(a[k]).max(b[k]));
+                }
+            }
+        }
+        if !(lo.iter().chain(&hi).all(|v| v.is_finite())) {
+            let text = t("Selection Box: what is selected has no extent to box").to_string();
+            self.status = Status { text, error: true };
+            return;
+        }
+        let side = (0..3).map(|k| hi[k] - lo[k]).fold(0.0, f64::max);
+        let grow = (side * BOX_GROWS.0).max(BOX_GROWS.1);
+        ed.views.kept.section_box = Some((lo.map(|v| v - grow), hi.map(|v| v + grow)));
+        self.open_sheet(crate::Sheet::Family(doc, None));
     }
 }
 
