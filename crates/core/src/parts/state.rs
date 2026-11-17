@@ -301,23 +301,29 @@ impl Model {
         Ok(match host {
             Element::Wall(w) => {
                 let axis = Axis::of(w);
+                // Measured on its own side: a layer inside the structure on the interior face, any other on the exterior.
+                let inside = k.is_some_and(|k| interior(self.type_layers("wall", &w.type_name), k));
                 let facing = match axis.arc() {
                     // Its exterior side is to its left: turning left, toward the arc's centre.
-                    Some((centre, _, _, sweep)) => Facing::Round { centre, inward: sweep > 0.0 },
+                    Some((centre, _, _, sweep)) => Facing::Round { centre, inward: (sweep > 0.0) != inside },
                     None => {
-                        let out = axis.tangent(0.0).perp();
+                        let out = axis.tangent(0.0).perp() * if inside { -1.0 } else { 1.0 };
                         Facing::Along(vec![[out.0, out.1, 0.0]])
                     }
                 };
                 Shape::Prisms(self.wall_prisms(id, w, k), facing)
             }
             Element::Floor(f) => {
-                self.slab_shape(self.floor_prisms(f), self.type_layers("floor", &f.type_name), self.floor_under(f).map(|u| u.1), k)
+                self.slab_shape(self.floor_prisms(f), self.type_layers("floor", &f.type_name), self.floor_under(f).map(|u| u.1), k, false)
             }
             Element::Roof(r) => {
-                self.slab_shape(self.roof_prisms(r), self.type_layers("roof", &r.type_name), self.roof_under(r).map(|u| u.1), k)
+                self.slab_shape(self.roof_prisms(r), self.type_layers("roof", &r.type_name), self.roof_under(r).map(|u| u.1), k, false)
             }
-            Element::Ceiling(c) => self.slab_shape(self.ceiling_prisms(c), self.type_layers("ceiling", &c.type_name), None, k),
+            Element::Ceiling(c) => {
+                // Measured as it is seen: a layer under its structure on its underside.
+                let layers = self.type_layers("ceiling", &c.type_name);
+                self.slab_shape(self.ceiling_prisms(c), layers, None, k, k.is_some_and(|k| interior(layers, k)))
+            }
             Element::Component(c) => Shape::Mesh(self.component_pieces(c).into_iter().flat_map(|piece| piece.tris).collect()),
             other => return Err(format!("{} {id} has no parts", other.category())),
         })
@@ -363,14 +369,15 @@ impl Model {
     /// A floor's, a roof's or a ceiling's `pieces` (each a ring in plan from its underside's plane up to its top's), less
     /// the shafts through them, or with `layer`, that layer of each: its type's `layers` from the top down, each its
     /// share of the way down, or under a `variable` layer, those above it following the top, those below it the level
-    /// underside and the variable one between (`Variable::bounds`). The main face is the top: every plane a piece's top
-    /// lies in.
+    /// underside and the variable one between (`Variable::bounds`). The main face is the top, every plane a piece's top
+    /// lies in, or with `underside`, the bottom, looking down: a ceiling's finish under its structure, the face it shows.
     fn slab_shape(
         &self,
         pieces: Vec<(Vec<P2>, Plane, Plane)>,
         layers: &[Layer],
         variable: Option<Variable>,
         layer: Option<usize>,
+        underside: bool,
     ) -> Shape {
         let mut prisms = Vec::new();
         for (ring, bottom, top) in pieces {
@@ -396,7 +403,8 @@ impl Model {
             prisms.extend(rings.into_iter().map(|ring| Prism { ring, bottom, top }));
         }
         let mut ways: Vec<P3> = Vec::new();
-        for way in prisms.iter().map(|p| solid::normal(&p.top)) {
+        let face = |p: &Prism| if underside { solid::normal(&p.bottom).map(|v| -v) } else { solid::normal(&p.top) };
+        for way in prisms.iter().map(face) {
             if !ways.iter().any(|w| crate::view3d::dot(*w, way) >= 1.0 - 1e-12) {
                 ways.push(way);
             }
@@ -485,4 +493,15 @@ pub(crate) fn json(m: &Model, id: Id, p: &BuildingPart, extra: &mut Map<String, 
     if let Some(conflict) = state.conflict {
         extra.insert("conflict".into(), json!(conflict));
     }
+}
+
+/// Whether layer `k` of a wall's `layers` (from its exterior in), or a ceiling's (from its top down), lies on the interior
+/// side of its structure, so that its area is its interior face's, a ceiling's underside: past the last structure layer,
+/// or, with none, past the thickest (the first of the thickest).
+fn interior(layers: &[crate::model::Layer], k: usize) -> bool {
+    let core = layers
+        .iter()
+        .rposition(|l| l.function == crate::model::Function::Structure)
+        .or_else(|| layers.iter().enumerate().max_by(|a, b| a.1.thickness.total_cmp(&b.1.thickness).then(b.0.cmp(&a.0))).map(|(i, _)| i));
+    core.is_some_and(|c| k > c)
 }
