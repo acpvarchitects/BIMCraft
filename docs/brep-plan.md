@@ -45,19 +45,24 @@ check panics on failure (release returns an error): every kernel call goes throu
 pub trait FormKernel: Send + Sync {
     type Solid: Send + Sync + Clone;
     fn extrude(&self, profile: &Loops, frame: &Frame, from: f64, to: f64) -> Result<Self::Solid, KernelError>;
-    fn revolve(&self, profile: &Loops, axis: Axis2, start: f64, end: f64) -> Result<Self::Solid, KernelError>;
-    fn sweep(&self, profile: &Loops, path: &Path) -> Result<Self::Solid, KernelError>;
-    fn loft(&self, sections: &[Section]) -> Result<Self::Solid, KernelError>;
-    fn cut(&self, body: &Self::Solid, tool: &Self::Solid) -> Result<Self::Solid, KernelError>;
-    fn fuse(&self, a: &Self::Solid, b: &Self::Solid) -> Result<Self::Solid, KernelError>;
+    // The profile is drawn in its host's frame; the axis is a line of that plane.
+    fn revolve(&self, profile: &Loops, frame: &Frame, axis: [P2; 2], start: f64, end: f64) -> Result<Self::Solid, KernelError>;
+    fn sweep(&self, profile: &Loops, path: &Path, frame: &Frame) -> Result<Self::Solid, KernelError>;
+    // A Blend (base, top, twist) or a Swept Blend (two profiles along a path): recipes, not bare sections.
+    fn loft(&self, sections: &Sections) -> Result<Self::Solid, KernelError>;
+    // Booleans spend a per-build budget (today's `csg::Meter`), so a family can't run away with the machine.
+    fn cut(&self, body: &Self::Solid, tool: &Self::Solid, budget: &mut Budget) -> Result<Self::Solid, KernelError>;
+    fn fuse(&self, a: &Self::Solid, b: &Self::Solid, budget: &mut Budget) -> Result<Self::Solid, KernelError>;
     fn bounds(&self, s: &Self::Solid) -> Bounds;
+    // What it covers seen from above (its outline and holes), today a by-product of building.
+    fn silhouette(&self, s: &Self::Solid) -> (Vec<P2>, Vec<Vec<P2>>);
     fn tessellate(&self, s: &Self::Solid, chord: f64) -> Mesh;
     fn edges(&self, s: &Self::Solid) -> Vec<ExactEdge>;
     fn faces(&self, s: &Self::Solid) -> Vec<ExactFace>;
 }
 ```
 
-`Loops`, `Path`, `Section` are what `forms.rs` reads from a sketch today, with arcs kept as arcs (centre, radius, angles) rather
+`Loops` (curves grouped by loop: an outline and its holes), `Path` and `Sections` are what `forms.rs` reads from a sketch today, with arcs kept as arcs (centre, radius, angles) rather
 than chorded. `ExactEdge` is a line, an arc, a circle, an ellipse or a NURBS curve; `ExactFace` a plane, cylinder, cone, sphere,
 torus or NURBS surface with its trimming loops. Both are BIMCraft's own types, so nothing outside the adapter names arris.
 
@@ -70,6 +75,14 @@ Two implementations:
 
 With `brep` off, core builds and draws every family through `MeshKernel`: nothing changes for upstream until it chooses to
 turn the feature on.
+
+
+The trait above is as revised by GEO-1 step 2 (the draft that puts today's code behind it, byte-identical): a revolve needs
+its profile's frame; booleans spend a per-build budget, so a kernel isn't stateless; a Blend and a Swept Blend are recipes
+(`Sections::{Blend, Along}`); what a form covers in plan is part of what a kernel answers (`silhouette`); `fuse` has no
+caller yet (joins cut today) and stays for Cut/Join's Join; and `Loops` group their curves by loop. A face's identity for paint
+(FE-16c's `FormFace`: a cap, the side swept from a sketch line, a face a void cut) rides on each solid's faces and passes
+through `cut`; `ExactFace` carries it.
 
 ## Fill-in work on top of arris
 
