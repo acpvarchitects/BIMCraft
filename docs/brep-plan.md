@@ -145,6 +145,12 @@ is a decision of its own; it is not proposed here.
   plan edges come from the B-rep.
 - **Constraints** are solved per type and instance before building, as now; the kernel only builds.
 
+## Meanwhile
+
+Until `ArrisKernel` lands, a zoomed circle stays faceted (32 chords a turn): the chord no longer follows the zoom in a
+bridge of its own, since the kernel makes it exact. That is the trade-off of waiting for the kernel rather than patching
+the mesh.
+
 ## Costs
 
 - **CI build time**: about 4 min 41 s more for a clean release build of the spike alone on Windows. The cost on the three CI
