@@ -1,13 +1,13 @@
 # GEO-1: families as boundary representations
 
-Status: design note for Emiliano's decision. No kernel code lands before it is approved.
+Status: design note, for the project's decision. No kernel code lands before it is approved.
 
 ## Why
 
 A family's forms are built today as triangles (`family::Piece::tris`), with arcs chorded at 32 per turn (`sketch::chorded`).
 What follows from that is visible and wrong for an architect: a circle is a polygon when zoomed, a flat face has no identity
 (its triangles are what plans, picking and snapping see), a revolve's flat top can show its triangulation in plan, and IFC
-writes every form as an `IfcTriangulatedFaceSet` / closed face set. Cristiano's call, which this note takes as given: a form is
+writes every form as an `IfcTriangulatedFaceSet` / closed face set. The project's decision, which this note takes as given: a form is
 a boundary representation as Rhino's is, exact curves (line, arc, circle, ellipse, NURBS) bounding exact faces (plane, cylinder,
 cone, sphere, torus, surface of revolution, ruled and swept, NURBS), and triangles are only what a picture is drawn with.
 
@@ -84,14 +84,14 @@ turn the feature on.
 
 ## Speed, measured for the worst case
 
-The worst case is Cristiano's: a facade of 10,000 panels, **every one different** (instance parameters), so no two instances
+The worst case is a facade of 10,000 panels, **every one different** (instance parameters), so no two instances
 share a solid. Release build, 8 cores:
 
 | 10,000 unique panels | extrusion + revolve + loft, no boolean | the same + one cylinder void each |
 |---|---|---|
 | Build, all cores | 6.8 s | 255 s |
 | Full regeneration (every panel changes) | 5.4 s | **805 s** |
-| 10 panels changed | 8 ms | 0.68 s |
+| 10 panels changed | 8 ms | 0.68 s (the cut is what costs: through-voids as profile holes bring it to the no-void case, about 10 ms) |
 | Plan edges, exact, projected | 29 ms (280k edges) | 38 ms |
 | Mesh at 2 mm | 6.9M triangles, 50 s | 7.4M triangles, 60 s |
 | Peak memory | 1.5 GB | 4.2 GB |
@@ -120,7 +120,7 @@ The user may model anything, so these become the program's work, not the user's 
 
 **Is the cache saved with the project?** Not in the first step: it lives in memory and on disk beside the project as a cache
 file (like a thumbnail cache, safe to delete), so FORMAT doesn't change. Storing solids inside `.bimc` would change FORMAT and
-is Emiliano's call; it is not proposed here.
+is a decision of its own; it is not proposed here.
 
 ## Drawings, picking and IFC
 
