@@ -2327,6 +2327,7 @@ impl BimApp {
                 || ed.modify_escape()
                 || ed.measure_escape()
                 || ed.cutting_escape()
+                || ed.views.witnessing.take().is_some()
             {
             } else if let Some(refs) = ed.views.dimensioning.as_mut() {
                 if refs.is_empty() {

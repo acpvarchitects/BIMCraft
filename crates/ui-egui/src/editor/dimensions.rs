@@ -705,6 +705,7 @@ impl FamilyEditor {
         self.views.picking = None;
         self.views.dimensioning = None;
         self.views.dim_kind = DimKind::Aligned;
+        self.views.witnessing = None;
         self.views.aligning = None;
         self.views.align_lock = None;
         self.views.pivoting = None;
@@ -719,6 +720,36 @@ impl FamilyEditor {
             Some(super::select_box::Picked::Dimension(g)) => Some(g),
             _ => None,
         }
+    }
+
+    /// Edit Witness Lines (EW, FE-23c): on the aligned dimension selected, in a plan or an elevation; clicks then add or take
+    /// off its references. Else a note of what it needs.
+    pub(crate) fn witness_tool(&mut self) {
+        let Some(g) = self.selected_dimension().filter(|_| self.editing_2d() && self.sketch.is_none()) else {
+            self.views.status = Some(t("Edit Witness Lines: select an aligned dimension in a plan or an elevation first.").to_string());
+            return;
+        };
+        self.drop_tools();
+        self.views.witnessing = Some(g);
+        self.selection.apply(&[Picked::Dimension(g)], super::select_box::How::Replace);
+        self.last_tool = Some("Edit Witness Lines");
+    }
+
+    /// Edit Witness Lines' click on reference `r`: dimension `g` with it added or taken off, if its constraints still solve; a
+    /// note of what that cost, or why not.
+    pub(super) fn witness(&mut self, g: Guid, r: DimRef) -> Result<Option<String>, String> {
+        let f = self.family()?;
+        let values = self.values();
+        let flexed = f.flexed(&values).map_err(|e| e.to_string())?;
+        let d = self.dimensions.iter().find(|d| d.guid == g).ok_or_else(|| t("The dimension is gone.").to_string())?;
+        let (changed, note) = witnessed(&flexed, &values, d, r)?;
+        self.try_dimensions(|dims| {
+            if let Some(d) = dims.iter_mut().find(|d| d.guid == g) {
+                *d = changed;
+            }
+        })
+        .map_err(said)?;
+        Ok(note)
     }
 
     /// The draft's family with `change` made to its dimensions, if its constraints still solve for the type previewed: else
@@ -1253,6 +1284,11 @@ impl FamilyEditor {
         if create {
             self.views.creating = Some(Creating { dim: g, ..Creating::default() });
         }
+        // FE-23c: Revit's Modify | Dimensions > Edit Witness Lines.
+        let aligned = d.kind == DimKind::Aligned && !d.alignment;
+        if ui.add_enabled(aligned, egui::Button::new(t("Edit Witness Lines"))).clicked() {
+            self.witness_tool();
+        }
         match picked {
             Some(label) if label != d.label => self.set_label(g, label).err(),
             _ => None,
@@ -1285,6 +1321,90 @@ pub(super) fn parallel(flexed: &Family, values: &BTreeMap<String, Val>, refs: &[
         Ok(None) => true,
         Err(_) => false,
     })
+}
+
+/// Edit Witness Lines (FE-23c): dimension `d` of `flexed` with reference `r` added, in order along the way it measures, or,
+/// where it has it, taken off; and a note of what that cost (a lock gone, EQ ended). Why not where it can't: a dimension keeps
+/// two references, a labelled one measures one segment, a reference must be parallel to the others, and a reference a locked
+/// segment needs stays unless the segments it parts are both locked (they become one, locked at their sum).
+pub(super) fn witnessed(
+    flexed: &Family,
+    values: &BTreeMap<String, Val>,
+    d: &FamilyDimension,
+    r: DimRef,
+) -> Result<(FamilyDimension, Option<String>), String> {
+    if d.kind != DimKind::Aligned || d.alignment {
+        return Err(t("Edit Witness Lines works on an aligned dimension.").to_string());
+    }
+    let mut out = d.clone();
+    let mut note = None;
+    let locked_out = |seg: usize| tf("Segment {} is locked: unlock it to change its witness lines.", &[&(seg + 1).to_string()]);
+    if let Some(k) = d.refs.iter().position(|x| *x == r) {
+        if d.refs.len() <= 2 {
+            return Err(t("A dimension keeps two references at least: delete it to take it away.").to_string());
+        }
+        let last = d.refs.len() - 1;
+        // The segments either side of it: one at an end, two that become one in between.
+        let (gone, merged) = if k == 0 {
+            (0, None)
+        } else if k == last {
+            (last - 1, None)
+        } else {
+            (k - 1, Some(k))
+        };
+        let lock = |i: usize| d.locked.iter().find(|l| l.segment == i).map(|l| l.length);
+        let mut locked: Vec<Lock> = Vec::new();
+        match merged {
+            None if lock(gone).is_some() => return Err(locked_out(gone)),
+            Some(b) => match (lock(gone), lock(b)) {
+                (Some(x), Some(y)) => locked.push(Lock { segment: gone, length: x + y }),
+                (Some(_), None) => return Err(locked_out(gone)),
+                (None, Some(_)) => return Err(locked_out(b)),
+                (None, None) => {}
+            },
+            None => {}
+        }
+        let after = merged.unwrap_or(gone);
+        locked.extend(
+            d.locked
+                .iter()
+                .filter(|l| l.segment != gone && l.segment != after)
+                .map(|l| Lock { segment: if l.segment > after { l.segment - 1 } else { l.segment }, length: l.length }),
+        );
+        locked.sort_by_key(|l| l.segment);
+        out.locked = locked;
+        out.refs.remove(k);
+        if out.equal && out.segments() < 2 {
+            out.equal = false;
+            note = Some(t("EQ needs two segments: the dimension is no longer EQ.").to_string());
+        }
+        return Ok((out, note));
+    }
+    if d.label.is_some() {
+        return Err(t("A labelled dimension measures one segment: take its label off to add a witness line.").to_string());
+    }
+    if !parallel(flexed, values, &d.refs, &r) {
+        return Err(t("Pick a reference parallel to the dimension's.").to_string());
+    }
+    let Some(m) = d.refs.iter().chain([&r]).find_map(|x| constraints::direction(flexed, x, values).ok().flatten()) else {
+        return Err(t("Pick a plane or a line too: points alone face no way to measure along.").to_string());
+    };
+    let at = |x: &DimRef| constraints::place(flexed, x, values, m).unwrap_or(0.0);
+    let s = at(&r);
+    let p = d.refs.iter().filter(|x| at(x) < s).count();
+    out.refs.insert(p, r);
+    // Between two of its references it parts a segment: a lock on that one goes, said so; those after move up one.
+    let split = (p > 0 && p < d.refs.len()).then(|| p - 1);
+    if let Some(seg) = split.filter(|seg| d.is_locked(*seg)) {
+        note = Some(tf("The lock on segment {} went: it is two segments now.", &[&(seg + 1).to_string()]));
+    }
+    out.locked = d
+        .locked
+        .iter()
+        .filter(|l| Some(l.segment) != split)
+        .map(|l| Lock { segment: if l.segment >= p { l.segment + 1 } else { l.segment }, length: l.length })
+        .collect();
+    Ok((out, note))
 }
 
 /// Whether some of `refs` faces a way a dimension between them may measure along: points alone face none.

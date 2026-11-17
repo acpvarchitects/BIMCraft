@@ -111,6 +111,8 @@ pub(crate) struct Views {
     /// Aligned Dimension (DI): on, with the references picked so far; Radial or Diameter Dimension too (`dim_kind`), its
     /// circle picked once it is.
     pub(crate) dimensioning: Option<Vec<DimRef>>,
+    /// Edit Witness Lines (FE-23c): on, on this dimension.
+    pub(crate) witnessing: Option<Guid>,
     /// What the dimension tool on measures: aligned, or a circle's radius or diameter (F7b).
     pub(crate) dim_kind: bimcraft_core::family::DimKind,
     /// Align (AL): on, with the reference picked first once it is.
@@ -1532,6 +1534,7 @@ impl FamilyEditor {
         let mut new_line = None;
         let mut picked_work_plane = None;
         let mut new_dim = None;
+        let mut witness_at: Option<(Guid, Option<DimRef>)> = None;
         let mut align = None;
         let mut on_dims: Option<(Clicked, Vec<f64>)> = None;
         let mut modify_at: Option<super::modify::Click> = None;
@@ -1629,6 +1632,9 @@ impl FamilyEditor {
             } else if align_lock.is_some_and(|at| dims::lock_rect(at).contains(p)) {
                 // Align's padlock, waiting: it locks what was aligned, whatever tool is on.
                 on_dims = Some((Clicked::AlignLock, Vec::new()));
+            } else if let Some(g) = self.views.witnessing {
+                // Edit Witness Lines (FE-23c): the reference clicked added or taken off; a click on nothing ends it.
+                witness_at = Some((g, reference_at(p)));
             } else if let Some(refs) = self.views.dimensioning.as_mut() {
                 // A dimension tool: references picked one after another, then a click where it goes (`dims::dimension_click`).
                 let under = reference_at(p);
@@ -1946,6 +1952,14 @@ impl FamilyEditor {
         }
         if let Some(d) = new_dim {
             self.dimensions.push(d);
+        }
+        match witness_at {
+            Some((_, None)) => self.views.witnessing = None,
+            Some((g, Some(r))) => match self.witness(g, r) {
+                Ok(note) => self.views.said = note,
+                Err(e) => problem = Some(e),
+            },
+            None => {}
         }
         if let Some((a, b, q)) = align {
             self.align_through(a, b, q, which);

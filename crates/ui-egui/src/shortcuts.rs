@@ -91,6 +91,7 @@ pub const ACTIONS: &[&str] = &[
     "Unhide Category",
     "Override Graphics by Element",
     "Purge Unused",
+    "Edit Witness Lines",
     "Co-Work",
     "Link Model",
     "Duplicate View",
@@ -207,6 +208,7 @@ pub(crate) const FAMILY_ONLY: &[&str] = &[
     "Aligned to Selected Levels",
     "Aligned to Picked Level",
     "View Range",
+    "Edit Witness Lines",
 ];
 
 /// Whether `action` is a family document's alone.
