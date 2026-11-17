@@ -4640,10 +4640,12 @@ fn opening(d: &mut Drawing, m: &Model, e: &Element, o: &Opening, w: &Wall, cut: 
                 d.line(&piece.outline, BY_CATEGORY, INK, true);
                 cut_rings.push(piece.outline.clone());
             }
-            for ring in rings {
+            // Drawn by its outlines (a frame's cut round its opening is two rings, not the pieces it is covered by); what
+            // it covers by its regions.
+            for ring in view3d::level_outlines(&piece.tris, cut) {
                 d.line(&ring, BY_CATEGORY, INK, true);
-                cut_rings.push(ring);
             }
+            cut_rings.extend(rings);
         }
         d.part(Part::Projection);
         // What lies below the cut plane (F10b: a sill member, the frame's lower rail between its jambs), seen from it in
@@ -5853,7 +5855,8 @@ pub(crate) fn family_plan(m: &Model, level: Id, view: View, seen: Option<(f64, f
         component(&mut extra, m, &pieces);
         extra.part(Part::Cut);
         for p in pieces.iter().filter(|p| p.bottom < cut && p.top > cut) {
-            for ring in crate::family::views::plan_cut(&p.tris, cut) {
+            // Its outlines, never the pieces of a region with a hole (a ring's cut is two circles).
+            for ring in crate::family::views::plan_cut_outlines(&p.tris, cut) {
                 extra.line(&ring, Pen::CUT, INK, true);
             }
         }
