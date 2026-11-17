@@ -103,6 +103,7 @@ pub const ACTIONS: &[&str] = &[
     "Hidden Line",
     "Shaded",
     "Graphic Display Options",
+    "Section Box",
     "Project Units",
     "Delete",
     "Pin",
@@ -472,6 +473,7 @@ impl BimApp {
             "Hidden Line" => self.set_visual_style(bimcraft_core::graphics::VisualStyle::HiddenLine),
             "Shaded" => self.set_visual_style(bimcraft_core::graphics::VisualStyle::Shaded),
             "Graphic Display Options" => self.open_display(),
+            "Section Box" => self.toggle_section_box(),
             "Project Units" => {
                 self.tab = Tab::Manage;
                 self.open_units = true;

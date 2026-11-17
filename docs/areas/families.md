@@ -402,6 +402,14 @@ when the family closes (saving them with the family would be a view-only field, 
   every form whatever its height, as before, and OK on the range the dialog first shows sets none; set, a form wholly below
   its view depth or above its top is left out (`Staged::seen`). The ceiling plan looks up from its own cut, as a project's
   does, and has none. While one of these dialogs is open it has the keys: neither the document nor its views get them.
+- Selection Box (BX, the project's key, FE-23a): {3D}'s alone. With forms or nested instances selected, {3D} is cut to a box
+  round what the staged scene draws of them (a solid as its voids cut it, a nested instance whole; `Scene::boxes`), grown by 5%
+  of its longest side and at least 50 mm, and opens (`BimApp::family_selection_box`); the staged {3D}'s section box is that
+  box, so the project's drawing cuts it and fills what it cuts. BX on nothing takes it away, or says what to select; BX on
+  only what isn't a form or a nested instance (a reference plane) keeps the box and says so. The box is fixed, as Revit's is:
+  it doesn't follow an edit of what it was made round. A door's or a window's is in the frame {3D} stages it in, at its
+  opening. It has no grips: BX on another selection makes another box. Kept with the view's graphics, so the
+  staged scene and the inactive {3D} tile's picture are made again when it changes.
 - Hide in View (EH, VH): EH hides the forms and reference planes selected in the view shown, by their GUIDs
   (`Graphics::elements` of the view's own, `hidden`); VH hides the forms' category, Visibility/Graphics' row, which VV then
   shows unticked. VH on a plane alone says it has no category to hide. A hidden form or plane is neither drawn nor picked
