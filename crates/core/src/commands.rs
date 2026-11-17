@@ -511,6 +511,28 @@ other_files(
         reset_shape,
     ),
     edit(
+        "batter",
+        "Batter",
+        &[],
+        "{id, face: exterior|interior, angle?|top?|profile?} leans one face of a wall (a battered scarp, a tapering buttress, a \
+         wall out of plumb), by one of: `angle` degrees from plumb (positive leaning out as it rises, up to 80); `top`, mm the \
+         face stands out along its outward normal at the wall's top (negative: in), in proportion below (the top its \
+         constraint gives it: attached under a roof, the face leans on at that rate past it); or `profile`, \
+         [[height, offset], …] mm over the wall's base, straight between them from no offset at the base and plumb past the \
+         last (one point a scarp, several a curve). The wall keeps its location line, type, height, joins and openings; its \
+         core (its thickest structure layer, else its thickest) takes up the change, its finishes keep their thickness, and \
+         plans cut it at their cut height. Refused where the core would be thinner than nothing. Replies with its thinnest, \
+         thickest and average thickness",
+        batter,
+    ),
+    edit(
+        "reset_wall_shape",
+        "Reset Wall Shape",
+        &[],
+        "{id, face?: exterior|interior} takes the shape (a batter) off one face of a wall, or with no `face` off both: plumb again",
+        reset_wall_shape,
+    ),
+    edit(
         "falls",
         "Falls",
         &[],
@@ -3490,6 +3512,15 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
             extra.insert("length".into(), json!(hundredth(axis.length() * 1e4) / 1e4));
             extra.insert("height".into(), json!(hundredth(m.top_z(w) - m.base_z(w))));
             extra.insert("thickness".into(), json!(m.thickness(w)));
+            // Up its height: a shaped wall's faces lean, an unshaped one's thickness is its type's throughout.
+            let (thin, thick, avg) = crate::walls::shape::thickness_range(m, w);
+            extra.insert("thickness_min".into(), json!(hundredth(thin)));
+            extra.insert("thickness_max".into(), json!(hundredth(thick)));
+            extra.insert("thickness_avg".into(), json!(hundredth(avg)));
+            // Its solid's, its openings out, as its shape makes it.
+            // (its joins and openings through the model's kept index of walls, not a search of every element)
+            let index = m.wall_index();
+            extra.insert("volume_m3".into(), json!((crate::walls::volume_in(m, id, true, Some(&index)) / 1e5).round() / 1e4));
             if let Some(r) = axis.radius() {
                 extra.insert("radius".into(), json!(hundredth(r)));
             }
@@ -10146,6 +10177,7 @@ fn wall(s: &mut Session, p: &Value) -> R {
                 attach_base,
                 room_bounding,
                 join: true,
+                shape: Default::default(),
             }))),
             _ => None,
         })
@@ -10180,6 +10212,9 @@ fn flip(s: &mut Session, p: &Value) -> R {
             Element::Wall(w) if ids.contains(id) => {
                 std::mem::swap(&mut w.start, &mut w.end);
                 w.arc = -w.arc + 0.0;
+                // A batter stays on the side it is on: that face is now the other one.
+                let shape = &mut w.shape;
+                std::mem::swap(&mut shape.exterior, &mut shape.interior);
             }
             Element::Door(o) | Element::Window(o) if lengths.contains_key(&o.host) => {
                 o.offset = lengths.get(&o.host).copied().unwrap_or_default() - o.offset;
@@ -12296,6 +12331,7 @@ fn dormer(s: &mut Session, p: &Value) -> R {
             attach_base: Some(host),
             room_bounding: true,
             join: true,
+            shape: Default::default(),
         })
     };
     let (l, r) = (micron(at + n * (w / 2.0)), micron(at - n * (w / 2.0)));
@@ -12806,6 +12842,75 @@ fn reset_shape(s: &mut Session, p: &Value) -> R {
     f.shape = Default::default();
     put_shape(s, id, f.shape);
     Ok(json!({"id": id}))
+}
+
+/// The wall a shaped-wall command names, and which face (`face`), checking its keys.
+fn shaped_wall(
+    c: &str,
+    s: &Session,
+    p: &Value,
+    keys: &[&str],
+    face_needed: bool,
+) -> Result<(Id, Option<crate::walls::shape::Face>), String> {
+    if let Some(key) = p.as_object().and_then(|o| o.keys().find(|k| !keys.contains(&k.as_str()))) {
+        return Err(bad(c, format!("unknown parameter `{key}`")));
+    }
+    let key = id_opt(c, p, "id")?.ok_or_else(|| bad(c, "`id`, the wall, is required"))?;
+    let id = s.model.elements.id(key).ok_or_else(|| bad(c, format!("no element {key}")))?;
+    if s.model.wall(id).is_none() {
+        return Err(bad(c, format!("{id} isn't a wall")));
+    }
+    let face = match p.get("face") {
+        v if absent(v) => None,
+        Some(v) => Some(
+            serde_json::from_value::<crate::walls::shape::Face>(v.clone())
+                .map_err(|_| bad(c, format!("`face` is exterior or interior, not {v}")))?,
+        ),
+        None => None,
+    };
+    if face_needed && face.is_none() {
+        return Err(bad(c, "`face`, exterior or interior, is required"));
+    }
+    Ok((id, face))
+}
+
+/// What a shaped-wall command replies: the wall, its faces' shapes and its thickness up its height.
+fn wall_shape_reply(m: &Model, id: Id) -> Value {
+    let Some(w) = m.wall(id) else { return json!({"id": id}) };
+    let (min, max, avg) = crate::walls::shape::thickness_range(m, w);
+    json!({"id": id, "shape": w.shape, "thickness_min": hundredth(min), "thickness_max": hundredth(max), "thickness_avg": hundredth(avg)})
+}
+
+/// Batter: one face of a wall leaning or curving up its height.
+fn batter(s: &mut Session, p: &Value) -> R {
+    let c = "batter";
+    let (id, face) = shaped_wall(c, s, p, &["id", "face", "angle", "top", "profile"], true)?;
+    let mut given = serde_json::Map::new();
+    for key in ["angle", "top", "profile"] {
+        if let Some(v) = p.get(key).filter(|v| !absent(Some(v))) {
+            given.insert(key.into(), v.clone());
+        }
+    }
+    let b: crate::walls::shape::Batter = serde_json::from_value(Value::Object(given))
+        .map_err(|e| bad(c, format!("`angle` and `top` are numbers, `profile` [[height, offset], …]: {e}")))?;
+    b.check().map_err(|e| bad(c, e))?;
+    if let (Some(face), Some(Element::Wall(w))) = (face, s.model_mut().elements.get_mut(id)) {
+        *w.shape.face_mut(face) = Some(crate::walls::shape::FaceShape::Batter(b));
+    }
+    Ok(wall_shape_reply(&s.model, id))
+}
+
+/// Reset Wall Shape: one face of a wall, or both, plumb again.
+fn reset_wall_shape(s: &mut Session, p: &Value) -> R {
+    let c = "reset_wall_shape";
+    let (id, face) = shaped_wall(c, s, p, &["id", "face"], false)?;
+    if let Some(Element::Wall(w)) = s.model_mut().elements.get_mut(id) {
+        match face {
+            Some(face) => *w.shape.face_mut(face) = None,
+            None => w.shape = Default::default(),
+        }
+    }
+    Ok(wall_shape_reply(&s.model, id))
 }
 
 /// `key` as JSON shaped like `T` (a list of at most `MAX_POINTS`), or none.

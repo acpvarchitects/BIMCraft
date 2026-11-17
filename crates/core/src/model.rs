@@ -370,6 +370,9 @@ pub struct Wall {
     /// Its values of the project's parameters, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
+    /// Its faces' shapes (HBIM shaped walls): a batter on either face, none unless given.
+    #[serde(default, skip_serializing_if = "crate::walls::shape::WallShape::is_empty")]
+    pub shape: crate::walls::shape::WallShape,
 }
 
 /// A room's Limit Offset unless it says: its top 2500 mm over its own level.
@@ -5227,7 +5230,10 @@ impl Model {
             return Vec::new();
         };
         let (fx, fy) = (if o.flip_hand { -1.0 } else { 1.0 }, if o.flip_facing { -1.0 } else { 1.0 });
-        let flip = |p: [f64; 3]| [fx * p[0] + 0.0, fy * p[1] + 0.0, p[2]];
+        // In a shaped wall, as much deeper either way as its faces lean at most, so they cut through at every height.
+        let lean = walls::shape::reach(self, w);
+        let deeper = |y: f64| if y.abs() > 1e-9 { y + lean * y.signum() } else { y };
+        let flip = |p: [f64; 3]| [fx * p[0] + 0.0, fy * deeper(p[1]) + 0.0, p[2]];
         let mirrored = fx * fy < 0.0;
         voids
             .into_iter()
@@ -5253,9 +5259,13 @@ impl Model {
     pub fn opening_pieces(&self, e: &Element) -> Vec<Piece> {
         let (Element::Door(o) | Element::Window(o)) = e else { return Vec::new() };
         let (Some((pieces, _)), Some((at, u, z))) = (self.opening_local(e), self.opening_frame(o)) else { return Vec::new() };
+        // In a shaped wall, each point moved as the wall's is at its height, so what lies in the wall stays in it.
+        let shaper = self.wall(o.host).and_then(|w| walls::shape::Shaper::of(self, w));
         let place = |p: [f64; 3]| {
             let q = at + u * p[0] + u.perp() * p[1];
-            [q.0, q.1, z + p[2]]
+            let z = z + p[2];
+            let q = shaper.as_ref().map_or(q, |sh| sh.point(q, z));
+            [q.0, q.1, z]
         };
         pieces
             .into_iter()
@@ -6324,7 +6334,8 @@ impl Model {
             (Some(e @ (Element::Column(_) | Element::StructuralColumn(_))), face) => self.column_reference_line(e, face, r.id),
             (Some(Element::Wall(w)), face) => {
                 let axis = walls::Axis::of(w);
-                let (ext, int) = walls::faces(self, w);
+                // A shaped wall's faces where its level's plan cuts it.
+                let (ext, int) = walls::faces_at(self, w, self.plan_range(w.level).cut);
                 let (a, b) = match axis.radius() {
                     Some(_) if !matches!(face, Face::Start | Face::End) => {
                         return Err(format!("wall {}'s faces are arcs; measure to its start or its end, or its radius", r.id));
@@ -7012,8 +7023,13 @@ impl Model {
     /// [`Model::face_lines`] (with `rooms`, of the walls whose Room Bounding is on), the walls' joins found through `index`.
     pub(crate) fn face_lines_in(&self, level: impl Key, index: Option<&walls::Index>, rooms: bool) -> Vec<(P2, P2)> {
         let keep = |w: &Wall| self.bounding(w, level) && (!rooms || w.room_bounding);
+        // A shaped wall's faces where the level's rooms are computed.
+        let z = self.elevation(level) + self.level(level).map_or(CUT_HEIGHT, |l| l.computation_height);
         self.bounding_walls(&level, rooms)
-            .flat_map(|id| geom::ring_edges(&walls::outline_filtered(self, id, index, &keep)).collect::<Vec<_>>())
+            .flat_map(|id| {
+                geom::ring_edges(&walls::at_height_filtered(self, id, walls::outline_filtered(self, id, index, &keep), z, index, &keep))
+                    .collect::<Vec<_>>()
+            })
             .collect()
     }
 
@@ -8000,6 +8016,7 @@ impl Model {
                         "{who}: its top ({top:.0} mm) must be above its base ({base:.0} mm); it comes out {tall} mm tall, so raise its top constraint, top offset or height by more than {short} mm"
                     ));
                 }
+                walls::shape::check(self, &who, w)?;
             }
             Element::Floor(f) => {
                 point(&format!("{who} pattern origin"), f.pattern_origin)?;
@@ -9630,6 +9647,7 @@ mod tests {
             attach_base: None,
             room_bounding: true,
             join: true,
+            shape: Default::default(),
         })
     }
 

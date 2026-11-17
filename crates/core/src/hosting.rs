@@ -394,14 +394,19 @@ impl Model {
             let axis = Axis::of(w);
             let (ext, int) = walls::faces(self, w);
             let exterior = face == FaceRole::Exterior;
-            let q = axis.at(uv[0], if exterior { ext } else { int });
+            let z = self.own_base(w) + uv[1];
+            // A shaped face where it is at that height, its normal leaning as it does.
+            let (off, lean) = match walls::shape::Shaper::of(self, w) {
+                Some(sh) => sh.face(exterior, z),
+                None => (if exterior { ext } else { int }, 0.0),
+            };
+            let q = axis.at(uv[0], off);
             let left = axis.tangent(uv[0]).perp();
             let n2 = if exterior { left } else { left * -1.0 };
-            let normal = [n2.0, n2.1, 0.0];
-            let z = self.own_base(w) + uv[1];
+            let normal = view3d_unit([n2.0, n2.1, -lean]);
             let (lo, hi) = (self.base_z(w), self.top_z(w));
             let on = uv[0] >= -TOL && uv[0] <= axis.length() + TOL && z >= lo - TOL && z <= hi + TOL;
-            return Some(HostAt { point: [q.0, q.1, z], normal, across: Some([-normal[1], normal[0], 0.0]), on });
+            return Some(HostAt { point: [q.0, q.1, z], normal, across: Some([-n2.1, n2.0, 0.0]), on });
         }
         let q = P2(uv[0], uv[1]);
         let pieces = self.slab_pieces(e);
