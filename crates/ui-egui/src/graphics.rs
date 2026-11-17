@@ -592,6 +592,21 @@ impl BimApp {
                 });
                 ui.end_row();
             }
+            // Which of an element and the parts it was taken apart into the view draws, as Revit's Parts Visibility.
+            let note = own.parts_controlled_by(&model).map(controlled_note);
+            let label = ui.label(t("Parts Visibility"));
+            let label = if let Some(n) = &note { label.on_hover_text(n) } else { label };
+            ui.add_enabled_ui(note.is_none(), |ui| {
+                use bimcraft_core::graphics::PartsVisibility;
+                let now = shown.parts_visibility.unwrap_or_default();
+                let options: Vec<String> = PartsVisibility::ALL.iter().map(|v| t(v.label()).to_string()).collect();
+                if let Some(picked) = crate::properties::combo(ui, (0, "parts-visibility"), label.id, t(now.label()), &options)
+                    && let Some(v) = PartsVisibility::ALL.into_iter().find(|v| t(v.label()) == picked)
+                {
+                    set = Some(("graphics", json!({"view": view, "parts_visibility": v.name()})));
+                }
+            });
+            ui.end_row();
             if let Some(id) = own_id {
                 let note = self.grid_controlled(id);
                 ui.add_enabled(note.is_none(), egui::Label::new(t("Background Grids")));
