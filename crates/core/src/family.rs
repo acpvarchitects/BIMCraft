@@ -2934,7 +2934,37 @@ impl Family {
         // is built and reaches it. A cut solid is no longer one round surface, and its outline seen from above is as it was.
         // ponytail: a notch or a hole doesn't show in plan; trace it if it must.
         for (piece, &form) in out.iter_mut().zip(&of) {
+            // GEO-2e: the voids that drill straight through an extrusion are holes of its profile, swept with it, before any
+            // other cut (what one solid less several is doesn't hang on the order): no cutting of triangles for those.
+            let drilled: Vec<(usize, Vec<Vec<P2>>)> = self
+                .cutters(form)
+                .into_iter()
+                .filter(|by| voids.contains_key(by))
+                .filter_map(|by| Some((by, self.through_holes(form, by, values, read)?)))
+                .collect();
+            // Only where every void cutting it drills through, each clear of the others: else all are cut, as before, so no
+            // hole drawn in the profile meets a void cut by triangles.
+            let all_voids = self.cutters(form).into_iter().filter(|by| voids.contains_key(by)).count();
+            let rings: Vec<&Vec<P2>> = drilled.iter().flat_map(|(_, h)| h).collect();
+            let apart = rings.iter().enumerate().all(|(i, a)| {
+                rings.iter().skip(i + 1).all(|b| {
+                    !rings_cross(a, b) && a.iter().all(|q| !crate::geom::contains(b, *q)) && b.iter().all(|q| !crate::geom::contains(a, *q))
+                })
+            });
+            let drilled = if drilled.len() == all_voids && apart { drilled } else { Vec::new() };
+            let mut done: BTreeSet<usize> = BTreeSet::new();
+            if !drilled.is_empty()
+                && let Some(tris) = self.drilled(form, drilled.iter().flat_map(|(_, h)| h.iter().cloned()).collect(), values, read)
+            {
+                let (bottom, top) = heights(&tris);
+                piece.caps = tris.len();
+                (piece.tris, piece.bottom, piece.top, piece.round) = (tris, bottom, top, false);
+                done = drilled.iter().map(|(by, _)| *by).collect();
+            }
             for by in self.cutters(form) {
+                if done.contains(&by) {
+                    continue;
+                }
                 let Some(cutter) = voids.get(&by).or_else(|| solids.get(&by)) else { continue };
                 let tris = csg::subtract(&piece.tris, cutter, cuts).map_err(|e| format!("form {}: {e}", by + 1))?;
                 if tris != piece.tris {
@@ -2956,6 +2986,81 @@ impl Family {
         }
         out.retain(|p| !p.tris.is_empty());
         Ok(out)
+    }
+
+    /// GEO-2e: the holes void `v` drills in extrusion `b`, in `b`'s plane, where it drills straight through: both plain
+    /// extrusions (no mesh, no axis) on parallel planes, the void reaching past both of `b`'s ends, each of its outlines (it
+    /// has no holes of its own) wholly inside one of `b`'s, clear of `b`'s holes and crossing none of `b`'s lines. None where
+    /// any of that fails: then it is cut as any void is.
+    fn through_holes<'a>(
+        &'a self,
+        b: usize,
+        v: usize,
+        values: &BTreeMap<String, Val>,
+        read: &mut HashMap<&'a str, Result<Node, String>>,
+    ) -> Option<Vec<Vec<P2>>> {
+        let (body, void) = (self.forms.get(b)?, self.forms.get(v)?);
+        let plain = |f: &Form| f.mesh.is_empty() && f.kind() == forms::FormKind::Extrusion && f.axis_ends().is_none();
+        if !plain(body) || !plain(void) {
+            return None;
+        }
+        let (bf, vf) = (self.frame(&body.host).ok()?, self.frame(&void.host).ok()?);
+        let along = crate::view3d::dot(bf.z, vf.z);
+        if (along.abs() - 1.0).abs() > 1e-9 {
+            return None;
+        }
+        let mut num = |e: &'a Expr| number(e, values, read);
+        let (b0, b1, v0, v1) = (num(&body.from).ok()?, num(&body.to).ok()?, num(&void.from).ok()?, num(&void.to).ok()?);
+        let base = crate::view3d::dot(crate::view3d::sub(vf.origin, bf.origin), bf.z);
+        let (a, z) = (base + along * v0, base + along * v1);
+        if a.min(z) > b0.min(b1) + 1e-6 || a.max(z) < b0.max(b1) - 1e-6 {
+            return None;
+        }
+        let regions = body.loops(&mut num).ok()?;
+        let drills = void.loops(&mut num).ok()?;
+        let into = |p: &P2| {
+            let d = crate::view3d::sub(vf.point(*p, 0.0), bf.origin);
+            P2(crate::view3d::dot(d, bf.x), crate::view3d::dot(d, bf.y))
+        };
+        let mut out: Vec<Vec<P2>> = Vec::new();
+        for d in &drills {
+            if !d.holes.is_empty() {
+                return None;
+            }
+            let mut ring: Vec<P2> = d.outer.iter().map(into).collect();
+            if crate::geom::area(&ring) > 0.0 {
+                ring.reverse();
+            }
+            let inside = |r: &[P2]| ring.iter().all(|q| crate::geom::contains(r, *q));
+            let clear = |r: &[P2]| r.iter().all(|q| !crate::geom::contains(&ring, *q)) && !rings_cross(r, &ring);
+            let host = regions.iter().find(|r| inside(&r.outer) && !rings_cross(&r.outer, &ring))?;
+            if !host.holes.iter().chain(&out).all(|h| clear(h) && ring.iter().all(|q| !crate::geom::contains(h, *q))) {
+                return None;
+            }
+            out.push(ring);
+        }
+        Some(out)
+    }
+
+    /// Extrusion `b` swept again with `holes` added to its profile (each into the outline holding it): its triangles, every
+    /// one turned out. None where that can't be built.
+    fn drilled<'a>(
+        &'a self,
+        b: usize,
+        holes: Vec<Vec<P2>>,
+        values: &BTreeMap<String, Val>,
+        read: &mut HashMap<&'a str, Result<Node, String>>,
+    ) -> Option<Vec<[P3; 3]>> {
+        let body = self.forms.get(b)?;
+        let mut num = |e: &'a Expr| number(e, values, read);
+        let mut regions = body.loops(&mut num).ok()?;
+        for h in holes {
+            let r = regions.iter_mut().find(|r| h.iter().all(|q| crate::geom::contains(&r.outer, *q)))?;
+            r.holes.push(h);
+        }
+        let (from, to) = (num(&body.from).ok()?, num(&body.to).ok()?);
+        let frame = self.frame(&body.host).ok()?;
+        sweep(&regions, from, to, &frame).ok().map(|(tris, _)| tris)
     }
 
     /// Form `i`'s own solid, sized by `values`, before any void cuts it: `None` where its `visible`
@@ -3328,6 +3433,17 @@ fn caps(regions: &[crate::geom::Region]) -> Result<Vec<Capped>, String> {
             }
         })
         .collect()
+}
+
+/// Whether an edge of ring `a` crosses or touches an edge of ring `b`.
+fn rings_cross(a: &[P2], b: &[P2]) -> bool {
+    let side = |p: P2, q: P2, r: P2| (q - p).cross(r - p);
+    crate::geom::ring_edges(a).any(|(p, q)| {
+        crate::geom::ring_edges(b).any(|(r, s)| {
+            let (d1, d2, d3, d4) = (side(p, q, r), side(p, q, s), side(r, s, p), side(r, s, q));
+            d1 * d2 <= 0.0 && d3 * d4 <= 0.0
+        })
+    })
 }
 
 /// Every ring of `regions`: each outline (counter-clockwise), then its holes (clockwise).

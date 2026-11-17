@@ -193,8 +193,16 @@ fn every_family_builds_as_it_did_with_the_lists_empty() {
                     *tris = crate::csg::subtract(tris, void, &mut cuts).unwrap();
                 }
             }
-            let got = f.pieces(&values).map(|p| p.into_iter().map(|p| p.tris).collect::<Vec<_>>());
-            let want: Vec<_> = want.into_iter().map(|(_, t)| t).filter(|t| !t.is_empty()).collect();
+            // The same solids: each piece's volume and box. Not its triangles: a void drilling straight through an extrusion
+            // is a hole of its profile now (GEO-2e), triangulated otherwise than cut.
+            let solid = |tris: &[[crate::view3d::P3; 3]]| {
+                let lo = tris.iter().flatten().fold([f64::INFINITY; 3], |a, p| std::array::from_fn(|k| a[k].min(p[k])));
+                let hi = tris.iter().flatten().fold([f64::NEG_INFINITY; 3], |a, p| std::array::from_fn(|k| a[k].max(p[k])));
+                let r = |x: f64| (x * 1e3).round() / 1e3;
+                (crate::ifc_geometry_tests::volume(tris).round(), lo.map(r), hi.map(r))
+            };
+            let got = f.pieces(&values).map(|p| p.iter().map(|p| solid(&p.tris)).collect::<Vec<_>>());
+            let want: Vec<_> = want.into_iter().map(|(_, t)| t).filter(|t| !t.is_empty()).map(|t| solid(&t)).collect();
             assert_eq!(got.as_ref().ok(), Some(&want), "{name}: type {t}");
         }
     }
