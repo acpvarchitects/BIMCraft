@@ -661,6 +661,13 @@ labels, locks and EQ taken off, and what was being done done) or Cancel. An extr
 Properties and the Options Bar's Depth. A reload whose family has dimensions measuring to nothing (`exists.rs`) asks Invalid
 Dimensions first: Delete Dimension(s) or Cancel, and nothing passes it over. Angular dimensions and reference lines that turn
 are F7c's (below).
+Edit Witness Lines (FE-23c, the Options Bar's button on an aligned dimension selected in a plan or an elevation; keyless, as
+the project's EW is Wire) adds and takes off a dimension's references: a click on one the Dimension tool takes adds it, in
+order along the dimension, or takes it off where the dimension has it; a click on nothing or Esc ends it; each click is a step
+(`dimensions::witnessed`, then the solve). It refuses the last two references, one not parallel to the others, and a labelled
+dimension (a label measures one segment). A lock is never lost without a word: taking off a reference a locked segment needs
+is refused unless the two segments it parts are both locked (they become one, locked at their sum), adding one inside a
+locked segment drops that lock and says so, and EQ left with one segment ends and says so. No new field: it edits `refs`.
 
 F7b, part of FORMAT 18: sketch lines locked. A dimension may also measure to a straight line of a form's sketch, `{"form": guid,
 "line": guid}` (the plane through it square to the form's plane: Revit's sketch line seen edge on), to a line's end or a

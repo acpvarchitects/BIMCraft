@@ -136,6 +136,7 @@ pub(crate) const FAMILY_KEYLESS: &[&str] = &[
     "Uncut Geometry",
     "Unjoin Geometry",
     "Switch Join Order",
+    "Edit Witness Lines",
     "Find/Replace",
 ];
 
@@ -397,6 +398,7 @@ impl BimApp {
                     s.set_tool(None, false);
                     ed.views.aligning = None;
                     ed.views.dimensioning = None;
+                    ed.views.witnessing = None;
                 }
                 None => ed.modify_tool(),
             },
@@ -409,6 +411,7 @@ impl BimApp {
             "Object Styles" if !sketching => ed.ask.manage = Some(super::Manage::ObjectStyles),
             "Materials" if !sketching => ed.ask.manage = Some(super::Manage::Materials),
             "Purge Unused" if !sketching => ed.ask.manage = Some(super::Manage::Purge),
+            "Edit Witness Lines" if !sketching => ed.witness_tool(),
             // FE-23b: Annotate's Find/Replace, on the family's text; keyless, as the project's FR is Filled Region.
             "Find/Replace" if !sketching && ordinary => ed.open_find_replace(),
             "Project Units" if !sketching => {
@@ -460,6 +463,7 @@ impl BimApp {
                     s.trim_tool();
                     ed.views.aligning = None;
                     ed.views.dimensioning = None;
+                    ed.views.witnessing = None;
                 }
                 None if ordinary => {
                     let why = t("Trim/Extend to Corner works on a sketch's lines: edit a form's sketch (double-click the form) first.");
