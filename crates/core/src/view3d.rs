@@ -1037,27 +1037,45 @@ fn infills(m: &Model, id: Id, index: Option<&walls::Index>) -> Vec<Solid> {
             }
             continue;
         }
+        // Its rectangle in cells, cut where each other hole it meets begins and ends. A cell is filled where none of the
+        // openings whose holes cover it stands: so each packs where they stand, one or two; one covered by three or more, or by
+        // one there whenever its wall is, is never filled, so no infill hides an opening that stands. Each cell is made once,
+        // by the first opening covering it.
+        let mine = rect(&h);
+        let meets = |r: &[f64; 4]| r[0] < mine[1] - TOL && r[1] > mine[0] + TOL && r[2] < mine[3] - TOL && r[3] > mine[2] + TOL;
         let others: Vec<(usize, [f64; 4])> = holes
             .iter()
             .enumerate()
             .filter(|(j, _)| *j != i)
             .filter_map(|(j, (_, o))| Some((j, rect(&walls::within(m, w, *o)?))))
+            .filter(|(_, r)| meets(r))
             .collect();
-        // Its own part.
-        if let Some(vis) = pack(life, None) {
-            let all: Vec<[f64; 4]> = others.iter().map(|(_, r)| *r).collect();
-            for r in less_rects(rect(&h), &all) {
-                out.push(mesh(block(r), vis));
-            }
-        }
-        // The part each later opening's hole covers too, made once, by the first of the two: filled where neither stands.
-        for (j, r) in others.iter().filter(|(j, _)| *j > i) {
-            let Some(theirs) = holes.get(*j).and_then(|(o, _)| apart(m, o, wall)) else { continue };
-            let Some(vis) = pack(life, Some(theirs)) else { continue };
-            let [s0, s1, z0, z1] = rect(&h);
-            let both = [s0.max(r[0]), s1.min(r[1]), z0.max(r[2]), z1.min(r[3])];
-            if both[1] > both[0] + TOL && both[3] > both[2] + TOL {
-                out.push(mesh(block(both), vis));
+        let cuts = |a: usize, b: usize| {
+            let mut v: Vec<f64> = [mine[a], mine[b]].into_iter().chain(others.iter().flat_map(|(_, r)| [r[a], r[b]])).collect();
+            v.retain(|x| *x >= mine[a] - TOL && *x <= mine[b] + TOL);
+            v.sort_by(f64::total_cmp);
+            v.dedup_by(|x, y| (*x - *y).abs() < TOL);
+            v
+        };
+        let (along, up) = (cuts(0, 1), cuts(2, 3));
+        for sx in along.windows(2) {
+            for zx in up.windows(2) {
+                let (&[s0, s1], &[z0, z1]) = (sx, zx) else { continue };
+                let (sm, zm) = ((s0 + s1) / 2.0, (z0 + z1) / 2.0);
+                let covering: Vec<usize> =
+                    others.iter().filter(|(_, r)| r[0] < sm && sm < r[1] && r[2] < zm && zm < r[3]).map(|(j, _)| *j).collect();
+                if covering.iter().any(|j| *j < i) {
+                    continue;
+                }
+                let lives: Option<Vec<_>> = covering.iter().map(|j| holes.get(*j).and_then(|(o, _)| apart(m, o, wall))).collect();
+                let vis = match lives.as_deref() {
+                    Some([]) => pack(life, None),
+                    Some([theirs]) => pack(life, Some(*theirs)),
+                    _ => None,
+                };
+                if let Some(vis) = vis {
+                    out.push(mesh(block([s0, s1, z0, z1]), vis));
+                }
             }
         }
     }
@@ -1066,38 +1084,6 @@ fn infills(m: &Model, id: Id, index: Option<&walls::Index>) -> Vec<Solid> {
 
 /// How far along a wall past an opening's rectangle its family's voids are looked for, for its infill.
 const VOID_REACH: f64 = 500.0;
-
-/// Rectangle `a` (along from, along to, bottom, top) less each of `others`: the rectangles left, none of them empty.
-fn less_rects(a: [f64; 4], others: &[[f64; 4]]) -> Vec<[f64; 4]> {
-    let mut left = vec![a];
-    for b in others {
-        let mut next = Vec::new();
-        for r in left {
-            let [s0, s1, z0, z1] = r;
-            let [t0, t1, w0, w1] = *b;
-            if t0 >= s1 - TOL || t1 <= s0 + TOL || w0 >= z1 - TOL || w1 <= z0 + TOL {
-                next.push(r);
-                continue;
-            }
-            // Beside it, then below and above it within its span.
-            if t0 > s0 + TOL {
-                next.push([s0, t0, z0, z1]);
-            }
-            if t1 < s1 - TOL {
-                next.push([t1, s1, z0, z1]);
-            }
-            let (m0, m1) = (t0.max(s0), t1.min(s1));
-            if w0 > z0 + TOL {
-                next.push([m0, m1, z0, w0]);
-            }
-            if w1 < z1 - TOL {
-                next.push([m0, m1, w1, z1]);
-            }
-        }
-        left = next;
-    }
-    left
-}
 
 /// Whether `voids` take anything of wall `id`'s solids (its prisms round its doors' and windows' rectangles): some void whose
 /// box reaches a prism's takes more than a cubic centimetre of it ([`crate::csg::subtract`]), so a void whose box or outline

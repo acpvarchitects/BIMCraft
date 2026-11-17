@@ -296,6 +296,27 @@ mod tests {
         }
     }
 
+    /// Three doors one after another at one spot: A from Existing, taken down in New Construction; B made there, taken down
+    /// in Fit-out; C made in Fit-out. One stands in every phase, so no view fills the spot, in 3D or in plan.
+    #[test]
+    fn three_doors_one_after_another_never_fill_the_one_that_stands() {
+        let mut s = Session::new();
+        let walls = house(&mut s);
+        run(&mut s, "phase", json!({"name": "Fit-out"}));
+        run(&mut s, "phase", json!({"name": "Later"}));
+        let a = door(&mut s, None);
+        run(&mut s, "modify", json!({"id": a, "params": {"Phase Demolished": NEW}}));
+        let b = door(&mut s, Some(NEW));
+        run(&mut s, "modify", json!({"id": b, "params": {"Phase Demolished": "Fit-out"}}));
+        door(&mut s, Some("Fit-out"));
+        for phase in ["Existing", NEW, "Fit-out", "Later"] {
+            for filter in [None, Some("Show All")] {
+                assert!(!filled_in_3d(&s, walls[0], &look_at(&s, phase, filter)), "3D, {phase} {filter:?}");
+                assert!(open(&mut s, phase, filter), "plan, {phase} {filter:?}");
+            }
+        }
+    }
+
     #[test]
     fn a_section_cuts_the_wall_whole_where_the_door_isnt_there() {
         let mut s = Session::new();
