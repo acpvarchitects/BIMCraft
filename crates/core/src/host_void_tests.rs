@@ -505,3 +505,31 @@ fn an_arched_window_taken_down_is_filled_in_its_own_shape() {
     let filled = seen("Show Previous + New");
     assert!(filled(3000.0, 1500.0) && filled(3000.0, 2300.0) && filled(1000.0, 1500.0), "filled up into the arch");
 }
+
+/// An arched window replaced in place by another (T25): where the old one comes down and the new one is made, no view fills
+/// the spot, whose new window stands; the old one's shape isn't filled over it.
+#[test]
+fn an_arched_window_replaced_in_place_is_never_filled_over() {
+    let mut s = Session::new();
+    arched(&mut s);
+    let (wall, old) = wall_with(&mut s, 200.0, "Arched");
+    run(&mut s, "modify", json!({"id": old, "params": {"Phase Demolished": "New Construction"}}));
+    s.phase = Some("New Construction".into());
+    run(&mut s, "window", json!({"at": [3000, 0], "family": "Arched"}));
+    s.phase = None;
+    for filter in ["Show Previous + New", "Show Complete", "Show All"] {
+        let sec = id_of(run(&mut s, "section", json!({"start": [0, 10], "end": [6000, 10]})));
+        run(&mut s, "graphics", json!({"view": sec, "phase": "New Construction", "phase_filter": filter}));
+        let view = render::section_fit(&s.model, sec, 1200, 800);
+        let d = render::section(&s.model, sec, view);
+        let filled = d.prims.iter().zip(&d.owners).filter(|(_, o)| **o == Some(wall)).any(|(p, _)| match p {
+            Prim::Fill { rings, .. } => rings.iter().any(|r| {
+                let r: Vec<P2> = r.iter().map(|q| view.mm(*q)).collect();
+                crate::geom::contains(&r, P2(3000.0, 1500.0))
+            }),
+            _ => false,
+        });
+        run(&mut s, "delete", json!({"ids": [sec]}));
+        assert!(!filled, "{filter}: the new window's hole is open");
+    }
+}

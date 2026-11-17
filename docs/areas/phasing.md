@@ -50,7 +50,9 @@ top, `walls::within`, or what its family's voids take of the wall), whose `vis` 
 (`openings::pack`). Its rectangle is cut in cells where the other holes it meets begin and end, and a cell fills only where
 none of the openings covering it stands: one covered by another packs where both stand (a door replaced and the new one
 taken down later, two doors one after the other at one spot); one covered by three or more, or by an opening there whenever
-its wall is, is never filled, so no infill hides a door that stands, at the cost of a hole where three are all gone. Under
+its wall is, is never filled, so no infill hides a door that stands, at the cost of a hole in 3D where three are all gone
+(the plan is whole there). An opening whose family cuts its wall with voids is filled in its own shape, and not at all where
+another opening's hole meets it, for the same reason. Under
 a sloped or attached top the infill rises to the lowest top over its width, leaving a wedge open above it. Each view's
 `Look` (its phase and phase filter) shows it or not (`Look::forms_show`), in 3D, sections and the section box's caps alike;
 plans leave out the gap (`Look::fills`). So no cache is kept per phase. Two openings that share a place in a wall may both

@@ -1020,7 +1020,18 @@ fn infills(m: &Model, id: Id, index: Option<&walls::Index>) -> Vec<Solid> {
         let voids = m.opening_voids(e);
         if !voids.is_empty() {
             // What the voids take of the wall round the opening, within it: the block less what is left of it once they have
-            // cut it.
+            // cut it. None where another opening's hole meets its rectangle (one replacing it, say): its shape isn't cut in
+            // cells, so it stays open there rather than fill over one that stands.
+            let mine = rect(&h);
+            let met = holes
+                .iter()
+                .enumerate()
+                .filter(|(j, _)| *j != i)
+                .filter_map(|(_, (_, o))| walls::within(m, w, *o))
+                .any(|o| o.s0 < mine[1] - TOL && o.s1 > mine[0] + TOL && o.bottom < mine[3] - TOL && o.top > mine[2] + TOL);
+            if met {
+                continue;
+            }
             let Some(vis) = pack(life, None) else { continue };
             let Some(room) =
                 walls::within(m, w, walls::Hole { s0: h.s0 - VOID_REACH, s1: h.s1 + VOID_REACH, bottom: f64::MIN, top: f64::MAX })
