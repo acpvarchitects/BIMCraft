@@ -2345,7 +2345,7 @@ msgstr "Klik op een vorm of een geneste instantie om die te selecteren. Slepen o
 msgid "Click a form, a nested instance, a reference plane, a reference line or a dimension to select it, Ctrl to add, Shift to take away; drag from nothing to box (left to right a window, right to left a crossing); drag a selected plane to move it, a grip to turn or stretch."
 msgstr ""
 
-#: crates/ui-egui/src/editor/cutting.rs:139
+#: crates/ui-egui/src/editor/cutting.rs:146
 msgid "Click a form: in the view, or its row in the forms list."
 msgstr ""
 
@@ -3813,11 +3813,11 @@ msgstr ""
 msgid "Cut Geometry (CU): pick a wall, then a component whose voids cut it; Uncut Geometry takes a cut back"
 msgstr ""
 
-#: crates/ui-egui/src/editor/cutting.rs:62
+#: crates/ui-egui/src/editor/cutting.rs:69
 msgid "Cut Geometry: click the form that cuts it, or a void's row in the forms list. Esc lets the first form go."
 msgstr ""
 
-#: crates/ui-egui/src/editor/cutting.rs:60
+#: crates/ui-egui/src/editor/cutting.rs:67
 msgid "Cut Geometry: click the form to cut, in the view or in the forms list. Esc cancels."
 msgstr ""
 
@@ -3843,7 +3843,7 @@ msgstr "Snij-pen"
 msgid "Cut Plane"
 msgstr "Snijvlak"
 
-#: crates/ui-egui/src/editor/cutting.rs:88
+#: crates/ui-egui/src/editor/cutting.rs:95
 msgid "Cut and Join work on the forms of a family that isn't adaptive."
 msgstr ""
 
@@ -5738,7 +5738,7 @@ msgstr "Afwerking: binnenkant"
 msgid "Finish or cancel the sketch before leaving its plan."
 msgstr "Voltooi of annuleer de schets voor je het plan verlaat."
 
-#: crates/ui-egui/src/editor/cutting.rs:91
+#: crates/ui-egui/src/editor/cutting.rs:98
 msgid "Finish or cancel the sketch first: Cut and Join work on forms, not on a sketch's lines."
 msgstr ""
 
@@ -5952,15 +5952,15 @@ msgstr ""
 msgid "Form"
 msgstr ""
 
-#: crates/ui-egui/src/editor/cutting.rs:186
+#: crates/ui-egui/src/editor/cutting.rs:215
 msgid "Form {} is joined to form {}, and cuts it."
 msgstr ""
 
-#: crates/ui-egui/src/editor/cutting.rs:185
+#: crates/ui-egui/src/editor/cutting.rs:214
 msgid "Form {} no longer cuts form {}."
 msgstr ""
 
-#: crates/ui-egui/src/editor/cutting.rs:184
+#: crates/ui-egui/src/editor/cutting.rs:213
 msgid "Form {} now cuts form {}."
 msgstr ""
 
@@ -5978,7 +5978,7 @@ msgstr "Vormen"
 msgid "Forms and Host"
 msgstr "Vormen en dragend"
 
-#: crates/ui-egui/src/editor/cutting.rs:187
+#: crates/ui-egui/src/editor/cutting.rs:216
 msgid "Forms {} and {} are not joined any more."
 msgstr ""
 
@@ -6941,11 +6941,11 @@ msgstr ""
 msgid "Join Geometry (JO): pick a wall, a floor, a roof or a ceiling, then another it meets, which it cuts; Switch Join Order flips which cuts which, and Unjoin Geometry takes the join back"
 msgstr ""
 
-#: crates/ui-egui/src/editor/cutting.rs:68
+#: crates/ui-egui/src/editor/cutting.rs:75
 msgid "Join Geometry: click the form to join, in the view or in the forms list. Esc cancels."
 msgstr ""
 
-#: crates/ui-egui/src/editor/cutting.rs:70
+#: crates/ui-egui/src/editor/cutting.rs:77
 msgid "Join Geometry: click the solid form that cuts it where they overlap. Esc lets the first form go."
 msgstr ""
 
@@ -13539,11 +13539,11 @@ msgstr "Schakelaarconnector: wat een schakelaar bedient"
 msgid "Switch Join Order"
 msgstr ""
 
-#: crates/ui-egui/src/editor/cutting.rs:77
+#: crates/ui-egui/src/editor/cutting.rs:84
 msgid "Switch Join Order: click one of two joined forms, in the view or in the forms list. Esc cancels."
 msgstr ""
 
-#: crates/ui-egui/src/editor/cutting.rs:79
+#: crates/ui-egui/src/editor/cutting.rs:86
 msgid "Switch Join Order: click the form it is joined to. Esc lets the first form go."
 msgstr ""
 
@@ -13931,7 +13931,8 @@ msgstr "Dit is het maximum aantal bewaarde voorinstellingen: verwijder er eerst 
 msgid "That is no IP address: 0.0.0.0 listens on all of this machine's"
 msgstr "Dat is geen IP-adres: 0.0.0.0 luistert op alle adressen van deze machine"
 
-#: crates/ui-egui/src/editor/cutting.rs:152
+#: crates/ui-egui/src/editor/cutting.rs:156
+#: crates/ui-egui/src/editor/cutting.rs:173
 msgid "That is the first form: pick another one."
 msgstr ""
 
@@ -14165,7 +14166,7 @@ msgstr "De familie {} die je laadt, staat al in dit project, maar is anders gede
 msgid "The files with that message weren't ones the assistant takes"
 msgstr "De bestanden bij dat bericht zijn niet van een soort die de assistent aanneemt"
 
-#: crates/ui-egui/src/editor/cutting.rs:157
+#: crates/ui-egui/src/editor/cutting.rs:167
 msgid "The first form is gone: pick it again."
 msgstr ""
 
@@ -14177,7 +14178,7 @@ msgstr "De eerste gast host de sessie; de anderen verhuizen daarheen"
 msgid "The foot of the perpendicular from the last point to a wall or grid"
 msgstr "De voet van de loodlijn vanaf het laatste punt op een muur of raster"
 
-#: crates/ui-egui/src/editor/cutting.rs:177
+#: crates/ui-egui/src/editor/cutting.rs:206
 msgid "The forms changed while they were cut: nothing was done."
 msgstr ""
 
@@ -14193,7 +14194,7 @@ msgstr "De ondergrond van het lint, de paletten, de balken en de dialoogvensters
 msgid "The interface's lettering, made darker or lighter where it would not read at 4.5:1 on the panels"
 msgstr "De letters van de interface, donkerder of lichter gemaakt waar ze niet leesbaar zouden zijn bij 4,5:1 op de panelen"
 
-#: crates/ui-egui/src/editor/cutting.rs:188
+#: crates/ui-egui/src/editor/cutting.rs:217
 msgid "The join of forms {} and {} is switched."
 msgstr ""
 
@@ -15161,11 +15162,11 @@ msgstr "Niet-verbonden hoogte"
 msgid "Uncut Geometry"
 msgstr ""
 
-#: crates/ui-egui/src/editor/cutting.rs:66
+#: crates/ui-egui/src/editor/cutting.rs:73
 msgid "Uncut Geometry: click the form that cuts it, or a void's row in the forms list. Esc lets the first form go."
 msgstr ""
 
-#: crates/ui-egui/src/editor/cutting.rs:64
+#: crates/ui-egui/src/editor/cutting.rs:71
 msgid "Uncut Geometry: click the form that is cut, in the view or in the forms list. Esc cancels."
 msgstr ""
 
@@ -15251,11 +15252,11 @@ msgstr "Eenhedenformaat"
 msgid "Unjoin Geometry"
 msgstr ""
 
-#: crates/ui-egui/src/editor/cutting.rs:73
+#: crates/ui-egui/src/editor/cutting.rs:80
 msgid "Unjoin Geometry: click one of two joined forms, in the view or in the forms list. Esc cancels."
 msgstr ""
 
-#: crates/ui-egui/src/editor/cutting.rs:75
+#: crates/ui-egui/src/editor/cutting.rs:82
 msgid "Unjoin Geometry: click the form it is joined to. Esc lets the first form go."
 msgstr ""
 

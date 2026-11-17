@@ -2345,7 +2345,7 @@ msgstr "單擊形狀或巢狀實例以選擇它。拖動或按住 Shift 加中�
 msgid "Click a form, a nested instance, a reference plane, a reference line or a dimension to select it, Ctrl to add, Shift to take away; drag from nothing to box (left to right a window, right to left a crossing); drag a selected plane to move it, a grip to turn or stretch."
 msgstr ""
 
-#: crates/ui-egui/src/editor/cutting.rs:139
+#: crates/ui-egui/src/editor/cutting.rs:146
 msgid "Click a form: in the view, or its row in the forms list."
 msgstr ""
 
@@ -3813,11 +3813,11 @@ msgstr ""
 msgid "Cut Geometry (CU): pick a wall, then a component whose voids cut it; Uncut Geometry takes a cut back"
 msgstr ""
 
-#: crates/ui-egui/src/editor/cutting.rs:62
+#: crates/ui-egui/src/editor/cutting.rs:69
 msgid "Cut Geometry: click the form that cuts it, or a void's row in the forms list. Esc lets the first form go."
 msgstr ""
 
-#: crates/ui-egui/src/editor/cutting.rs:60
+#: crates/ui-egui/src/editor/cutting.rs:67
 msgid "Cut Geometry: click the form to cut, in the view or in the forms list. Esc cancels."
 msgstr ""
 
@@ -3843,7 +3843,7 @@ msgstr "剖切筆號"
 msgid "Cut Plane"
 msgstr "剖切面"
 
-#: crates/ui-egui/src/editor/cutting.rs:88
+#: crates/ui-egui/src/editor/cutting.rs:95
 msgid "Cut and Join work on the forms of a family that isn't adaptive."
 msgstr ""
 
@@ -5738,7 +5738,7 @@ msgstr "面層面：內部"
 msgid "Finish or cancel the sketch before leaving its plan."
 msgstr "離開草圖所在平面之前，請先完成或取消草圖。"
 
-#: crates/ui-egui/src/editor/cutting.rs:91
+#: crates/ui-egui/src/editor/cutting.rs:98
 msgid "Finish or cancel the sketch first: Cut and Join work on forms, not on a sketch's lines."
 msgstr ""
 
@@ -5952,15 +5952,15 @@ msgstr ""
 msgid "Form"
 msgstr ""
 
-#: crates/ui-egui/src/editor/cutting.rs:186
+#: crates/ui-egui/src/editor/cutting.rs:215
 msgid "Form {} is joined to form {}, and cuts it."
 msgstr ""
 
-#: crates/ui-egui/src/editor/cutting.rs:185
+#: crates/ui-egui/src/editor/cutting.rs:214
 msgid "Form {} no longer cuts form {}."
 msgstr ""
 
-#: crates/ui-egui/src/editor/cutting.rs:184
+#: crates/ui-egui/src/editor/cutting.rs:213
 msgid "Form {} now cuts form {}."
 msgstr ""
 
@@ -5978,7 +5978,7 @@ msgstr "形狀"
 msgid "Forms and Host"
 msgstr "形狀和主體"
 
-#: crates/ui-egui/src/editor/cutting.rs:187
+#: crates/ui-egui/src/editor/cutting.rs:216
 msgid "Forms {} and {} are not joined any more."
 msgstr ""
 
@@ -6941,11 +6941,11 @@ msgstr ""
 msgid "Join Geometry (JO): pick a wall, a floor, a roof or a ceiling, then another it meets, which it cuts; Switch Join Order flips which cuts which, and Unjoin Geometry takes the join back"
 msgstr ""
 
-#: crates/ui-egui/src/editor/cutting.rs:68
+#: crates/ui-egui/src/editor/cutting.rs:75
 msgid "Join Geometry: click the form to join, in the view or in the forms list. Esc cancels."
 msgstr ""
 
-#: crates/ui-egui/src/editor/cutting.rs:70
+#: crates/ui-egui/src/editor/cutting.rs:77
 msgid "Join Geometry: click the solid form that cuts it where they overlap. Esc lets the first form go."
 msgstr ""
 
@@ -13539,11 +13539,11 @@ msgstr "開關連接件：開關所控制的對象"
 msgid "Switch Join Order"
 msgstr ""
 
-#: crates/ui-egui/src/editor/cutting.rs:77
+#: crates/ui-egui/src/editor/cutting.rs:84
 msgid "Switch Join Order: click one of two joined forms, in the view or in the forms list. Esc cancels."
 msgstr ""
 
-#: crates/ui-egui/src/editor/cutting.rs:79
+#: crates/ui-egui/src/editor/cutting.rs:86
 msgid "Switch Join Order: click the form it is joined to. Esc lets the first form go."
 msgstr ""
 
@@ -13931,7 +13931,8 @@ msgstr "模板數量已達保留上限：請先刪除一個"
 msgid "That is no IP address: 0.0.0.0 listens on all of this machine's"
 msgstr "這不是 IP 位址：0.0.0.0 會監聽本機的所有位址"
 
-#: crates/ui-egui/src/editor/cutting.rs:152
+#: crates/ui-egui/src/editor/cutting.rs:156
+#: crates/ui-egui/src/editor/cutting.rs:173
 msgid "That is the first form: pick another one."
 msgstr ""
 
@@ -14165,7 +14166,7 @@ msgstr "您正在載入的族 {} 已存在於此項目中，但定義不同。�
 msgid "The files with that message weren't ones the assistant takes"
 msgstr "該訊息附帶的檔案不是助手接受的類型"
 
-#: crates/ui-egui/src/editor/cutting.rs:157
+#: crates/ui-egui/src/editor/cutting.rs:167
 msgid "The first form is gone: pick it again."
 msgstr ""
 
@@ -14177,7 +14178,7 @@ msgstr "第一位訪客主持工作階段；其他人轉到那裡"
 msgid "The foot of the perpendicular from the last point to a wall or grid"
 msgstr "從上一點向牆或軸網所作垂線的垂足"
 
-#: crates/ui-egui/src/editor/cutting.rs:177
+#: crates/ui-egui/src/editor/cutting.rs:206
 msgid "The forms changed while they were cut: nothing was done."
 msgstr ""
 
@@ -14193,7 +14194,7 @@ msgstr "功能區、面板、工具欄和對話框的底色；其色帶和按鈕
 msgid "The interface's lettering, made darker or lighter where it would not read at 4.5:1 on the panels"
 msgstr "界面文字；在面板上對比度不足 4.5:1 之處會被調深或調淺"
 
-#: crates/ui-egui/src/editor/cutting.rs:188
+#: crates/ui-egui/src/editor/cutting.rs:217
 msgid "The join of forms {} and {} is switched."
 msgstr ""
 
@@ -15161,11 +15162,11 @@ msgstr "無連接高度"
 msgid "Uncut Geometry"
 msgstr ""
 
-#: crates/ui-egui/src/editor/cutting.rs:66
+#: crates/ui-egui/src/editor/cutting.rs:73
 msgid "Uncut Geometry: click the form that cuts it, or a void's row in the forms list. Esc lets the first form go."
 msgstr ""
 
-#: crates/ui-egui/src/editor/cutting.rs:64
+#: crates/ui-egui/src/editor/cutting.rs:71
 msgid "Uncut Geometry: click the form that is cut, in the view or in the forms list. Esc cancels."
 msgstr ""
 
@@ -15251,11 +15252,11 @@ msgstr "單位格式"
 msgid "Unjoin Geometry"
 msgstr ""
 
-#: crates/ui-egui/src/editor/cutting.rs:73
+#: crates/ui-egui/src/editor/cutting.rs:80
 msgid "Unjoin Geometry: click one of two joined forms, in the view or in the forms list. Esc cancels."
 msgstr ""
 
-#: crates/ui-egui/src/editor/cutting.rs:75
+#: crates/ui-egui/src/editor/cutting.rs:82
 msgid "Unjoin Geometry: click the form it is joined to. Esc lets the first form go."
 msgstr ""
 

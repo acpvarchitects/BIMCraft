@@ -185,17 +185,90 @@ fn a_refusal_of_the_core_is_said_the_family_left_as_it_was_and_the_pair_begins_a
 }
 
 #[test]
-fn a_form_with_no_guid_is_given_one_when_picked_and_then_cut() {
+fn a_form_with_no_guid_is_given_one_only_when_the_pair_works_so_a_pair_is_one_step_and_a_refusal_none() {
     let mut h = plan();
     let ed = h.state_mut().active_family_mut().unwrap();
     ed.forget_guid(0);
     h.run();
+    let before = steps(&h);
+    // A refusal (the void can't be joined) leaves it without one, and no step.
+    shortcut(&mut h, "JO");
+    click_family(&mut h, ON_A);
+    assert_eq!(steps(&h), before, "the first pick is no step");
+    row(&mut h, 3, "Extrusion (void)");
+    assert!(h.state().status.error, "{}", status(&h));
+    assert_eq!(steps(&h), before);
+    assert!(editor(&h).draft_family().unwrap().forms[0].guid.is_nil(), "left as it was");
+    // A pair that works: the GUID and the cut, one step.
     shortcut(&mut h, "CU");
     click_family(&mut h, ON_A);
+    assert_eq!(steps(&h), before);
     click_family(&mut h, ON_B);
     let f = family(&h);
     assert!(!f.forms[0].guid.is_nil(), "given a GUID");
     assert_eq!(f.forms[0].cut_by, vec![guid(B)], "{}", status(&h));
+    assert_eq!(steps(&h), before + 1);
+}
+
+#[test]
+fn a_pair_undone_and_redone_comes_and_goes_and_an_undo_with_the_first_form_held_goes_on() {
+    let mut h = plan();
+    shortcut(&mut h, "CU");
+    click_family(&mut h, ON_A);
+    click_family(&mut h, ON_B);
+    h.state_mut().family_undo();
+    h.run();
+    assert!(family(&h).forms[0].cut_by.is_empty());
+    h.state_mut().family_redo();
+    h.run();
+    assert_eq!(family(&h).forms[0].cut_by, vec![guid(B)]);
+    h.state_mut().family_undo();
+    h.run();
+    // The first form held through an undo: the form is still there, the pair goes on.
+    shortcut(&mut h, "CU");
+    click_family(&mut h, ON_A);
+    h.state_mut().family_undo();
+    h.run();
+    assert!(editor(&h).views.cutting.is_some());
+    click_family(&mut h, ON_B);
+    assert!(family(&h).forms.iter().all(|f| f.cut_by.len() <= 1));
+}
+
+#[test]
+fn the_first_form_gone_before_the_second_pick_is_said_and_nothing_is_cut() {
+    let mut h = plan();
+    shortcut(&mut h, "CU");
+    click_family(&mut h, ON_A);
+    h.state_mut().active_family_mut().unwrap().remove_form(0);
+    h.run();
+    let before = steps(&h);
+    row(&mut h, 1, "Extrusion");
+    assert!(h.state().status.error && status(&h).contains("gone"), "{}", status(&h));
+    assert_eq!(steps(&h), before);
+    assert_eq!(editor(&h).views.cutting.and_then(|c| c.first), None);
+}
+
+#[test]
+fn a_solid_listed_before_its_target_cuts_it_through_cut_by_beside_the_void_that_cuts_it() {
+    // A (listed first) cuts B (listed second): the cutter before the target, and the void after both cuts B too.
+    let mut h = plan();
+    shortcut(&mut h, "CU");
+    click_family(&mut h, ON_B);
+    click_family(&mut h, ON_A);
+    let f = family(&h);
+    assert_eq!(f.forms[1].cut_by, vec![guid(A)], "{}", status(&h));
+    assert_eq!(f.cutters(1), vec![2, 0], "the void and A");
+    // Uncut by the void (its row), then by the solid: the lists come clean.
+    run(&mut h, "Uncut Geometry");
+    click_family(&mut h, ON_B);
+    row(&mut h, 3, "Extrusion (void)");
+    assert_eq!(family(&h).forms[1].uncut_by, vec![guid(V)]);
+    assert_eq!(family(&h).cutters(1), vec![0]);
+    click_family(&mut h, ON_B);
+    click_family(&mut h, ON_A);
+    let f = family(&h);
+    assert!(f.forms[1].cut_by.is_empty(), "{}", status(&h));
+    assert!(f.cutters(1).is_empty());
 }
 
 #[test]
@@ -351,4 +424,40 @@ fn family_cut_join_screenshots() {
     click_family(&mut h, ON_B);
     to_3d(&mut h);
     save(&mut h, "3d-joined-apart");
+}
+
+/// A slab with a lock holding its end to a plane, a form named by GUID in a dimension, as FE-25's handles test has it.
+const LOCKED: &str = r#"family {"name": "Slab", "category": "generic", "types": {"T": {}}, "ref_planes": [{"guid": "fe16b111-0000-4000-8000-000000000001", "name": "Top", "start": [-2000, 0, 300], "end": [2000, 0, 300], "up": [0, 1, 0]}], "forms": [{"guid": "fe16b111-0000-4000-8000-00000000000a", "profile": [[0, 0], [400, 0], [400, 400], [0, 400]], "from": 0, "to": 300}, {"guid": "fe16b111-0000-4000-8000-00000000000b", "profile": [[-1000, 0], [-600, 0], [-600, 400], [-1000, 400]], "from": 0, "to": 300}], "dimensions": [{"refs": [{"plane": "fe16b111-0000-4000-8000-000000000001"}, {"form": "fe16b111-0000-4000-8000-00000000000a", "end": "end"}], "view": "front", "at": [600, 0, 300], "locked": [{"segment": 0, "length": 0}], "alignment": true}]}"#;
+
+#[test]
+fn a_family_with_a_dimension_naming_a_form_stages_in_3d_with_or_without_a_cut_or_join() {
+    let (mut h, _) = open(LOCKED, "Slab");
+    view(&mut h, None);
+    for _ in 0..4 {
+        h.run();
+    }
+    assert_eq!(editor(&h).problem, None);
+    assert!(editor(&h).scene3d.is_some(), "{{3D}} is not blank");
+    // With a cut and then a join applied.
+    run(&mut h, "Cut Geometry");
+    click3(&mut h, [200.0, 200.0, 300.0]);
+    click3(&mut h, [-800.0, 200.0, 300.0]);
+    assert_eq!(family(&h).forms[0].cut_by.len(), 1, "{}", status(&h));
+    for _ in 0..4 {
+        h.run();
+    }
+    assert_eq!(editor(&h).problem, None);
+    assert!(editor(&h).scene3d.is_some());
+    run(&mut h, "Uncut Geometry");
+    click3(&mut h, [200.0, 200.0, 300.0]);
+    click3(&mut h, [-800.0, 200.0, 300.0]);
+    run(&mut h, "Join Geometry");
+    click3(&mut h, [200.0, 200.0, 300.0]);
+    click3(&mut h, [-800.0, 200.0, 300.0]);
+    assert_eq!(family(&h).forms[0].joined_by.len(), 1, "{}", status(&h));
+    for _ in 0..4 {
+        h.run();
+    }
+    assert_eq!(editor(&h).problem, None);
+    assert!(editor(&h).scene3d.is_some());
 }

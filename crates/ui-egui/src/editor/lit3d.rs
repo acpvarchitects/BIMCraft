@@ -307,19 +307,37 @@ fn solid_cutters_as_voids(f: &Family, g: &mut Family, k: usize) {
     }
 }
 
-/// Family `g` with each form's GUID made one of its own, from `salt`, and every `cut_by`, `uncut_by` and `joined_by` naming a form
-/// naming it by its new GUID. A form with no GUID has none still.
+/// Family `g` with the GUID of each of its parts made one of its own, from `salt`, wherever the family names it: a form's, a
+/// sketch line's, a plane's, a line's, a model line's, a dimension's, a symbol's, a connector's, a nested family's or instance's.
+/// A project holds a GUID once, and each part of {3D} is a family of its own beside the family, so the project would give the
+/// copies new GUIDs and everything that names them by GUID (the cutting lists of FE-16, a dimension's references, a form's host
+/// plane, a lock) would name what is gone. Datums, which every family has, keep theirs. Done on the family as text, so a place
+/// that names a part by GUID is never missed.
 fn rekey(g: &mut Family, salt: u64) {
+    let mut was: Vec<Guid> = Vec::new();
+    was.extend(g.forms.iter().map(|x| x.guid));
+    was.extend(g.forms.iter().flat_map(|x| x.all_lines().map(|l| l.guid)));
+    was.extend(g.symbols.iter().map(|x| x.guid));
+    was.extend(g.model_lines.iter().map(|x| x.guid));
+    was.extend(g.connectors.iter().map(|x| x.guid));
+    was.extend(g.planes.iter().filter(|x| !x.datum()).map(|x| x.guid));
+    was.extend(g.lines.iter().map(|x| x.guid));
+    was.extend(g.dimensions.iter().map(|x| x.guid));
+    was.extend(g.nested.iter().map(|x| x.guid));
+    was.extend(g.nested_instances.iter().map(|x| x.guid));
+    was.retain(|x| !x.is_nil());
+    was.sort();
+    was.dedup();
     let seed = bimcraft_core::model::mix(0x4645_3136_6270_6172 ^ salt);
-    let was: Vec<bimcraft_core::ids::Guid> = g.forms.iter().map(|f| f.guid).collect();
-    let now = |old: &bimcraft_core::ids::Guid| {
-        was.iter().position(|w| w == old).filter(|_| !old.is_nil()).map_or(*old, |i| bimcraft_core::ids::Guid::seeded(seed, i as u64))
-    };
-    for form in &mut g.forms {
-        form.guid = now(&form.guid);
-        for list in [&mut form.cut_by, &mut form.uncut_by, &mut form.joined_by] {
-            list.iter_mut().for_each(|x| *x = now(x));
+    let Ok(mut text) = serde_json::to_string(&*g) else { return };
+    let said = |x: &Guid| serde_json::to_value(x).ok().and_then(|v| v.as_str().map(str::to_string));
+    for (i, old) in was.iter().enumerate() {
+        if let (Some(from), Some(to)) = (said(old), said(&Guid::seeded(seed, i as u64))) {
+            text = text.replace(&from, &to);
         }
+    }
+    if let Ok(made) = serde_json::from_str::<Family>(&text) {
+        *g = made;
     }
 }
 
@@ -449,5 +467,74 @@ mod tests {
         // Nothing listed: nothing cuts, though B overlaps it.
         let (part, family) = volumes(&pair(300, ""));
         assert!((part - whole).abs() < 1.0 && (family - whole).abs() < 1.0);
+    }
+
+    /// The volume of the piece form `k` makes: in its part ({3D}), and in the family itself, which must agree.
+    fn agree(f: &Family, k: usize) -> (f64, f64) {
+        let values = BTreeMap::new();
+        let mut part = alone(f, Part::Form(k));
+        rekey(&mut part, 1);
+        let own = part.pieces(&values).unwrap();
+        assert_eq!(own.len(), 1, "the part is the form alone");
+        let before = f.forms[..k].iter().filter(|x| !x.void).count();
+        (volume(&own[0].tris), volume(&f.pieces(&values).unwrap()[before].tris))
+    }
+
+    fn family_of(forms: &str) -> Family {
+        serde_json::from_str(&format!(r#"{{"types": {{"T": {{}}}}, "forms": [{forms}]}}"#)).unwrap()
+    }
+
+    const V: &str = "fe16b000-0000-4000-8000-0000000000c0";
+
+    fn solid(guid: &str, x0: i32, extra: &str) -> String {
+        format!(
+            r#"{{"guid": "{guid}", {extra} "profile": [[{x0}, 100], [{}, 100], [{}, 500], [{x0}, 500]], "from": 0, "to": 300}}"#,
+            x0 + 400,
+            x0 + 400
+        )
+    }
+
+    fn void(x0: i32, x1: i32) -> String {
+        format!(r#"{{"guid": "{V}", "void": true, "profile": [[{x0}, 100], [{x1}, 100], [{x1}, 500], [{x0}, 500]], "from": 0, "to": 200}}"#)
+    }
+
+    #[test]
+    fn a_solid_cutter_listed_before_its_target_a_void_with_it_and_an_uncut_by_all_agree_with_the_family() {
+        // The cutter before the target (cut_by naming a solid listed earlier).
+        let f = family_of(&format!("{}, {}", solid(B, 300, ""), solid(A, 100, &format!(r#""cut_by": ["{B}"],"#))));
+        let (part, family) = agree(&f, 1);
+        assert!((part - family).abs() < 1.0 && (part - (160000.0 * 300.0 - 200.0 * 400.0 * 300.0)).abs() < 1.0, "{part} {family}");
+        // A void and a solid together: the void listed after, the solid by cut_by.
+        let f = family_of(&format!("{}, {}, {}", solid(A, 100, &format!(r#""cut_by": ["{B}"],"#)), solid(B, 300, ""), void(150, 250)));
+        let (part, family) = agree(&f, 0);
+        assert!((part - family).abs() < 1.0 && part < 160000.0 * 300.0 - 200.0 * 400.0 * 300.0 - 1.0, "{part} {family}");
+        // uncut_by the void, still cut by the solid.
+        let f = family_of(&format!(
+            "{}, {}, {}",
+            solid(A, 100, &format!(r#""cut_by": ["{B}"], "uncut_by": ["{V}"],"#)),
+            solid(B, 300, ""),
+            void(150, 250)
+        ));
+        let (part, family) = agree(&f, 0);
+        assert!((part - family).abs() < 1.0 && (part - (160000.0 * 300.0 - 200.0 * 400.0 * 300.0)).abs() < 1.0, "{part} {family}");
+    }
+
+    #[test]
+    fn a_dimension_naming_a_form_and_a_plane_survives_the_part_with_the_same_volume() {
+        let f: Family = serde_json::from_str(
+            r#"{"types": {"T": {}}, "planes": [{"guid": "fe16b111-0000-4000-8000-000000000001", "name": "Top", "start": [-2000, 0, 300], "end": [2000, 0, 300], "up": [0, 1, 0]}], "forms": [{"guid": "fe16b111-0000-4000-8000-00000000000a", "profile": [[0, 0], [400, 0], [400, 400], [0, 400]], "from": 0, "to": 250}], "dimensions": [{"refs": [{"plane": "fe16b111-0000-4000-8000-000000000001"}, {"form": "fe16b111-0000-4000-8000-00000000000a", "end": "end"}], "view": "front", "at": [600, 0, 300], "locked": [{"segment": 0, "length": 0}], "alignment": true}]}"#,
+        )
+        .unwrap();
+        let mut part = alone(&f, Part::Form(0));
+        rekey(&mut part, 3);
+        // Sound in its own right, as a project's check holds every family to.
+        assert_eq!(part.check(&|_| true), Ok(()));
+        assert_eq!(f.check(&|_| true), Ok(()));
+        let values = BTreeMap::new();
+        let (a, b) = (f.flexed(&values).unwrap().pieces(&values).unwrap(), part.flexed(&values).unwrap().pieces(&values).unwrap());
+        assert!((volume(&a[0].tris) - volume(&b[0].tris)).abs() < 1.0, "{} {}", volume(&a[0].tris), volume(&b[0].tris));
+        // The dimension names the part's own form and plane, as it did the family's.
+        assert_ne!(part.forms[0].guid, f.forms[0].guid);
+        assert_eq!(part.dimensions.len(), 1);
     }
 }

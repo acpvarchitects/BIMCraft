@@ -23,11 +23,18 @@ pub(crate) enum CutTool {
     Switch,
 }
 
-/// The tool in hand, with the form picked first once there is one (by GUID, so a form moved about the list is the same).
+/// The form picked first: by GUID, so a form moved about the list is the same; by its place while it has none yet.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct First {
+    at: usize,
+    guid: Guid,
+}
+
+/// The tool in hand, with the form picked first once there is one.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct Cutting {
     pub(crate) mode: CutTool,
-    pub(crate) first: Option<Guid>,
+    pub(crate) first: Option<First>,
 }
 
 impl CutTool {
@@ -138,33 +145,55 @@ impl FamilyEditor {
         let Some(i) = form.filter(|i| *i < self.forms.len()) else {
             return Some(Err(t("Click a form: in the view, or its row in the forms list.").to_string()));
         };
-        // Held by GUID, which a form picked without one is given.
-        if self.forms[i].original.guid.is_nil() {
-            self.forms[i].original.guid = Guid::new();
-        }
+        // A form with no GUID yet is given one only once the pair works, so a refusal changes nothing.
         let guid = self.forms[i].original.guid;
         let Some(first) = first else {
-            self.views.cutting = Some(Cutting { mode, first: Some(guid) });
+            self.views.cutting = Some(Cutting { mode, first: Some(First { at: i, guid }) });
             self.select_only_form(i);
             return Some(Ok(String::new()));
         };
-        if first == guid {
+        if first.at == i && first.guid == guid {
             return Some(Err(t("That is the first form: pick another one.").to_string()));
         }
         // The first form may have gone since (an undo, a delete): the pair begins again.
-        let Some(a) = self.forms.iter().position(|f| f.original.guid == first) else {
+        let a = if first.guid.is_nil() {
+            Some(first.at).filter(|k| self.forms.get(*k).is_some_and(|f| f.original.guid.is_nil()))
+        } else {
+            self.forms.iter().position(|f| f.original.guid == first.guid)
+        };
+        let Some(a) = a else {
             self.views.cutting = Some(Cutting { mode, first: None });
+            self.let_everything_go();
             return Some(Err(t("The first form is gone: pick it again.").to_string()));
         };
         // Either way the pair is done: the next click begins another.
         self.views.cutting = Some(Cutting { mode, first: None });
         self.let_everything_go();
+        if a == i {
+            return Some(Err(t("That is the first form: pick another one.").to_string()));
+        }
         Some(self.cut_forms(mode, a, i))
     }
 
     /// `mode` made between forms `a` (the first picked) and `b`, the core's way, and its lists kept in the draft; or why not,
     /// the draft as it was.
     fn cut_forms(&mut self, mode: CutTool, a: usize, b: usize) -> Result<String, String> {
+        let had: Vec<Guid> = self.forms.iter().map(|f| f.original.guid).collect();
+        for i in [a, b] {
+            if self.forms[i].original.guid.is_nil() {
+                self.forms[i].original.guid = Guid::new();
+            }
+        }
+        let done = self.cut_made(mode, a, b);
+        if done.is_err() {
+            for (form, guid) in self.forms.iter_mut().zip(had) {
+                form.original.guid = guid;
+            }
+        }
+        done
+    }
+
+    fn cut_made(&mut self, mode: CutTool, a: usize, b: usize) -> Result<String, String> {
         let mut family = self.family()?;
         match mode {
             CutTool::Cut => family.cut(a, b),
