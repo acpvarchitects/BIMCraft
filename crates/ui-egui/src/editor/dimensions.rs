@@ -688,6 +688,7 @@ impl FamilyEditor {
                 s.edit = None;
                 s.selected_dim = None;
                 self.views.dimensioning = None;
+                self.views.witnessing = None;
                 self.views.aligning = Some(None);
                 return;
             }
@@ -704,6 +705,7 @@ impl FamilyEditor {
         self.views.cutting = None;
         self.views.picking = None;
         self.views.dimensioning = None;
+        self.views.witnessing = None;
         self.views.dim_kind = DimKind::Aligned;
         self.views.witnessing = None;
         self.views.aligning = None;
@@ -725,7 +727,8 @@ impl FamilyEditor {
     /// Edit Witness Lines (EW, FE-23c): on the aligned dimension selected, in a plan or an elevation; clicks then add or take
     /// off its references. Else a note of what it needs.
     pub(crate) fn witness_tool(&mut self) {
-        let Some(g) = self.selected_dimension().filter(|_| self.editing_2d() && self.sketch.is_none()) else {
+        let aligned = |g: &Guid| self.dimensions.iter().any(|d| d.guid == *g && d.kind == DimKind::Aligned && !d.alignment);
+        let Some(g) = self.selected_dimension().filter(|g| self.editing_2d() && self.sketch.is_none() && aligned(g)) else {
             self.views.status = Some(t("Edit Witness Lines: select an aligned dimension in a plan or an elevation first.").to_string());
             return;
         };
@@ -741,7 +744,10 @@ impl FamilyEditor {
         let f = self.family()?;
         let values = self.values();
         let flexed = f.flexed(&values).map_err(|e| e.to_string())?;
-        let d = self.dimensions.iter().find(|d| d.guid == g).ok_or_else(|| t("The dimension is gone.").to_string())?;
+        let Some(d) = self.dimensions.iter().find(|d| d.guid == g) else {
+            self.views.witnessing = None;
+            return Err(t("The dimension is gone: Edit Witness Lines ends.").to_string());
+        };
         let (changed, note) = witnessed(&flexed, &values, d, r)?;
         self.try_dimensions(|dims| {
             if let Some(d) = dims.iter_mut().find(|d| d.guid == g) {
@@ -1374,6 +1380,9 @@ pub(super) fn witnessed(
         locked.sort_by_key(|l| l.segment);
         out.locked = locked;
         out.refs.remove(k);
+        if !has_way(flexed, values, &out.refs) {
+            return Err(t("What would be left are points alone, which face no way to measure along.").to_string());
+        }
         if out.equal && out.segments() < 2 {
             out.equal = false;
             note = Some(t("EQ needs two segments: the dimension is no longer EQ.").to_string());
@@ -1391,7 +1400,13 @@ pub(super) fn witnessed(
     };
     let at = |x: &DimRef| constraints::place(flexed, x, values, m).unwrap_or(0.0);
     let s = at(&r);
-    let p = d.refs.iter().filter(|x| at(x) < s).count();
+    let along: Vec<f64> = d.refs.iter().map(at).collect();
+    if along.iter().any(|x| (x - s).abs() < 1e-6) {
+        return Err(t("That reference lies on one the dimension has: it would measure nothing.").to_string());
+    }
+    // Its slot: before the first reference past it, the way the dimension's run (either way along its line).
+    let rising = along.first() <= along.last();
+    let p = along.iter().position(|x| if rising { *x > s } else { *x < s }).unwrap_or(along.len());
     out.refs.insert(p, r);
     // Between two of its references it parts a segment: a lock on that one goes, said so; those after move up one.
     let split = (p > 0 && p < d.refs.len()).then(|| p - 1);

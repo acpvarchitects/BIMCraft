@@ -315,6 +315,7 @@ impl Views {
             self.picking = None;
             self.drag = None;
             self.dimensioning = None;
+            self.witnessing = None;
             self.dim_kind = Default::default();
             self.aligning = None;
             self.align_lock = None;
@@ -885,6 +886,7 @@ impl FamilyEditor {
             if !free {
                 self.views.aligning = None;
                 self.views.dimensioning = None;
+                self.views.witnessing = None;
                 if let Some(s) = self.sketch.as_mut() {
                     s.selected_dim = None;
                 }

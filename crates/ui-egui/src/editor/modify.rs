@@ -636,6 +636,7 @@ impl FamilyEditor {
         self.views.aligning = None;
         self.views.cutting = None;
         self.views.dimensioning = None;
+        self.views.witnessing = None;
         self.views.pasting = None;
         if let Some(s) = self.sketch.as_mut() {
             s.pasting = None;

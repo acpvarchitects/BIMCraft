@@ -391,6 +391,7 @@ impl BimApp {
                     s.set_tool(None, false);
                     ed.views.aligning = None;
                     ed.views.dimensioning = None;
+                    ed.views.witnessing = None;
                 }
                 None => ed.modify_tool(),
             },
@@ -453,6 +454,7 @@ impl BimApp {
                     s.trim_tool();
                     ed.views.aligning = None;
                     ed.views.dimensioning = None;
+                    ed.views.witnessing = None;
                 }
                 None if ordinary => {
                     let why = t("Trim/Extend to Corner works on a sketch's lines: edit a form's sketch (double-click the form) first.");
