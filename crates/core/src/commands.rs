@@ -2172,6 +2172,31 @@ other_files(
         create_parts,
     ),
     edit(
+        "divide_parts",
+        "Divide Parts",
+        &[],
+        "{id | ids: [id, …], cuts: [{cut, gap?, of?}, …], offsets?: [{piece, face, distance}, …]} divides parts into \
+         pieces that are parts of their own, as Revit's Divide Parts: a zone of damp or detached plaster outlined on a \
+         face, a stratigraphic unit, a wall out of plumb, a lacuna. Each `cut`, in model millimetres, is one of \
+         `{plane: {point: [x, y, z], normal: [x, y, z]}}` (what the normal points to is `front`, the rest `back`); \
+         `{sketch: {frame: {origin, x, normal}, points: [[x, y], …], closed?, depth?}}`, a line drawn on a face in the \
+         frame's coordinates (x along `x`, y along normal × x; the normal pointing out of the part): closed, an outline \
+         (`inside` and `outside`), through the part or `depth` mm in from the face; open, a line across the face from \
+         edge to edge (`left` and `right`); or `{profile: {frame, points, from?, to?}}`, a closed profile extruded \
+         along the frame's normal (`inside`, `outside`). `gap` takes a joint that wide out along the cut; `of` names the \
+         piece it divides (as `pieces` gives keys), else it divides every piece it meets. An offset moves a face of a \
+         finished piece (`piece`, its key) in by `distance` mm: `face` is `{cut: n}`, the face cut n made, or `{plane: {point, normal}}`. \
+         Each piece is named by the cuts that made it (`0.front.0/1.inside.0`) and starts with what its part says (its \
+         material, kind, heritage values and parameters). The division is kept in the host's own coordinates, so the \
+         pieces follow the host as it moves, turns or stretches; a cut that no longer meets the part after that puts \
+         the pieces it made in conflict (`parts` shows `division_conflicts`) until it is divided again. Given again, a \
+         part keeps the pieces the new cuts still make, ids and values, and loses the others; `cuts: []` makes it whole \
+         again. A divided part is the sum of its pieces: it is counted, scheduled and exported in them. Refused, with \
+         nothing changed, when a cut misses the part or the cuts can't be made. Returns `pieces` (each `id`, `of`, `key` \
+         and `volume_m3`) and `deleted`",
+        divide_parts,
+    ),
+    edit(
         "part",
         "Part Properties",
         &[],
@@ -13353,6 +13378,88 @@ fn create_parts(s: &mut Session, p: &Value) -> R {
     let m = s.model_mut();
     let ids: Vec<Id> = wanted.into_iter().map(|part| m.insert(Element::Part(part))).collect();
     Ok(json!({"ids": ids, "existing": existing}))
+}
+
+fn divide_parts(s: &mut Session, p: &Value) -> R {
+    use crate::divide::{MAX_CUTS, PieceKey, Recipe};
+    use crate::parts::BuildingPart;
+    let c = "divide_parts";
+    only(c, p, &["id", "ids", "cuts", "offsets"])?;
+    let m = &s.model;
+    let ids = ids_param(c, m, p)?;
+    let cuts = p.get("cuts").ok_or_else(|| bad(c, "give `cuts`, the cuts that divide the parts, in order (`[]` makes them whole)"))?;
+    let mut given = json!({"cuts": cuts, "offsets": p.get("offsets").cloned().unwrap_or_else(|| json!([]))});
+    if [&given["cuts"], &given["offsets"]].iter().any(|v| v.as_array().is_some_and(|a| a.len() > MAX_CUTS)) {
+        return Err(bad(c, format!("a division has {MAX_CUTS} cuts and {MAX_CUTS} offsets at most")));
+    }
+    // A piece named as a reply names it, `0.back.0`, is read as the key it is.
+    for (list, key) in [("cuts", "of"), ("offsets", "piece")] {
+        for item in given[list].as_array_mut().into_iter().flatten() {
+            if let Some(Value::String(text)) = item.get(key) {
+                let parsed = PieceKey::parse(text)
+                    .ok_or_else(|| bad(c, format!("`{key}`: `{text}` is no piece; a piece is named as `0.front.0/1.inside.0`")))?;
+                item[key] = json!(parsed);
+            }
+        }
+    }
+    let recipe: Recipe = serde_json::from_value(given).map_err(|e| bad(c, format!("`cuts` or `offsets`: {e}")))?;
+    let whole = recipe.cuts.is_empty() && recipe.offsets.is_empty();
+    // Each part's division in its host's coordinates, and the pieces it makes: all worked out before anything changes.
+    type Plan = (Id, Option<Recipe>, Vec<(PieceKey, f64)>);
+    let mut plans: Vec<Plan> = Vec::new();
+    for &id in &ids {
+        let Some(Element::Part(part)) = m.elements.get(id) else {
+            let cat = m.elements.get(id).map_or("nothing", Element::category);
+            return Err(bad(c, format!("{cat} {id} isn't a part; `create_parts` takes an element apart into parts first")));
+        };
+        let by_hand: Vec<Id> = m
+            .part_divisions(id)
+            .into_iter()
+            .filter(|d| matches!(m.elements.get(*d), Some(Element::Part(x)) if x.piece.is_none()))
+            .collect();
+        if !by_hand.is_empty() {
+            return Err(bad(c, format!("part {id} has parts divided from it by hand ({by_hand:?}): delete them first")));
+        }
+        if whole {
+            plans.push((id, None, Vec::new()));
+            continue;
+        }
+        let solid = m.part_solid(part).map_err(|e| bad(c, format!("part {id} is in conflict: {e}")))?;
+        let outcome = crate::divide::divide(&solid, &recipe).map_err(|e| bad(c, format!("part {id}: {e}")))?;
+        let frame = m.host_frame(part.host).ok_or_else(|| bad(c, format!("part {id}: its host has no place to keep a division in")))?;
+        let pieces = outcome.pieces.into_iter().map(|piece| (piece.key, piece.volume)).collect();
+        plans.push((id, Some(frame.local_recipe(&recipe)), pieces));
+    }
+    let (mut made, mut gone) = (Vec::new(), Vec::new());
+    for (id, division, pieces) in plans {
+        let m = &s.model;
+        let Some(Element::Part(part)) = m.elements.get(id) else { continue };
+        let template = BuildingPart { parent: Some(m.guid(id)), division: None, excluded: false, ..part.clone() };
+        let had: Vec<(Id, Option<PieceKey>)> = m
+            .part_divisions(id)
+            .into_iter()
+            .filter_map(|d| match m.elements.get(d) {
+                Some(Element::Part(x)) => Some((d, x.piece.clone())),
+                _ => None,
+            })
+            .collect();
+        gone.extend(had.iter().filter(|(_, k)| !pieces.iter().any(|(key, _)| Some(key) == k.as_ref())).map(|(d, _)| *d));
+        let m = s.model_mut();
+        if let Some(Element::Part(part)) = m.elements.get_mut(id) {
+            part.division = division;
+        }
+        for (key, volume) in pieces {
+            let piece = match had.iter().find(|(_, k)| k.as_ref() == Some(&key)) {
+                Some((d, _)) => *d,
+                None => m.insert(Element::Part(BuildingPart { piece: Some(key.clone()), ..template.clone() })),
+            };
+            made.push(json!({"id": piece, "of": id, "key": key.to_string(), "volume_m3": (volume / 1e3).round() / 1e6}));
+        }
+    }
+    if !gone.is_empty() {
+        delete(s, &json!({"ids": gone}))?;
+    }
+    Ok(json!({"pieces": made, "deleted": gone}))
 }
 
 /// The keys `part` takes beside the parts themselves, each in lower case: the heritage set's are given in any case.
