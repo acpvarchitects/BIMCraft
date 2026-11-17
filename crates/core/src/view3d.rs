@@ -521,6 +521,32 @@ impl Solid {
 /// (a frame cut across its face is a ring round its opening). None where no loop closes, which only an open mesh
 /// leaves: the caller then falls back on its hull.
 pub(crate) fn slice(tris: &[[P3; 3]], p: P2, u: P2, len: f64) -> Option<Vec<Vec<P2>>> {
+    let loops = slice_loops(tris, p, u)?;
+    // How many loops hold each: an even count is solid, an odd one a hole in the loop just round it.
+    let depth: Vec<usize> = loops
+        .iter()
+        .enumerate()
+        .map(|(i, r)| loops.iter().enumerate().filter(|(j, o)| *j != i && geom::contains(o, r[0])).count())
+        .collect();
+    let mut out = Vec::new();
+    for (i, outer) in loops.iter().enumerate().filter(|(i, _)| depth[*i].is_multiple_of(2)) {
+        let holes = loops.iter().enumerate().filter(|(j, h)| depth[*j] == depth[i] + 1 && geom::contains(outer, h[0]));
+        let pieces = holes.fold(vec![outer.clone()], |pieces, (_, h)| walls::minus(&pieces, h));
+        for piece in pieces {
+            let piece = geom::clip(&geom::clip(&piece, |q| q.0), |q| len - q.0);
+            if piece.len() >= 3 && geom::area(&piece).abs() > 1e-6 {
+                out.push(piece);
+            }
+        }
+    }
+    Some(out)
+}
+
+/// Where the upright plane through the line from `p` along unit `u` cuts closed mesh `tris`, as the loops the plane cuts its
+/// skin in, (along, up) in mm, each counter-clockwise, an outline and its holes alike: what a cut is outlined with. [`slice`]
+/// makes regions of them, a region with a hole in pieces (it has no holes), whose edges across it are no edges of the cut:
+/// a ring's cut drawn from them would show the pieces' seams across it. None where no loop closes.
+pub(crate) fn slice_loops(tris: &[[P3; 3]], p: P2, u: P2) -> Option<Vec<Vec<P2>>> {
     // On the plane counts as in front of it, so a corner on it doesn't leave the loop through it twice.
     let side = |q: &P3| (P2(q[0], q[1]) - p).dot(u.perp());
     let at = |q: &P3| P2((P2(q[0], q[1]) - p).dot(u), q[2]);
@@ -599,24 +625,7 @@ pub(crate) fn slice(tris: &[[P3; 3]], p: P2, u: P2, len: f64) -> Option<Vec<Vec<
     if open && loops.is_empty() {
         return None;
     }
-    // How many loops hold each: an even count is solid, an odd one a hole in the loop just round it.
-    let depth: Vec<usize> = loops
-        .iter()
-        .enumerate()
-        .map(|(i, r)| loops.iter().enumerate().filter(|(j, o)| *j != i && geom::contains(o, r[0])).count())
-        .collect();
-    let mut out = Vec::new();
-    for (i, outer) in loops.iter().enumerate().filter(|(i, _)| depth[*i].is_multiple_of(2)) {
-        let holes = loops.iter().enumerate().filter(|(j, h)| depth[*j] == depth[i] + 1 && geom::contains(outer, h[0]));
-        let pieces = holes.fold(vec![outer.clone()], |pieces, (_, h)| walls::minus(&pieces, h));
-        for piece in pieces {
-            let piece = geom::clip(&geom::clip(&piece, |q| q.0), |q| len - q.0);
-            if piece.len() >= 3 && geom::area(&piece).abs() > 1e-6 {
-                out.push(piece);
-            }
-        }
-    }
-    Some(out)
+    Some(loops)
 }
 
 /// How far, in degrees, two triangles may turn at the edge they share and still be one surface:
@@ -1324,6 +1333,15 @@ pub(crate) fn host_holes(m: &Model, host: Id, z_at: impl Fn(P2) -> Option<f64>) 
         }
     }
     out
+}
+
+/// Where the level plane at height `z` cuts closed mesh `tris`, as its outlines in plan: each loop, an outline and its holes
+/// alike ([`slice_loops`]), what the cut is drawn with; [`level_slice`]'s regions are what it covers.
+pub(crate) fn level_outlines(tris: &[[P3; 3]], z: f64) -> Vec<Vec<P2>> {
+    const FAR: f64 = 1.0e6;
+    let turned: Vec<[P3; 3]> = tris.iter().map(|t| t.map(|p| [p[0], p[2] - z, p[1]])).collect();
+    let rings = slice_loops(&turned, P2(-FAR, 0.0), P2(1.0, 0.0)).unwrap_or_default();
+    rings.into_iter().map(|r| r.into_iter().map(|q| P2(q.0 - FAR, q.1)).collect()).collect()
 }
 
 /// Where the level plane at height `z` cuts closed mesh `tris`, as rings in plan: [`slice`] of the mesh turned on its side,

@@ -24,6 +24,8 @@ pub(crate) struct Kept {
     ranges: BTreeMap<Which, ViewRange>,
     /// {3D}'s Graphic Display Options.
     pub(crate) display: bimcraft_core::view3d::DisplayOptions,
+    /// The box {3D} is cut to, its least and greatest corners in the family's axes, while Selection Box (BX) keeps one (FE-23a).
+    pub(crate) section_box: Option<([f64; 3], [f64; 3])>,
     /// The View Range dialog, open on a plan: its four fields as typed, and why OK was refused.
     range_dialog: Option<RangeDialog>,
     /// The views that reveal what they hide (RH): drawn in magenta, so it can be picked and unhidden.
@@ -167,7 +169,8 @@ impl Kept {
     pub(crate) fn key(&self, which: Option<Which>) -> String {
         let range = which.and_then(|w| self.ranges.get(&w));
         let reveal = self.revealing(which);
-        format!("{}{range:?}{:?}{reveal}", serde_json::to_string(&self.graphics_of(which)).unwrap_or_default(), self.display)
+        let boxed = if which.is_none() { self.section_box } else { None };
+        format!("{}{range:?}{:?}{reveal}{boxed:?}", serde_json::to_string(&self.graphics_of(which)).unwrap_or_default(), self.display)
     }
 }
 

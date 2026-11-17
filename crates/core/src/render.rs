@@ -4665,10 +4665,12 @@ fn opening(d: &mut Drawing, m: &Model, e: &Element, o: &Opening, w: &Wall, cut: 
                 d.line(&piece.outline, BY_CATEGORY, INK, true);
                 cut_rings.push(piece.outline.clone());
             }
-            for ring in rings {
+            // Drawn by its outlines (a frame's cut round its opening is two rings, not the pieces it is covered by); what
+            // it covers by its regions.
+            for ring in view3d::level_outlines(&piece.tris, cut) {
                 d.line(&ring, BY_CATEGORY, INK, true);
-                cut_rings.push(ring);
             }
+            cut_rings.extend(rings);
         }
         d.part(Part::Projection);
         // What lies below the cut plane (F10b: a sill member, the frame's lower rail between its jambs), seen from it in
@@ -5858,7 +5860,7 @@ pub fn rgba(d: &Drawing, under: Option<&view3d::Image>) -> Result<Vec<u8>, Strin
 
 /// A family's floor plan (F4), as Revit's family editor draws it: the project's plan of `level` (`draw`), and over it each
 /// component's forms seen from above whatever their height (a family's plan sees all of it), and where a form crosses the
-/// cut plane, its cut outline in the cut pen ([`crate::family::views::plan_cut`]). Project plans never cut a component. Once
+/// cut plane, its cut outline in the cut pen ([`crate::family::views::plan_cut_outlines`]). Project plans never cut a component. Once
 /// its View Range is set (FE-18), `seen` the heights it sees, lowest and highest: a form wholly below or above them is left out.
 pub(crate) fn family_plan(m: &Model, level: Id, view: View, seen: Option<(f64, f64)>) -> Drawing {
     let mut d = draw(m, level, view);
@@ -5878,7 +5880,8 @@ pub(crate) fn family_plan(m: &Model, level: Id, view: View, seen: Option<(f64, f
         component(&mut extra, m, &pieces);
         extra.part(Part::Cut);
         for p in pieces.iter().filter(|p| p.bottom < cut && p.top > cut) {
-            for ring in crate::family::views::plan_cut(&p.tris, cut) {
+            // Its outlines, never the pieces of a region with a hole (a ring's cut is two circles).
+            for ring in crate::family::views::plan_cut_outlines(&p.tris, cut) {
                 extra.line(&ring, Pen::CUT, INK, true);
             }
         }
