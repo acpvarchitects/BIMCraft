@@ -544,6 +544,46 @@ mod tests {
         }
     }
 
+    /// An opening's infill stays within its wall (T25): a window whose head is past the wall's top, taken down, fills the wall
+    /// up to its top and no higher, nor lower than its base; so too under a sloped roof the wall is attached to.
+    #[test]
+    fn an_infill_stays_within_its_wall() {
+        let mut s = Session::new();
+        s.script(
+            r#"wall {"points": [[0,0],[8000,0],[8000,6000],[0,6000]], "closed": true, "height": 3000}
+               door {"at": [6000, 0]}
+               window {"at": [2000, 0], "sill": 2500}"#,
+        )
+        .unwrap();
+        let wall = of(&s, "wall")[0];
+        for id in of(&s, "door").into_iter().chain(of(&s, "window")) {
+            s.execute("modify", &json!({"id": id, "params": {"Phase Demolished": "New Construction"}})).unwrap();
+        }
+        let within = |s: &Session| {
+            let m = &s.model;
+            let Some(w) = m.wall(wall) else { panic!("{wall} is a wall") };
+            let scene = Scene::new(m);
+            let infill: Vec<&Tri> =
+                scene.tris.iter().filter(|t| t.owner == wall && t.vis & crate::phasing::openings::INFILL != 0).collect();
+            assert!(!infill.is_empty());
+            for p in infill.iter().flat_map(|t| t.p) {
+                let along = p[0].clamp(0.0, 8000.0);
+                let (base, top) = (crate::walls::base_at(m, w, along), crate::walls::top_at(m, w, along));
+                assert!(p[2] <= top + 1.0 && p[2] >= base - 1.0, "{p:?} out of {base}..{top}");
+            }
+        };
+        within(&s);
+        let roof = s
+            .execute(
+                "roof",
+                &json!({"boundary": [[-500, -500], [8500, -500], [8500, 6500], [-500, 6500]], "slope": 30, "offset": 2600, "overhang": 0}),
+            )
+            .unwrap()["id"]
+            .clone();
+        s.execute("modify", &json!({"id": wall, "attach_top": roof})).unwrap();
+        within(&s);
+    }
+
     /// A project with nothing phased builds no infill (T25): no triangle's `vis` has its bit, so it draws as before; one with a
     /// door taken down does.
     #[test]

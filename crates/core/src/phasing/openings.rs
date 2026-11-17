@@ -28,17 +28,20 @@ pub(crate) fn coexist(a: Lifetime, b: Lifetime) -> bool {
 /// - 0: drawn everywhere (no bit set);
 /// - a family form's Visibility Settings ([`crate::family::visibility::packed`]): bit 31 set, its seven flags in bits 0 to 6,
 ///   its component's angle in bits 8 to 23; never bit 30;
-/// - an infill's: bit 30 set and bit 31 clear, the phase its opening is made in in bits 0 to 7 and the one it comes down in
-///   in bits 8 to 15 ([`NEVER`] for none).
+/// - an infill's: bit 30 set and bit 31 clear; in bits 0 to 13 where its opening stands, the phase it is made in in the low
+///   seven and the one it comes down in in the next seven ([`NEVER`] for none); where it is the part of two openings' holes
+///   both cover, bit 29 ([`TWO`]) set and where the other stands in bits 14 to 27.
 pub(crate) const INFILL: u32 = 1 << 30;
 /// The bit a family form's Visibility Settings set: a `vis` with it is never an infill's.
 const SETTINGS: u32 = 1 << 31;
-/// No phase, in the eight bits that hold one.
-const NEVER: u32 = 0xff;
+/// The bit of an infill two openings' holes share: it fills only where neither opening is there.
+const TWO: u32 = 1 << 29;
+/// No phase, in the seven bits that hold one.
+const NEVER: u32 = 0x7f;
 
-/// The `vis` of opening `e`'s infill: where the opening stands, packed (made in the low eight bits, taken down in the next
-/// eight); none where it stands whenever its wall does, so it never needs one, or past the 254 phases eight bits hold.
-pub(crate) fn infill_bits(m: &Model, e: &Element, wall: &Element) -> Option<u32> {
+/// Where opening `e` stands, where that isn't wherever its wall `wall` does, so that its hole may need filling: none where
+/// it is there whenever its wall is.
+pub(crate) fn apart(m: &Model, e: &Element, wall: &Element) -> Option<Lifetime> {
     let (c, d) = lifetime(m, e);
     let (wc, wd) = lifetime(m, wall);
     let gone_with_wall = match (d, wd) {
@@ -46,24 +49,51 @@ pub(crate) fn infill_bits(m: &Model, e: &Element, wall: &Element) -> Option<u32>
         (Some(d), Some(wd)) => wd <= d,
         (Some(_), None) => false,
     };
-    if c <= wc && gone_with_wall {
-        return None;
-    }
+    (!(c <= wc && gone_with_wall)).then_some((c, d))
+}
+
+/// A lifetime in fourteen bits; none past the 126 phases seven bits hold.
+fn pack_one((c, d): Lifetime) -> Option<u32> {
     let c = u32::try_from(c).ok().filter(|c| *c < NEVER)?;
     let d = match d {
         Some(d) => u32::try_from(d).ok().filter(|d| *d < NEVER)?,
         None => NEVER,
     };
-    Some(INFILL | c | d << 8)
+    Some(c | d << 7)
 }
 
-/// Where an infill's opening stands, from its `vis`; none for anything else's.
-pub(crate) fn infill_of(bits: u32) -> Option<Lifetime> {
+fn unpack_one(bits: u32) -> Lifetime {
+    let d = (bits >> 7) & NEVER;
+    ((bits & NEVER) as usize, (d != NEVER).then_some(d as usize))
+}
+
+/// The `vis` of an infill where opening `a` stands, and, of the part of its hole that opening `b`'s covers too, where `b`
+/// stands; none past the phases the bits hold.
+pub(crate) fn pack(a: Lifetime, b: Option<Lifetime>) -> Option<u32> {
+    let first = pack_one(a)?;
+    match b {
+        None => Some(INFILL | first),
+        Some(b) => Some(INFILL | TWO | first | pack_one(b)? << 14),
+    }
+}
+
+/// The `vis` of opening `e`'s infill in `wall`, the part of its hole no other opening's covers: none where it needs none.
+pub(crate) fn infill_bits(m: &Model, e: &Element, wall: &Element) -> Option<u32> {
+    pack(apart(m, e, wall)?, None)
+}
+
+/// Where an infill's opening stands, and the other's of a part two share, from its `vis`; none for anything else's.
+pub(crate) fn infill_of(bits: u32) -> Option<(Lifetime, Option<Lifetime>)> {
     if bits & INFILL == 0 || bits & SETTINGS != 0 {
         return None;
     }
-    let d = (bits >> 8) & 0xff;
-    Some(((bits & 0xff) as usize, (d != NEVER).then_some(d as usize)))
+    Some((unpack_one(bits & 0x3fff), (bits & TWO != 0).then(|| unpack_one((bits >> 14) & 0x3fff))))
+}
+
+/// Whether a view of the phase at `at` through `filter` fills what an infill whose `vis` reads `lives` stands for: each of
+/// its openings not there, or not displayed.
+pub(crate) fn fills((a, b): (Lifetime, Option<Lifetime>), at: usize, filter: Option<&PhaseFilter>) -> bool {
+    filled(a, at, filter) && b.is_none_or(|b| filled(b, at, filter))
 }
 
 /// Whether a view of the phase at `at` through `filter` fills the opening of what stands `life`: where it isn't there, and
@@ -219,6 +249,53 @@ mod tests {
         assert!(!filled_in_3d(&s, walls[0], &look(NEW, None)), "with no filter, what comes down is drawn: open");
     }
 
+    /// The look of a 3D view at `phase` through `filter`.
+    fn look_at(s: &Session, phase: &str, filter: Option<&str>) -> Look {
+        Look::with(&s.model, &Graphics { phase: Some(phase.into()), phase_filter: filter.map(str::to_string), ..Graphics::default() })
+    }
+
+    /// A door replaced in New Construction, the new one, of the same size, taken down in Fit-out: once both are gone the
+    /// wall is whole again, in plan and in 3D, and where either stands it is open.
+    #[test]
+    fn a_door_replaced_and_then_taken_down_leaves_its_wall_whole() {
+        let mut s = Session::new();
+        let walls = house(&mut s);
+        run(&mut s, "phase", json!({"name": "Fit-out"}));
+        run(&mut s, "phase", json!({"name": "Later"}));
+        let old = door(&mut s, None);
+        run(&mut s, "modify", json!({"id": old, "params": {"Phase Demolished": NEW}}));
+        let new = door(&mut s, Some(NEW));
+        run(&mut s, "modify", json!({"id": new, "params": {"Phase Demolished": "Fit-out"}}));
+        for (phase, filter, whole) in [
+            ("Existing", None, false),
+            (NEW, Some("Show All"), false),
+            (NEW, Some("Show Previous + New"), false),
+            ("Fit-out", Some("Show All"), false),
+            ("Fit-out", Some("Show Previous + New"), true),
+            ("Later", None, true),
+        ] {
+            assert_eq!(!open(&mut s, phase, filter), whole, "plan, {phase} {filter:?}");
+            assert_eq!(filled_in_3d(&s, walls[0], &look_at(&s, phase, filter)), whole, "3D, {phase} {filter:?}");
+        }
+    }
+
+    /// Two new doors one after the other at one spot, of the same size: in Existing, before either, the wall is whole.
+    #[test]
+    fn two_doors_one_after_the_other_leave_the_existing_wall_whole() {
+        let mut s = Session::new();
+        let walls = house(&mut s);
+        run(&mut s, "phase", json!({"name": "Fit-out"}));
+        let first = door(&mut s, Some(NEW));
+        run(&mut s, "modify", json!({"id": first, "params": {"Phase Demolished": "Fit-out"}}));
+        door(&mut s, Some("Fit-out"));
+        assert!(!open(&mut s, "Existing", None));
+        assert!(filled_in_3d(&s, walls[0], &look_at(&s, "Existing", None)));
+        for phase in [NEW, "Fit-out"] {
+            assert!(open(&mut s, phase, None), "{phase}");
+            assert!(!filled_in_3d(&s, walls[0], &look_at(&s, phase, None)), "{phase}");
+        }
+    }
+
     #[test]
     fn a_section_cuts_the_wall_whole_where_the_door_isnt_there() {
         let mut s = Session::new();
@@ -274,11 +351,13 @@ mod tests {
             }
         }
         assert_eq!(packed(None, P2(1.0, 0.0)), 0);
-        for life in [(0, None), (1, Some(1)), (0, Some(3)), (253, Some(254))] {
-            let bits = super::INFILL | life.0 as u32 | (life.1.map_or(0xff, |d: usize| d as u32) << 8);
-            assert_eq!(super::infill_of(bits), Some(life));
+        for (a, b) in [((0, None), None), ((1, Some(1)), None), ((0, Some(3)), Some((3, None))), ((125, Some(125)), Some((0, Some(125))))] {
+            let bits = super::pack(a, b).unwrap();
+            assert_eq!(super::infill_of(bits), Some((a, b)));
+            assert_eq!(bits & (1 << 31), 0);
             assert_eq!(unpacked(bits), None, "an infill's bits are no settings");
         }
+        assert_eq!(super::pack((127, None), None), None, "past the phases the bits hold, no infill");
     }
 
     /// The pictures of T25's PR: a house whose south wall has a door taken down and replaced in New Construction, a new door

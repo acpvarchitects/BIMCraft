@@ -1133,8 +1133,8 @@ impl Look {
     /// Whether it draws a triangle or a solid whose Visibility Settings are packed as `vis`
     /// ([`crate::family::visibility::packed`]): in projection, or (`cut`) as a section's poché.
     pub fn forms_show(&self, vis: u32, cut: bool) -> bool {
-        if let Some(life) = crate::phasing::openings::infill_of(vis) {
-            return self.phase.as_ref().is_some_and(|(at, filter)| crate::phasing::openings::filled(life, *at, filter.as_ref()));
+        if let Some(lives) = crate::phasing::openings::infill_of(vis) {
+            return self.phase.as_ref().is_some_and(|(at, filter)| crate::phasing::openings::fills(lives, *at, filter.as_ref()));
         }
         vis == 0 || self.forms.shows(vis, cut)
     }

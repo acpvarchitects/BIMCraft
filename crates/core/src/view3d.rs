@@ -983,10 +983,13 @@ fn wall_solids(m: &Model, id: Id, index: Option<&walls::Index>) -> Vec<Solid> {
 }
 
 /// Wall `id`'s infills (T25): of each opening that doesn't stand whenever the wall does, what fills its hole where a view's
-/// phase leaves it out, as triangles whose `vis` says where it stands ([`crate::phasing::openings::infill_bits`]), which the
-/// view's look reads. Its rectangle, less those of the other openings there, which keep their own holes; of an opening whose
-/// family cuts the wall with voids, what of the wall's thickness round it those voids take.
+/// phase leaves it out, as triangles whose `vis` says where it stands ([`crate::phasing::openings::pack`]), which the view's
+/// look reads. Its rectangle, kept within the wall ([`walls::within`]): the part no other opening's covers fills where it isn't
+/// there; the part another's covers too, only where neither is (a door replaced, then the new one taken down: the old one's
+/// hole is filled once both are gone), and nothing where that one always stands. Of an opening whose family cuts the wall with
+/// voids, what of the wall round it those voids take.
 fn infills(m: &Model, id: Id, index: Option<&walls::Index>) -> Vec<Solid> {
+    use crate::phasing::openings::{apart, pack};
     let (Some(wall), Some(w)) = (m.elements.get(id), m.wall(id)) else { return Vec::new() };
     let guid = m.guid(id);
     let holes: Vec<(&Element, walls::Hole)> = walls::openings_of(m, id, index)
@@ -995,42 +998,66 @@ fn infills(m: &Model, id: Id, index: Option<&walls::Index>) -> Vec<Solid> {
             _ => None,
         })
         .collect();
-    if holes.is_empty() {
+    if holes.iter().all(|(e, _)| apart(m, e, wall).is_none()) {
         return Vec::new();
     }
     let axis = Axis::of(w);
     let (ext, int) = walls::faces(m, w);
+    let rect = |h: &walls::Hole| [h.s0, h.s1, h.bottom, h.top];
+    let block = |[s0, s1, bottom, top]: [f64; 4]| -> Vec<[P3; 3]> {
+        let ring: Vec<P2> = axis.points(s0, s1, ext).into_iter().chain(axis.points(s1, s0, int)).collect();
+        let solid = Solid::Prism { owner: id, color: WALL, tex: 0, ring, bottom: Plane::flat(bottom), top: Plane::flat(top), curve: None };
+        let mut made = Vec::new();
+        solid.tris(&mut made);
+        made.into_iter().map(|t| t.p).collect()
+    };
+    let mesh = |tris: Vec<[P3; 3]>, vis: u32| Solid::Mesh { owner: id, color: WALL, tex: 0, tris, caps: 0, round: false, cut: true, vis };
     let mut meter = crate::csg::Meter::default();
     let mut out = Vec::new();
     for (i, (e, h)) in holes.iter().enumerate() {
-        let Some(vis) = crate::phasing::openings::infill_bits(m, e, wall) else { continue };
-        let block = |s0: f64, s1: f64, bottom: f64, top: f64| -> Vec<[P3; 3]> {
-            let ring: Vec<P2> = axis.points(s0, s1, ext).into_iter().chain(axis.points(s1, s0, int)).collect();
-            let solid =
-                Solid::Prism { owner: id, color: WALL, tex: 0, ring, bottom: Plane::flat(bottom), top: Plane::flat(top), curve: None };
-            let mut made = Vec::new();
-            solid.tris(&mut made);
-            made.into_iter().map(|t| t.p).collect()
-        };
+        let Some(life) = apart(m, e, wall) else { continue };
+        let Some(h) = walls::within(m, w, *h) else { continue };
         let voids = m.opening_voids(e);
-        if voids.is_empty() {
-            let others: Vec<[f64; 4]> =
-                holes.iter().enumerate().filter(|(j, _)| *j != i).map(|(_, (_, o))| [o.s0, o.s1, o.bottom, o.top]).collect();
-            for [s0, s1, bottom, top] in less_rects([h.s0, h.s1, h.bottom, h.top], &others) {
-                let tris = block(s0, s1, bottom, top);
-                out.push(Solid::Mesh { owner: id, color: WALL, tex: 0, tris, caps: 0, round: false, cut: true, vis });
+        if !voids.is_empty() {
+            // What the voids take of the wall round the opening, within it: the block less what is left of it once they have
+            // cut it.
+            let Some(vis) = pack(life, None) else { continue };
+            let Some(room) =
+                walls::within(m, w, walls::Hole { s0: h.s0 - VOID_REACH, s1: h.s1 + VOID_REACH, bottom: f64::MIN, top: f64::MAX })
+            else {
+                continue;
+            };
+            let room = block(rect(&room));
+            for v in &voids {
+                let Ok(rest) = crate::csg::subtract(&room, v, &mut meter) else { continue };
+                let Ok(tris) = crate::csg::subtract(&room, &rest, &mut meter) else { continue };
+                if !tris.is_empty() {
+                    out.push(mesh(tris, vis));
+                }
             }
             continue;
         }
-        // What the voids take of the wall round the opening: the block less what is left of it once they have cut it.
-        let (len, base, top) = (axis.length(), m.own_base(w), m.own_top(w));
-        let reach = |s: f64| s.max(0.0).min(len);
-        let room = block(reach(h.s0 - VOID_REACH), reach(h.s1 + VOID_REACH), base.min(h.bottom), top.max(h.top));
-        for v in &voids {
-            let Ok(rest) = crate::csg::subtract(&room, v, &mut meter) else { continue };
-            let Ok(tris) = crate::csg::subtract(&room, &rest, &mut meter) else { continue };
-            if !tris.is_empty() {
-                out.push(Solid::Mesh { owner: id, color: WALL, tex: 0, tris, caps: 0, round: false, cut: true, vis });
+        let others: Vec<(usize, [f64; 4])> = holes
+            .iter()
+            .enumerate()
+            .filter(|(j, _)| *j != i)
+            .filter_map(|(j, (_, o))| Some((j, rect(&walls::within(m, w, *o)?))))
+            .collect();
+        // Its own part.
+        if let Some(vis) = pack(life, None) {
+            let all: Vec<[f64; 4]> = others.iter().map(|(_, r)| *r).collect();
+            for r in less_rects(rect(&h), &all) {
+                out.push(mesh(block(r), vis));
+            }
+        }
+        // The part each later opening's hole covers too, made once, by the first of the two: filled where neither stands.
+        for (j, r) in others.iter().filter(|(j, _)| *j > i) {
+            let Some(theirs) = holes.get(*j).and_then(|(o, _)| apart(m, o, wall)) else { continue };
+            let Some(vis) = pack(life, Some(theirs)) else { continue };
+            let [s0, s1, z0, z1] = rect(&h);
+            let both = [s0.max(r[0]), s1.min(r[1]), z0.max(r[2]), z1.min(r[3])];
+            if both[1] > both[0] + TOL && both[3] > both[2] + TOL {
+                out.push(mesh(block(both), vis));
             }
         }
     }
