@@ -23,6 +23,12 @@ use bimcraft_core::render::{Drawing, Rgb, View};
 pub(crate) struct Views {
     /// The view shown; none, {3D}.
     pub(crate) shown: Option<Which>,
+    /// Tile Windows is a layout of this document's open views for this session.
+    pub(crate) tiled: bool,
+    /// Inactive 2D panes have their own picture and fit; neither replaces the active view's cache.
+    tiles_2d: BTreeMap<Which, Tile2d>,
+    /// The inactive {3D} pane's processor picture, rebuilt only when its model or size changes.
+    pub(super) tile_3d: Option<Tile3d>,
     /// How close each view is, times as fitted, and how far it is moved (mm).
     pub(super) frames: BTreeMap<Which, (f64, (f64, f64))>,
     /// Each view's work plane ({3D}'s under none), once Set; else its own (`default_work_plane`).
@@ -65,6 +71,8 @@ pub(crate) struct Views {
     pub(super) drag3d: Option<super::handles3d::Drag3d>,
     /// A parameter being dragged by a handle tied to it (FE-25, `handle_params.rs`), in any view.
     pub(super) param_drag: Option<super::handle_params::ParamDrag>,
+    /// What the side or end being dragged by its handle can line up with, and what it is lined up with now (FE-26).
+    pub(super) handle_snap: Option<super::shape_handles::HandleSnap>,
     /// How each handle of the selected form drags, worked out once for the draft as it is (FE-25).
     pub(super) drives: std::cell::RefCell<super::handle_params::Drives>,
     /// The handle the pointer is over, lit, where it was last drawn: a greyed one never is.
@@ -125,7 +133,7 @@ pub(crate) struct Views {
     /// What a tool of the views couldn't do, for the status bar.
     pub(crate) status: Option<String>,
     /// Where on screen the view was last shown.
-    pub(super) pane: Option<Rect>,
+    pub(crate) pane: Option<Rect>,
     /// Where the view shown, a plan, an elevation or {3D}, was last drawn, as `view_2d` and `family_3d` were given it: what a test
     /// reads to see it clear of the tabs (UI-1).
     #[cfg(test)]
@@ -151,6 +159,32 @@ pub(crate) struct Views {
     pub(crate) paste_views: Option<super::clipboard::PasteViews>,
     /// What a tool of the views did that is worth saying, not an error: the constraints a paste dropped.
     pub(crate) said: Option<String>,
+}
+
+impl Views {
+    /// Keep pictures only for views whose tabs are still open in this document.
+    pub(crate) fn retain_tiles(&mut self, open: &[Option<Which>]) {
+        self.tiles_2d.retain(|which, _| open.contains(&Some(*which)));
+        if !open.contains(&None) {
+            self.tile_3d = None;
+        }
+    }
+
+    /// When a tile becomes active, exchange its picture and fit with the active view's.
+    pub(crate) fn activate_tile(&mut self, old: Option<Which>, new: Option<Which>) {
+        if old == new || !self.tiled {
+            return;
+        }
+        if let Some(which) = old {
+            self.tiles_2d.insert(which, Tile2d { cache: self.cache.take(), fitted: self.fitted.take() });
+        } else {
+            self.cache = None;
+            self.fitted = None;
+        }
+        let next = new.and_then(|which| self.tiles_2d.remove(&which)).unwrap_or_default();
+        self.cache = next.cache;
+        self.fitted = next.fitted;
+    }
 }
 
 /// A selected extrusion's Start or End (`end`) being dragged by its handle (F5): where the pointer was (the view's
@@ -190,6 +224,17 @@ pub(super) struct Cached {
     texture: Option<TextureHandle>,
     #[cfg(test)]
     picture: Option<bimcraft_core::view3d::Image>,
+}
+
+#[derive(Default)]
+struct Tile2d {
+    cache: Option<Cached>,
+    fitted: Option<(u64, View)>,
+}
+
+pub(super) struct Tile3d {
+    pub(super) key: (u64, [u32; 2]),
+    pub(super) texture: TextureHandle,
 }
 
 #[cfg(test)]
@@ -525,13 +570,18 @@ impl FamilyEditor {
         Ok(st)
     }
 
+    /// The view shown fitted afresh the next time it is drawn (Zoom to Fit): to the room the family takes up now.
+    pub(super) fn refit(&mut self) {
+        self.views.fitted = None;
+        self.views.cache = None;
+    }
+
     /// The view shown, drawn again when what it shows or how it's looked at changes.
-    fn refresh_view(&mut self, ctx: &Context, base: &Model, which: Which, size: [u32; 2]) {
+    fn refresh_view(&mut self, ctx: &Context, base: &Model, which: Which, size: [u32; 2], revision: Option<u64>) {
         let (zoom, pan) = self.views.frames.get(&which).copied().unwrap_or((1.0, (0.0, 0.0)));
         let key = {
             let mut h = DefaultHasher::new();
             (
-                self.family().ok().map(|f| serde_json::to_string(&f).unwrap_or_default()),
                 self.picked,
                 self.name.trim(),
                 which,
@@ -542,6 +592,10 @@ impl FamilyEditor {
                 crate::style::canvas_dark(),
             )
                 .hash(&mut h);
+            match revision {
+                Some(generation) => generation.hash(&mut h),
+                None => self.family().ok().map(|f| serde_json::to_string(&f).unwrap_or_default()).hash(&mut h),
+            }
             // The view's own graphics and range (FE-18).
             self.views.kept.key(Some(which)).hash(&mut h);
             (base.materials.len(), base.images.len()).hash(&mut h);
@@ -556,11 +610,13 @@ impl FamilyEditor {
         let kept = self.views.fitted;
         let graphics = self.views.kept.key(Some(which));
         let drawn = self.staged(base, which).and_then(|mut st| {
-            // What the fit depends on, the room the view frames (the marks stand round it), the view, its size and its graphics,
-            // and not the rest of the family: an edit inside the room, a drag's every frame, keeps the frame it had.
+            // What the fit depends on: the view, its size and its graphics, and not the family. A view is fitted to the room
+            // the family takes up when it is first shown and when Zoom to Fit asks (`refit`); an edit keeps the frame it had,
+            // as Revit's views do. A drag that takes a form past the room would otherwise zoom the view out under the hand,
+            // frame after frame (FE-26).
             let fit_key = {
                 let mut h = DefaultHasher::new();
-                (st.room.0.map(f64::to_bits), st.room.1.map(f64::to_bits), which, size, &graphics).hash(&mut h);
+                (which, size, &graphics).hash(&mut h);
                 h.finish()
             };
             let fitted = match kept {
@@ -610,6 +666,30 @@ impl FamilyEditor {
         }
     }
 
+    /// Draw an inactive view as a picture. Its rendering cache and fit belong to this tile, and
+    /// no input handler or view selection is called. The active view keeps its own cached frame.
+    pub(crate) fn tile_view_2d(&mut self, ui: &Ui, base: &Model, which: Which, pane: Rect, thin: bool, freeze: bool) {
+        let size = [pane.width().clamp(64.0, 2400.0) as u32, pane.height().clamp(64.0, 1600.0) as u32];
+        let mut tile = self.views.tiles_2d.remove(&which).unwrap_or_default();
+        std::mem::swap(&mut self.views.cache, &mut tile.cache);
+        std::mem::swap(&mut self.views.fitted, &mut tile.fitted);
+        if !(freeze && self.views.cache.is_some()) {
+            self.refresh_view(ui.ctx(), base, which, size, Some(self.document.revision));
+        }
+        let painter = ui.painter_at(pane);
+        painter.rect_filled(pane, 0.0, crate::canvas::color(bimcraft_core::render::PAPER));
+        if let Some(c) = self.views.cache.as_ref().filter(|c| c.which == which) {
+            if let Some(texture) = &c.texture {
+                let at = Rect::from_min_size(pane.min, vec2(c.view.width as f32, c.view.height as f32));
+                painter.image(texture.id(), at, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
+            }
+            crate::canvas::paint(&painter, crate::canvas::Place::at(pane.min), &c.drawing, &[], None, thin, &[]);
+        }
+        std::mem::swap(&mut self.views.cache, &mut tile.cache);
+        std::mem::swap(&mut self.views.fitted, &mut tile.fitted);
+        self.views.tiles_2d.insert(which, tile);
+    }
+
     /// The plan or elevation shown, filling `pane`: its picture, what is selected over it, the work plane tinted while Show is
     /// on, the plane being drawn; and the clicks and drags in it.
     pub(crate) fn view_2d(&mut self, ui: &mut Ui, base: &Model, which: Which, pane: Rect, thin: bool) -> Option<String> {
@@ -646,7 +726,7 @@ impl FamilyEditor {
         {
             (m.selection, m.tool) = (self.selection.items().to_vec(), m.tool.fresh());
         }
-        self.refresh_view(ui.ctx(), base, which, size);
+        self.refresh_view(ui.ctx(), base, which, size, None);
         let response = ui.interact(pane, UiId::new("family-view-2d"), Sense::click_and_drag());
         self.views.pane = Some(pane);
         #[cfg(test)]
@@ -1332,6 +1412,19 @@ impl FamilyEditor {
             let way = egui::vec2(towards.0 as f32, -towards.1 as f32).normalized();
             super::handles3d::paint_arrow(&painter, centre, way, free, lit == Some(centre));
         };
+        // The side or end held, lined up with something (FE-26): a dashed line through it, along what it lines up with.
+        if self.lined_up() {
+            let (side, end) = (self.views.edge_drag.as_ref().map(|d| d.line()), self.views.end_drag.as_ref().map(|d| d.end));
+            let held = shapes.iter().find(|h| Some(h.line) == side).map(|h| (h.at, h.way));
+            let held = held.or_else(|| handles.iter().find(|h| Some(h.1) == end).map(|h| (h.0, h.3)));
+            if let Some((at, way)) = held {
+                let centre = screen(at);
+                let towards = c.staged.to_view(which, way) - c.staged.to_view(which, [0.0; 3]);
+                let along = egui::vec2(towards.0 as f32, -towards.1 as f32).normalized().rot90() * pane.size().length();
+                let stroke = Stroke::new(1.0, crate::style::canvas_pal().hover);
+                painter.extend(egui::Shape::dashed_line(&[centre - along, centre + along], stroke, 6.0, 4.0));
+            }
+        }
         for (at, end, blocked, n, _) in &handles {
             let k = if *end { 1.0 } else { -1.0 };
             arrow(*at, [n[0] * k, n[1] * k, n[2] * k], blocked.is_none());
@@ -1348,6 +1441,7 @@ impl FamilyEditor {
         let mut end_moved: Option<(bool, f64)> = None;
         let mut edge_moved: Option<[f64; 3]> = None;
         let mut begin_param: Option<(usize, super::handle_params::Target, Vec<String>)> = None;
+        let mut begin_snap: Option<(super::handle_params::Target, [f64; 3], bool)> = None;
         if response.drag_started_by(PointerButton::Primary)
             && let Some(p) = ui.input(|i| i.pointer.press_origin())
         {
@@ -1362,6 +1456,7 @@ impl FamilyEditor {
                             let before = if *end { ft.to.clone() } else { ft.from.clone() };
                             let (last, n, tag, end) = (at_view(p), *n, ft.tag, *end);
                             self.views.end_drag = Some(EndDrag { end, last, n, view, before, tag, which, seen: pass });
+                            begin_snap = Some((super::handle_params::Target::End(end), n, param.is_none()));
                         }
                     }
                     Some(why) => problem = Some(why.clone()),
@@ -1375,6 +1470,7 @@ impl FamilyEditor {
                 match self.edge_drag(h, (Some((at_view(p), view)), Some(which), pass), f) {
                     Ok(d) => {
                         self.views.edge_drag = Some(d);
+                        begin_snap = Some((super::handle_params::Target::Edge(h.line, h.out), h.way, h.param.is_none()));
                         if let (Some(names), Some(i)) = (&h.param, self.selected_form()) {
                             begin_param = Some((i, super::handle_params::Target::Edge(h.line, h.out), names.clone()));
                         }
@@ -1772,10 +1868,19 @@ impl FamilyEditor {
             (end_moved, edge_moved) = (None, None);
             problem = Some(e);
         }
+        // What the side or end held can line up with (FE-26), within a few points as the view is scaled.
+        if let Some((target, way, free)) = begin_snap
+            && (self.views.edge_drag.is_some() || self.views.end_drag.is_some())
+        {
+            self.begin_snap(target, way, f64::from(super::shape_handles::SNAP) / view.scale.max(1e-9), free);
+        }
+        // An End's drag comes a step at a time: the step that puts it where the whole drag, lined up, has it.
+        let end_moved = end_moved.map(|(end, d)| (end, self.snap_step(d)));
         if let Some((end, d)) = end_moved
             && d != 0.0
             && let Err(e) = if self.dragging_param() { self.param_by(if end { d } else { -d }) } else { self.drag_end(end, d) }
         {
+            self.snap_refused();
             problem = Some(e);
         }
         if let Some(moved) = edge_moved
@@ -1788,8 +1893,21 @@ impl FamilyEditor {
         {
             problem = Some(e);
         }
+        // Lined up with something a padlock can lock it to (FE-26): said, while it is held there.
+        let lock = self.snap_lock();
+        if lock.is_some() {
+            self.views.said = Some(t("Aligned: let go, then click the padlock to lock it there.").to_string());
+        }
         // The edge or the selection let go: they stay as the drag left them, a step of the history once the button is up.
         if response.drag_stopped() || !ui.input(|i| i.pointer.primary_down()) {
+            // Let go lined up with something: Align's padlock, open, where the hand left it; the next click locks the two
+            // or lets it go.
+            if let Some((on, own)) = lock.filter(|_| self.views.handle_snap.take().is_some())
+                && problem.is_none()
+                && let Some(p) = response.interact_pointer_pos().or(hover)
+            {
+                self.views.align_lock = Some((on, own, at_view(p), which));
+            }
             // Ctrl as the button comes up decides between a copy and a move (FE-4, as Revit's).
             let m = crate::canvas::click_modifiers(ui);
             if self.moving()

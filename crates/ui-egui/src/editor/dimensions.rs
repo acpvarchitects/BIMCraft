@@ -803,6 +803,8 @@ impl FamilyEditor {
         // The model lines the constraints set where they now stand (FE-15): what carrying them with their host again would
         // move twice.
         let mut placed = Vec::new();
+        // What the solve read the numbers as: a point's coordinate it left where it was keeps what places it (FE-26).
+        let values = self.values();
         for e in edits {
             match e {
                 Edit::Plane(g, at) => {
@@ -824,7 +826,9 @@ impl FamilyEditor {
                         *slot = number_text(v);
                     }
                 }
-                Edit::Point(i, k, spot, p) => self.move_sketch_point(i, k, spot, p),
+                // Only the coordinate that moved is written: a face aligned to a plane holds the face there, and its corners
+                // still slide along it, each keeping the formula that places it across (FE-26).
+                Edit::Point(i, k, spot, p) => self.shift_sketch_point(i, k, spot, p, &values),
                 Edit::Line(g, by) => {
                     // The line and the lines drawn on it, as far down as they go.
                     let mut moving = vec![g];
@@ -921,23 +925,6 @@ impl FamilyEditor {
         let Ok(mut f) = ft.form() else { return };
         let Some(FormCurve::Line { turn, .. }) = f.sketch.get_mut(k).map(|l| &mut l.curve) else { return };
         *turn = Some(Expr::Number(t));
-        let tag = ft.tag;
-        self.forms[i] = FormText::again(&f, tag);
-    }
-
-    /// Point `spot` of line `k` of form `i`'s sketch put at `p` (its host's axes), a number.
-    fn move_sketch_point(&mut self, i: usize, k: usize, spot: Spot, p: [f64; 2]) {
-        use bimcraft_core::family::sketch::FormCurve;
-        let Some(ft) = self.forms.get(i) else { return };
-        let Ok(mut f) = ft.form() else { return };
-        let Some(line) = f.sketch.get_mut(k) else { return };
-        let at = [Expr::Number(p[0]), Expr::Number(p[1])];
-        match (&mut line.curve, spot) {
-            (FormCurve::Line { start, .. }, Spot::Start) => *start = at,
-            (FormCurve::Line { end, .. }, Spot::End) => *end = at,
-            (FormCurve::Circle { centre, .. }, Spot::Centre) => *centre = at,
-            _ => return,
-        }
         let tag = ft.tag;
         self.forms[i] = FormText::again(&f, tag);
     }

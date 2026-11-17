@@ -1897,4 +1897,118 @@ mod tests {
             }
         }
     }
+
+    /// UI-3: in a plan, no reference plane's name runs into an elevation mark (its ring, its arrow or its name): the datums'
+    /// at a family's default views, and a plane's drawn close to a mark, across pane sizes.
+    #[test]
+    fn no_plane_name_runs_into_an_elevation_mark() {
+        use crate::render::{Part, Prim};
+        let mut f = boxed(0.0, 900.0);
+        f.planes.retain(|p| p.datum());
+        let near: crate::family::RefPlane = serde_json::from_value(serde_json::json!({
+            "guid": Guid::new(), "name": "Near", "start": [-2000.0, 150.0, 0.0], "end": [2000.0, 150.0, 0.0], "up": [0.0, 0.0, 1.0]
+        }))
+        .unwrap();
+        for planes in [Vec::new(), vec![near]] {
+            let mut g = f.clone();
+            g.planes.extend(planes);
+            let mut st = staged(&g);
+            for (w, h) in [(1290, 740), (1090, 640), (900, 900), (1600, 1000)] {
+                let shown = st.draw(Which::Plan, w, h, 1.0, P2(0.0, 0.0)).unwrap();
+                let d = &shown.drawing;
+                let mut names: BTreeMap<Id, [f32; 4]> = BTreeMap::new();
+                let mut marks: BTreeMap<Id, [f32; 4]> = BTreeMap::new();
+                let grow = |b: &mut [f32; 4], pts: &[(f32, f32)]| {
+                    for &(x, y) in pts {
+                        *b = [b[0].min(x), b[1].min(y), b[2].max(x), b[3].max(y)];
+                    }
+                };
+                for ((prim, o), part) in d.prims.iter().zip(&d.owners).zip(&d.parts) {
+                    let Some(id) = o else { continue };
+                    let pts: Vec<(f32, f32)> = match prim {
+                        Prim::Line { pts, .. } => pts.clone(),
+                        Prim::Fill { rings, .. } => rings.iter().flatten().copied().collect(),
+                        _ => continue,
+                    };
+                    let empty = [f32::MAX, f32::MAX, f32::MIN, f32::MIN];
+                    match st.model.elements.get(*id) {
+                        Some(Element::Elevation(_)) => grow(marks.entry(*id).or_insert(empty), &pts),
+                        Some(Element::RefPlane(_)) if *part == Part::Text => grow(names.entry(*id).or_insert(empty), &pts),
+                        _ => {}
+                    }
+                }
+                assert!(names.len() >= 2 && !marks.is_empty(), "{w}x{h}: names {} marks {}", names.len(), marks.len());
+                // And no trace runs through a name: one slid in along its own is cut under it.
+                let green = crate::render::REFERENCE_PLANE;
+                let traces: Vec<Vec<(f32, f32)>> = d
+                    .prims
+                    .iter()
+                    .zip(&d.parts)
+                    .filter_map(|(p, part)| match p {
+                        Prim::Line { pts, dash: Some(_), color, .. } if *color == green && *part != Part::Text => Some(pts.clone()),
+                        _ => None,
+                    })
+                    .collect();
+                for (n, r) in &names {
+                    for (m, b) in &marks {
+                        let apart = r[2] <= b[0] || b[2] <= r[0] || r[3] <= b[1] || b[3] <= r[1];
+                        assert!(apart, "{w}x{h}: the name of {n} at {r:?} runs into the mark {m} at {b:?}");
+                    }
+                    for t in &traces {
+                        let on = t.windows(2).any(|s| {
+                            (0..=200).any(|i| {
+                                let k = i as f32 / 200.0;
+                                let (x, y) = (s[0].0 + (s[1].0 - s[0].0) * k, s[0].1 + (s[1].1 - s[0].1) * k);
+                                x > r[0] && x < r[2] && y > r[1] && y < r[3]
+                            })
+                        });
+                        assert!(!on, "{w}x{h}: a trace runs through the name of {n} at {r:?}");
+                    }
+                }
+            }
+        }
+    }
+
+    /// UI-3 review: a name lettered beside its trace, crowded off both its ends, leaves the trace whole; only one slid in along
+    /// it cuts it.
+    #[test]
+    fn a_name_beside_its_trace_leaves_it_whole() {
+        use crate::render::{Part, Prim};
+        let plane = |name: &str, x: f64| -> crate::family::RefPlane {
+            serde_json::from_value(serde_json::json!({
+                "guid": Guid::new(), "name": name, "start": [x, -2000.0, 0.0], "end": [x, 2000.0, 0.0], "up": [0.0, 0.0, 1.0]
+            }))
+            .unwrap()
+        };
+        // How long each of the three traces is drawn, by where it runs across the picture.
+        let lengths = |names: [&str; 3]| -> BTreeMap<i64, f32> {
+            let mut f = boxed(0.0, 900.0);
+            f.planes.retain(|p| p.datum());
+            f.planes.extend([plane(names[0], -600.0), plane(names[1], -590.0), plane(names[2], -580.0)]);
+            let mut st = staged(&f);
+            let shown = st.draw(Which::Plan, 1290, 740, 1.0, P2(0.0, 0.0)).unwrap();
+            let d = &shown.drawing;
+            let green = crate::render::REFERENCE_PLANE;
+            let mut out: BTreeMap<i64, f32> = BTreeMap::new();
+            for ((prim, o), part) in d.prims.iter().zip(&d.owners).zip(&d.parts) {
+                if let (Prim::Line { pts, dash: Some(_), color, .. }, Some(id)) = (prim, o)
+                    && *color == green
+                    && *part != Part::Text
+                    && matches!(st.model.elements.get(*id), Some(Element::RefPlane(p)) if !p.name.contains('('))
+                    && pts.len() == 2
+                    && (pts[0].0 - pts[1].0).abs() < 0.5
+                {
+                    *out.entry(pts[0].0.round() as i64).or_default() += (pts[1].1 - pts[0].1).abs();
+                }
+            }
+            out
+        };
+        // Three close together: the third's ends are both taken, so it goes beside its trace, which stays as it is unnamed.
+        let named = lengths(["Aaaa", "Bbbb", "Cccc"]);
+        let bare = lengths(["", "", ""]);
+        assert_eq!(bare.len(), 3, "{bare:?}");
+        let longest = |m: &BTreeMap<i64, f32>| m.values().copied().fold(0.0f32, f32::max);
+        // Beyond an end a trace runs no further in a plan, so a name there cuts nothing; beside it, nothing either.
+        assert!(named.values().all(|l| (l - longest(&bare)).abs() < 1.0), "named {named:?} against bare {bare:?}");
+    }
 }

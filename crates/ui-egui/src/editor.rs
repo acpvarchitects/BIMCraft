@@ -574,7 +574,7 @@ pub(crate) struct FamilyEditor {
     pub(crate) zoom: zoom::Zoom,
     pub(crate) scene3d: Option<lit3d::FamilyScene>,
     /// Why the family can't be tried or made: shown under the preview.
-    problem: Option<String>,
+    pub(crate) problem: Option<String>,
     /// The document's own state: its history, its preview's size, an association being made.
     document: document::State,
     /// The family document's ribbon tab, and the one it goes back to when the contextual tab goes.
