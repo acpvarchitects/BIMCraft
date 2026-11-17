@@ -175,6 +175,9 @@ impl FamilyEditor {
             .insert(VOID.into(), bimcraft_core::model::Material { color: [40, 120, 230], transparency: 55, ..Default::default() });
         for (k, p) in parts.enumerate() {
             let mut g = alone(&shown, p);
+            // Each part is a family of its own beside the family, and a project holds a GUID once: its forms' GUIDs, and the
+            // lists that name them (FE-16), are made its own, or the project would give the copies new ones and break the lists.
+            rekey(&mut g, k as u64 + 1);
             if hosted {
                 generic(&mut g, &values);
             }
@@ -276,6 +279,22 @@ fn alone(f: &Family, p: Part) -> Family {
     // Its symbols are drawn in plans only.
     g.symbols.clear();
     g
+}
+
+/// Family `g` with each form's GUID made one of its own, from `salt`, and every `cut_by`, `uncut_by` and `joined_by` naming a form
+/// naming it by its new GUID. A form with no GUID has none still.
+fn rekey(g: &mut Family, salt: u64) {
+    let seed = bimcraft_core::model::mix(0x4645_3136_6270_6172 ^ salt);
+    let was: Vec<bimcraft_core::ids::Guid> = g.forms.iter().map(|f| f.guid).collect();
+    let now = |old: &bimcraft_core::ids::Guid| {
+        was.iter().position(|w| w == old).filter(|_| !old.is_nil()).map_or(*old, |i| bimcraft_core::ids::Guid::seeded(seed, i as u64))
+    };
+    for form in &mut g.forms {
+        form.guid = now(&form.guid);
+        for list in [&mut form.cut_by, &mut form.uncut_by, &mut form.joined_by] {
+            list.iter_mut().for_each(|x| *x = now(x));
+        }
+    }
 }
 
 /// A door's or a window's part made a generic family, its wall's thickness a parameter, so it stands as a component at the
