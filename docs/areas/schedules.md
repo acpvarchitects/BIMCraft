@@ -84,10 +84,9 @@ Prices are not part of it. A unit price by `Intervention_Type` would be a projec
 Price`) and a calculated field (`Net Area * Unit Price`, totalled); a price list keyed by the intervention, one row to
 fill in, is what schedules lack for it (a key schedule).
 
-**The file.** A schedule of parts is a `schedule` element whose `of` is `part`: a BIMCraft from before parts refuses the
-whole file on opening (`Model::check`: there's no schedule of `part`), and one from before `Kind::Volume` refuses a file
-with a calculated field of `kind: "volume"` (an unknown variant). Both wait for the `FORMAT` step parts take
-([parts](parts.md)).
+**The file.** A schedule of parts is a `schedule` element whose `of` is `part`, and a volume field is `kind: "volume"`. Both
+came with parts in format 21 ([parts](parts.md#the-file)), so a BIMCraft that reads up to 20 refuses the file as a newer
+one's instead of misreading them.
 
 ## The same numbers as Revit
 

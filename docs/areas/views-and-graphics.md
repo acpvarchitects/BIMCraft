@@ -917,7 +917,8 @@ Revit's Parts Visibility: Show Original (`original`, what a view does unless it 
 parts as those parts and no more of it, one that has none whole) or Show Both (`both`). It is `Graphics::parts_visibility`
 (`graphics::PartsVisibility`, `graphics/parts.rs`), set by `graphics {view, parts_visibility}` on a plan, a ceiling plan, a
 section, an elevation or a 3D view, and by Properties' Parts Visibility in the desktop (`graphics_properties`); a view holds
-none for Show Original, so a project that never asks is saved as it always was, and an older BIMCraft leaves the field out.
+none for Show Original, so a project that never asks is saved as it always was (a file of format 21, as parts are:
+[parts](parts.md#the-file)).
 A view template is no `Group` of `controls` for it (a new one in that list an older BIMCraft could not read): a template that
 holds a Parts Visibility (`template {parts_visibility}`, Show Original too; null to hold none; `from` a view that shows parts
 takes it) sets it for the views that follow it (`Graphics::resolved`, `parts_controlled_by`), which then can't say otherwise
