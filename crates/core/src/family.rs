@@ -2934,32 +2934,12 @@ impl Family {
         // is built and reaches it. A cut solid is no longer one round surface, and its outline seen from above is as it was.
         // ponytail: a notch or a hole doesn't show in plan; trace it if it must.
         for (piece, &form) in out.iter_mut().zip(&of) {
-            // GEO-2e: the voids that drill straight through an extrusion are holes of its profile, swept with it, before any
-            // other cut (what one solid less several is doesn't hang on the order): no cutting of triangles for those.
-            let drilled: Vec<(usize, Vec<Vec<P2>>)> = self
-                .cutters(form)
-                .into_iter()
-                .filter(|by| voids.contains_key(by))
-                .filter_map(|by| Some((by, self.through_holes(form, by, values, read)?)))
-                .collect();
-            // Only where every void cutting it drills through, each clear of the others: else all are cut, as before, so no
-            // hole drawn in the profile meets a void cut by triangles.
-            let all_voids = self.cutters(form).into_iter().filter(|by| voids.contains_key(by)).count();
-            let rings: Vec<&Vec<P2>> = drilled.iter().flat_map(|(_, h)| h).collect();
-            let apart = rings.iter().enumerate().all(|(i, a)| {
-                rings.iter().skip(i + 1).all(|b| {
-                    !rings_cross(a, b) && a.iter().all(|q| !crate::geom::contains(b, *q)) && b.iter().all(|q| !crate::geom::contains(a, *q))
-                })
-            });
-            let drilled = if drilled.len() == all_voids && apart { drilled } else { Vec::new() };
             let mut done: BTreeSet<usize> = BTreeSet::new();
-            if !drilled.is_empty()
-                && let Some(tris) = self.drilled(form, drilled.iter().flat_map(|(_, h)| h.iter().cloned()).collect(), values, read)
-            {
+            if let Some((by, tris)) = self.drill(form, &|v| voids.contains_key(&v), values, read) {
                 let (bottom, top) = heights(&tris);
                 piece.caps = tris.len();
                 (piece.tris, piece.bottom, piece.top, piece.round) = (tris, bottom, top, false);
-                done = drilled.iter().map(|(by, _)| *by).collect();
+                done = by;
             }
             for by in self.cutters(form) {
                 if done.contains(&by) {
@@ -2986,6 +2966,38 @@ impl Family {
         }
         out.retain(|p| !p.tris.is_empty());
         Ok(out)
+    }
+
+    /// GEO-2e: form `form` with the voids that drill straight through it made holes of its profile and swept with it, before
+    /// any other cut (what one solid less several is doesn't hang on the order): those voids, and its triangles. `built`,
+    /// whether a void was built and cuts forms. Only where every such void cutting it drills through, each clear of the
+    /// others, else none: then all are cut, as before, so no hole drawn in the profile meets a void cut by triangles.
+    pub(crate) fn drill<'a>(
+        &'a self,
+        form: usize,
+        built: &dyn Fn(usize) -> bool,
+        values: &BTreeMap<String, Val>,
+        read: &mut HashMap<&'a str, Result<Node, String>>,
+    ) -> Option<(BTreeSet<usize>, Vec<[P3; 3]>)> {
+        let voids: Vec<usize> = self.cutters(form).into_iter().filter(|by| built(*by)).collect();
+        if voids.is_empty() {
+            return None;
+        }
+        let mut drilled: Vec<(usize, Vec<Vec<P2>>)> = Vec::new();
+        for &by in &voids {
+            drilled.push((by, self.through_holes(form, by, values, read)?));
+        }
+        let rings: Vec<&Vec<P2>> = drilled.iter().flat_map(|(_, h)| h).collect();
+        let apart = rings.iter().enumerate().all(|(i, a)| {
+            rings.iter().skip(i + 1).all(|b| {
+                !rings_cross(a, b) && a.iter().all(|q| !crate::geom::contains(b, *q)) && b.iter().all(|q| !crate::geom::contains(a, *q))
+            })
+        });
+        if !apart {
+            return None;
+        }
+        let tris = self.drilled(form, drilled.iter().flat_map(|(_, h)| h.iter().cloned()).collect(), values, read)?;
+        Some((drilled.into_iter().map(|(by, _)| by).collect(), tris))
     }
 
     /// GEO-2e: the holes void `v` drills in extrusion `b`, in `b`'s plane, where it drills straight through: both plain

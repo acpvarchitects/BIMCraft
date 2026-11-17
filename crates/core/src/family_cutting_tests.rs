@@ -165,7 +165,7 @@ fn every_family_builds_as_it_did_with_the_lists_empty() {
     families.push(("void cuts both".into(), family(vec![slab(SLAB), both])));
     families.push(("a void two solids".into(), family(vec![slab(SLAB), block(BLOCK), hole(HOLE)])));
     assert!(families.len() > 10);
-    let mut with_voids = 0;
+    let (mut with_voids, mut drilled, mut strict) = (0, 0, 0);
     for (name, f) in &families {
         if f.forms.is_empty() || !f.nested_instances.is_empty() || f.adaptive.is_some() {
             continue;
@@ -193,20 +193,33 @@ fn every_family_builds_as_it_did_with_the_lists_empty() {
                     *tris = crate::csg::subtract(tris, void, &mut cuts).unwrap();
                 }
             }
-            // The same solids: each piece's volume and box. Not its triangles: a void drilling straight through an extrusion
-            // is a hole of its profile now (GEO-2e), triangulated otherwise than cut.
+            // The same triangles, bit for bit, but where a void drilling straight through an extrusion is a hole of its
+            // profile now (GEO-2e), triangulated otherwise than cut: there the same solid, its volume and box.
             let solid = |tris: &[[crate::view3d::P3; 3]]| {
                 let lo = tris.iter().flatten().fold([f64::INFINITY; 3], |a, p| std::array::from_fn(|k| a[k].min(p[k])));
                 let hi = tris.iter().flatten().fold([f64::NEG_INFINITY; 3], |a, p| std::array::from_fn(|k| a[k].max(p[k])));
                 let r = |x: f64| (x * 1e3).round() / 1e3;
                 (crate::ifc_geometry_tests::volume(tris).round(), lo.map(r), hi.map(r))
             };
-            let got = f.pieces(&values).map(|p| p.iter().map(|p| solid(&p.tris)).collect::<Vec<_>>());
-            let want: Vec<_> = want.into_iter().map(|(_, t)| t).filter(|t| !t.is_empty()).map(|t| solid(&t)).collect();
-            assert_eq!(got.as_ref().ok(), Some(&want), "{name}: type {t}");
+            let built: std::collections::HashSet<usize> = (0..f.forms.len())
+                .filter(|&i| f.forms[i].void && f.forms[i].cuts().forms() && matches!(f.solid(i, &values, &mut read), Ok(Some(_))))
+                .collect();
+            let got = f.pieces(&values).unwrap_or_else(|e| panic!("{name}: type {t}: {e}"));
+            let want: Vec<_> = want.into_iter().filter(|(_, t)| !t.is_empty()).collect();
+            assert_eq!(got.len(), want.len(), "{name}: type {t}");
+            for (p, (i, w)) in got.iter().zip(&want) {
+                if f.drill(*i, &|v| built.contains(&v), &values, &mut read).is_some() {
+                    drilled += 1;
+                    assert_eq!(solid(&p.tris), solid(w), "{name}: type {t}, form {}", i + 1);
+                } else {
+                    strict += 1;
+                    assert!(p.tris == *w, "{name}: type {t}, form {}: not the triangles it had", i + 1);
+                }
+            }
         }
     }
     assert!(with_voids > 0, "some of them hold voids");
+    assert!(drilled > 0 && strict > 0, "pieces drilled ({drilled}) and pieces cut as before ({strict})");
 }
 
 #[test]
