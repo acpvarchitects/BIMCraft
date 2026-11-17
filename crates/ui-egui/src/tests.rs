@@ -5942,6 +5942,36 @@ fn demolish_takes_what_is_clicked_down_in_the_views_phase_and_a_second_click_tak
     assert_eq!(h.state().tool, Tool::Modify);
 }
 
+/// T25: a door demolished with DW is replaced by one placed where it was, in the phase it comes down in; in a view showing
+/// the first phase, where the old door still stands, the new one would overlap it and is refused.
+#[test]
+fn a_door_taken_down_with_demolish_is_replaced_by_one_placed_where_it_was() {
+    let mut h = app(&format!("{BOX}\ndoor {{\"at\": [2000, 0]}}"));
+    let old = find(&h, |e| matches!(e, Element::Door(_)));
+    open_combo(&mut h, "Phase");
+    press(&mut h, "New Construction");
+    shortcut(&mut h, "DW");
+    let steps = h.state().session.history().len();
+    click(&mut h, P2(2000.0, 0.0));
+    assert_eq!((demolished(&h, old), h.state().session.history().len()), (Some(json!("New Construction")), steps + 1));
+    key(&mut h, Key::Escape);
+    shortcut(&mut h, "DR");
+    click(&mut h, P2(2000.0, 0.0));
+    let doors = ids(&h, "door");
+    assert_eq!(doors.len(), 2, "{:?}", h.state().status);
+    let new = doors[1];
+    assert_eq!(param(&h, new, "Phase Created"), Some(json!("New Construction")));
+    // Where the old one stands, a door can't go in its place.
+    key(&mut h, Key::Escape);
+    open_combo(&mut h, "Phase");
+    press(&mut h, "Existing");
+    shortcut(&mut h, "DR");
+    click(&mut h, P2(2000.0, 0.0));
+    assert_eq!(ids(&h, "door").len(), 2);
+    let status = h.state().status.clone();
+    assert!(status.error && status.text.contains("overlap"), "{status:?}");
+}
+
 #[test]
 fn demolish_works_in_a_section_and_in_the_3d_view_as_in_a_plan() {
     let mut h = app_at(&format!("{BOX}\nsection {{\"start\": [-1000, 3000], \"end\": [9000, 3000]}}\nsheet {{}}"), 0.05);
@@ -7415,6 +7445,7 @@ mod family_view_graphics;
 mod family_views;
 mod family_visibility;
 mod family_windows;
+mod family_witness_lines;
 #[cfg(test)]
 mod family_work_plane;
 mod family_zoom;

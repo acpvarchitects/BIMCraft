@@ -762,6 +762,28 @@ pub fn hole(m: &Model, w: &Wall, e: &Element, o: &Opening) -> Option<Hole> {
     Some(Hole { s0: o.offset - t.width / 2.0, s1: o.offset + t.width / 2.0, bottom, top: bottom + t.height })
 }
 
+/// Hole `h` of wall `w` kept within the wall: along its length, and between its base and its top, which slope or follow
+/// what the wall is attached to (each sampled along the hole and across the wall's thickness, the lowest top and the highest
+/// base taken). None where nothing of it is left. What fills a hole where its opening isn't there stays inside the wall
+/// (T25), whatever the opening's head or sill.
+pub(crate) fn within(m: &Model, w: &Wall, h: Hole) -> Option<Hole> {
+    let (axis, (ext, int)) = (Axis::of(w), faces(m, w));
+    let (s0, s1) = (h.s0.max(0.0), h.s1.min(axis.length()));
+    if s1 <= s0 + 1e-6 {
+        return None;
+    }
+    let (base, top) = bounds(m, w);
+    let mut out = Hole { s0, s1, ..h };
+    for i in 0..=8 {
+        let s = s0 + (s1 - s0) * f64::from(i) / 8.0;
+        for off in [ext, (ext + int) / 2.0, int] {
+            let q = axis.at(s, off);
+            (out.bottom, out.top) = (out.bottom.max(base.at(q)), out.top.min(top.at(q)));
+        }
+    }
+    (out.top > out.bottom + 1e-6 && out.bottom.is_finite() && out.top.is_finite()).then_some(out)
+}
+
 /// A column's base and top: what it's attached to, or a level plane.
 fn column_bounds(m: &Model, col: &crate::model::Column) -> (Bound, Bound) {
     (Bound::of(m, col.attach_base, true, m.column_own_base(col)), Bound::of(m, col.attach_top, false, m.column_own_top(col)))
@@ -801,12 +823,20 @@ pub fn column_prisms(m: &Model, e: &Element) -> Vec<Prism> {
 /// The sides of the notches wall `id`'s doors and windows cut where they rise past its top, as Revit lets them: a line across
 /// the wall from face to face at each jamb whose head reaches the top there, which a plan seeing the wall from above draws.
 pub fn notches(m: &Model, id: Id) -> Vec<[P2; 2]> {
+    notches_of(m, id, |_| true)
+}
+
+/// [`notches`] of the doors and windows `keep` keeps: those a view's phase shows (T25).
+pub(crate) fn notches_of(m: &Model, id: Id, keep: impl Fn(&Element) -> bool) -> Vec<[P2; 2]> {
     let Some(w) = m.wall(id) else { return Vec::new() };
     let guid = m.guid(id);
     let (axis, (ext, int)) = (Axis::of(w), faces(m, w));
     let mut out = Vec::new();
     for e in m.lookup().referrers(&guid).filter_map(|k| m.elements.get(k)) {
         let (Element::Door(o) | Element::Window(o)) = e else { continue };
+        if !keep(e) {
+            continue;
+        }
         let Some(h) = hole(m, w, e, o).filter(|_| o.host == guid) else { continue };
         for s in [h.s0, h.s1] {
             if h.top >= top_at(m, w, s) - 1e-6 {
@@ -845,7 +875,7 @@ pub(crate) fn prisms_rect_in(m: &Model, id: Id, index: Option<&Index>) -> Vec<Pr
 }
 
 /// The doors and windows in wall `id`, or the openings `index` lists in it.
-fn openings_of<'a>(m: &'a Model, id: Id, index: Option<&'a Index>) -> Box<dyn Iterator<Item = &'a Element> + 'a> {
+pub(crate) fn openings_of<'a>(m: &'a Model, id: Id, index: Option<&'a Index>) -> Box<dyn Iterator<Item = &'a Element> + 'a> {
     let guid = m.guid(id);
     match index {
         Some(index) => Box::new(index.openings(guid).iter().filter_map(|id| m.elements.get(*id))),

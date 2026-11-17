@@ -91,6 +91,7 @@ pub const ACTIONS: &[&str] = &[
     "Unhide Category",
     "Override Graphics by Element",
     "Purge Unused",
+    "Edit Witness Lines",
     "Find/Replace",
     "Co-Work",
     "Link Model",
@@ -209,6 +210,7 @@ pub(crate) const FAMILY_ONLY: &[&str] = &[
     "Aligned to Selected Levels",
     "Aligned to Picked Level",
     "View Range",
+    "Edit Witness Lines",
     "Find/Replace",
 ];
 

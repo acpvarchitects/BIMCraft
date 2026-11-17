@@ -264,6 +264,7 @@ impl FamilyEditor {
         self.views.cutting = None;
         self.views.picking = None;
         self.views.dimensioning = None;
+        self.views.witnessing = None;
         self.views.aligning = None;
         self.views.pivoting = None;
         self.views.modify = None;
@@ -2319,6 +2320,7 @@ impl BimApp {
                 if let Some(refs) = ed.views.dimensioning.as_mut() {
                     if refs.is_empty() {
                         ed.views.dimensioning = None;
+                        ed.views.witnessing = None;
                     } else {
                         refs.clear();
                     }
@@ -2350,10 +2352,12 @@ impl BimApp {
                 || ed.modify_escape()
                 || ed.measure_escape()
                 || ed.cutting_escape()
+                || ed.views.witnessing.take().is_some()
             {
             } else if let Some(refs) = ed.views.dimensioning.as_mut() {
                 if refs.is_empty() {
                     ed.views.dimensioning = None;
+                    ed.views.witnessing = None;
                 } else {
                     refs.clear();
                 }
