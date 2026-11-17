@@ -1,0 +1,65 @@
+load before build: 17.79 22.31 21.49 97/44723 1890446
+   Compiling proc-macro2 v1.0.107
+   Compiling find-msvc-tools v0.1.15
+   Compiling shlex v2.0.1
+   Compiling quote v1.0.47
+   Compiling unicode-ident v1.0.27
+   Compiling equivalent v1.0.3
+   Compiling hashbrown v0.17.1
+   Compiling scratch v1.0.9
+   Compiling cxxbridge-flags v1.0.205
+   Compiling occt-sys v7.8.1
+   Compiling unicode-width v0.2.3
+   Compiling crossbeam-utils v0.8.23
+   Compiling termcolor v1.4.1
+   Compiling crossbeam-epoch v0.9.21
+   Compiling thiserror v1.0.69
+   Compiling crossbeam-deque v0.8.8
+   Compiling foldhash v0.2.0
+   Compiling rayon-core v1.13.0
+   Compiling bytemuck v1.25.2
+   Compiling sexp v1.1.4
+   Compiling either v1.19.0
+   Compiling cc v1.11.2
+   Compiling glam v0.24.2
+   Compiling codespan-reporting v0.13.1
+   Compiling indexmap v2.14.2
+   Compiling syn v3.0.10
+   Compiling syn v2.0.119
+   Compiling cmake v0.1.58
+   Compiling link-cplusplus v1.0.12
+   Compiling cxx v1.0.205
+   Compiling rayon v1.12.0
+   Compiling thiserror-impl v1.0.69
+   Compiling cxx-build v1.0.205
+   Compiling opencascade-kicad-parser v0.3.0
+   Compiling cxxbridge-macro v1.0.205
+   Compiling opencascade-sys v0.3.0
+   Compiling opencascade v0.3.0
+   Compiling occt-t v0.1.0 (/mnt/data/emiliano_capasso/bench-kernels/occt-t)
+    Finished `release` profile [optimized] target(s) in 3m 02s
+	Command being timed: "cargo build --release"
+	User time (seconds): 5589.78
+	System time (seconds): 727.35
+	Percent of CPU this job got: 3463%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 3:02.41
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 591692
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 351
+	Minor (reclaiming a frame) page faults: 144886441
+	Voluntary context switches: 304665
+	Involuntary context switches: 5074012
+	Swaps: 0
+	File system inputs: 2528
+	File system outputs: 6168528
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 0
+load after build: 65.18 47.95 31.92 21/45468 2020213
+1.5G	/mnt/data/emiliano_capasso/cargo-targets/bench-occt

@@ -6,20 +6,36 @@
   "Apache-2.0": 6,
   "MIT/Apache-2.0": 5,
   "MIT": 4,
-  "Zlib OR Apache-2.0 OR MIT": 3,
   "Apache-2.0 OR MIT": 3,
+  "Zlib OR Apache-2.0 OR MIT": 3,
   "0BSD": 3,
   "BSD-3-Clause": 1,
   "(MIT OR Apache-2.0) AND Unicode-3.0": 1,
-  "Apache-2.0/MIT": 1,
-  "Zlib": 1
+  "Zlib": 1,
+  "Apache-2.0/MIT": 1
  },
  "roots": {
+  "fj-interop": {
+   "version": "0.49.0",
+   "license": "0BSD",
+   "forbid_unsafe_lib_rs": false,
+   "unsafe_sites_in_src": 0,
+   "rust_version": null,
+   "edition": "2021"
+  },
   "fj-core": {
    "version": "0.49.0",
    "license": "0BSD",
    "forbid_unsafe_lib_rs": false,
    "unsafe_sites_in_src": 5,
+   "rust_version": null,
+   "edition": "2021"
+  },
+  "fj-math": {
+   "version": "0.49.0",
+   "license": "0BSD",
+   "forbid_unsafe_lib_rs": false,
+   "unsafe_sites_in_src": 6,
    "rust_version": null,
    "edition": "2021"
   }

@@ -1,0 +1,73 @@
+free on /mnt/data before occt: 174 GB
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 3:02.41
+	Maximum resident set size (kbytes): 591692
+1.5G	/mnt/data/emiliano_capasso/cargo-targets/bench-occt
+[occt] forms__1a_extrude_rect: ok 0.01s rss=10MB
+[occt] forms__1b_extrude_L: ok 0.01s rss=10MB
+[occt] forms__2_revolve_ring: ok 0.02s rss=11MB
+[occt] forms__3a_sweep_L_path_corner_: ok 0.01s rss=12MB
+[occt] forms__3a2_L_as_fuse_of_2_boxes: ok 0.02s rss=12MB
+[occt] forms__3b_sweep_arc_R1000: ok 0.02s rss=11MB
+[occt] forms__3c_sweep_straight_line: ok 0.01s rss=11MB
+[occt] forms__4_loft_square-_circle: ok 0.07s rss=12MB
+[occt] forms__4b_loft_smooth_3_sect: ok 0.12s rss=13MB
+[occt] forms__5b_blend_along_arc_smooth_loft_3_sect_: ok 0.12s rss=13MB
+[occt] forms__6a_box_-_cylinder: ok 0.02s rss=12MB
+[occt] forms__6b_box_-_coplanar_box: ok 0.02s rss=11MB
+[occt] forms__6c_fuse_boxes_sharing_face: ok 0.02s rss=11MB
+[occt] forms__6d_fuse_partly_shared_face: ok 0.02s rss=11MB
+[occt] forms__6e_ring_revolve_-_box: ok 0.03s rss=13MB
+[occt] forms__hostile_NaN_extrude: CRASH(exit 139) 0.42s rss=7MB
+[occt] forms__hostile_zero-length_extrude: ok 0.01s rss=10MB
+[occt] forms__hostile_self-intersecting: ok 0.01s rss=11MB
+[occt] nurbs__1a: ok 0.01s rss=10MB
+[occt] nurbs__1b: ok 0.01s rss=9MB
+[occt] nurbs__1c: ok 0.01s rss=10MB
+[occt] nurbs__1d: ok 0.01s rss=10MB
+[occt] nurbs__1e: ok 0.01s rss=9MB
+[occt] nurbs__2a: ok 0.01s rss=9MB
+[occt] nurbs__2b: ok 0.01s rss=10MB
+[occt] nurbs__2c: ok 0.01s rss=10MB
+[occt] nurbs__2d: ok 0.01s rss=9MB
+[occt] nurbs__2e: ok 0.01s rss=9MB
+[occt] nurbs__3a: ok 0.02s rss=15MB
+[occt] nurbs__3b: ok 0.01s rss=15MB
+[occt] nurbs__3c: ok 0.01s rss=8MB
+[occt] nurbs__3d: ok 0.00s rss=10MB
+[occt] nurbs__3e: ok 0.00s rss=10MB
+[occt] nurbs__3f: ok 0.00s rss=10MB
+[occt] nurbs__4a: ok 0.02s rss=15MB
+[occt] nurbs__4b: ok 0.01s rss=10MB
+[occt] nurbs__4c: ok 0.00s rss=10MB
+[occt] nurbs__5a: ok 0.17s rss=19MB
+[occt] nurbs__5b: ok 0.22s rss=21MB
+[occt] nurbs__5c: ok 0.27s rss=23MB
+[occt] nurbs__5d: ok 0.01s rss=10MB
+[occt] nurbs__5e: ok 0.03s rss=16MB
+[occt] nurbs__6a: ok 0.01s rss=15MB
+[occt] nurbs__6b: ok 0.01s rss=10MB
+[occt] nurbs__6c: ok 0.00s rss=10MB
+[occt] nurbs__6d: ok 0.01s rss=9MB
+[occt] nurbs__6e: ok 0.01s rss=9MB
+[occt] nurbs__6f: ok 0.01s rss=10MB
+[occt] nurbs__7a: ok 0.01s rss=9MB
+[occt] nurbs__7b: ok 0.00s rss=10MB
+[occt] nurbs__8_tessellate_smooth_loft_at_0.5: ok 0.07s rss=17MB
+[occt] nurbs__8_tessellate_smooth_loft_at_2_mm: ok 0.03s rss=16MB
+[occt] nurbs__9: ok 0.02s rss=19MB
+[occt] panels__b-10000-t1: TIMEOUT>90s 90.49s rss=784MB
+[occt] panels__b-10000-t8: ok 45.21s rss=1725MB
+[occt] panels__b-10000-t72: ok 66.64s rss=1805MB
+[occt] panels__b-1000-t1: ok 27.72s rss=172MB
+[occt] panels__b-1000-t8: ok 4.57s rss=177MB
+[occt] panels__b-1000-t72: ok 6.59s rss=251MB
+[occt] panels__c-10000-t1: TIMEOUT>90s 90.55s rss=1102MB
+[occt] panels__c-10000-t8: ok 36.09s rss=1639MB
+[occt] panels__c-10000-t72: ok 42.91s rss=1721MB
+[occt] panels__c-1000-t1: ok 23.77s rss=162MB
+[occt] panels__c-1000-t8: ok 3.58s rss=169MB
+[occt] panels__c-1000-t72: ok 4.29s rss=244MB
+
+real	10m27.771s
+user	129m3.672s
+sys	44m20.413s

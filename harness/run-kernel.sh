@@ -1,7 +1,7 @@
 #!/bin/bash
 # usage: run-kernel.sh <name> <suite.json> <root-crates-csv> <dir>...   (dirs = cargo projects built into one target dir)
 set -u
-export PATH=$HOME/.cargo/bin:$PATH
+export PATH=/mnt/data/emiliano_capasso/tools-venv/bin:$HOME/.cargo/bin:$PATH; export CMAKE_POLICY_VERSION_MINIMUM=3.5
 name=$1; suite=$2; roots=$3; shift 3
 R=/mnt/data/emiliano_capasso/bench-kernels
 export CARGO_TARGET_DIR=/mnt/data/emiliano_capasso/cargo-targets/bench-$name

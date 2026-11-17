@@ -1,0 +1,46 @@
+{
+ "crate_count": 43,
+ "non_permissive": [
+  "occt-sys 7.8.1: LGPL-2.1",
+  "opencascade 0.3.0: LGPL-2.1",
+  "opencascade-sys 0.3.0: LGPL-2.1"
+ ],
+ "licence_histogram": {
+  "MIT OR Apache-2.0": 30,
+  "LGPL-2.1": 3,
+  "Apache-2.0 OR MIT": 2,
+  "Unlicense OR MIT": 2,
+  "Zlib OR Apache-2.0 OR MIT": 1,
+  "MIT OR Apache-2.0 OR Zlib": 1,
+  "MIT": 1,
+  "Zlib": 1,
+  "Apache-2.0": 1,
+  "(MIT OR Apache-2.0) AND Unicode-3.0": 1
+ },
+ "roots": {
+  "opencascade": {
+   "version": "0.3.0",
+   "license": "LGPL-2.1",
+   "forbid_unsafe_lib_rs": false,
+   "unsafe_sites_in_src": 0,
+   "rust_version": null,
+   "edition": "2021"
+  },
+  "opencascade-sys": {
+   "version": "0.3.0",
+   "license": "LGPL-2.1",
+   "forbid_unsafe_lib_rs": false,
+   "unsafe_sites_in_src": 10,
+   "rust_version": null,
+   "edition": "2021"
+  },
+  "occt-sys": {
+   "version": "7.8.1",
+   "license": "LGPL-2.1",
+   "forbid_unsafe_lib_rs": false,
+   "unsafe_sites_in_src": 0,
+   "rust_version": null,
+   "edition": "2021"
+  }
+ }
+}
