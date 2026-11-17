@@ -142,6 +142,8 @@ pub const ACTIONS: &[&str] = &[
     "Turn Snap Override Off",
     msg!("Reference Plane"),
     msg!("Close Inactive Views"),
+    msg!("Tab Windows"),
+    msg!("Tile Windows"),
     msg!("Repeat Last Command"),
     // The family document's alone (`FAMILY_ONLY`).
     msg!("Work Plane"),
@@ -176,6 +178,8 @@ pub const ACTIONS: &[&str] = &[
 /// Find, which runs actions on the project, doesn't list them.
 pub(crate) const FAMILY_ONLY: &[&str] = &[
     "Close Inactive Views",
+    "Tab Windows",
+    "Tile Windows",
     "Repeat Last Command",
     "Work Plane",
     "Load Family",
