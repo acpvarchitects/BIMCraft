@@ -24,6 +24,9 @@ fn draw_wall(h: &mut Harness<BimApp>, name: &str, from: P2, to: P2) {
 #[test]
 fn the_curtain_wall_tool_draws_a_wall_of_a_curtain_type_on_its_face() {
     let mut h = app("");
+    // Curtain Wall is in the Build panel's list alone, which a tab too narrow for every tool has.
+    h.set_size(egui::vec2(1000.0, 800.0));
+    h.run();
     press(&mut h, "Architecture");
     press(&mut h, "Build ▾");
     press(&mut h, "Curtain Wall");

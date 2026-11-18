@@ -205,7 +205,8 @@ fn stop_ends_a_script_that_would_run_forever() {
     start(&mut h, "Spin");
     h.run_steps(3);
     assert!(h.state().pyaddins.running.is_some());
-    h.key_combination_modifiers(Modifiers::COMMAND, &[Key::X, Key::S]);
+    // Typed as plain letters, the fork's default (Shortcuts need Ctrl off): Ctrl+X is always Cut there.
+    h.event(Event::Text("XS".into()));
     h.step();
     h.step();
     until_done(&mut h);

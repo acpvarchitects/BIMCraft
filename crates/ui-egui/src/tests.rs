@@ -6844,6 +6844,8 @@ fn project_language_lists_every_project_language_and_picks_vietnamese() {
 #[test]
 fn the_units_shortcut_gets_to_the_choices_in_the_smallest_window_too() {
     let mut h = app(BOX);
+    // Typed with Ctrl held, as main's shortcuts are: the setting that asks for it on.
+    h.state_mut().shortcuts_need_ctrl = true;
     h.set_size(vec2(crate::window::MIN_SIZE[0], crate::window::MIN_SIZE[1]));
     h.run();
     // The Manage tab takes about a hundred frames to fit its Settings panel in the smallest window (measured on CI, 2026-11-16),

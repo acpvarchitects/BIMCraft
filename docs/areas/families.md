@@ -1995,8 +1995,9 @@ Properties (and Ctrl+1), CM Component (once a family is loaded), RP Reference Pl
 dialog; the sketch's while sketching), FA Load Family, DI and DD Aligned Dimension and AN Angular (in a plan or an elevation, not
 sketching), TX Annotate's Text, AL and AA Align, MV, CO and RO Move, Copy and Rotate (an adaptive family's, with something
 selected; in another, FE-8's), MM and DM Mirror - Pick Axis and Draw Axis, OF Offset, RE Scale and SL Split Element (FE-8; the
-greyed one's reason in the status bar), DE Delete (as the Delete key), TR, PL, FG and CG the sketch's Trim/Extend to Corner, Pick
-Lines, Finish and Cancel Edit Mode (TR outside a sketch says it works on a sketch's lines), Ctrl+C, Ctrl+X and Ctrl+V the
+greyed one's reason in the status bar), DE Delete (as the Delete key), TR, PL and FG the sketch's Trim/Extend to Corner, Pick
+Lines and Finish Edit Mode (TR outside a sketch says it works on a sketch's lines; Cancel Edit Mode has no key, CG being the
+project's Curtain Grid), Ctrl+C, Ctrl+X and Ctrl+V the
 Clipboard panel's Copy, Cut and Paste (FE-14; Paste Aligned's choices have no key, and Keyboard Shortcuts can give each one, as it
 can Trim/Extend Single and Multiple Elements: `FAMILY_KEYLESS`), KS Keyboard Shortcuts, 3D the family's own {3D}, ZE, ZF, ZX and ZA the view control bar's Zoom to Fit, and HH, HC, HI, IC
 and HR Temporary Hide/Isolate; FF Filter, PR Select Previous, ID Select by ID, SA and SV Select All Instances (Visible in

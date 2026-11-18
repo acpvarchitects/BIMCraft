@@ -107,19 +107,22 @@ fn painted_widths(h: &Harness<BimApp>) -> Vec<f32> {
     out
 }
 
+/// The widest of the window's own marks over a view, px: the insertion point's ring (O1).
+const MARK: f32 = 1.6;
+
 #[test]
 fn thin_lines_draws_the_familys_plans_and_elevations_one_pixel_wide() {
     let (mut h, _) = open(BOX, "Box");
     view(&mut h, Some(Which::Plan));
-    // The window's own marks over the view (the view control bar, grips) are 1.5 px at most whatever Thin Lines says; the
-    // drawing's cut pen is wider.
+    // The window's own marks over the view (the view control bar, grips, the insertion point's ring) are `MARK` px at most
+    // whatever Thin Lines says; the drawing's cut pen is wider.
     let wide = painted_widths(&h);
-    assert!(wide.iter().any(|w| *w > 1.5), "the cut box's pen is wider than the marks: {wide:?}");
+    assert!(wide.iter().any(|w| *w > MARK), "the cut box's pen is wider than the marks: {wide:?}");
     shortcut(&mut h, "TL");
     assert!(h.state().thin, "TL is the window's Thin Lines");
     h.run();
     let thin = painted_widths(&h);
-    let wider: Vec<f32> = thin.iter().copied().filter(|w| *w > 1.5).collect();
+    let wider: Vec<f32> = thin.iter().copied().filter(|w| *w > MARK).collect();
     assert!(!thin.is_empty() && wider.is_empty(), "the drawing's lines one pixel: {wider:?}");
     let over = |ws: &[f32]| ws.iter().filter(|w| **w > 1.0).count();
     assert!(over(&thin) < over(&wide), "fewer lines wider than a pixel");
@@ -403,5 +406,5 @@ fn thin_lines_draws_an_elevation_one_pixel_wide_too() {
     shortcut(&mut h, "TL");
     h.run();
     let thin = painted_widths(&h);
-    assert!(thin.iter().all(|w| *w <= 1.5), "{thin:?}");
+    assert!(thin.iter().all(|w| *w <= MARK), "{thin:?}");
 }
