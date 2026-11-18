@@ -208,3 +208,127 @@ fn a_fineness_reaches_every_curve_a_build_chords() {
     let (f, v) = family(curved().split_off(2));
     assert!(tris(&f.pieces_fine(&v, Fineness::for_view(2.0)).unwrap()) > 2 * tris(&f.pieces(&v).unwrap()));
 }
+
+/// A zoomed plan drawn again with nothing changed builds nothing finer: what it built finely is kept across drawings, for as
+/// long as the families are what they were. An edit of one component builds that one again; an edit of the family, all of it.
+#[test]
+fn a_zoomed_plan_drawn_again_builds_nothing_finer() {
+    let mut s = session(vec![json!({"sketch": [{"centre": [0, 0], "radius": "R"}], "from": 0, "to": 3000})]);
+    let ids: Vec<u64> = [0.0, 2000.0, 4000.0]
+        .iter()
+        .enumerate()
+        .map(|(k, x)| {
+            let v = s
+                .execute("component", &json!({"family": "Round", "at": [x, 0], "params": {"R": 600 + 10 * k}}))
+                .unwrap_or_else(|e| panic!("{e}"));
+            v["id"].as_u64().unwrap_or_else(|| panic!("{v}"))
+        })
+        .collect();
+    let view = View { angle: 0.0, scale: 0.4, cx: 2000.0, cy: 0.0, width: 2000, height: 800 };
+    let built = |s: &Session| {
+        let before = crate::component_geometry::fine_builds();
+        render::draw(&s.model, 100000, view);
+        crate::component_geometry::fine_builds() - before
+    };
+    assert_eq!(built(&s), 3, "the first drawing builds each finer");
+    assert_eq!(built(&s), 0, "drawn again, none");
+    s.execute("modify", &json!({"id": ids[1], "params": {"R": 650}})).unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(built(&s), 1, "the one changed");
+    s.execute("family", &json!({"name": "Round", "forms": [{"sketch": [{"centre": [0, 0], "radius": "R"}], "from": 0, "to": 2000}]}))
+        .unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(built(&s), 3, "the family changed: all of them");
+    // A shape too fine to cut is remembered as such: drawn again, it isn't tried again.
+    let mut s = session(holed());
+    s.execute("component", &json!({"family": "Round", "at": [0, 0]})).unwrap_or_else(|e| panic!("{e}"));
+    let view = View { angle: 0.0, scale: 2.0, cx: 20_000.0, cy: 0.0, width: 1000, height: 800 };
+    let tried = |s: &Session| {
+        let before = crate::component_geometry::fine_builds();
+        render::draw(&s.model, 100000, view);
+        crate::component_geometry::fine_builds() - before
+    };
+    assert_eq!((tried(&s), tried(&s)), (1, 0));
+}
+
+/// GEO-2c's cost in a plan: GEO-2f's facade panel (an L, a knob turned about an axis, a blend and a round through-void), `GEO_PANELS`
+/// of them (10,000 unless it says), each its own size, in a grid; a plan zoomed in on a few hundred, drawn first, again, and
+/// panned by half a screen. `cargo test --release -p bimcraft-core zoomed_plan_bench -- --ignored --nocapture`.
+#[test]
+#[ignore]
+fn zoomed_plan_bench() {
+    let n: usize = std::env::var("GEO_PANELS").ok().and_then(|v| v.parse().ok()).unwrap_or(10_000);
+    let line = |a: Value, b: Value| json!({"start": a, "end": b});
+    let l = vec![
+        line(json!([0, 0]), json!(["W", 0])),
+        line(json!(["W", 0]), json!(["W", 150])),
+        line(json!(["W", 150]), json!([150, 150])),
+        line(json!([150, 150]), json!([150, "H"])),
+        line(json!([150, "H"]), json!([0, "H"])),
+        line(json!([0, "H"]), json!([0, 0])),
+    ];
+    let knob = vec![
+        line(json!(["W / 2 - R", 0]), json!(["W / 2 - R / 2", 0])),
+        line(json!(["W / 2 - R / 2", 0]), json!(["W / 2 - R / 2", 80])),
+        line(json!(["W / 2 - R / 2", 80]), json!(["W / 2 - R", 80])),
+        line(json!(["W / 2 - R", 80]), json!(["W / 2 - R", 0])),
+        json!({"start": ["W / 2", 0], "end": ["W / 2", 100], "axis": true}),
+    ];
+    let square: Vec<Value> = [(-60, -60, 60, -60), (60, -60, 60, 60), (60, 60, -60, 60), (-60, 60, -60, -60)]
+        .iter()
+        .map(|(a, b, c, d)| line(json!([a, b]), json!([c, d])))
+        .collect();
+    let mut s = Session::new();
+    s.execute(
+        "family",
+        &json!({"name": "Panel", "category": "generic",
+            "parameters": [{"name": "W", "value": 1200, "instance": true}, {"name": "H", "value": 900, "instance": true},
+                           {"name": "D", "value": 300, "instance": true}, {"name": "R", "value": 120, "instance": true}],
+            "types": {"T": {}}, "forms": [
+                {"sketch": l, "from": 0, "to": "D"},
+                {"sketch": knob, "host": {"plane": "9e3c0a10-1f0b-4d8c-8a5e-0000000000a2"}, "from": 0, "to": 360},
+                {"sketch": square, "top": [{"centre": [0, 0], "radius": 30}], "from": "D", "to": "D + 200"},
+                {"sketch": [{"centre": [75, "H / 2"], "radius": "R / 3"}], "from": -10, "to": "D + 10", "void": true}]}),
+    )
+    .unwrap_or_else(|e| panic!("{e}"));
+    let t = std::time::Instant::now();
+    let side = (n as f64).sqrt().ceil() as usize;
+    // One placed by the command, the rest copies of it put straight in (the command checks the whole model each time).
+    let first = s.execute("component", &json!({"family": "Panel", "at": [0, 0]})).unwrap_or_else(|e| panic!("{e}"));
+    let Some(crate::model::Element::Component(first)) =
+        s.model.elements.get(first["id"].as_u64().unwrap_or_else(|| panic!("{first}"))).cloned()
+    else {
+        panic!("{first}")
+    };
+    let model = std::sync::Arc::make_mut(&mut s.model);
+    for i in 0..n {
+        let k = i as f64;
+        let mut c = first.clone();
+        let params = [
+            ("W", 1000.0 + (k % 97.0) * 3.1),
+            ("H", 800.0 + (k % 89.0) * 2.3),
+            ("D", 250.0 + (k % 13.0) * 7.0),
+            ("R", 100.0 + (k % 11.0) * 4.0),
+        ];
+        c.params = params.iter().map(|(n, v)| (n.to_string(), json!(v))).collect();
+        c.at = P2((i % side) as f64 * 1500.0, (i / side) as f64 * 1500.0);
+        model.insert(crate::model::Element::Component(c));
+    }
+    eprintln!("GEO-2c: {n} panels placed in {:.1} s", t.elapsed().as_secs_f64());
+    // Some 20 by 8 panels in a 2000 x 800 screen, at a scale finer than the default draws.
+    let middle = (side / 2) as f64 * 1500.0;
+    let view = |cx: f64| View { angle: 0.0, scale: 0.065, cx, cy: middle, width: 2000, height: 800 };
+    let time = |what: &str, v: View| {
+        let (before, t) = (crate::component_geometry::fine_builds(), std::time::Instant::now());
+        let d = render::draw(&s.model, 100000, v);
+        eprintln!(
+            "GEO-2c {what}: {:.2} s, {} built finer, {} primitives",
+            t.elapsed().as_secs_f64(),
+            crate::component_geometry::fine_builds() - before,
+            d.prims.len()
+        );
+    };
+    eprintln!("GEO-2c: the fineness asked {:?}", Fineness::for_view(0.065));
+    crate::component_geometry::without_fineness(|| time("the same view as before GEO-2c (every curve at the default)", view(middle)));
+    time("first zoomed draw", view(middle));
+    time("drawn again", view(middle));
+    time("panned half a screen", view(middle + 1000.0 / 0.065));
+}

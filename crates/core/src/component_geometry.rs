@@ -1,5 +1,6 @@
 //! Per-operation reuse of family geometry, bound to an immutable model snapshot.
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
+use std::sync::{Arc, Mutex};
 
 use crate::family::{Fineness, Piece};
 use crate::geom::P2;
@@ -153,7 +154,7 @@ fn local_envelope(m: &Model, c: &Component) -> Option<[[f64; 3]; 2]> {
 
 pub(crate) struct Components<'a> {
     model: &'a Model,
-    local: BTreeMap<(Key, Fineness), Vec<Piece>>,
+    local: BTreeMap<(Key, Fineness), Arc<Vec<Piece>>>,
     /// GEO-2c: the fineness a view asks for, and the part of the plan it shows. A component reaching into it is built at
     /// that fineness; the rest, which the view doesn't show, at the default.
     fine: Option<(Fineness, [P2; 2])>,
@@ -177,16 +178,34 @@ impl<'a> Components<'a> {
         let half = f64::from(view.width).hypot(f64::from(view.height)) / 2.0 / view.scale;
         let window = [P2(view.cx - half, view.cy - half), P2(view.cx + half, view.cy + half)];
         let shown = fineness != Fineness::DEFAULT && window.iter().all(|p| p.0.is_finite() && p.1.is_finite());
+        #[cfg(test)]
+        let shown = shown && !COARSE.with(std::cell::Cell::get);
         Self { fine: shown.then_some((fineness, window)), ..Self::new(model) }
     }
 
     /// The fineness `c` is built at: the view's where it may reach into the view, or where its extent isn't known.
     fn fineness(&mut self, c: &Component) -> Fineness {
         let Some((fineness, [lo, hi])) = self.fine else { return Fineness::DEFAULT };
-        match self.envelope(c, &PlainEnvelopes::new()) {
-            Some([a, b]) if a[0] > hi.0 || b[0] < lo.0 || a[1] > hi.1 || b[1] < lo.1 => Fineness::DEFAULT,
-            _ => fineness,
+        // Its box as built at the default (which its heights are read from already), placed: a family's own box isn't known
+        // for every kind of form, and one not known would be built finer wherever it stands.
+        let mut local = [[f64::INFINITY; 3], [f64::NEG_INFINITY; 3]];
+        for p in self.local_at(c, Fineness::DEFAULT).iter().flat_map(|pc| pc.tris.iter().flatten()) {
+            for k in 0..3 {
+                local[0][k] = local[0][k].min(p[k]);
+                local[1][k] = local[1][k].max(p[k]);
+            }
         }
+        if local[0][0] > local[1][0] {
+            return Fineness::DEFAULT;
+        }
+        let placed = self.model.component_placement(c);
+        let (mut a, mut b) = (P2(f64::INFINITY, f64::INFINITY), P2(f64::NEG_INFINITY, f64::NEG_INFINITY));
+        for k in 0..8 {
+            let p = placed.place(std::array::from_fn(|axis| local[(k >> axis) & 1][axis]));
+            (a, b) = (P2(a.0.min(p[0]), a.1.min(p[1])), P2(b.0.max(p[0]), b.1.max(p[1])));
+        }
+        // NaN compares false either way: such a box isn't known to be out of view.
+        if a.0 > hi.0 || b.0 < lo.0 || a.1 > hi.1 || b.1 < lo.1 { Fineness::DEFAULT } else { fineness }
     }
 
     /// Supported local form envelopes, placed without building any triangles.
@@ -237,13 +256,22 @@ impl<'a> Components<'a> {
         let key = (Self::key(c), fineness);
         if !self.local.contains_key(&key) {
             let model = self.model;
-            let mut pieces = fineness.scoped(|| model.component_local_pieces(c));
-            if pieces.is_empty() && fineness != Fineness::DEFAULT {
-                pieces = self.local_at(c, Fineness::DEFAULT).to_vec();
-            }
+            let pieces = if fineness == Fineness::DEFAULT {
+                Arc::new(model.component_local_pieces(c))
+            } else if let Some(kept) = kept(model, &key) {
+                kept
+            } else {
+                #[cfg(test)]
+                FINE_BUILDS.with(|n| n.set(n.get() + 1));
+                let fine = fineness.scoped(|| model.component_local_pieces(c));
+                // Too fine to cut: as always, and remembered as such.
+                let pieces = if fine.is_empty() { Arc::new(self.local_at(c, Fineness::DEFAULT).to_vec()) } else { Arc::new(fine) };
+                keep(model, &key, &pieces);
+                pieces
+            };
             self.local.insert(key.clone(), pieces);
         }
-        self.local.get(&key).map_or(&[], Vec::as_slice)
+        self.local.get(&key).map_or(&[], |p| p.as_slice())
     }
 
     /// The points of its pieces' triangles, where it is placed, that may be the farthest any way: across (along any line
@@ -405,5 +433,97 @@ mod tests {
             unique
         );
         assert!(placed > unique * 10);
+    }
+}
+
+/// GEO-2c: what plans built finer than the default, kept across drawings so a zoomed plan drawn again (a pan, a selection, an
+/// edit elsewhere) builds again only what changed. Each generation is of one allocation of a model's families, which any edit
+/// of a family replaces: a component's local pieces are its family's at its key, so an edit of a component makes a new key and
+/// an edit of a family a new generation. No more than [`GENERATIONS`] generations, nor [`BUDGET`] bytes, the least lately used
+/// going first.
+struct Kept {
+    families: crate::shared::Identity<BTreeMap<String, crate::family::Family>>,
+    shapes: HashMap<(Key, Fineness), Shape>,
+    used: u64,
+}
+
+/// A shape kept: its pieces, about how many bytes they take, and when it was last used.
+type Shape = (Arc<Vec<Piece>>, usize, u64);
+
+const GENERATIONS: usize = 4;
+const BUDGET: usize = 256 << 20;
+
+static KEPT: Mutex<(Vec<Kept>, u64)> = Mutex::new((Vec::new(), 0));
+
+#[cfg(test)]
+thread_local! {
+    static FINE_BUILDS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+#[cfg(test)]
+thread_local! {
+    static COARSE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// `f`, with the plans it draws on this thread built at the default however near they are: as before GEO-2c, to compare.
+#[cfg(test)]
+pub(crate) fn without_fineness<T>(f: impl FnOnce() -> T) -> T {
+    COARSE.with(|c| c.set(true));
+    let out = f();
+    COARSE.with(|c| c.set(false));
+    out
+}
+
+/// How many components this thread has built finer than the default, not finding them kept.
+#[cfg(test)]
+pub(crate) fn fine_builds() -> usize {
+    FINE_BUILDS.with(std::cell::Cell::get)
+}
+
+fn kept(model: &Model, key: &(Key, Fineness)) -> Option<Arc<Vec<Piece>>> {
+    let mut guard = KEPT.lock().ok()?;
+    let (generations, clock) = &mut *guard;
+    *clock += 1;
+    let now = *clock;
+    let g = generations.iter_mut().find(|g| g.families.is_of(&model.families))?;
+    g.used = now;
+    let (pieces, _, used) = g.shapes.get_mut(key)?;
+    *used = now;
+    Some(Arc::clone(pieces))
+}
+
+fn keep(model: &Model, key: &(Key, Fineness), pieces: &Arc<Vec<Piece>>) {
+    let Ok(mut guard) = KEPT.lock() else { return };
+    let (generations, clock) = &mut *guard;
+    *clock += 1;
+    let now = *clock;
+    let bytes = pieces.iter().map(|p| 128 + p.tris.len() * 72 + (p.outline.len() + p.holes.iter().map(Vec::len).sum::<usize>()) * 16).sum();
+    if !generations.iter().any(|g| g.families.is_of(&model.families)) {
+        if generations.len() >= GENERATIONS
+            && let Some(oldest) = (0..generations.len()).min_by_key(|i| generations[*i].used)
+        {
+            generations.swap_remove(oldest);
+        }
+        generations.push(Kept { families: model.families.identity(), shapes: HashMap::new(), used: now });
+    }
+    if let Some(g) = generations.iter_mut().find(|g| g.families.is_of(&model.families)) {
+        g.used = now;
+        g.shapes.insert(key.clone(), (Arc::clone(pieces), bytes, now));
+    }
+    // Over the budget: the least lately used shapes go, of every generation, until a quarter of it is free.
+    let total: usize = generations.iter().flat_map(|g| g.shapes.values()).map(|(_, b, _)| *b).sum();
+    if total > BUDGET {
+        let mut by_use: Vec<(u64, usize, (Key, Fineness))> =
+            generations.iter().enumerate().flat_map(|(i, g)| g.shapes.iter().map(move |(k, (_, _, u))| (*u, i, k.clone()))).collect();
+        by_use.sort_by_key(|(u, ..)| *u);
+        let mut left = total;
+        for (_, i, k) in by_use {
+            if left <= BUDGET / 4 * 3 {
+                break;
+            }
+            if let Some((_, b, _)) = generations.get_mut(i).and_then(|g| g.shapes.remove(&k)) {
+                left -= b;
+            }
+        }
     }
 }
