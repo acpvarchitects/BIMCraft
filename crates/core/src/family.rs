@@ -2729,9 +2729,13 @@ impl Family {
         self.pieces_at(values, None)
     }
 
-    /// [`Family::pieces`] with its curves chorded at `fineness` (GEO-2c): what a view that shows them larger builds.
+    /// [`Family::pieces`] with its curves chorded at `fineness` (GEO-2c): what a view that shows them larger builds. Where
+    /// that is more than its cutting may take, it is built as always, never refused for being looked at closely.
     pub fn pieces_fine(&self, values: &BTreeMap<String, Val>, fineness: Fineness) -> Result<Vec<Piece>, String> {
-        fineness.scoped(|| self.pieces(values))
+        match fineness.scoped(|| self.pieces(values)) {
+            Err(_) if fineness != Fineness::DEFAULT => self.pieces(values),
+            built => built,
+        }
     }
 
     pub fn pieces_at(&self, values: &BTreeMap<String, Val>, placement: Option<&crate::adaptive::Placement>) -> Result<Vec<Piece>, String> {

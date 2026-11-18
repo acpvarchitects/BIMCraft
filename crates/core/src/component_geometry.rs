@@ -232,9 +232,18 @@ impl<'a> Components<'a> {
         self.local_at(c, fineness)
     }
 
+    /// `c`'s pieces at `fineness`; where they can't be built that finely (more than the cutting may take), as always.
     fn local_at(&mut self, c: &Component, fineness: Fineness) -> &[Piece] {
-        let model = self.model;
-        self.local.entry((Self::key(c), fineness)).or_insert_with(|| fineness.scoped(|| model.component_local_pieces(c)))
+        let key = (Self::key(c), fineness);
+        if !self.local.contains_key(&key) {
+            let model = self.model;
+            let mut pieces = fineness.scoped(|| model.component_local_pieces(c));
+            if pieces.is_empty() && fineness != Fineness::DEFAULT {
+                pieces = self.local_at(c, Fineness::DEFAULT).to_vec();
+            }
+            self.local.insert(key.clone(), pieces);
+        }
+        self.local.get(&key).map_or(&[], Vec::as_slice)
     }
 
     /// The points of its pieces' triangles, where it is placed, that may be the farthest any way: across (along any line

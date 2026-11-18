@@ -152,3 +152,59 @@ fn a_plan_builds_finer_only_what_it_may_show() {
     let mut plain = crate::component_geometry::Components::new(&s.model);
     assert_eq!(cache.heights(&near), plain.heights(&near));
 }
+
+/// A 20 m disc with two 6 m round voids: within the cutting's limits at the default, past them however little finer.
+fn holed() -> Vec<Value> {
+    let mut forms = vec![json!({"sketch": [{"centre": [0, 0], "radius": 20000}], "from": 0, "to": 3000})];
+    for x in [-10000, 10000] {
+        forms.push(json!({"sketch": [{"centre": [x, 0], "radius": 6000}], "from": 1000, "to": 4000, "void": true}));
+    }
+    forms
+}
+
+#[test]
+fn a_build_too_fine_to_cut_falls_back_to_the_default() {
+    let (f, v) = family(holed());
+    let before = f.pieces(&v).unwrap_or_else(|e| panic!("{e}"));
+    assert!(Fineness::for_view(8.0).scoped(|| f.pieces(&v)).is_err(), "too much to cut that finely");
+    assert_eq!(f.pieces_fine(&v, Fineness::for_view(8.0)).unwrap_or_else(|e| panic!("{e}")), before, "built as always");
+    // In a plan at 50 times, the component is drawn as always: never an error, never nothing.
+    let mut s = session(holed());
+    let c = s.execute("component", &json!({"family": "Round", "at": [0, 0]})).unwrap_or_else(|e| panic!("{e}"));
+    let id = c["id"].as_u64().unwrap_or_else(|| panic!("{c}"));
+    let Some(crate::model::Element::Component(c)) = s.model.elements.get(id) else { panic!("{c}") };
+    let view = View { angle: 0.0, scale: 50.0 * 1000.0 / 44_000.0, cx: 20_000.0, cy: 0.0, width: 1000, height: 800 };
+    let mut cache = crate::component_geometry::Components::for_view(&s.model, &view);
+    assert_eq!(cache.pieces(c), s.model.component_pieces(c));
+    assert!(render::draw(&s.model, 100000, view).owners.contains(&Some(id)), "drawn");
+}
+
+/// Under a fineness, every curve a build chords is chorded at it: a nested family's, a void's and a revolve's.
+#[test]
+fn a_fineness_reaches_every_curve_a_build_chords() {
+    let mut s = session(vec![json!({"profile": [[0, 0], [10, 0], [10, 10], [0, 10]], "to": 10})]);
+    let disc = json!({"category": "generic", "types": {"T": {}},
+        "forms": [{"sketch": [{"centre": [0, 0], "radius": 2000}], "from": 0, "to": 100}]});
+    for (k, p) in [
+        ("nest", json!({"definition": disc, "name": "Disc"})),
+        ("nested_instance", json!({"family": "Disc", "type": "T", "at": [5000, 0]})),
+    ] {
+        s.execute("family", &json!({"name": "Round", k: p})).unwrap_or_else(|e| panic!("{e}"));
+    }
+    let f = s.model.families["Round"].clone();
+    let v = f.values("T", &BTreeMap::new()).unwrap_or_else(|e| panic!("{e}"));
+    let nested = |p: Vec<Piece>| p.into_iter().filter(|p| p.tris.len() > 12).map(|p| p.tris.len()).sum::<usize>();
+    let (coarse, fine) = (nested(f.pieces(&v).unwrap()), nested(f.pieces_fine(&v, Fineness::for_view(2.0)).unwrap()));
+    assert!(coarse > 0 && fine > 2 * coarse, "the nested disc: {coarse} triangles, then {fine}");
+    // A round void through a disc: its hole too.
+    let (f, v) = family(vec![
+        json!({"sketch": [{"centre": [0, 0], "radius": 2000}], "from": 0, "to": 100}),
+        json!({"sketch": [{"centre": [0, 0], "radius": 1000}], "from": -10, "to": 110, "void": true}),
+    ]);
+    let ring = |p: &[Piece]| p[0].tris.iter().flatten().filter(|q| ((q[0] * q[0] + q[1] * q[1]).sqrt() - 1000.0).abs() < 1.0).count();
+    let (coarse, fine) = (ring(&f.pieces(&v).unwrap()), ring(&f.pieces_fine(&v, Fineness::for_view(2.0)).unwrap()));
+    assert!(coarse > 0 && fine > 2 * coarse, "the hole: {coarse} corners on it, then {fine}");
+    // And a revolve: the knob of `curved`, alone.
+    let (f, v) = family(curved().split_off(2));
+    assert!(tris(&f.pieces_fine(&v, Fineness::for_view(2.0)).unwrap()) > 2 * tris(&f.pieces(&v).unwrap()));
+}
