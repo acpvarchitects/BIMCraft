@@ -81,6 +81,27 @@ section {"start":[-2000,-2000],"end":[2000,-2000]}"#,
     #[test]
     fn unsupported_family_forms_keep_full_preparation_and_cancellation_returns_no_work() {
         let (mut s, section) = fixture();
+        // A sweep follows its path: no envelope of it without building it.
+        let line = |a: [f64; 2], b: [f64; 2]| json!({"start": a, "end": b});
+        s.execute(
+            "family",
+            &json!({"name":"Rail","types":{"A":{}},"forms":[{
+            "sketch":[line([0.0, 0.0], [2000.0, 0.0]), line([2000.0, 0.0], [2000.0, 1000.0])],
+            "sweep":{"profile":[line([-50.0, 0.0], [50.0, 0.0]), line([50.0, 0.0], [50.0, 100.0]),
+                line([50.0, 100.0], [-50.0, 100.0]), line([-50.0, 100.0], [-50.0, 0.0])]}}]}),
+        )
+        .unwrap();
+        s.execute("component", &json!({"family":"Rail","type":"A","at":[3000,3000],"offset":300})).unwrap();
+        assert!(SectionWork::new_deferred_cancellable(&s.model, &|| true).is_none());
+        let work = SectionWork::new_deferred(&s.model);
+        assert_eq!(work.preparation_stats().deferred_components, 1, "unsupported forms use the full path");
+        same_output(&s.model, section, &work);
+    }
+
+    #[test]
+    fn a_form_cut_by_a_void_is_deferred_by_its_solids_envelope() {
+        // GEO-2g: a void only takes away from the solids it cuts, so the box of the solids holds the family.
+        let (mut s, section) = fixture();
         s.execute(
             "family",
             &json!({"name":"Cut box","types":{"A":{}},"forms":[
@@ -89,9 +110,8 @@ section {"start":[-2000,-2000],"end":[2000,-2000]}"#,
         )
         .unwrap();
         s.execute("component", &json!({"family":"Cut box","type":"A","at":[5000,5000],"offset":300})).unwrap();
-        assert!(SectionWork::new_deferred_cancellable(&s.model, &|| true).is_none());
         let work = SectionWork::new_deferred(&s.model);
-        assert_eq!(work.preparation_stats().deferred_components, 1, "unsupported forms use the full path");
+        assert_eq!(work.preparation_stats().deferred_components, 2, "the desk and the cut box are both deferred");
         same_output(&s.model, section, &work);
     }
 

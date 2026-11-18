@@ -14,11 +14,12 @@ fn include(out: &mut Option<[P3; 2]>, p: P3) -> Option<()> {
 }
 
 impl Family {
-    /// Conservative local bounds for visible swept profiles and imported meshes.
+    /// Conservative local bounds for visible swept profiles, revolves and imported meshes.
     /// No triangles or boolean results are constructed. None means unknown/empty;
-    /// callers must keep the instance. Visible voids and revolved forms currently
-    /// return unknown, and so does an adaptive family, whose geometry its instances' points decide. These envelopes must
-    /// not replace exact framing extrema.
+    /// callers must keep the instance. A void only takes away from the solids it cuts, so it adds nothing to their box
+    /// (GEO-2g); a revolve is boxed by the cylinder its profile turns within. Sweeps along a path return unknown, and so
+    /// does an adaptive family, whose geometry its instances' points decide. These envelopes must not replace exact
+    /// framing extrema.
     pub fn conservative_bounds(&self, values: &BTreeMap<String, Val>) -> Option<[P3; 2]> {
         // Where its dimensions put its planes, ends and sketches for the type (F7).
         match self.flexed(values).ok()? {
@@ -43,7 +44,7 @@ impl Family {
                 continue;
             }
             if form.void {
-                return None;
+                continue;
             }
             if !form.mesh.is_empty() {
                 if form.mesh.len() > MAX_BUILT {
@@ -55,7 +56,7 @@ impl Family {
                 continue;
             }
             // A sweep's solid follows its path: no box of it without building it.
-            if form.revolves() || form.kind().swept() {
+            if form.kind().swept() || (form.revolves() && (!form.top.is_empty() || form.sweep.is_some())) {
                 return None;
             }
             // A blend's box is its base's and its top's together, between its ends.
@@ -93,11 +94,36 @@ impl Family {
                     pts
                 }
             };
+            let frame = self.frame(&form.host).ok()?;
+            // A revolve turns its profile about its axis: within the cylinder round the axis, from its profile's nearest
+            // to its farthest along it, as wide as its profile's farthest from it (the box of an arc's circle is farther
+            // than any of the arc). Whatever its angles, a part of that.
+            if let Some([a, b]) = form.axis_ends() {
+                let (a, b) = (P2(num(&a[0])?, num(&a[1])?), P2(num(&b[0])?, num(&b[1])?));
+                if a.dist(b).is_nan() || a.dist(b) < 1e-6 {
+                    return None;
+                }
+                let (along, left) = ((b - a).unit(), (b - a).unit().perp());
+                let (mut t0, mut t1, mut reach) = (f64::INFINITY, f64::NEG_INFINITY, 0.0_f64);
+                for p in &profile {
+                    let t = (*p - a).dot(along);
+                    (t0, t1, reach) = (t0.min(t), t1.max(t), reach.max((*p - a).dot(left).abs()));
+                }
+                // And a hair more for the rounding of each corner it places.
+                let reach = reach + 1e-6;
+                let (o, u) = (frame.point(a, 0.0), frame.dir(along));
+                for t in [t0, t1] {
+                    for k in 0..8 {
+                        let r = |i: usize| if (k >> i) & 1 == 0 { -reach } else { reach };
+                        include(&mut out, std::array::from_fn(|i| o[i] + u[i] * t + r(i)))?;
+                    }
+                }
+                continue;
+            }
             let (from, to) = (num(&form.from)?, num(&form.to)?);
             if to <= from {
                 return None;
             }
-            let frame = self.frame(&form.host).ok()?;
             for p in profile {
                 include(&mut out, frame.point(p, from))?;
                 include(&mut out, frame.point(p, to))?;
@@ -161,7 +187,7 @@ mod tests {
     }
 
     #[test]
-    fn unsupported_and_nonfinite_forms_keep_unknown_bounds() {
+    fn voids_add_nothing_revolves_are_boxed_and_nonfinite_forms_keep_unknown_bounds() {
         let f: Family = serde_json::from_value(serde_json::json!({"forms":[{
             "profile":[[0,0],[400,0],[400,300],[0,300]],"to":900}]}))
         .unwrap();
@@ -172,7 +198,15 @@ mod tests {
         unsupported.forms.extend(f.forms.clone());
         encloses(&unsupported, &BTreeMap::new());
         unsupported = f.clone();
+        // A revolve is boxed by the cylinder it turns within (GEO-2g), whole or a part of a turn.
         unsupported.forms[0].set_axis(Some(&[[Expr::Number(0.0), Expr::Number(0.0)], [Expr::Number(0.0), Expr::Number(1.0)]]));
+        for (from, to) in [(0.0, 360.0), (30.0, 100.0), (-90.0, 45.0)] {
+            (unsupported.forms[0].from, unsupported.forms[0].to) = (Expr::Number(from), Expr::Number(to));
+            encloses(&unsupported, &BTreeMap::new());
+        }
+        // Nothing but a void: no solid to box.
+        unsupported = f.clone();
+        unsupported.forms[0].void = true;
         assert!(unsupported.conservative_bounds(&BTreeMap::new()).is_none());
         unsupported = f;
         unsupported.forms[0].to = Expr::Number(f64::NAN);

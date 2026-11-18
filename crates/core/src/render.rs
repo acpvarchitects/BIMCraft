@@ -832,11 +832,20 @@ fn plan_elements<'a>(
         return m.elements.iter().map(|(id, e)| (*id, e)).collect();
     }
     let found = plan_candidates(m, key, level, r, components);
+    // GEO-2g: what of them the plan will build, built at once, on several threads.
+    let built: Vec<&crate::model::Component> = found
+        .iter()
+        .filter_map(|id| match m.elements.get(*id) {
+            Some(Element::Component(c)) => Some(c),
+            _ => None,
+        })
+        .collect();
+    components.prepare(&built, Some((r.cut, r.depth)));
     let candidates = found.iter().filter_map(|id| Some((*id, m.elements.get(*id)?)));
     let shown: Vec<(Id, &Element)> = plan_filter(m, key, level, r, components, candidates);
     // Its twin, which tests hold it to: every element of the model, each asked the same.
     #[cfg(test)]
-    {
+    if twins() {
         let every = plan_filter(m, key, level, r, components, m.elements.iter().map(|(id, e)| (*id, e)));
         assert!(
             every.iter().map(|(id, _)| id).eq(shown.iter().map(|(id, _)| id)),
@@ -870,7 +879,8 @@ fn plan_candidates<'a>(
     for (group, one) in lookup.groups() {
         let found = match (group, m.elements.get(one)) {
             (crate::derived::Group::Component { .. }, Some(Element::Component(c))) => {
-                let (under, over) = components.local_heights(c);
+                // GEO-2g: its heights as built where they are at hand, else its envelope's, else any: none built here.
+                let (under, over) = components.known_local_heights(c).unwrap_or((f64::NEG_INFINITY, f64::INFINITY));
                 if under > over {
                     // No geometry: none of them shows.
                     continue;
@@ -934,9 +944,13 @@ fn plan_filter<'a>(
             Element::Wall(w) => m.base_z(w) <= r.cut && m.top_z(w) > r.depth - TOL,
             Element::Door(o) | Element::Window(o) => m.wall(o.host).is_some_and(|w| m.spans(w, r.cut)),
             Element::Component(c) => {
-                let (bottom, top) = components.heights_of(c);
                 // Its plan symbols are annotation of its level, whatever height its forms reach.
-                bottom < r.cut && top > r.depth || c.level == level && m.families.get(&c.family).is_some_and(|f| !f.symbols.is_empty())
+                c.level == level && m.families.get(&c.family).is_some_and(|f| !f.symbols.is_empty())
+                    // GEO-2g: one its envelope keeps out of the range, or out of the plan's window, isn't built to find out.
+                    || components.may_reach(c, r.cut, r.depth) && components.in_window(c) && {
+                        let (bottom, top) = components.heights_of(c);
+                        bottom < r.cut && top > r.depth
+                    }
             }
             Element::Room(x) => x.level == level,
             Element::RoomSeparator(x) => x.level == level,
@@ -1424,7 +1438,8 @@ fn plan_shows_among(m: &Model, key: Guid, among: bool) -> Vec<P2> {
         _ => Some(walls::Index::new(m)),
     };
     let index = index.as_ref();
-    let mut components = crate::component_geometry::Components::new(m);
+    // GEO-2g: what it builds kept for the plan that is drawn next.
+    let mut components = crate::component_geometry::Components::kept(m);
     let elements: Vec<(Id, &Element)> =
         if among { plan_elements(m, key, level, &r, false, &mut components) } else { m.elements.iter().map(|(id, e)| (*id, e)).collect() };
     let mut extent: Vec<P2> = cut_outlines(m, &elements, r.cut, &look, index).into_iter().flat_map(|(_, o)| o).collect();
@@ -3187,6 +3202,30 @@ pub fn section_png_noted(m: &Model, id: impl Key, view: View) -> Result<(Vec<u8>
     Ok((pm.encode_png().map_err(|e| e.to_string())?, drawing.notes))
 }
 
+#[cfg(test)]
+thread_local! {
+    static NO_TWINS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Whether a plan drawn on this thread is held to its twins (a test's, unless [`without_twins`]).
+#[cfg(test)]
+fn twins() -> bool {
+    !NO_TWINS.with(std::cell::Cell::get)
+}
+
+/// `f`, with the plans it draws on this thread drawn once, not held to their twins: what a benchmark times.
+#[cfg(test)]
+pub(crate) fn without_twins<T>(f: impl FnOnce() -> T) -> T {
+    struct Back(bool);
+    impl Drop for Back {
+        fn drop(&mut self) {
+            NO_TWINS.with(|c| c.set(self.0));
+        }
+    }
+    let _back = Back(NO_TWINS.with(|c| c.replace(true)));
+    f()
+}
+
 /// The plan of `level` as `view` shows it: what a canvas that pans and zooms draws.
 pub fn draw(m: &Model, level: impl Key, view: View) -> Drawing {
     draw_plan(m, level, view, false, annotation(m, level, view), scale_of(m, level), false)
@@ -3397,12 +3436,28 @@ fn pale(v: u8) -> u8 {
 /// it has it; a window letters it itself over the canvas, and shows it in the view's tab, and a sheet has it under its viewport). Its annotation `k` times the size it
 /// is laid out at, its pens the line weights' at 1 : `n`.
 fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, titled: bool) -> Drawing {
+    draw_plan_with(m, plan, view, up, k, n, titled, &mut crate::component_geometry::Components::for_view(m, &view))
+}
+
+/// [`draw_plan`], its components found through `components`.
+#[allow(clippy::too_many_arguments)]
+fn draw_plan_with<'m>(
+    m: &'m Model,
+    plan: impl Key,
+    view: View,
+    up: bool,
+    k: f32,
+    n: f64,
+    titled: bool,
+    components: &mut crate::component_geometry::Components<'m>,
+) -> Drawing {
     let key = m.guid(plan);
-    let d = draw_plan_among(m, key, view, up, k, n, titled, true);
+    let d = draw_plan_among(m, key, view, up, k, n, titled, true, components);
     // Its twin, which tests hold it to: every element looked at, the walls joined through an index of every wall.
     #[cfg(test)]
-    {
-        let every = regions::uncounted(|| draw_plan_among(m, key, view, up, k, n, titled, false));
+    if twins() {
+        let mut fresh = crate::component_geometry::Components::for_view(m, &view);
+        let every = regions::uncounted(|| draw_plan_among(m, key, view, up, k, n, titled, false, &mut fresh));
         let same = d.prims.len() == every.prims.len()
             && d.owners == every.owners
             && d.parts == every.parts
@@ -3416,7 +3471,17 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
 /// ([`plan_elements`]), its walls joined through the model's lookup when it is made; else at every element, through an
 /// index of every wall.
 #[allow(clippy::too_many_arguments)]
-fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, titled: bool, among: bool) -> Drawing {
+fn draw_plan_among<'m>(
+    m: &'m Model,
+    key: Guid,
+    view: View,
+    up: bool,
+    k: f32,
+    n: f64,
+    titled: bool,
+    among: bool,
+    components: &mut crate::component_geometry::Components<'m>,
+) -> Drawing {
     // The plan's own guid says what it is: its graphics, range, crop and annotation; its level is what it shows of the model.
     let level = m.plan_level(key).map_or(key, |l| m.guid(l));
     let index = match m.derived.made(&m.elements) {
@@ -3435,10 +3500,23 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
         range.cut = m.elevation(level) + CEILING_CUT;
         range.top = range.top.max(range.cut);
     }
-    // GEO-2c: what it shows, its curves as near as its scale draws them.
-    let mut components = crate::component_geometry::Components::for_view(m, &view);
-    let elements: Vec<(Id, &Element)> =
-        if among { plan_elements(m, key, level, &range, up, &mut components) } else { m.elements.iter().map(|(id, e)| (*id, e)).collect() };
+    // GEO-2c: what it shows, its curves as near as its scale draws them; GEO-2g: only what meets its window built.
+    let elements: Vec<(Id, &Element)> = if among {
+        plan_elements(m, key, level, &range, up, components)
+    } else {
+        if !up {
+            let all: Vec<&crate::model::Component> = m
+                .elements
+                .values()
+                .filter_map(|e| match e {
+                    Element::Component(c) => Some(c),
+                    _ => None,
+                })
+                .collect();
+            components.prepare(&all, Some((range.cut, range.depth)));
+        }
+        m.elements.iter().map(|(id, e)| (*id, e)).collect()
+    };
     let all = || elements.iter().map(|(id, e)| (id, *e));
     // The scans it sees, under all the rest; then its CAD drawings.
     if !up {
@@ -3535,23 +3613,24 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
     // the cut plane and over the view depth; and the symbols of those on its level.
     for (&id, e) in all().filter(|(id, _)| shown(**id)) {
         let Element::Component(c) = e else { continue };
-        let mut pieces = components.pieces(c);
         d.owner = Some(id);
-        if !up && !pieces.is_empty() {
+        // GEO-2g: one out of the plan's window draws only its symbols, and one a ceiling plan looks up past, nothing of its
+        // forms: neither is built for it.
+        let reach = !up && components.may_reach(c, range.cut, range.depth);
+        let inside = up || if reach { components.in_window(c) } else { components.near_window(c) };
+        let mut pieces = Vec::new();
+        if reach && inside {
             let (bottom, top) = components.heights(c);
             if bottom < range.cut && top > range.depth {
+                pieces = components.pieces(c);
                 // Its forms the plan's Visibility Settings leave out (F8) aren't drawn, nor hide what is under them.
                 pieces.retain(|p| plan_draws(p, d.detail, range.cut));
                 component(&mut d, m, &pieces);
-            } else {
-                pieces.clear();
             }
-        } else {
-            pieces.clear();
         }
         nested_picks(&mut d, m, (id, c), &pieces, c.level == level);
         // Its model lines (FE-15) the plan sees between its cut plane and its view depth, in projection, as Revit draws them.
-        for ([a, b], sub) in m.component_model_lines(c, Some(d.detail), true) {
+        for ([a, b], sub) in m.component_model_lines(c, Some(d.detail), true).into_iter().filter(|_| inside) {
             let (lo, hi) = (a[2].min(b[2]), a[2].max(b[2]));
             if lo <= range.cut + TOL && hi >= range.depth - TOL {
                 d.sub(sub);
@@ -3773,10 +3852,13 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
     if named {
         let (pw, ph) = (d.view.width as f32, d.view.height as f32);
         let seen = |a: (f32, f32), b: (f32, f32)| a.0.max(b.0) >= 0.0 && a.0.min(b.0) <= pw && a.1.max(b.1) >= 0.0 && a.1.min(b.1) <= ph;
-        for (_, e) in all().filter(|(id, _)| shown(**id)) {
+        for (_, e) in all().filter(|(id, _)| shown(**id)).filter(|_| !up) {
             let Element::Component(c) = e else { continue };
+            if !components.may_reach(c, range.cut, range.depth) || !components.in_window(c) {
+                continue;
+            }
             let (bottom, top) = components.heights(c);
-            if up || bottom >= range.cut || top <= range.depth {
+            if bottom >= range.cut || top <= range.depth {
                 continue;
             }
             for p in components.pieces(c).iter().filter(|p| plan_draws(p, d.detail, range.cut)) {
@@ -6507,12 +6589,13 @@ pub fn rgba(d: &Drawing, under: Option<&view3d::Image>) -> Result<Vec<u8>, Strin
 /// cut plane, its cut outline in the cut pen ([`crate::family::views::plan_cut_outlines`]). Project plans never cut a component. Once
 /// its View Range is set (FE-18), `seen` the heights it sees, lowest and highest: a form wholly below or above them is left out.
 pub(crate) fn family_plan(m: &Model, level: Id, view: View, seen: Option<(f64, f64)>) -> Drawing {
-    let mut d = draw(m, level, view);
+    // One cache for the project's plan and its own pass over the components: each built once (ec's review of #84).
+    let mut components = crate::component_geometry::Components::for_view(m, &view);
+    let mut d = draw_plan_with(m, level, view, false, annotation(m, level, view), scale_of(m, level), false, &mut components);
     let cut = m.level(level).map_or(crate::model::CUT_HEIGHT, |l| l.view_range.cut);
     let look = Look::of(m, level);
     let mut extra = Drawing::new(view);
     (extra.k, extra.paper, extra.detail, extra.weights) = (d.k, d.paper, d.detail, d.weights);
-    let mut components = crate::component_geometry::Components::for_view(m, &view);
     for (&id, e) in m.elements.iter() {
         let Element::Component(c) = e else { continue };
         if !look.shows(id) {

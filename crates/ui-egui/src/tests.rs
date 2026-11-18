@@ -8790,6 +8790,7 @@ mod fly;
 mod highlight3d;
 mod industrial_doors;
 mod nested_families;
+mod plan_window;
 mod preview_visibility;
 mod select_instances;
 mod sheet_fit;
