@@ -70,3 +70,67 @@ fn a_void_that_doesnt_drill_straight_through_is_cut_as_before() {
     // Cut, its triangles meet at corners a cap's edges run through: more of them than the drilled slab's 32.
     assert!(both[0].tris.len() > 32);
 }
+
+/// Its points, each at most once, rounded to a thousandth of a millimetre.
+fn corners(tris: &[[P3; 3]]) -> std::collections::BTreeSet<[i64; 3]> {
+    tris.iter().flatten().map(|p| p.map(|x| (x * 1e3).round() as i64)).collect()
+}
+
+#[test]
+fn a_drilled_hole_is_where_its_void_is() {
+    // An L, off the slab's centre and like no turn or mirror of itself: a hole shifted, turned or mirrored has other points.
+    let l = [[150.0, 620.0], [380.0, 620.0], [380.0, 700.0], [230.0, 700.0], [230.0, 860.0], [150.0, 860.0]];
+    let void = json!({"profile": l, "from": -10, "to": 110, "void": true});
+    let p = slab_less(&[void]);
+    let tris = &p[0].tris;
+    let mut want = std::collections::BTreeSet::new();
+    for z in [0.0, 100.0] {
+        for [x, y] in [[0.0, 0.0], [1000.0, 0.0], [1000.0, 1000.0], [0.0, 1000.0]].into_iter().chain(l) {
+            want.insert([x, y, z].map(|v: f64| (v * 1e3).round() as i64));
+        }
+    }
+    assert_eq!(corners(tris), want, "the slab's corners and the L's, top and bottom");
+    // Swept with its hole: two caps of ten triangles (ten corners, one hole) and ten sides of two, no cut's extra corners.
+    assert_eq!(tris.len(), 2 * 10 + 10 * 2, "{}", tris.len());
+    assert!(closed(tris));
+    let area = 230.0 * 80.0 + 80.0 * 160.0;
+    assert!((volume(tris) - (1e8 - area * 100.0)).abs() < 1e-3, "{}", volume(tris));
+}
+
+#[test]
+fn a_void_that_misses_the_body_leaves_the_others_drilled() {
+    // The second void is off the slab: it cuts nothing, so the first still drills it.
+    let p = slab_less(&[square(400.0, 400.0, 600.0, 600.0, -10.0, 110.0), square(1200.0, 400.0, 1400.0, 600.0, -10.0, 110.0)]);
+    assert_eq!(p[0].tris.len(), 32, "swept with its hole, not cut");
+    assert!((volume(&p[0].tris) - (1e8 - 200.0 * 200.0 * 100.0)).abs() < 1e-3);
+}
+
+#[test]
+fn checking_where_voids_drill_spends_the_cutting_budget() {
+    // Many holes in a grid, their edges in line: drilled, every one. The checks of each against each are counted, and a
+    // budget too small for them sends it to the cut.
+    let holes: Vec<Value> = (0..36)
+        .map(|k| {
+            let (x, y) = (100.0 + 140.0 * (k % 6) as f64, 100.0 + 140.0 * (k / 6) as f64);
+            square(x, y, x + 60.0, y + 60.0, -10.0, 110.0)
+        })
+        .collect();
+    let mut forms = vec![json!({"profile": [[0, 0], [1000, 0], [1000, 1000], [0, 1000]], "from": 0, "to": 100})];
+    forms.extend(holes);
+    let mut s = Session::new();
+    s.execute("family", &json!({"name": "S", "category": "generic", "types": {"A": {}}, "forms": forms})).unwrap_or_else(|e| panic!("{e}"));
+    let f = &s.model.families["S"];
+    let values = f.values("A", &BTreeMap::new()).unwrap();
+    let mut read = std::collections::HashMap::new();
+    let body = f.solid(0, &values, &mut read).unwrap().unwrap().tris;
+    let voids: std::collections::HashMap<usize, Vec<[P3; 3]>> =
+        (1..f.forms.len()).map(|i| (i, f.solid(i, &values, &mut read).unwrap().unwrap().tris)).collect();
+    let mut shapes = std::collections::HashMap::new();
+    let mut rich = crate::csg::Meter::default();
+    let d = f.drill(0, &body, &voids, &values, &mut read, &mut shapes, &mut rich).expect("drilled");
+    assert_eq!(d.holes.len(), 36, "each void's rings");
+    assert!(d.holes.iter().all(|(_, rings)| rings.len() == 1));
+    assert_eq!(f.pieces(&values).unwrap()[0].tris, d.tris, "the build drills it too");
+    let mut poor = crate::csg::Meter::poor(2000);
+    assert!(f.drill(0, &body, &voids, &values, &mut read, &mut shapes, &mut poor).is_none(), "out of budget: cut instead");
+}

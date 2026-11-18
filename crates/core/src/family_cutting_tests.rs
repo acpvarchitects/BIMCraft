@@ -194,21 +194,32 @@ fn every_family_builds_as_it_did_with_the_lists_empty() {
                 }
             }
             // The same triangles, bit for bit, but where a void drilling straight through an extrusion is a hole of its
-            // profile now (GEO-2e), triangulated otherwise than cut: there the same solid, its volume and box.
+            // profile now (GEO-2e), triangulated otherwise than cut: there the same solid, its volume, its first moment (where
+            // its holes are: a hole moved moves it) and its box.
             let solid = |tris: &[[crate::view3d::P3; 3]]| {
                 let lo = tris.iter().flatten().fold([f64::INFINITY; 3], |a, p| std::array::from_fn(|k| a[k].min(p[k])));
                 let hi = tris.iter().flatten().fold([f64::NEG_INFINITY; 3], |a, p| std::array::from_fn(|k| a[k].max(p[k])));
+                // Each triangle's tetrahedron to the origin: its signed volume times its centroid.
+                let moment = tris.iter().fold([0.0; 3], |m, [a, b, c]| {
+                    let v = crate::view3d::dot(*a, crate::view3d::cross(*b, *c)) / 6.0;
+                    std::array::from_fn(|k| m[k] + v * (a[k] + b[k] + c[k]) / 4.0)
+                });
                 let r = |x: f64| (x * 1e3).round() / 1e3;
-                (crate::ifc_geometry_tests::volume(tris).round(), lo.map(r), hi.map(r))
+                (crate::ifc_geometry_tests::volume(tris).round(), moment.map(|m| (m / 1e3).round()), lo.map(r), hi.map(r))
             };
-            let built: std::collections::HashSet<usize> = (0..f.forms.len())
-                .filter(|&i| f.forms[i].void && f.forms[i].cuts().forms() && matches!(f.solid(i, &values, &mut read), Ok(Some(_))))
-                .collect();
+            let mut built = std::collections::HashMap::new();
+            for i in (0..f.forms.len()).filter(|&i| f.forms[i].void && f.forms[i].cuts().forms()) {
+                if let Ok(Some(p)) = f.solid(i, &values, &mut read) {
+                    built.insert(i, p.tris);
+                }
+            }
             let got = f.pieces(&values).unwrap_or_else(|e| panic!("{name}: type {t}: {e}"));
             let want: Vec<_> = want.into_iter().filter(|(_, t)| !t.is_empty()).collect();
             assert_eq!(got.len(), want.len(), "{name}: type {t}");
             for (p, (i, w)) in got.iter().zip(&want) {
-                if f.drill(*i, &|v| built.contains(&v), &values, &mut read).is_some() {
+                let body = f.solid(*i, &values, &mut read).ok().flatten().map(|p| p.tris).unwrap_or_default();
+                let (mut shapes, mut meter) = (std::collections::HashMap::new(), crate::csg::Meter::default());
+                if f.drill(*i, &body, &built, &values, &mut read, &mut shapes, &mut meter).is_some() {
                     drilled += 1;
                     assert_eq!(solid(&p.tris), solid(w), "{name}: type {t}, form {}", i + 1);
                 } else {

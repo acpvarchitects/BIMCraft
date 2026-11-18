@@ -27,6 +27,19 @@ impl Default for Meter {
 const TOO_MUCH: &str = "it has too many faces to cut: give it fewer sides, or fewer triangles";
 
 impl Meter {
+    /// One that may do `work` steps, for a test of running out.
+    #[cfg(test)]
+    pub(crate) fn poor(work: u64) -> Meter {
+        Meter { work, splits: 400_000 }
+    }
+
+    /// `steps` of work done outside the cutting that its budget counts (GEO-2e's checks where voids drill): an error once it
+    /// is spent.
+    pub(crate) fn spend(&mut self, steps: usize) -> Result<(), String> {
+        self.work = self.work.checked_sub(steps as u64).ok_or(TOO_MUCH)?;
+        Ok(())
+    }
+
     fn work(&mut self, corners: usize) -> Result<(), String> {
         self.work = self.work.checked_sub(corners as u64 + 1).ok_or(TOO_MUCH)?;
         Ok(())
@@ -267,14 +280,19 @@ fn bounds(tris: &[[P3; 3]]) -> (P3, P3) {
 
 /// `solid` less what `void` takes of it: each a closed surface of triangles turned outward; what's
 /// left, as triangles, none if the void swallows it. A void away from it leaves it as it was.
+/// Whether `void`'s box is clear of `solid`'s: then cutting one by the other leaves it as it is.
+pub(crate) fn misses(solid: &[[P3; 3]], void: &[[P3; 3]]) -> bool {
+    let ((lo_s, hi_s), (lo_v, hi_v)) = (bounds(solid), bounds(void));
+    (0..3).any(|k| lo_v[k] > hi_s[k] + EPS || hi_v[k] < lo_s[k] - EPS)
+}
+
 pub fn subtract(solid: &[[P3; 3]], void: &[[P3; 3]], meter: &mut Meter) -> Result<Vec<[P3; 3]>, String> {
     for (what, n) in [("the form cut", solid.len()), ("the void", void.len())] {
         if n > MAX_TRIANGLES {
             return Err(format!("{what} has {n} triangles; it can't have more than {MAX_TRIANGLES} to cut"));
         }
     }
-    let ((lo_s, hi_s), (lo_v, hi_v)) = (bounds(solid), bounds(void));
-    if (0..3).any(|k| lo_v[k] > hi_s[k] + EPS || hi_v[k] < lo_s[k] - EPS) {
+    if misses(solid, void) {
         return Ok(solid.to_vec());
     }
     let (mut a, mut b) = (Bsp::of(solid, meter)?, Bsp::of(void, meter)?);
