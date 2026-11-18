@@ -342,7 +342,10 @@ pub fn json<T: Serialize>(m: &T, elements: &crate::ids::Elements) -> Result<Stri
         #[serde(flatten)]
         e: &'a crate::model::Element,
     }
-    let all: Vec<(crate::ids::Id, crate::ids::Guid, &crate::model::Element)> = elements.with_guids().collect();
+    // A shared nested instance's element is worked out from its host, never written (`crate::nested_elements`), as
+    // `Elements`' own `Serialize` leaves it out.
+    let all: Vec<(crate::ids::Id, crate::ids::Guid, &crate::model::Element)> =
+        elements.with_guids().filter(|(_, _, e)| !matches!(e, crate::model::Element::Nested(_))).collect();
     let parts: Vec<String> = all
         .par_chunks(4096)
         .map(|chunk| {
