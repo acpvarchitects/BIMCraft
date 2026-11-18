@@ -1,7 +1,7 @@
 //! Per-operation reuse of family geometry, bound to an immutable model snapshot.
 use std::collections::BTreeMap;
 
-use crate::family::Piece;
+use crate::family::{Fineness, Piece};
 use crate::geom::P2;
 use crate::model::{Component, Id, Model};
 
@@ -153,7 +153,10 @@ fn local_envelope(m: &Model, c: &Component) -> Option<[[f64; 3]; 2]> {
 
 pub(crate) struct Components<'a> {
     model: &'a Model,
-    local: BTreeMap<Key, Vec<Piece>>,
+    local: BTreeMap<(Key, Fineness), Vec<Piece>>,
+    /// GEO-2c: the fineness a view asks for, and the part of the plan it shows. A component reaching into it is built at
+    /// that fineness; the rest, which the view doesn't show, at the default.
+    fine: Option<(Fineness, [P2; 2])>,
     /// The heights of the model's components with no values of their own, over their base, by family, type and mirroring:
     /// most of a project's, found without a key made for each.
     plain: std::collections::HashMap<(&'a str, &'a str, bool), (f64, f64)>,
@@ -164,7 +167,26 @@ pub(crate) struct Components<'a> {
 
 impl<'a> Components<'a> {
     pub(crate) fn new(model: &'a Model) -> Self {
-        Self { model, local: BTreeMap::new(), plain: Default::default(), extremes: BTreeMap::new(), envelopes: BTreeMap::new() }
+        Self { model, local: BTreeMap::new(), fine: None, plain: Default::default(), extremes: BTreeMap::new(), envelopes: BTreeMap::new() }
+    }
+
+    /// For a plan drawn through `view`: what it shows built at the [`Fineness`] its scale asks for (GEO-2c).
+    pub(crate) fn for_view(model: &'a Model, view: &crate::render::View) -> Self {
+        let fineness = Fineness::for_view(view.scale);
+        // Every point within half the screen's diagonal of its middle, however the view is turned.
+        let half = f64::from(view.width).hypot(f64::from(view.height)) / 2.0 / view.scale;
+        let window = [P2(view.cx - half, view.cy - half), P2(view.cx + half, view.cy + half)];
+        let shown = fineness != Fineness::DEFAULT && window.iter().all(|p| p.0.is_finite() && p.1.is_finite());
+        Self { fine: shown.then_some((fineness, window)), ..Self::new(model) }
+    }
+
+    /// The fineness `c` is built at: the view's where it may reach into the view, or where its extent isn't known.
+    fn fineness(&mut self, c: &Component) -> Fineness {
+        let Some((fineness, [lo, hi])) = self.fine else { return Fineness::DEFAULT };
+        match self.envelope(c, &PlainEnvelopes::new()) {
+            Some([a, b]) if a[0] > hi.0 || b[0] < lo.0 || a[1] > hi.1 || b[1] < lo.1 => Fineness::DEFAULT,
+            _ => fineness,
+        }
     }
 
     /// Supported local form envelopes, placed without building any triangles.
@@ -190,7 +212,10 @@ impl<'a> Components<'a> {
         let (lo, hi) = match self.plain.get(&key) {
             Some(span) => *span,
             None => {
-                let span = self.local(c).iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), p| (lo.min(p.bottom), hi.max(p.top)));
+                let span = self
+                    .local_at(c, Fineness::DEFAULT)
+                    .iter()
+                    .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), p| (lo.min(p.bottom), hi.max(p.top)));
                 self.plain.insert(key, span);
                 span
             }
@@ -203,7 +228,13 @@ impl<'a> Components<'a> {
     }
 
     fn local(&mut self, c: &Component) -> &[Piece] {
-        self.local.entry(Self::key(c)).or_insert_with(|| self.model.component_local_pieces(c))
+        let fineness = self.fineness(c);
+        self.local_at(c, fineness)
+    }
+
+    fn local_at(&mut self, c: &Component, fineness: Fineness) -> &[Piece] {
+        let model = self.model;
+        self.local.entry((Self::key(c), fineness)).or_insert_with(|| fineness.scoped(|| model.component_local_pieces(c)))
     }
 
     /// The points of its pieces' triangles, where it is placed, that may be the farthest any way: across (along any line
@@ -213,7 +244,8 @@ impl<'a> Components<'a> {
     pub(crate) fn extremes(&mut self, c: &Component) -> Vec<[f64; 3]> {
         let key = Self::key(c);
         if !self.extremes.contains_key(&key) {
-            let points: Vec<[f64; 3]> = self.local(c).iter().flat_map(|pc| pc.tris.iter().flatten().copied()).collect();
+            let points: Vec<[f64; 3]> =
+                self.local_at(c, Fineness::DEFAULT).iter().flat_map(|pc| pc.tris.iter().flatten().copied()).collect();
             let finite = |p: &[f64; 3]| p.iter().all(|v| v.is_finite());
             let hull = crate::geom::hull(points.iter().filter(|p| finite(p)).map(|p| P2(p[0], p[1])).collect());
             let near_hull = |q: P2| match hull.len() {
@@ -235,14 +267,14 @@ impl<'a> Components<'a> {
         let placed = self.model.component_placement(c);
         if !placed.upright {
             // Tilted, the farthest points in plan aren't those of its own plan: every point is.
-            return self.local(c).iter().flat_map(|pc| pc.tris.iter().flatten().map(|p| placed.place(*p))).collect();
+            return self.local_at(c, Fineness::DEFAULT).iter().flat_map(|pc| pc.tris.iter().flatten().map(|p| placed.place(*p))).collect();
         }
         self.extremes.get(&key).map(|v| v.iter().map(|p| placed.place(*p)).collect()).unwrap_or_default()
     }
 
     /// Its geometry's heights over its base, lowest and highest: none (infinity, minus infinity) when it has no pieces.
     pub(crate) fn local_heights(&mut self, c: &Component) -> (f64, f64) {
-        self.local(c).iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), p| (lo.min(p.bottom), hi.max(p.top)))
+        self.local_at(c, Fineness::DEFAULT).iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), p| (lo.min(p.bottom), hi.max(p.top)))
     }
 
     pub(crate) fn heights(&mut self, c: &Component) -> (f64, f64) {
@@ -251,7 +283,8 @@ impl<'a> Components<'a> {
             return self.pieces(c).iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), p| (lo.min(p.bottom), hi.max(p.top)));
         }
         let base = placed.origin[2];
-        self.local(c).iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), p| (lo.min(base + p.bottom), hi.max(base + p.top)))
+        let local = self.local_at(c, Fineness::DEFAULT);
+        local.iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), p| (lo.min(base + p.bottom), hi.max(base + p.top)))
     }
 
     /// Its pieces' outlines in plan, as [`Components::pieces`] places them, without their triangles (upright).
@@ -263,7 +296,9 @@ impl<'a> Components<'a> {
         let outlines: Vec<P2> =
             self.local(c).iter().flat_map(|pc| pc.outline.iter().map(|q| placed.place([q.0, q.1, 0.0])).map(|p| P2(p[0], p[1]))).collect();
         #[cfg(test)]
-        assert_eq!(outlines, self.model.component_pieces(c).into_iter().flat_map(|p| p.outline).collect::<Vec<_>>());
+        if self.fine.is_none() {
+            assert_eq!(outlines, self.model.component_pieces(c).into_iter().flat_map(|p| p.outline).collect::<Vec<_>>());
+        }
         outlines
     }
 

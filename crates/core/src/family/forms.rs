@@ -12,7 +12,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::sketch::{FormLine, MAX_SKETCH, SEGMENTS};
+use super::sketch::{FormLine, MAX_SKETCH};
 use super::{Expr, Form, Frame};
 use crate::geom::{P2, Region};
 use crate::model::TOL;
@@ -202,8 +202,9 @@ pub fn path<'a>(lines: &'a [FormLine], num: &mut dyn FnMut(&'a Expr) -> Result<f
     if let [one] = curves.as_slice()
         && let crate::curves::Curve::Circle { centre, radius } = &one.curve
     {
-        let points: Vec<P2> = (0..SEGMENTS)
-            .map(|k| (k as f64 * std::f64::consts::TAU / SEGMENTS as f64).sin_cos())
+        let n = super::fineness::ring(*radius);
+        let points: Vec<P2> = (0..n)
+            .map(|k| (k as f64 * std::f64::consts::TAU / n as f64).sin_cos())
             .map(|(s, c)| P2(centre.0 + radius * c, centre.1 + radius * s))
             .collect();
         let way = (points[1] - points[0]).unit();
