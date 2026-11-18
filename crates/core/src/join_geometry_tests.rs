@@ -334,3 +334,51 @@ fn a_long_list_on_a_later_element_is_refused_by_its_own_cap_not_read_through() {
     let e = s.model.check().unwrap_err();
     assert!(e.contains(&format!("floor {f}")) && e.contains("no more than 100"), "{e}");
 }
+
+/// A curtain wall of type `CW` (one 2000 column, one 1000 row) where `wall` stands: along x at y 2000, 0 to 6000, 3000 high.
+fn curtain_wall(s: &mut Session) -> Id {
+    run(s, "type", json!({"category": "wall", "name": "CW", "curtain": {"columns": {"segments": [2000]}, "rows": {"segments": [1000]}}}));
+    run(s, "wall", json!({"points": [[0, 2000], [6000, 2000]], "type": "CW", "height": 3000}))["ids"][0].as_u64().unwrap()
+}
+
+#[test]
+fn a_curtain_wall_and_a_wall_in_its_panel_are_refused_and_unjoin_still_takes_one_off() {
+    let mut s = Session::new();
+    let cw = curtain_wall(&mut s);
+    let f = floor(&mut s, 300.0);
+    // Its own solid is never drawn, only its panels and mullions: what it would cut out of the floor is a block no one sees.
+    for (a, b) in [(cw, f), (f, cw)] {
+        let e = join(&mut s, a, b).unwrap_err();
+        assert!(e.contains("is a curtain wall"), "{e}");
+    }
+    assert!(!s.model.joins_geometry(cw) && s.model.joins_geometry(f));
+    // A wall standing in a panel's place is its curtain wall's.
+    let panel = run(&mut s, "curtain_panel_wall", json!({"wall": cw, "column": 0, "row": 0}))["id"].as_u64().unwrap();
+    let e = join(&mut s, panel, f).unwrap_err();
+    assert!(e.contains("curtain wall's panel"), "{e}");
+    // A plain wall joined first, its type then made a curtain one: the join cuts nothing, `warnings` says so, Switch is
+    // refused and Unjoin takes it off.
+    let w = wall(&mut s);
+    join(&mut s, w, f).unwrap();
+    assert!(!solid(&mut s, f, 2000.0, 1000.0, 200.0), "the plain wall cuts the floor");
+    run(&mut s, "modify", json!({"id": w, "type": "CW", "location": "exterior-finish"}));
+    assert!(solid(&mut s, f, 2000.0, 1000.0, 200.0), "a curtain wall cuts nothing");
+    assert!(s.model.warnings().iter().any(|w| w.contains("is a curtain wall")), "{:?}", s.model.warnings());
+    assert!(s.execute("switch_join_order", &json!({"first": w, "second": f})).unwrap_err().contains("is a curtain wall"));
+    run(&mut s, "unjoin_geometry", json!({"first": w, "second": f}));
+    assert!(joined(&s, f).is_empty());
+}
+
+#[test]
+fn a_file_with_a_join_of_a_curtain_wall_opens_without_it_and_says_so() {
+    let mut s = Session::new();
+    let cw = curtain_wall(&mut s);
+    let f = floor(&mut s, 300.0);
+    // As a build before they were refused could save it: the floor cut by the curtain wall.
+    let g = s.model.guid(cw);
+    let mut file: Value = serde_json::from_str(&s.model.to_json().unwrap()).unwrap();
+    file["elements"][f.to_string()]["joined_by"] = json!([g]);
+    let (m, left_out) = crate::model::Model::read(&file.to_string()).unwrap();
+    assert!(m.elements.get(f).unwrap().joined_by().is_empty(), "the join is left out");
+    assert_eq!(left_out, vec![format!("/elements/{f}/joined_by/0")]);
+}

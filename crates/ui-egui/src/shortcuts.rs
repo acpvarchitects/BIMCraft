@@ -476,6 +476,7 @@ impl BimApp {
             "Shaded" => self.set_visual_style(bimcraft_core::graphics::VisualStyle::Shaded),
             "Graphic Display Options" => self.open_display(),
             "Section Box" => self.toggle_section_box(),
+            "Fly Mode" => self.toggle_fly(),
             "Project Units" => {
                 self.tab = Tab::Manage;
                 self.open_units = true;

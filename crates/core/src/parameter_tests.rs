@@ -147,7 +147,7 @@ fn renaming_a_parameter_reaches_tags_formulas_and_files() {
     // A tag's label is the parameter's GUID in a file, and its name again when read.
     let text = s.model.to_json().unwrap();
     let guid = s.model.library.guid(&Kind::Parameter, "Dado").unwrap().to_string();
-    assert!(text.contains(&format!("\"label\": \"{guid}\"")), "by GUID in a file");
+    assert!(text.contains(&format!("\"label\":\"{guid}\"")), "by GUID in a file");
     let (back, _) = crate::model::Model::read(&text).unwrap();
     let Some(Element::Tag(t)) = back.elements.get(tag) else { panic!() };
     assert_eq!(t.label.as_deref(), Some("Dado"));
@@ -168,7 +168,7 @@ fn the_new_kinds_hold_their_values_and_go_through_a_file_and_ifc() {
 
     let ifc = file("kinds.ifc");
     run(&mut s, "save", json!({"path": ifc}));
-    let text = std::fs::read_to_string(&ifc).unwrap();
+    let text = crate::bimc::read_to_string(&ifc).unwrap();
     for needle in ["IFCINTEGER(3)", "IFCAREAMEASURE(12.5", "IFCVOLUMEMEASURE(2", "IFCPLANEANGLEMEASURE(0.5235"] {
         assert!(text.contains(needle), "{needle}");
     }
@@ -338,8 +338,8 @@ fn a_dictionary_is_made_shared_followed_and_opened_without_its_file() {
 
     // The project opens with the dictionary gone, and its name goes by GUID in the file.
     let saved_at = saved(&mut s, "p.bimcraft");
-    let text = std::fs::read_to_string(&saved_at).unwrap();
-    assert!(text.contains(&format!("\"dictionary\": \"{}\"", dict_guid.unwrap())), "by GUID in a file");
+    let text = crate::bimc::read_to_string(&saved_at).unwrap();
+    assert!(text.contains(&format!("\"dictionary\":\"{}\"", dict_guid.unwrap())), "by GUID in a file");
     let moved = file("elsewhere.bimparams");
     std::fs::rename(&path, &moved).unwrap();
     let mut opened = Session::new();
@@ -347,7 +347,7 @@ fn a_dictionary_is_made_shared_followed_and_opened_without_its_file() {
     assert_eq!(opened.model.parameters["Cost"].dictionary.as_deref(), Some("office"));
 
     // A new version: nothing changes until it's imported, then a rename and a new description follow, by GUID.
-    let d: Value = serde_json::from_str(&std::fs::read_to_string(&moved).unwrap()).unwrap();
+    let d: Value = serde_json::from_str(&crate::bimc::read_to_string(&moved).unwrap()).unwrap();
     let cost = d["parameters"].as_array().unwrap().iter().find(|p| p["name"] == "Cost").unwrap()["guid"].clone();
     run(
         &mut opened,
@@ -701,7 +701,7 @@ fn a_type_parameter_goes_out_in_ifc_on_each_element_of_the_type() {
     typed(&mut s, "A", json!("EI60"));
     let path = file("typed.ifc");
     run(&mut s, "save", json!({"path": path}));
-    let text = std::fs::read_to_string(&path).unwrap();
+    let text = crate::bimc::read_to_string(&path).unwrap();
     assert!(text.contains("IFCPROPERTYSINGLEVALUE('Rating',$,IFCTEXT('EI60'),$)"), "its value, in the property set");
 }
 
@@ -775,7 +775,7 @@ fn hidden_and_hide_when_empty_are_gone_and_editable_stays() {
     assert!(s.model.parameters["Rating"].read_only);
     let path = file("columns.csv");
     run(&mut s, "parameter_export", json!({"path": path}));
-    let text = std::fs::read_to_string(&path).unwrap();
+    let text = crate::bimc::read_to_string(&path).unwrap();
     let head = text.lines().next().unwrap();
     assert!(head.contains("Instance/Type") && head.contains("User Modifiable"), "{head}");
     assert!(!head.contains("Visible") && !head.contains("Hide"), "{head}");
@@ -949,4 +949,55 @@ fn a_table_that_doesnt_say_whether_a_parameter_can_be_changed_leaves_it_as_it_is
     std::fs::write(&path, "Name,Categories,User Modifiable\nRating,Walls,yes\n").unwrap();
     run(&mut s, "parameter_import", json!({"path": path}));
     assert!(!s.model.parameters["Rating"].read_only, "yes says it can be changed");
+}
+
+#[test]
+fn a_dictionary_carries_whether_values_vary_by_group_instance_and_an_import_sets_it() {
+    let (mut s, _) = walled();
+    let path = file("groups.bimparams");
+    run(
+        &mut s,
+        "dictionary",
+        json!({"path": path, "add": [
+            {"name": "Comments", "kind": "text", "categories": ["wall"], "vary_by_group": true},
+            {"name": "Code", "kind": "text", "categories": ["wall"]},
+        ]}),
+    );
+    let r = run(&mut s, "parameter_import", json!({"path": path}));
+    assert_eq!(r["create"], 2, "{r}");
+    assert!(s.model.parameters["Comments"].vary_by_group, "the file says it varies");
+    assert!(!s.model.parameters["Code"].vary_by_group, "a file that doesn't say is aligned per group type");
+
+    // Exported, the project's choice goes with each parameter.
+    let out = file("out.bimparams");
+    run(&mut s, "parameter_export", json!({"path": out}));
+    let d = crate::parameters::table::read_dictionary_file(&out).unwrap();
+    let vary = |n: &str| d.parameters.iter().find(|q| q.name == n).unwrap().vary_by_group;
+    assert_eq!((vary("Comments"), vary("Code")), (Some(true), Some(false)));
+
+    // A new revision that aligns it is a change, said before it's made.
+    let d = crate::parameters::table::read_dictionary_file(&path).unwrap();
+    let comments = d.parameters.iter().find(|q| q.name == "Comments").unwrap().guid.unwrap();
+    run(
+        &mut s,
+        "dictionary",
+        json!({"path": path, "add": [{"guid": comments, "name": "Comments", "kind": "text", "categories": ["wall"], "vary_by_group": false}]}),
+    );
+    let r = run(&mut s, "parameter_import", json!({"path": path, "dry_run": true}));
+    assert_eq!(r["modify"], 1, "{r}");
+    let notes = r.to_string();
+    assert!(notes.contains("aligned per group type"), "{r}");
+    run(&mut s, "parameter_import", json!({"path": path}));
+    assert!(!s.model.parameters["Comments"].vary_by_group);
+
+    // And one that doesn't say leaves the project's choice as it is.
+    run(&mut s, "parameter", json!({"name": "Comments", "vary_by_group": true}));
+    run(
+        &mut s,
+        "dictionary",
+        json!({"path": path, "add": [{"guid": comments, "name": "Comments", "kind": "text", "categories": ["wall"]}]}),
+    );
+    let r = run(&mut s, "parameter_import", json!({"path": path}));
+    assert_eq!(r["modify"], 0, "{r}");
+    assert!(s.model.parameters["Comments"].vary_by_group);
 }

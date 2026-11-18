@@ -172,11 +172,19 @@ pub(crate) fn tab(ui: &mut Ui, key: Id, room: f32, add: impl FnOnce(&mut Ui)) {
     add(ui);
     IN_TOOLS.with(|i| i.set(false));
     let drawn = END.with(Cell::get) - left - LAID.with(Cell::get).2;
+    let before = seen;
     let seen = SEEN.with(|s| std::mem::take(&mut *s.borrow_mut()));
     let whole = drawn + seen.iter().map(|p| (p.natural - p.drawn).max(0.0)).sum::<f32>();
+    // Other panels than the last frame's (a contextual tab drawn under the same key, Modify | Place Wall then Modify | Walls):
+    // what the others missed says nothing of these, and their fit was asked of the others' widths. Fitted again from scratch.
+    let same = before.len() == seen.len() && before.iter().zip(&seen).all(|(a, b)| a.name == b.name);
+    let missed = if same { missed } else { 0.0 };
+    if !same && fitted {
+        ui.ctx().request_repaint();
+    }
     // Still over though fitted (a first frame lays out every tool): another frame, asking more of the panels, until it fits or all
     // there is to ask is asked.
-    let over = if fitted { (drawn - (room - SLACK)).max(0.0) } else { 0.0 };
+    let over = if fitted && same { (drawn - (room - SLACK)).max(0.0) } else { 0.0 };
     // Nothing more to ask once the panels make all the room they can (a kept panel folded last, a yielding one keeping its
     // first tool): what is still over then scrolls, and no frame more changes it.
     let asked = FITS.with(|f| f.borrow().clone());
