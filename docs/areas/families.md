@@ -2062,6 +2062,24 @@ data URI is decoded. What the reader can't use (textures, lines and points, spar
 which refuse the file) is listed in `left_out`; a file with nothing to bring in is an error that says what was left out.
 Generic components go to IFC as `IfcBuildingElementProxy`.
 
+## Curves at the view's scale (GEO-2c)
+
+A form's arcs, circles and revolves are built as chords, 32 to a whole turn. Up close that shows: a 20 m curved wall's chords
+are some 96 mm off its arc. A build may ask for a `Fineness` instead (`family/fineness.rs`), a distance in millimetres, a
+power of two, that no chord may stray from its curve by. Each curve then takes as many chords as its own radius needs, never
+fewer than 32 a turn and never more than `Fineness::MOST` (2048). The fineness is the build's, set around it by
+`Fineness::scoped` and read wherever a curve is chorded (`sketch::chorded`, a lone circle's profile or path, a revolve's
+steps), so a nested family is built at its host's. `Family::pieces_fine` is `Family::pieces` at a fineness, and the default
+builds bit for bit as before.
+
+A plan asks for about half a pixel at its scale (`Fineness::for_view`), rounded down to a power of two so nearby zooms share
+a build, from 1/16 mm to 128 mm; coarser than that it is the default. Its `Components` cache (`component_geometry.rs`,
+`Components::for_view`) builds the components that may reach into the view at that fineness, and the rest at the default. It
+decides with each family's conservative box, and it keeps a component's heights, and so whether the plan shows it, at the
+default. The family editor's plans are drawn the same way. Tests: `family_fineness_tests.rs`, among them a 20 m arc in plan
+within a pixel, fitted and at 50 times. The 3D view, sections and elevations, which render through the 3D scene, follow in
+GEO-2c-2.
+
 ## Where the code lives
 
 Moved from the root `CLAUDE.md`'s module map, which names the files and points here for what each owns.
@@ -2076,6 +2094,7 @@ planes, components hosted on them or on faces (Place on Face), and where a compo
 - `family/options.rs`: Family Category and Parameters' options.
 - `family/views.rs`: a family's plans and elevations.
 - `family/sketch.rs`: forms' sketches. `family/handles.rs`: shape handles on a profile's edges (FE-5).
+- `family/fineness.rs`: how near a build chords its curves, `Fineness`, which a plan sets from its scale (GEO-2c).
 - `family/forms.rs`: Blend, Sweep and Swept Blend: their kinds, paths, vertex mapping and triangles.
 - `family/constraints.rs`: its dimensions, labels, locks and EQ, solved as a type flexes; `family/constraints/pivot.rs`,
   lines and planes that turn about a pivot; `family/constraints/turn.rs`, Align turning a plane or a line onto a reference that
