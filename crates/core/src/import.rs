@@ -919,6 +919,7 @@ impl<'a> Reader<'a> {
             level: false,
             pivot: None,
             turned: None,
+            pinned: false,
         });
         Some(Form { host: crate::family::PlaneRef::Plane(guid), sketch, from: Expr::Number(from), to: Expr::Number(to), ..Form::default() })
     }

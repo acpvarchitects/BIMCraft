@@ -1140,8 +1140,16 @@ pub(crate) fn lazy_points(m: &Model, id: Id, e: &Element, components: &mut crate
 /// reach as triangles less them, a mesh a section cuts in its own shape. Should cutting fail (too many faces), every opening
 /// cuts its rectangle.
 fn wall_solids(m: &Model, id: Id, index: Option<&walls::Index>) -> Vec<Solid> {
-    let prism =
-        |p: walls::Prism| Solid::Prism { owner: id, color: WALL, tex: 0, ring: p.ring, bottom: p.bottom, top: p.top, curve: p.curve, part: 0 };
+    let prism = |p: walls::Prism| Solid::Prism {
+        owner: id,
+        color: WALL,
+        tex: 0,
+        ring: p.ring,
+        bottom: p.bottom,
+        top: p.top,
+        curve: p.curve,
+        part: 0,
+    };
     let mut voids = walls::host_voids_in(m, id, index);
     voids.extend(join_voids(m, id, index));
     let prisms: Vec<Solid> = walls::prisms_in(m, id, true, index).into_iter().map(prism).collect();
@@ -1178,7 +1186,8 @@ fn infills(m: &Model, id: Id, index: Option<&walls::Index>) -> Vec<Solid> {
     let rect = |h: &walls::Hole| [h.s0, h.s1, h.bottom, h.top];
     let block = |[s0, s1, bottom, top]: [f64; 4]| -> Vec<[P3; 3]> {
         let ring: Vec<P2> = axis.points(s0, s1, ext).into_iter().chain(axis.points(s1, s0, int)).collect();
-        let solid = Solid::Prism { owner: id, color: WALL, tex: 0, ring, bottom: Plane::flat(bottom), top: Plane::flat(top), curve: None };
+        let solid =
+            Solid::Prism { owner: id, color: WALL, tex: 0, ring, bottom: Plane::flat(bottom), top: Plane::flat(top), curve: None, part: 0 };
         let mut made = Vec::new();
         solid.tris(&mut made);
         made.into_iter().map(|t| t.p).collect()
@@ -1277,7 +1286,7 @@ pub(crate) fn takes_from_wall(m: &Model, id: Id, voids: &[Vec<[P3; 3]>]) -> bool
     let boxes: Vec<(P3, P3)> = voids.iter().map(|v| tri_box(v)).collect();
     let mut meter = crate::csg::Meter::default();
     walls::prisms_in(m, id, true, None).into_iter().any(|p| {
-        let solid = Solid::Prism { owner: id, color: WALL, tex: 0, ring: p.ring, bottom: p.bottom, top: p.top, curve: p.curve };
+        let solid = Solid::Prism { owner: id, color: WALL, tex: 0, ring: p.ring, bottom: p.bottom, top: p.top, curve: p.curve, part: 0 };
         let mut made = Vec::new();
         solid.tris(&mut made);
         let tris: Vec<[P3; 3]> = made.into_iter().map(|t| t.p).collect();
@@ -1297,7 +1306,7 @@ fn own_meshes(m: &Model, id: Id, index: Option<&walls::Index>) -> Vec<Vec<[P3; 3
     let solids: Vec<Solid> = match m.elements.get(id) {
         Some(Element::Wall(_)) => walls::prisms_in(m, id, true, index)
             .into_iter()
-            .map(|p| Solid::Prism { owner: id, color: WALL, tex: 0, ring: p.ring, bottom: p.bottom, top: p.top, curve: p.curve })
+            .map(|p| Solid::Prism { owner: id, color: WALL, tex: 0, ring: p.ring, bottom: p.bottom, top: p.top, curve: p.curve, part: 0 })
             .collect(),
         Some(e @ (Element::Floor(_) | Element::Ceiling(_) | Element::Roof(_))) => slab_solids(m, id, e),
         _ => Vec::new(),
@@ -2912,7 +2921,14 @@ impl Scene {
         if cancelled() {
             return None;
         }
-        Some(Scene { planes, faces: Arc::new(faces), scans: scans_of(m), strokes: strokes_of(m), frames: pattern_frames(m), ..Scene::bare(tris) })
+        Some(Scene {
+            planes,
+            faces: Arc::new(faces),
+            scans: scans_of(m),
+            strokes: strokes_of(m),
+            frames: pattern_frames(m),
+            ..Scene::bare(tris)
+        })
     }
 
     /// A scene of `tris` alone: no planes, faces, textures, smooth normals, levels or scans.

@@ -128,6 +128,7 @@ pub fn kind_of(e: &Element) -> Result<Kind, String> {
             Err("a link, a scan or a CAD drawing is placed on its own, not in a group".into())
         }
         E::Toposolid(_) => Err("a toposolid is the site's ground, placed on its own, not in a group".into()),
+        E::Nested(_) => Err("a shared nested instance is part of its host component: group the component".into()),
         E::Circuit(_) => Err("a circuit has no place: group its devices".into()),
         E::ProjectInfo(_) => Err("the project's information is no group's".into()),
     }

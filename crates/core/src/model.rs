@@ -6759,6 +6759,7 @@ impl Model {
             sketch: Vec::new(),
             shape: t.shape.clone(),
             params: BTreeMap::new(),
+            joined_by: Vec::new(),
         }
     }
 
