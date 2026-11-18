@@ -57,6 +57,10 @@ pub(crate) struct Views {
     pub(crate) measuring: Option<super::measure::Measuring>,
     /// Cut Geometry, Uncut Geometry, Join Geometry, Unjoin Geometry or Switch Join Order in hand (FE-16b), with its first pick.
     pub(crate) cutting: Option<super::cutting::Cutting>,
+    /// Paint (PT) in hand, or Remove Paint (true), FE-16c-1.
+    pub(crate) painting: Option<bool>,
+    /// The material Paint lays, as the Options Bar picked it: the library's first while it names none of it.
+    pub(crate) paint_material: String,
     /// The plane being dragged: where the pointer was, in the view's millimetres, and the view as the drag began, which the
     /// pointer is read through while it goes on (the view refitting round the plane would otherwise change its scale under
     /// the hand).

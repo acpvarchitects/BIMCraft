@@ -87,6 +87,7 @@ impl Mesh {
             round: false,
             vis: None,
             nested: Vec::new(),
+            paint: Vec::new(),
         }
     }
     pub fn face_frame(&self, index: usize, barycentric: P3) -> Result<Frame, String> {

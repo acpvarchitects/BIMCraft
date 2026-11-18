@@ -30,6 +30,7 @@ pub mod kernel;
 pub mod nested;
 mod options;
 mod origin;
+mod paint;
 mod planes;
 pub mod purge;
 pub mod select;
@@ -49,6 +50,7 @@ pub use fineness::Fineness;
 pub use nested::{Keep, NestedFamily, NestedInstance};
 pub use options::{MAX_OMNICLASS, OPTION_KEYS, OmniClass};
 pub use origin::PlacedOrigin;
+pub use paint::unread_paint;
 pub use visibility::Visibility;
 
 /// A model line (FE-15) as a view draws it: its ends, its Visibility Settings and the subcategory key it is drawn in.
@@ -938,7 +940,23 @@ pub struct Form {
     /// Solid forms joined to this one (FE-16): each cuts it, and both are drawn.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub joined_by: Vec<crate::ids::Guid>,
+    /// FE-16c-1: materials laid over some of its faces, each named by its GEO-2b key ([`FormFace`]), one entry a face. Paint is
+    /// surface only: the 3D view and glTF show it, while plans, sections, IFC and schedules keep `material`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub paint: Vec<FormPaint>,
 }
+
+/// One face of a form painted (FE-16c-1): its key, and a material of the library or a material parameter of the family, as
+/// a form's own `material` is.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FormPaint {
+    pub face: FormFace,
+    pub material: String,
+}
+
+/// How many faces of one form may be painted.
+pub const MAX_PAINT: usize = 1000;
 
 /// What a void cuts (F10d): the solid forms listed before it that it reaches, and in a door's or a window's family the wall
 /// it stands in where it reaches into it, whatever its place in the list (`both`, a void's unless said); the wall alone
@@ -1030,6 +1048,8 @@ struct FormIn {
     uncut_by: Vec<crate::ids::Guid>,
     #[serde(default)]
     joined_by: Vec<crate::ids::Guid>,
+    #[serde(default)]
+    paint: Vec<FormPaint>,
 }
 
 impl TryFrom<FormIn> for Form {
@@ -1083,6 +1103,7 @@ impl TryFrom<FormIn> for Form {
             cut_by: f.cut_by,
             uncut_by: f.uncut_by,
             joined_by: f.joined_by,
+            paint: f.paint,
         })
     }
 }
@@ -1316,6 +1337,8 @@ pub struct Piece {
     pub faces: Vec<u32>,
     /// The face keys `faces` index ([`FormFace`]), each once.
     pub keys: Vec<FormFace>,
+    /// FE-16c-1: the material each of `keys` is painted, in step with it (an empty name, unpainted); empty, nothing is.
+    pub paint: Vec<String>,
 }
 
 /// Where one form lies before any void cuts it: its box in the family's own axes (x along a
@@ -1988,6 +2011,12 @@ impl Family {
         for form in self.forms.iter_mut().filter(|x| !x.material.is_empty() && !params.contains(&x.material)) {
             f(&mut form.material);
         }
+        // Its forms' paint (FE-16c-1), as their own materials.
+        for paint in
+            self.forms.iter_mut().flat_map(|x| x.paint.iter_mut()).filter(|p| !p.material.is_empty() && !params.contains(&p.material))
+        {
+            f(&mut paint.material);
+        }
         // Its nested families' own, at every depth, and the materials its instances name that are no parameter of its.
         for i in 0..self.nested_instances.len() {
             let materials = self.instance_materials(i);
@@ -2049,6 +2078,9 @@ impl Family {
             form.visible.iter_mut().for_each(&mut expr);
             if form.material == old {
                 form.material = new.to_string();
+            }
+            for paint in form.paint.iter_mut().filter(|p| p.material == old) {
+                paint.material = new.to_string();
             }
         }
         for sym in &mut self.symbols {
@@ -2118,6 +2150,7 @@ impl Family {
             out.extend(self.types.values().filter_map(|t| t.get(&p.name)).filter_map(Value::as_str));
         }
         out.extend(self.forms.iter().filter(|f| !self.material_parameter(&f.material)).map(|f| f.material.as_str()));
+        out.extend(self.forms.iter().flat_map(|f| &f.paint).filter(|p| !self.material_parameter(&p.material)).map(|p| p.material.as_str()));
         if let Some(d) = &self.adaptive {
             out.extend(
                 d.nodes
@@ -2160,6 +2193,11 @@ impl Family {
             }
         }
         self.forms.iter_mut().filter(|f| f.material == from && !params.contains(&f.material)).for_each(|f| f.material = to.into());
+        self.forms
+            .iter_mut()
+            .flat_map(|f| f.paint.iter_mut())
+            .filter(|p| p.material == from && !params.contains(&p.material))
+            .for_each(|p| p.material = to.into());
         for i in 0..self.nested_instances.len() {
             let materials = self.instance_materials(i);
             for (k, e) in self.nested_instances[i].params.iter_mut() {
@@ -2457,6 +2495,7 @@ impl Family {
             if !self.parameters.iter().any(|p| p.name == form.material && p.kind == Kind::Material) {
                 material_ok(&who, &form.material)?;
             }
+            self.check_paint(form, &who, &material_ok)?;
             let mut exprs = form.all_lines().flat_map(sketch::FormLine::exprs).chain([&form.from, &form.to]).chain(&form.visible);
             if exprs.any(|e| matches!(e, Expr::Formula(f) if long(f))) {
                 return Err(format!("{who}: a formula of it is longer than {MAX_FORMULA} characters"));
@@ -2931,6 +2970,16 @@ impl Family {
         read: &mut HashMap<&'a str, Result<Node, String>>,
         cuts: &mut csg::Meter,
     ) -> Result<Vec<Piece>, String> {
+        Ok(self.build_of(values, read, cuts)?.into_iter().map(|(_, p)| p).collect())
+    }
+
+    /// [`Family::build`], each piece with its form's place in the list.
+    pub(crate) fn build_of<'a>(
+        &'a self,
+        values: &BTreeMap<String, Val>,
+        read: &mut HashMap<&'a str, Result<Node, String>>,
+        cuts: &mut csg::Meter,
+    ) -> Result<Vec<(usize, Piece)>, String> {
         let (mut out, mut voids): (Vec<Piece>, HashMap<usize, kernel::Mesh>) = (Vec::new(), HashMap::new());
         // The form each piece is of, as its place in the list: invisible forms have no piece, so the two differ (FE-16).
         let mut of: Vec<usize> = Vec::new();
@@ -3011,16 +3060,18 @@ impl Family {
                         nested: std::mem::take(&mut piece.nested),
                         faces,
                         keys,
+                        paint: Vec::new(),
                     };
                 }
             }
         }
-        out.retain(|p| !p.tris.is_empty());
-        // Each names only the faces it has (GEO-2b): what a cut, a full turn or a mapping left unused, out.
-        for p in &mut out {
+        // Each names only the faces it has (GEO-2b): what a cut, a full turn or a mapping left unused, out; and each of those
+        // its form paints, the material it is painted (FE-16c-1).
+        for (p, &form) in out.iter_mut().zip(&of) {
             faces::prune(&mut p.faces, &mut p.keys);
+            p.paint = self.paint_of(form, &p.keys, values);
         }
-        Ok(out)
+        Ok(of.into_iter().zip(out).filter(|(_, p)| !p.tris.is_empty()).collect())
     }
 
     /// GEO-2e: form `form`, whose solid is `body`, with the voids that drill straight through it made holes of its profile
@@ -3228,6 +3279,7 @@ impl Family {
                 nested: Vec::new(),
                 faces,
                 keys,
+                paint: Vec::new(),
             }
         } else {
             let (regions, edges) = form.loops_tagged(&mut num)?;
@@ -3267,6 +3319,7 @@ impl Family {
                         nested: Vec::new(),
                         faces,
                         keys,
+                        paint: Vec::new(),
                     }
                 }
                 None => {
@@ -3297,6 +3350,7 @@ impl Family {
                         nested: Vec::new(),
                         faces,
                         keys,
+                        paint: Vec::new(),
                     }
                 }
             }
@@ -3818,6 +3872,7 @@ fn mesh(tris: &[[P3; 3]], material: String) -> Result<Piece, String> {
         nested: Vec::new(),
         faces: vec![0; tris.len()],
         keys: vec![FormFace::All],
+        paint: Vec::new(),
     })
 }
 

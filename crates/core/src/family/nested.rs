@@ -411,6 +411,7 @@ impl Family {
                 nested,
                 faces: piece.faces,
                 keys: piece.keys,
+                paint: piece.paint,
             });
         }
         Ok(out)

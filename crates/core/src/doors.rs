@@ -50,6 +50,7 @@ pub(crate) fn pieces(operation: Operation, width: f64, height: f64, face: f64, m
                 round: false,
                 vis: None,
                 nested: Vec::new(),
+                paint: Vec::new(),
             })
         })
         .collect()

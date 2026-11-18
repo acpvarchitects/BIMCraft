@@ -31,6 +31,9 @@ pub(crate) struct FamilyScene {
     pub(crate) model: Arc<Model>,
     pub(crate) part: BTreeMap<Id, Part>,
     pub(crate) key: u64,
+    /// Each element's GUIDs as [`rekey`] made them its own, to the family's: what a face clicked on it is named by in the
+    /// family (FE-16c-1).
+    pub(crate) guids: BTreeMap<Id, BTreeMap<Guid, Guid>>,
 }
 
 impl FamilyScene {
@@ -170,7 +173,7 @@ impl FamilyEditor {
             .filter(|i| shown.forms.get(*i).is_some_and(|form| (!form.void || void == Some(*i)) && !hides(&form.visible)))
             .map(Part::Form)
             .chain((0..shown.nested_instances.len()).filter(|k| !hides(&shown.nested_instances[*k].visible)).map(Part::Nested));
-        let mut part = BTreeMap::new();
+        let (mut part, mut guids) = (BTreeMap::new(), BTreeMap::new());
         s.model_mut()
             .materials
             .insert(VOID.into(), bimcraft_core::model::Material { color: [40, 120, 230], transparency: 55, ..Default::default() });
@@ -178,7 +181,7 @@ impl FamilyEditor {
             let mut g = alone(&shown, p);
             // Each part is a family of its own beside the family, and a project holds a GUID once: its forms' GUIDs, and the
             // lists that name them (FE-16), are made its own, or the project would give the copies new ones and break the lists.
-            rekey(&mut g, k as u64 + 1);
+            let back = rekey(&mut g, k as u64 + 1);
             if hosted {
                 generic(&mut g, &values);
             }
@@ -189,6 +192,7 @@ impl FamilyEditor {
             let made = s.execute("component", &at)?;
             if let Some(id) = made["id"].as_u64() {
                 part.insert(id, p);
+                guids.insert(id, back);
             }
         }
         // FE-18: a part {3D} overrides, or reveals in magenta, drawn so.
@@ -233,7 +237,7 @@ impl FamilyEditor {
             display: self.views.kept.display,
             work_plane: None,
         }));
-        Ok(FamilyScene { model: Arc::clone(&s.model), part, key })
+        Ok(FamilyScene { model: Arc::clone(&s.model), part, key, guids })
     }
 
     /// What {3D} lays over its picture through `cam`: Work Plane > Show's plane, and the reference plane or line selected.
@@ -315,7 +319,7 @@ fn solid_cutters_as_voids(f: &Family, g: &mut Family, k: usize) {
 /// copies new GUIDs and everything that names them by GUID (the cutting lists of FE-16, a dimension's references, a form's host
 /// plane, a lock) would name what is gone. Datums, which every family has, keep theirs. Done on the family as text, so a place
 /// that names a part by GUID is never missed.
-fn rekey(g: &mut Family, salt: u64) {
+fn rekey(g: &mut Family, salt: u64) -> BTreeMap<Guid, Guid> {
     let mut was: Vec<Guid> = Vec::new();
     was.extend(g.forms.iter().map(|x| x.guid));
     was.extend(g.forms.iter().flat_map(|x| x.all_lines().map(|l| l.guid)));
@@ -331,16 +335,21 @@ fn rekey(g: &mut Family, salt: u64) {
     was.sort();
     was.dedup();
     let seed = bimcraft_core::model::mix(0x4645_3136_6270_6172 ^ salt);
-    let Ok(mut text) = serde_json::to_string(&*g) else { return };
+    let mut back = BTreeMap::new();
+    let Ok(mut text) = serde_json::to_string(&*g) else { return back };
     let said = |x: &Guid| serde_json::to_value(x).ok().and_then(|v| v.as_str().map(str::to_string));
     for (i, old) in was.iter().enumerate() {
-        if let (Some(from), Some(to)) = (said(old), said(&Guid::seeded(seed, i as u64))) {
+        let new = Guid::seeded(seed, i as u64);
+        if let (Some(from), Some(to)) = (said(old), said(&new)) {
             text = text.replace(&from, &to);
+            back.insert(new, *old);
         }
     }
-    if let Ok(made) = serde_json::from_str::<Family>(&text) {
-        *g = made;
+    match serde_json::from_str::<Family>(&text) {
+        Ok(made) => *g = made,
+        Err(_) => back.clear(),
     }
+    back
 }
 
 /// A door's or a window's part made a generic family, its wall's thickness a parameter, so it stands as a component at the

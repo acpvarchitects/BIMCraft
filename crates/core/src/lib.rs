@@ -110,6 +110,8 @@ mod family_nested_tests;
 #[cfg(test)]
 mod family_options_tests;
 #[cfg(test)]
+mod family_paint_tests;
+#[cfg(test)]
 mod family_parameter_tests;
 #[cfg(test)]
 mod family_pin_tests;

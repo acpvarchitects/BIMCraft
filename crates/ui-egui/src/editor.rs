@@ -22,6 +22,7 @@ pub(crate) mod modify;
 mod nested;
 pub(crate) mod options;
 pub(crate) mod origin_mark;
+pub(crate) mod paint;
 mod pin;
 mod pivot;
 mod purge;

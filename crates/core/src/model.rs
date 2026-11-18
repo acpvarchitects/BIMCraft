@@ -5333,6 +5333,11 @@ impl Model {
                 }
             }
         }
+        // A family form's paint (FE-16c-1): an entry this version can't read (a face key or a field of a newer build's) is
+        // left out on its own, by `after_read`, so it never keeps the project from opening.
+        if let Some(Value::Object(families)) = v.get_mut("families") {
+            families.values_mut().for_each(crate::family::unread_paint);
+        }
         if v.is_object() {
             let elements = v.get_mut("elements").map_or(Value::Null, Value::take);
             v["elements"] = Value::Object(serde_json::Map::new());
@@ -5391,7 +5396,14 @@ impl Model {
         }
         // A family's dimension measuring to something it hasn't is left out, as what this version can't read is: a file is
         // read kindly, and a command that would leave one is refused.
+        let materials: std::collections::BTreeSet<String> = m.materials.keys().cloned().collect();
         for (name, f) in m.families.iter_mut() {
+            // Paint naming a face its form no longer has, or a material the library hasn't (FE-16c-1): left out, as a command
+            // would have dropped it.
+            if f.painted() {
+                let gone = f.drop_paint(&|n| materials.contains(n));
+                left_out.extend(gone.into_iter().map(|p| format!("/families/{}{p}", crate::lenient::escaped(name))));
+            }
             let gone = f.dangling_dimensions();
             for i in gone.iter().rev() {
                 f.dimensions.remove(*i);
@@ -5458,7 +5470,9 @@ impl Model {
         // 20 to 21: a file from before stair types has none: it gets the ones a project starts with. Its stairs stay solid. The
         // rest of 21 (stairs along a path, spirals, sketches, multistorey, offsets, landing edges and turns, dimensions to a
         // stair's edge, its subcategories and plan display, the building code and its electrical methods) needs nothing of a
-        // file of 20, which holds none.
+        // file of 20, which holds none. A family form's `paint` (FE-16c-1) came with 21 too, written only where a form has some:
+        // a build of 21 from before it leaves it out as a field it doesn't know and opens the family unpainted, so it needs no
+        // step, and a file of 20 or before holds none.
         if self.types.stair.is_empty() {
             self.types.stair = stair_types();
         }

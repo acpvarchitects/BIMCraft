@@ -80,6 +80,8 @@ pub(crate) const FAMILY_SHORTCUTS: &[(&str, &str)] = &[
     // FE-16b: Cut Geometry and Join Geometry as the project's; Uncut, Unjoin and Switch Join Order have no key ([`FAMILY_KEYLESS`]).
     ("CU", "Cut Geometry"),
     ("JO", "Join Geometry"),
+    // FE-16c-1: Paint, as the project's; Remove Paint has no key, as in the project.
+    ("PT", "Paint"),
     // FE-18: view graphics, each view's for the session (`view_graphics.rs`); VR the family's alone.
     ("VV", "Visibility/Graphics"),
     ("VG", "Visibility/Graphics"),
@@ -503,6 +505,8 @@ impl BimApp {
                 }
             }
             "Create Similar" => said = Some(ed.create_similar()),
+            // FE-16c-1: Paint, where its button is enabled.
+            "Paint" => ed.paint_tool(false),
             "Pin" => ed.pin_selected(true),
             "Unpin" => ed.pin_selected(false),
             _ => return in_family(action),
