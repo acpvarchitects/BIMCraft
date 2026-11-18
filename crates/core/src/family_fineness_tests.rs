@@ -132,3 +132,23 @@ fn a_twenty_metre_arc_in_plan_is_within_a_pixel_fitted_and_at_fifty_times() {
         assert!(worst < 1.0, "a chord {worst} px off the circle at {scale} px/mm");
     }
 }
+
+/// Two 20 m columns, one in view and one a kilometre off it: the plan's cache builds the first finer, the second as always.
+#[test]
+fn a_plan_builds_finer_only_what_it_may_show() {
+    let mut s = session(vec![json!({"sketch": [{"centre": [0, 0], "radius": 20000}], "from": 0, "to": 3000})]);
+    let near = s.execute("component", &json!({"family": "Round", "at": [0, 0]})).unwrap_or_else(|e| panic!("{e}"));
+    let far = s.execute("component", &json!({"family": "Round", "at": [1e6, 0], "params": {"R": 601}})).unwrap_or_else(|e| panic!("{e}"));
+    let component = |v: &Value| match s.model.elements.get(v["id"].as_u64().unwrap_or_else(|| panic!("{v}"))) {
+        Some(crate::model::Element::Component(c)) => c.clone(),
+        _ => panic!("{v}"),
+    };
+    let (near, far) = (component(&near), component(&far));
+    let view = View { angle: 0.0, scale: 1.0, cx: 20_000.0, cy: 0.0, width: 1000, height: 800 };
+    let mut cache = crate::component_geometry::Components::for_view(&s.model, &view);
+    assert!(tris(&cache.pieces(&near)) > tris(&s.model.component_pieces(&near)), "in view: finer");
+    assert_eq!(cache.pieces(&far), s.model.component_pieces(&far), "off it: as always");
+    // Its heights, which say whether a plan shows it, are the default's.
+    let mut plain = crate::component_geometry::Components::new(&s.model);
+    assert_eq!(cache.heights(&near), plain.heights(&near));
+}
