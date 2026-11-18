@@ -21,7 +21,7 @@ mod measure;
 pub(crate) mod modify;
 mod nested;
 pub(crate) mod options;
-mod origin_mark;
+pub(crate) mod origin_mark;
 mod pin;
 mod pivot;
 mod purge;

@@ -89,13 +89,30 @@ fn the_view_tab_has_visibility_graphics_and_thin_lines() {
     assert!(!h.state().thin);
 }
 
-/// The widths of the lines the last frame painted, points.
+/// The widths of the lines the last frame painted, points, but the insertion point's (O1): its ring's cross, a mark of the
+/// window's that Thin Lines leaves as it is, counted apart ([`origin_strokes`]).
 fn painted_widths(h: &Harness<BimApp>) -> Vec<f32> {
-    fn walk(s: &egui::Shape, out: &mut Vec<f32>) {
+    strokes(h).into_iter().filter(|(_, ink)| *ink != crate::editor::origin_mark::INK).map(|(w, _)| w).collect()
+}
+
+/// How many lines of the insertion point's ink the last frame painted: its cross's two.
+fn origin_strokes(h: &Harness<BimApp>) -> usize {
+    strokes(h).iter().filter(|(_, ink)| *ink == crate::editor::origin_mark::INK).count()
+}
+
+/// The lines the last frame painted over the view: their widths, points, and colours.
+fn strokes(h: &Harness<BimApp>) -> Vec<(f32, egui::Color32)> {
+    fn walk(s: &egui::Shape, out: &mut Vec<(f32, egui::Color32)>) {
         match s {
             egui::Shape::Vec(v) => v.iter().for_each(|s| walk(s, out)),
-            egui::Shape::LineSegment { stroke, .. } => out.push(stroke.width),
-            egui::Shape::Path(p) => out.push(p.stroke.width),
+            egui::Shape::LineSegment { stroke, .. } => out.push((stroke.width, stroke.color)),
+            egui::Shape::Path(p) => {
+                let color = match p.stroke.color {
+                    egui::epaint::ColorMode::Solid(c) => c,
+                    _ => egui::Color32::TRANSPARENT,
+                };
+                out.push((p.stroke.width, color));
+            }
             _ => {}
         }
     }
@@ -107,22 +124,21 @@ fn painted_widths(h: &Harness<BimApp>) -> Vec<f32> {
     out
 }
 
-/// The widest of the window's own marks over a view, px: the insertion point's ring (O1).
-const MARK: f32 = 1.6;
-
 #[test]
 fn thin_lines_draws_the_familys_plans_and_elevations_one_pixel_wide() {
     let (mut h, _) = open(BOX, "Box");
     view(&mut h, Some(Which::Plan));
-    // The window's own marks over the view (the view control bar, grips, the insertion point's ring) are `MARK` px at most
-    // whatever Thin Lines says; the drawing's cut pen is wider.
+    // The window's own marks over the view (the view control bar, grips) are 1.5 px at most whatever Thin Lines says; the
+    // drawing's cut pen is wider. The insertion point's cross, 1.6 px, is counted apart: there, and left as it is.
     let wide = painted_widths(&h);
-    assert!(wide.iter().any(|w| *w > MARK), "the cut box's pen is wider than the marks: {wide:?}");
+    assert_eq!(origin_strokes(&h), 2, "the insertion point's cross");
+    assert!(wide.iter().any(|w| *w > 1.5), "the cut box's pen is wider than the marks: {wide:?}");
     shortcut(&mut h, "TL");
     assert!(h.state().thin, "TL is the window's Thin Lines");
     h.run();
     let thin = painted_widths(&h);
-    let wider: Vec<f32> = thin.iter().copied().filter(|w| *w > MARK).collect();
+    let wider: Vec<f32> = thin.iter().copied().filter(|w| *w > 1.5).collect();
+    assert_eq!(origin_strokes(&h), 2, "the insertion point's cross, as it was");
     assert!(!thin.is_empty() && wider.is_empty(), "the drawing's lines one pixel: {wider:?}");
     let over = |ws: &[f32]| ws.iter().filter(|w| **w > 1.0).count();
     assert!(over(&thin) < over(&wide), "fewer lines wider than a pixel");
@@ -406,5 +422,5 @@ fn thin_lines_draws_an_elevation_one_pixel_wide_too() {
     shortcut(&mut h, "TL");
     h.run();
     let thin = painted_widths(&h);
-    assert!(thin.iter().all(|w| *w <= MARK), "{thin:?}");
+    assert!(thin.iter().all(|w| *w <= 1.5), "{thin:?}");
 }
