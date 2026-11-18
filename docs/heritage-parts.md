@@ -30,7 +30,8 @@ Two integration branches on the fork, both reviewed and merged with Vincenzo's O
   adapted to main and to HP-9, with full checks and CI green. Compare:
   <https://github.com/acpvarchitects/BIMCraft/compare/3e08223f...feature/heritage-parts-0.13>
 
-Next: HP-8 on the second branch, then HP-7, then the upstream PRs in #440's order. Nothing is upstream yet.
+Next: HP-8 is under review on [#85](https://github.com/acpvarchitects/BIMCraft/pull/85), then HP-7, then the upstream PRs in
+#440's order. Nothing is upstream yet.
 
 | Step | What | Where | State |
 |---|---|---|---|
@@ -42,7 +43,7 @@ Next: HP-8 on the second branch, then HP-7, then the upstream PRs in #440's orde
 | HP-5 | Colour maps (`theme`) by `Decay_Pathology`, `Historical_Period` or any part value, with a legend | same PRs | **Merged** (4d65dee; ca7eb58) |
 | HP-6 | Schedules of parts: the bill of quantities (Restoration Quantities), CSV and xlsx | [#17](https://github.com/acpvarchitects/BIMCraft/pull/17), `vp/heritage-parts-schedules`; on 0.13 by #82 | **Merged** (624491c; ca7eb58) |
 | HP-7 | Desktop: Create Parts, Divide Parts (sketch on the face), Properties of a part | | Not started |
-| HP-8 | IFC export and import of parts, one PR with a round-trip test (#440): HP-1's export, the material psets and #34's rule for a piece of an excluded part come back with it | | Not started |
+| HP-8 | IFC export and import of parts, one PR with round-trip tests (#440): HP-1's export, the material values and #34's rule for a piece of an excluded part; a host taken apart comes back from its parts, divisions included | [#85](https://github.com/acpvarchitects/BIMCraft/pull/85), `vp/heritage-parts-ifc` → `feature/heritage-parts-0.13` | **Under review** (66a250c) |
 | HP-9 | Parts in `elements`, FORMAT 21 (21–32 reservation narrowed to 22–32), HP-1 ported onto main 3e08223f without its IFC export, `decay.rs` shared with Survey Areas | [#70](https://github.com/acpvarchitects/BIMCraft/pull/70), `vp/heritage-parts-hp9` → `feature/heritage-parts-0.13` | **Merged** (d154dc2) |
 
 What HP-1 was checked with, on b7a9847:
@@ -319,6 +320,12 @@ Each tool drives a command; the UI stays thin.
 - rebuild a decomposed host's shape from its parts (2.4);
 - read the `BIMCraft_Heritage` set and material values back;
 - a round-trip test: export, import, compare.
+
+On #85 all four are done, and a division BIMCraft wrote (`BIMCraft_PartDivision`) comes back divided. Still to do:
+- an excluded part isn't in the file, so it doesn't come back;
+- a floor whose top layer's part was excluded comes back that much lower, and a roof or a ceiling the same way at the face it is read from;
+- a part divided by hand comes back whole;
+- the check of #440 (b) in a real viewer.
 
 ---
 
