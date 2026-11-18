@@ -2035,17 +2035,17 @@ impl BimApp {
         let sketching = self.sketch.is_some();
         // What Join Geometry and its two take at pixel `q`, the one Tab hasn't stepped past first: what joins of what is
         // drawn there, never the first pick again, and for the second pick another kind than the first before its own (a
-        // floor drawn on its walls' centre lines has a wall at every edge).
-        let join_under = |q: (f32, f32), first: Option<Id>| -> Vec<Id> {
+        // floor drawn on its walls' centre lines has a wall at every edge). Join and Switch take what they refuse (a curtain wall,
+        // [`Model::joins_geometry`]) only after the rest, so one over an ordinary wall doesn't hide it; Unjoin takes either.
+        let join_under = |q: (f32, f32), mode: JoinMode, first: Option<Id>| -> Vec<Id> {
             let kind = |id: Id| model.elements.get(id).map(Element::category);
+            let of = first.and_then(kind);
             let mut found: Vec<Id> = d
                 .pick_all(q, PICK)
                 .into_iter()
                 .filter(|id| Some(*id) != first && model.elements.get(*id).is_some_and(Element::joinable))
                 .collect();
-            if let Some(of) = first.and_then(kind) {
-                found.sort_by_key(|id| kind(*id) == Some(of));
-            }
+            found.sort_by_key(|id| (mode != JoinMode::Unjoin && !model.joins_geometry(*id), of.is_some() && kind(*id) == of));
             found
         };
         // A member of a group is picked as its group first; Tab steps on to the member (Revit's groups).
@@ -2055,7 +2055,7 @@ impl BimApp {
         let picks = |ids: &[Id], boxed: bool| crate::groups::picks(&model, ids, scope.as_ref(), pick_mode, boxed);
         let under = match (&self.tool, local) {
             (Tool::Modify, Some(q)) if !sketching => picks(&d.pick_all(q, PICK), false),
-            (Tool::JoinGeometry { first, .. }, Some(q)) => join_under(q, *first),
+            (Tool::JoinGeometry { mode, first }, Some(q)) => join_under(q, *mode, *first),
             _ => Vec::new(),
         };
         // A dimension under the cursor: Tab steps through its segments before its element.
@@ -2263,13 +2263,18 @@ impl BimApp {
                     .pick_all(q, PICK)
                     .into_iter()
                     .find(|id| matches!(model.elements.get(id), Some(Element::Wall(_) | Element::DetailLine(_)))),
-                // Cut Geometry: the wall first, then the component whose voids cut it.
-                Tool::CutGeometry { wall: None, .. } => d.pick_all(q, PICK).into_iter().find(|id| model.wall(*id).is_some()),
+                // Cut Geometry: the wall first, then the component whose voids cut it. A wall Cut refuses (a curtain wall) only
+                // when no other is there, so one over an ordinary wall doesn't hide it; Uncut takes either.
+                Tool::CutGeometry { wall: None, uncut } => {
+                    let walls: Vec<Id> = d.pick_all(q, PICK).into_iter().filter(|id| model.wall(*id).is_some()).collect();
+                    let refused = |id: &Id| !*uncut && model.curtain_refusal(*id).is_some();
+                    walls.iter().copied().find(|id| !refused(id)).or_else(|| walls.first().copied())
+                }
                 Tool::CutGeometry { wall: Some(_), .. } => {
                     bimcraft_core::project_geometry::pick(&cut_candidates, view.mm(q), f64::from(PICK) / view.scale)
                 }
                 // Join Geometry and its two: one of what joins, then another.
-                Tool::JoinGeometry { first, .. } => join_under(q, *first).first().copied(),
+                Tool::JoinGeometry { mode, first } => join_under(q, *mode, *first).first().copied(),
                 Tool::Trim(_) | Tool::Offset => d
                     .pick_all(q, PICK)
                     .into_iter()
@@ -6577,8 +6582,6 @@ fn named(m: &Model, id: Id) -> String {
     }
 }
 
-/// What Join Geometry's, Switch Join Order's or Unjoin Geometry's refusal `error` (the core's, written for agents) says to
-/// someone at the window, about the model `m`; any other error as it is.
 /// What the status bar says when Join Geometry or Cut Geometry is given curtain wall `id`, or a wall in a curtain panel's
 /// place ([`Model::curtain_refusal`]).
 fn curtain_refusal(m: &Model, id: Id) -> String {
@@ -6588,6 +6591,8 @@ fn curtain_refusal(m: &Model, id: Id) -> String {
     }
 }
 
+/// What Join Geometry's, Switch Join Order's or Unjoin Geometry's refusal `error` (the core's, written for agents) says to
+/// someone at the window, about the model `m`; any other error as it is.
 fn join_refusal(error: &str, m: &Model) -> String {
     if error.contains("don't meet") {
         t("These two don't meet. Move one so they overlap or share a face, then join them.").to_string()
