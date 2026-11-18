@@ -409,6 +409,8 @@ impl Family {
                 round: piece.round,
                 vis,
                 nested,
+                faces: piece.faces,
+                keys: piece.keys,
             });
         }
         Ok(out)
