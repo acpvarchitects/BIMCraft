@@ -26,6 +26,7 @@ pub mod forms;
 pub mod handles;
 pub mod nested;
 mod options;
+mod origin;
 mod planes;
 pub mod purge;
 pub mod select;
@@ -42,6 +43,7 @@ pub use constraints::{
 };
 pub use nested::{Keep, NestedFamily, NestedInstance};
 pub use options::{MAX_OMNICLASS, OPTION_KEYS, OmniClass};
+pub use origin::PlacedOrigin;
 pub use visibility::Visibility;
 
 /// A model line (FE-15) as a view draws it: its ends, its Visibility Settings and the subcategory key it is drawn in.
@@ -1158,6 +1160,10 @@ pub struct Family {
     /// The instances of its nested families placed in it, built into its own pieces.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub nested_instances: Vec<NestedInstance>,
+    /// The origin the instances placed of it were placed against, in its axes (O1, [`origin`]): its [`Family::origin`] but
+    /// in a file of a build that placed every family by its datums, which leaves it out.
+    #[serde(default, skip_serializing_if = "PlacedOrigin::datums")]
+    pub placed_origin: PlacedOrigin,
 }
 
 impl Default for Family {
@@ -1187,6 +1193,7 @@ impl Default for Family {
             omniclass: None,
             nested: Vec::new(),
             nested_instances: Vec::new(),
+            placed_origin: PlacedOrigin::default(),
         }
     }
 }

@@ -532,7 +532,7 @@ impl BimApp {
                         // A type's menu, as the project's browser has it on a type: Select All Instances, the whole of
                         // it here the family.
                         ui.add(egui::Label::new(ty).sense(Sense::click())).context_menu(|ui| {
-                            if let Some(scope) = crate::context::instances_menu_in(ui, true, msg!("In Entire Family")) {
+                            if let Some(scope) = crate::context::instances_menu_in(ui, true, false, msg!("In Entire Family")) {
                                 instances = Some((name.clone(), ty.clone(), scope == crate::context::InstanceScope::View));
                             }
                         });

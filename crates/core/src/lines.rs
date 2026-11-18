@@ -192,6 +192,9 @@ pub fn default_patterns() -> BTreeMap<String, LinePattern> {
 
 /// The style a detail line is drawn in unless told another, the first of a project's styles: in English.
 pub const THIN: &str = msg!("Thin Lines");
+/// The styles a stair's plan draws what shows of it and what is hidden in, unless its type names others: in English.
+pub const MEDIUM: &str = msg!("Medium Lines");
+pub const HIDDEN: &str = msg!("Hidden Lines");
 
 /// The line styles a project starts with, named in `language`, black: a hairline, thin, medium and wide lines in the pens
 /// of fine lines, of what's seen and of what's cut, and hidden, centre and overhead lines.
@@ -201,9 +204,9 @@ pub fn styles(language: Language) -> BTreeMap<String, LineStyle> {
     [
         (msg!("Hairline"), style(Pen::HAIRLINE, None)),
         (THIN, style(Pen::FINE, None)),
-        (msg!("Medium Lines"), style(Pen::PROJECTION, None)),
+        (MEDIUM, style(Pen::PROJECTION, None)),
         (msg!("Wide Lines"), style(Pen::CUT, None)),
-        (msg!("Hidden Lines"), style(Pen(2), pattern("Hidden"))),
+        (HIDDEN, style(Pen(2), pattern("Hidden"))),
         (msg!("Centre Lines"), style(Pen(2), pattern("Centre"))),
         (msg!("Overhead Lines"), style(Pen(2), pattern("Dash"))),
     ]
@@ -513,7 +516,7 @@ mod tests {
         let Some(Element::DetailLine(l)) = s.model.elements.get(line) else { panic!("no line") };
         assert_eq!(l.style, "Boundary Line");
         let file = s.model.to_json().unwrap();
-        assert!(!file.contains("\"Boundary Line\"\n") && !file.contains("\"style\": \"Boundary Line\""), "a file names a style by GUID");
+        assert!(!file.contains("\"Boundary Line\"\n") && !file.contains("\"style\":\"Boundary Line\""), "a file names a style by GUID");
         let (m, _) = Model::read(&file).unwrap();
         assert_eq!((&m.line_styles, &m.line_patterns, &m.elements), (&s.model.line_styles, &s.model.line_patterns, &s.model.elements));
         // In use, kept; once not, deleted.

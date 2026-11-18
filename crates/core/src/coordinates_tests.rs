@@ -323,6 +323,7 @@ fn a_georeference_needs_no_coordinate_reference_system() {
 
 #[test]
 fn coordinates_share_0_12s_format_20_and_a_file_of_19_needs_no_step() {
+    const { assert!(crate::model::FORMAT >= 20) };
     let mut s = Session::new();
     run(&mut s, "georeference", json!({"crs": "EPSG:31983", "eastings": 1000.0}));
     let mut v: Value = serde_json::from_str(&s.model.to_json().unwrap()).unwrap();
