@@ -8767,6 +8767,23 @@ impl Model {
                 }
             }
         }
+        // A Cut Geometry tie (T23) made while the wall was a plain one, kept after its type became a curtain one: its own solid
+        // isn't drawn, so the cut cuts nothing (a file holding one opens without it).
+        for (id, e) in self.elements.iter() {
+            let Element::Wall(w) = e else { continue };
+            if w.void_cuts.is_empty() {
+                continue;
+            }
+            let Some(why) = self.curtain_refusal(*id) else { continue };
+            for g in &w.void_cuts {
+                let Some(by) = self.elements.id(*g) else { continue };
+                out.push(format!(
+                    "{} is cut by {} with Cut Geometry, but {why}: the cut cuts nothing; take it off with `uncut_geometry`",
+                    self.shown(*id),
+                    self.shown(by)
+                ));
+            }
+        }
         out.extend(crate::electrical::circuit_warnings(self));
         out.extend(crate::curtain::malformed_walls(self).into_iter().map(|id| format!("curtain wall {id}: {}", crate::curtain::MALFORMED)));
         out
