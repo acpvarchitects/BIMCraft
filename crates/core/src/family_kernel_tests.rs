@@ -253,10 +253,16 @@ fn built() -> u64 {
     h.0
 }
 
-/// What `built` came to before `MeshKernel`, on followups f1c1a64a (this file run there).
+/// What `built` came to before `MeshKernel`, on followups f1c1a64a (this file run there), on Linux x86-64.
 const BEFORE: u64 = 0x1398_ea93_dcfb_0c31;
 
+/// Bit for bit holds where the hash was recorded: each platform's maths library may round a sine or a cosine an ulp apart
+/// (Windows' and macOS' do), which the hash sees though no geometry changes. CI's Linux job runs it.
 #[test]
+#[cfg_attr(
+    not(all(target_os = "linux", target_arch = "x86_64")),
+    ignore = "the hash was recorded with Linux x86-64's maths library, whose sines and cosines others may round an ulp apart"
+)]
 fn every_form_builds_bit_for_bit_as_before_the_kernel() {
     let now = built();
     assert_eq!(now, BEFORE, "the forms built now hash to {now:#018x}");
