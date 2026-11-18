@@ -7,7 +7,8 @@
 //! element doesn't matter. A wall cut to a roof over it comes in attached to it; the openings
 //! through floors, ceilings and roofs, as shafts.
 //! What BIMCraft has no element for, or what breaks one of its rules, is left out and listed.
-//! Phases and design options come back from the property sets BIMCraft writes them in, `ifc::PHASING`.
+//! Phases and design options come back from the property sets BIMCraft writes them in, `ifc::PHASING`. An element that
+//! is the sum of its parts (`IfcBuildingElementPart`s) comes in with their bodies, and is taken apart again (`import/parts.rs`).
 
 use bimcraft_i18n::{msg, ui_msg};
 
@@ -36,6 +37,7 @@ use crate::view3d::{P3, add, cross, dot, mul, sub, unit};
 use crate::walls::{self, Axis, Plane};
 use serde_json::json;
 
+mod parts;
 mod shapes;
 
 /// What a product whose body builds nothing is left out with; where the reader knows why, the note says that too.
@@ -267,6 +269,13 @@ impl Frame {
     /// `local`, given in this frame's terms, in its parent's.
     fn then(&self, local: Frame) -> Frame {
         Frame { o: self.at(local.o), x: self.dir(local.x), y: self.dir(local.y), z: self.dir(local.z) }
+    }
+
+    /// `other`, given in this frame's parent's terms, in this frame's: what [`Frame::then`] undoes, for axes square to each
+    /// other, as a placement's are.
+    fn local(&self, other: Frame) -> Frame {
+        let back = |d: P3| [dot(d, self.x), dot(d, self.y), dot(d, self.z)];
+        Frame { o: back(sub(other.o, self.o)), x: back(other.x), y: back(other.y), z: back(other.z) }
     }
 }
 
@@ -627,11 +636,34 @@ struct Reader<'a> {
     /// that did so, once read.
     why: Cell<Option<&'static str>>,
     unread: RefCell<HashMap<u64, &'static str>>,
+    /// What each product that is the sum of parts (`IfcBuildingElementPart`s, as BIMCraft writes an element taken apart, and
+    /// Revit one shown by its parts) is the sum of, by its GlobalId: what has its body, where it has none of its own.
+    summed: HashMap<String, Vec<u64>>,
 }
 
 impl<'a> Reader<'a> {
     fn new(f: &'a File, mm: f64, rad: f64, shift: P2) -> Reader<'a> {
-        Reader { f, mm, rad, shift, why: Cell::new(None), unread: RefCell::new(HashMap::new()) }
+        Reader { f, mm, rad, shift, why: Cell::new(None), unread: RefCell::new(HashMap::new()), summed: HashMap::new() }
+    }
+
+    /// What product `x` is the sum of, where it is the sum of parts ([`Reader::sums`]).
+    fn parts_of(&self, x: &Entity) -> Option<Vec<u64>> {
+        self.summed.get(text(x.args.first())?).cloned()
+    }
+
+    /// The products that are the sum of parts, by GlobalId, and their parts: those the file says are parts of them that
+    /// are `IfcBuildingElementPart`s.
+    fn sums(f: &File, l: &Links) -> HashMap<String, Vec<u64>> {
+        let mut out = HashMap::new();
+        for (whole, parts) in &l.parts {
+            let mut parts: Vec<u64> =
+                parts.iter().copied().filter(|p| f.entities.get(p).is_some_and(|x| x.name == "IFCBUILDINGELEMENTPART")).collect();
+            if let (Some(global), false) = (f.entities.get(whole).and_then(|x| text(x.args.first())), parts.is_empty()) {
+                parts.sort_unstable();
+                out.insert(global.to_string(), parts);
+            }
+        }
+        out
     }
 
     fn get(&self, id: u64) -> Option<&'a Entity> {
@@ -1030,12 +1062,17 @@ impl<'a> Reader<'a> {
     /// geometry), and a face set's faces each with its colour map's colour; none for what nothing styles.
     fn looked_items(&self, product: &Entity, looks: &Looks) -> Vec<(Option<Look>, Vec<Vec<P3>>)> {
         let mut out = Vec::new();
-        for item in self.chosen(product) {
+        for (item, moved) in self.items(product) {
             self.why.set(None);
-            self.looked(item, 0, None, looks, &mut out);
+            let mut read = Vec::new();
+            self.looked(item, 0, None, looks, &mut read);
             if let Some(why) = self.why.take() {
                 self.unread.borrow_mut().insert(item, why);
             }
+            if let Some(t) = moved {
+                read.iter_mut().flat_map(|(_, faces)| faces.iter_mut().flatten()).for_each(|p| *p = t.at(*p));
+            }
+            out.extend(read);
         }
         out
     }
@@ -1104,20 +1141,54 @@ impl<'a> Reader<'a> {
     }
 
     /// A product's body item by item, each its faces in the product's own coordinates: its Body
-    /// representation's, else any but a line or a footprint's.
+    /// representation's, else any but a line or a footprint's, else its parts' ([`Reader::items`]).
     fn body_items(&self, product: &Entity) -> Vec<(u64, Vec<Vec<P3>>)> {
-        self.chosen(product)
+        self.items(product)
             .into_iter()
-            .map(|item| {
+            .map(|(item, moved)| {
                 let mut out = Vec::new();
                 self.why.set(None);
                 self.faces(item, 0, &mut out);
                 if let Some(why) = self.why.take() {
                     self.unread.borrow_mut().insert(item, why);
                 }
+                if let Some(t) = moved {
+                    out.iter_mut().flatten().for_each(|p| *p = t.at(*p));
+                }
                 (item, out)
             })
             .collect()
+    }
+
+    /// The items of a product's body, each with the frame that brings it into the product's own coordinates where it is
+    /// another's: its own ([`Reader::chosen`]), else, where it has none and is the sum of parts, its parts', and theirs
+    /// for a part that is the sum of parts in turn.
+    fn items(&self, product: &Entity) -> Vec<(u64, Option<Frame>)> {
+        let own = self.chosen(product);
+        if !own.is_empty() {
+            return own.into_iter().map(|item| (item, None)).collect();
+        }
+        let mut out = Vec::new();
+        self.parts_items(product, self.frame(product), 0, &mut HashSet::new(), &mut out);
+        out
+    }
+
+    /// The items of what `whole` is the sum of, brought into `frame`'s coordinates: each part once (`met`), however often
+    /// the file says it is a part of something, and as deep as [`MAX_DEPTH`].
+    fn parts_items(&self, whole: &Entity, frame: Frame, depth: usize, met: &mut HashSet<u64>, out: &mut Vec<(u64, Option<Frame>)>) {
+        let Some(parts) = text(whole.args.first()).and_then(|g| self.summed.get(g)) else { return };
+        if depth >= MAX_DEPTH {
+            return;
+        }
+        for part in parts.iter().filter_map(|p| if met.insert(*p) { self.get(*p) } else { None }).collect::<Vec<_>>() {
+            let own = self.chosen(part);
+            if own.is_empty() {
+                self.parts_items(part, frame, depth + 1, met, out);
+            } else {
+                let moved = frame.local(self.frame(part));
+                out.extend(own.into_iter().map(|item| (item, Some(moved))));
+            }
+        }
     }
 
     /// The items of a product's body: its Body representation's, else any but a line or a footprint's.
@@ -1137,7 +1208,7 @@ impl<'a> Reader<'a> {
     /// Why an item of a product's body, read, built nothing or less than it holds: the first's.
     fn unread(&self, product: &Entity) -> Option<&'static str> {
         let unread = self.unread.borrow();
-        self.chosen(product).into_iter().find_map(|item| unread.get(&item).copied())
+        self.items(product).into_iter().find_map(|(item, _)| unread.get(&item).copied())
     }
 
     /// The steel section a product's body sweeps, if it is one IFC names by its plates (an I, a channel, an angle, a T, a tube,
@@ -1619,10 +1690,12 @@ fn layers_of(r: &Reader, l: &Links, id: u64, t: f64) -> Vec<Layer> {
         layers.iter_mut().skip(first + 1).for_each(|l| l.variable = false);
     }
     let sum: f64 = layers.iter().map(|l| l.thickness).sum();
+    // The sum of its parts may be short of a part an export left out (excluded): its layers say how thick it is.
+    let summed = r.get(id).is_some_and(|x| r.chosen(x).is_empty() && r.parts_of(x).is_some());
     if layers.is_empty()
         || layers.len() > MAX_LAYERS
         || layers.iter().any(|l| !(0.0..=MAX_COORD).contains(&l.thickness))
-        || (sum - t).abs() > 1.0
+        || (sum - t).abs() > 1.0 && !summed
     {
         return Vec::new();
     }
@@ -1924,7 +1997,9 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
         }
         _ => P2(0.0, 0.0),
     };
-    let r = Reader::new(&file, mm, rad, shift);
+    let mut r = Reader::new(&file, mm, rad, shift);
+    r.summed = Reader::sums(&file, &l);
+    let r = r;
     // What an element is made of: its layers, when they add up to how thick it is, and so how thick. None when that comes to
     // no thickness at all (a body measured flat, or layers of nothing): no type can be made of it, so the element comes in as
     // a generic component of its class with the body it has (left unseen for them), never the file left unread.
@@ -3984,6 +4059,24 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
     }
     settle(made, placed, &mut m, &mut skipped, &mut seen, &mut from, &mut origin, &mut elements_from);
 
+    // Each element that is the sum of its parts in the file taken apart again, a part of it made where the file has one.
+    let library_guid = |_: &Model, kind: Option<&Kind>, name: &str| {
+        let n = format!("{}/{name}", kind.map_or_else(|| "part".to_string(), Kind::to_string))
+            .bytes()
+            .fold(0xCBF2_9CE4_8422_2325_u64, |h, b| (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01B3));
+        Guid::seeded(seed, n)
+    };
+    let taken = parts::take_apart(&r, &l, &mut m, &origin, &named(&["IFCRELDEFINESBYPROPERTIES"]), &mut { library_guid }, budget)?;
+    for &(part, id) in &taken.made {
+        from.insert(id, who(part));
+        origin.insert(part, id);
+        elements_from.entry(part).or_default().push(id);
+        seen.insert(part);
+    }
+    for &(part, why) in &taken.left {
+        leave(&mut skipped, &mut seen, part, why);
+    }
+
     // The project's parameters: a mark for what a structural program has named (its name, where that is no one's type), and
     // a parameter for each single value in the property sets, the project's own as BIMCraft writes them and any other
     // program's, named for the property (less what a formula can't say, as the brackets of "Cargas (G2)"). Each one's kind from
@@ -4325,6 +4418,8 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
             x.transparency = clear;
         }
     }
+    // And what they say of their weight and their heat.
+    parts::physics(&r, &ids, &mut m);
     // Where it lies on a map, where the file says and the project can keep it.
     if let Some(g) = georeference(&r, &ids) {
         match g.check() {
@@ -4354,12 +4449,9 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
     // The library's GUIDs too, the file makes: the same file reads the same every time.
     m.library = crate::library::Library::default();
     m.forget_parts();
-    m.sync_library_with(&mut |_, kind, name| {
-        let n = format!("{}/{name}", kind.map_or_else(|| "part".to_string(), Kind::to_string))
-            .bytes()
-            .fold(0xCBF2_9CE4_8422_2325_u64, |h, b| (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01B3));
-        Guid::seeded(seed, n)
-    });
+    m.sync_library_with(&mut { library_guid });
+    // A part names its layer by the layer's GUID, which that gave anew.
+    parts::relayer(&mut m, &taken.layers);
     // What breaks a rule is left out, with the rule; a wall takes its doors and windows along.
     for _ in 0..=m.elements.len() {
         let Err(error) = m.check() else { break };

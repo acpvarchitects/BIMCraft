@@ -7,7 +7,8 @@
 //! material layer set. A stair or a ramp is the sum of its parts: its flights, its landings and
 //! the railings along it; a railing carries its rail's top line as its axis. What an element holds
 //! of the project's parameters, and of its phase and design option, goes in property sets of its own;
-//! the project's phases and design option sets in one on the project.
+//! the project's phases and design option sets in one on the project. An element taken apart into parts
+//! (`parts.rs`) is the sum of them: each part an `IfcBuildingElementPart` with the body, the element none.
 
 use bimcraft_i18n::ui_msg;
 
@@ -101,6 +102,11 @@ const MAP: u64 = 86;
 const MAP_DEFINES: u64 = 87;
 const CRS: u64 = 88;
 const CRS_DEFINES: u64 = 89;
+const PART_MATERIALS: u64 = 90;
+const HERITAGE: u64 = 91;
+const HERITAGE_DEFINES: u64 = 92;
+const DIVIDED: u64 = 93;
+const DIVIDED_DEFINES: u64 = 94;
 
 /// Site footprint metadata in curve order: Names, Guids and Levels (native GUIDs).
 pub const PROPERTY_LINES: &str = "BIMCraft_PropertyLines";
@@ -108,6 +114,15 @@ pub const PROPERTY_LINES: &str = "BIMCraft_PropertyLines";
 /// The property set an element's values of the project's parameters go in, less those whose parameter names another set for
 /// its category.
 pub const PARAMETERS: &str = "Project Parameters";
+
+/// The quantity set of a part of an element (`parts.rs`): `Width`, how thick it is (as IFC names a layer's thickness),
+/// `NetArea`, the net area of its main face, and `NetVolume`, its solid's. IFC4 has no set of its own for an
+/// `IfcBuildingElementPart`, so it is one of BIMCraft's.
+pub const PART_QUANTITIES: &str = "BIMCraft_PartQuantities";
+
+/// The property set of a part that parts were divided from (`divide_parts`): `Division`, JSON, its cuts and offsets in
+/// millimetres in its own placement's axes, which only BIMCraft reads, to divide it again as it was.
+pub const PART_DIVISION: &str = "BIMCraft_PartDivision";
 
 /// The set an element's `Pset_ElectricalDeviceCommon`'s values go in, of a device's power connector.
 const DEVICE_SET: &str = "Pset_ElectricalDeviceCommon";
@@ -656,6 +671,10 @@ impl Step {
 
     /// Quantity set `name` of `(name, kind, value)` for `ent`: kind `LENGTH` in mm, `AREA` in m², `VOLUME` in m³.
     fn quantities(&mut self, ent: u64, name: &str, values: &[(&str, &str, f64)], key: u64) {
+        // A set holds one quantity at least: one with none isn't written.
+        if values.is_empty() {
+            return;
+        }
         let qs: Vec<u64> = values.iter().map(|(n, kind, v)| self.add(format!("IFCQUANTITY{kind}({},$,$,{},$)", s(n), real(*v)))).collect();
         let set = self.add(format!("IFCELEMENTQUANTITY({},$,{},$,$,({}))", self.guid(QUANTITIES, key), s(name), refs(&qs)));
         self.add(format!("IFCRELDEFINESBYPROPERTIES({},$,$,$,(#{ent}),#{set})", self.guid(QUANTITY_DEFINES, key)));
@@ -673,6 +692,34 @@ impl Step {
             return written;
         }
         let id = self.add(format!("IFCMATERIAL({},$,$)", s(name)));
+        // How heavy it is, and how it carries and holds heat, where it says: IFC's sets for a material; IFC2x3's
+        // general and thermal properties of it.
+        if let Some(x) = m.materials.get(name)
+            && self.schema == Schema::Ifc2x3
+        {
+            let or_none = |v: Option<f64>| v.map_or_else(|| "$".to_string(), real);
+            if let Some(density) = x.density {
+                self.add(format!("IFCGENERALMATERIALPROPERTIES(#{id},$,$,{})", real(density)));
+            }
+            if x.conductivity.is_some() || x.specific_heat.is_some() {
+                let (heat, conductivity) = (or_none(x.specific_heat), or_none(x.conductivity));
+                self.add(format!("IFCTHERMALMATERIALPROPERTIES(#{id},{heat},$,$,{conductivity})"));
+            }
+        } else if let Some(x) = m.materials.get(name) {
+            let value = |w: &mut Step, name: &str, measure: &str, v: f64| {
+                w.add(format!("IFCPROPERTYSINGLEVALUE('{name}',$,{measure}({}),$)", real(v)))
+            };
+            if let Some(density) = x.density {
+                let p = value(self, "MassDensity", "IFCMASSDENSITYMEASURE", density);
+                self.add(format!("IFCMATERIALPROPERTIES('Pset_MaterialCommon',$,(#{p}),#{id})"));
+            }
+            let mut thermal = Vec::new();
+            thermal.extend(x.conductivity.map(|v| value(self, "ThermalConductivity", "IFCTHERMALCONDUCTIVITYMEASURE", v)));
+            thermal.extend(x.specific_heat.map(|v| value(self, "SpecificHeatCapacity", "IFCSPECIFICHEATCAPACITYMEASURE", v)));
+            if !thermal.is_empty() {
+                self.add(format!("IFCMATERIALPROPERTIES('Pset_MaterialThermal',$,({}),#{id})", refs(&thermal)));
+            }
+        }
         let style = m.materials.get(name).map(|x| {
             // How see-through the material is, 0 for opaque to 1 for clear; none for an opaque one.
             let clear = if x.transparency == 0 { "$".to_string() } else { real(f64::from(x.transparency.min(100)) / 100.0) };
@@ -1020,6 +1067,18 @@ impl Step {
     }
 }
 
+/// A product's representation as its entity writes it: its shape, or `$` for one that has none of its own, being the
+/// sum of its parts.
+fn body_or_none(shape: Option<u64>) -> String {
+    shape.map_or_else(|| "$".to_string(), |shape| format!("#{shape}"))
+}
+
+/// What an element that is the sum of its parts (`whole`) says it measures: its lengths, never an area or a volume, which
+/// its parts say between them and a reader would count twice.
+fn unless_summed(values: &[(&'static str, &'static str, f64)], whole: bool) -> Vec<(&'static str, &'static str, f64)> {
+    values.iter().copied().filter(|(_, kind, _)| !whole || !matches!(*kind, "AREA" | "VOLUME")).collect()
+}
+
 /// The `Pset_*Common` an element's IFC entity carries; none for what has none BIMCraft writes.
 fn common_pset(e: &Element) -> Option<&'static str> {
     Some(match e {
@@ -1314,6 +1373,29 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
         "IFCSIUNIT(*,.PLANEANGLEUNIT.,$,.RADIAN.)",
     ]
     .map(|u| w.add(u));
+    let mut units = units.to_vec();
+    // What materials say of their weight and their heat is in units of its own, whatever the lengths are in: kg/m³,
+    // W/(m·K) and J/(kg·K), named once a material says any.
+    if m.materials.values().any(|x| x.physics().iter().any(Option::is_some)) {
+        let [kilogram, metre, kelvin, watt, joule] = [
+            "IFCSIUNIT(*,.MASSUNIT.,.KILO.,.GRAM.)",
+            "IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.)",
+            "IFCSIUNIT(*,.THERMODYNAMICTEMPERATUREUNIT.,$,.KELVIN.)",
+            "IFCSIUNIT(*,.POWERUNIT.,$,.WATT.)",
+            "IFCSIUNIT(*,.ENERGYUNIT.,$,.JOULE.)",
+        ]
+        .map(|u| w.add(u));
+        for (kind, of) in [
+            ("MASSDENSITYUNIT", [(kilogram, 1), (metre, -3)].as_slice()),
+            ("THERMALCONDUCTANCEUNIT", [(watt, 1), (metre, -1), (kelvin, -1)].as_slice()),
+            ("SPECIFICHEATCAPACITYUNIT", [(joule, 1), (kilogram, -1), (kelvin, -1)].as_slice()),
+        ] {
+            let elements: Vec<u64> = of.iter().map(|(unit, power)| w.add(format!("IFCDERIVEDUNITELEMENT(#{unit},{power})"))).collect();
+            // IFC4x3 names a derived unit too.
+            let named = if w.schema == Schema::Ifc4x3 { ",$" } else { "" };
+            units.push(w.add(format!("IFCDERIVEDUNIT(({}),.{kind}.,${named})", refs(&elements))));
+        }
+    }
     let units = w.add(format!("IFCUNITASSIGNMENT(({}))", refs(&units)));
     // The project's information: its status is the project's phase, and its building's name and address the building's.
     let info = m.project_info();
@@ -1453,6 +1535,19 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
             holes.entry(host).or_default().push((t.width, t.height, o.sill));
         }
     }
+    // The parts written, each with its solid, and what is the sum of such parts (an element, or a part that parts were
+    // divided from): it has no body of its own, since its parts have it, as a stair's flights have the stair's. IFC asks
+    // that of what is decomposed, and a body on both would be drawn, and measured, twice.
+    let parts = crate::parts::exported(m);
+    let summed: std::collections::BTreeSet<Guid> = parts
+        .keys()
+        .filter_map(|id| match m.elements.get(*id) {
+            Some(Element::Part(p)) => Some(p.parent.unwrap_or(p.host)),
+            _ => None,
+        })
+        .collect();
+    // Components as placed, for the parts of them.
+    let mut stood: BTreeMap<Id, (u64, crate::hosting::Placement)> = BTreeMap::new();
     for (&id, e) in &m.elements {
         match e {
             Element::Wall(wl) => {
@@ -1467,7 +1562,11 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
                 let axis_rep = w.add(format!("IFCSHAPEREPRESENTATION(#{axis},'Axis','Curve2D',(#{line}))"));
                 // Its outline swept up, mitred where it joins others as the plan's is; attached to a
                 // roof or a floor, a closed shell for each piece under (or over) a plane of it.
-                let shape = if wl.attach_top.is_none() && wl.attach_base.is_none() {
+                let whole = summed.contains(&m.guid(id));
+                let shape = if whole {
+                    // The sum of its parts: its axis alone.
+                    w.add(format!("IFCPRODUCTDEFINITIONSHAPE($,$,(#{axis_rep}))"))
+                } else if wl.attach_top.is_none() && wl.attach_base.is_none() {
                     let outline: Vec<P2> = walls::outline(m, id).into_iter().map(local).collect();
                     let profile = w.profile(&outline, &[]);
                     w.body(profile, 0.0, m.own_top(wl) - base, &[axis_rep])
@@ -1509,7 +1608,7 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
                 placed.insert(id, (ent, at));
                 w.typed("IFCWALLTYPE", ".STANDARD.", &wl.type_name, ent);
                 let values = wall_quantities(m, id, wl, holes.get(&id).map_or(&[][..], |h| h.as_slice()));
-                w.quantities(ent, "Qto_WallBaseQuantities", &values, id);
+                w.quantities(ent, "Qto_WallBaseQuantities", &unless_summed(&values, whole), id);
             }
             Element::Floor(f) => {
                 let Some(&(_, storey)) = storeys.get(&f.level) else { continue };
@@ -1519,18 +1618,22 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
                 let depth = m.floor_depth(f);
                 let level = m.floor_top(f).g == P2(0.0, 0.0) && f.shape.is_empty();
                 let solid = m.shape_solid(f);
-                let shape = if level {
+                let whole = summed.contains(&m.guid(id));
+                let shape = if whole {
+                    None
+                } else if level {
                     let profile = w.profile(&f.boundary, &f.openings);
-                    w.body(profile, f.offset - depth, depth, &[])
+                    Some(w.body(profile, f.offset - depth, depth, &[]))
                 } else if let Some(solid) = &solid {
                     let brep = w.polyhedron(solid, m.elevation(f.level));
-                    w.solid(&[brep], &[])
+                    Some(w.solid(&[brep], &[]))
                 } else {
                     let faces: Vec<Vec<P3>> = m.floor_slabs(f).into_iter().map(|(face, _)| face).collect();
-                    w.breps(&faces, m.elevation(f.level), depth)
+                    Some(w.breps(&faces, m.elevation(f.level), depth))
                 };
+                let shape = body_or_none(shape);
                 let ent = w.add(format!(
-                    "IFCSLAB({},$,{},$,{},#{at},#{shape},'{id}',.FLOOR.)",
+                    "IFCSLAB({},$,{},$,{},#{at},{shape},'{id}',.FLOOR.)",
                     w.guid(ELEMENT, id),
                     s(&f.type_name),
                     s(&f.type_name)
@@ -1566,16 +1669,19 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
                     };
                     vec![("Width", "LENGTH", depth), ("GrossVolume", "VOLUME", gross / 1e9), ("NetVolume", "VOLUME", net / 1e9)]
                 };
-                w.quantities(ent, "Qto_SlabBaseQuantities", &values, id);
+                w.quantities(ent, "Qto_SlabBaseQuantities", &unless_summed(&values, whole), id);
             }
             Element::Ceiling(c) => {
                 let Some(&(_, storey)) = storeys.get(&c.level) else { continue };
                 let at = w.place(Some(storey), (0.0, 0.0, 0.0), None);
                 // Its outline less its openings swept up through its thickness.
-                let profile = w.profile(&c.boundary, &c.openings);
-                let shape = w.body(profile, c.offset, m.types.ceiling.get(&c.type_name).map_or(0.0, |t| t.thickness), &[]);
+                let whole = summed.contains(&m.guid(id));
+                let shape = body_or_none((!whole).then(|| {
+                    let profile = w.profile(&c.boundary, &c.openings);
+                    w.body(profile, c.offset, m.types.ceiling.get(&c.type_name).map_or(0.0, |t| t.thickness), &[])
+                }));
                 let ent = w.add(format!(
-                    "IFCCOVERING({},$,{},$,{},#{at},#{shape},'{id}',.CEILING.)",
+                    "IFCCOVERING({},$,{},$,{},#{at},{shape},'{id}',.CEILING.)",
                     w.guid(ELEMENT, id),
                     s(&c.type_name),
                     s(&c.type_name)
@@ -1591,7 +1697,7 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
                     ("GrossArea", "AREA", geom::area(&c.boundary).abs() / 1e6),
                     ("NetArea", "AREA", net / 1e6),
                 ];
-                w.quantities(ent, "Qto_CoveringBaseQuantities", &values, id);
+                w.quantities(ent, "Qto_CoveringBaseQuantities", &unless_summed(&values, whole), id);
             }
             Element::Room(r) => {
                 let Some(&(_, storey)) = storeys.get(&r.level) else { continue };
@@ -1787,22 +1893,25 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
                 } else {
                     w.place_tilted(storey, (cp.at.0, cp.at.1, cp.offset), placed.axes[2], placed.axes[0])
                 };
+                stood.insert(id, (at, placed));
                 let mut items = Vec::new();
                 let mut made_of: Vec<u64> = Vec::new();
+                // The sum of its parts has no body: what it is made of is said all the same.
+                let whole = summed.contains(&m.guid(id));
                 for piece in &pieces {
-                    let set = w.faceset(&piece.tris);
+                    let set = (!whole).then(|| w.faceset(&piece.tris));
                     if !piece.material.trim().is_empty() {
                         let (material, style) = w.material_style(m, piece.material.trim());
-                        if let Some(style) = style {
+                        if let (Some(set), Some(style)) = (set, style) {
                             w.add(format!("IFCSTYLEDITEM(#{set},(#{style}),$)"));
                         }
                         if !made_of.contains(&material) {
                             made_of.push(material);
                         }
                     }
-                    items.push(set);
+                    items.extend(set);
                 }
-                let shape = w.tessellated(&items);
+                let shape = body_or_none((!whole).then(|| w.tessellated(&items)));
                 // A door's or a window's family is placed in a wall, never as a component.
                 let (entity, kind, object_type) = f.ifc();
                 let label = format!("{}:{}", cp.family, cp.type_name);
@@ -1811,7 +1920,7 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
                 // What follows its tag, as IFC4 has its class: its predefined type, and what comes round it.
                 let class = classes::class(&entity);
                 let tail = class.map_or_else(|| format!(",{kind}"), |c| classes::fill(c.1, &kind));
-                let ent = w.add(format!("{entity}({},$,{name},$,{object},#{at},#{shape},'{id}'{tail})", w.guid(ELEMENT, id)));
+                let ent = w.add(format!("{entity}({},$,{name},$,{object},#{at},{shape},'{id}'{tail})", w.guid(ELEMENT, id)));
                 contained.entry(cp.level).or_default().push(ent);
                 // Also in the room its family's room calculation point (else its insertion point) is in.
                 if let Some(room) = rooms.component(cp) {
@@ -1987,11 +2096,14 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
                 let (Some(&(_, storey)), pieces) = (storeys.get(&r.level), m.roof_slabs(r)) else { continue };
                 let at = w.place(Some(storey), (0.0, 0.0, 0.0), None);
                 // A shaped one is one closed faceted Brep, as a shaped floor is; any other a shell round each piece.
-                let breps: Vec<u64> = match m.roof_solid(r) {
-                    Some(solid) => vec![w.polyhedron(&solid, m.elevation(r.level))],
-                    None => pieces.iter().map(|(face, rise)| w.brep(face, m.elevation(r.level), *rise)).collect(),
-                };
-                let shape = w.solid(&breps, &[]);
+                let whole = summed.contains(&m.guid(id));
+                let shape = body_or_none((!whole).then(|| {
+                    let breps: Vec<u64> = match m.roof_solid(r) {
+                        Some(solid) => vec![w.polyhedron(&solid, m.elevation(r.level))],
+                        None => pieces.iter().map(|(face, rise)| w.brep(face, m.elevation(r.level), *rise)).collect(),
+                    };
+                    w.solid(&breps, &[])
+                }));
                 let kind = match (&r.extrusion, r.slope == 0.0, r.gable || !r.gables.is_empty()) {
                     (Some(x), ..) => [".SHED_ROOF.", ".GABLE_ROOF."].get(x.profile.len().saturating_sub(2)).unwrap_or(&".FREEFORM."),
                     (None, true, _) => ".FLAT_ROOF.",
@@ -1999,7 +2111,7 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
                     (None, false, false) => ".HIP_ROOF.",
                 };
                 let ent = w.add(format!(
-                    "IFCROOF({},$,{},$,{},#{at},#{shape},'{id}',{kind})",
+                    "IFCROOF({},$,{},$,{},#{at},{shape},'{id}',{kind})",
                     w.guid(ELEMENT, id),
                     s(&r.type_name),
                     s(&r.type_name)
@@ -2036,7 +2148,7 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
                         .sum();
                     let values =
                         [("GrossArea", "AREA", gross / 1e6), ("NetArea", "AREA", net / 1e6), ("ProjectedArea", "AREA", projected / 1e6)];
-                    w.quantities(ent, "Qto_RoofBaseQuantities", &values, id);
+                    w.quantities(ent, "Qto_RoofBaseQuantities", &unless_summed(&values, whole), id);
                 }
             }
             _ => {}
@@ -2057,13 +2169,113 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
     for (id, (ent, _, _, parts)) in &wholes {
         w.add(format!("IFCRELAGGREGATES({},$,$,$,#{ent},({}))", w.guid(PARTS, *id), refs(parts)));
     }
-    // A bar is a part of the element it reinforces; one with none, or whose host isn't written, is in its level.
+    // A part of an element: an `IfcBuildingElementPart`, placed where its host is, its solid a closed face set in its
+    // host's own axes, shaded in what it is made of. One that parts were divided from is their sum, and has no body.
+    let mut sums: BTreeMap<Id, Vec<u64>> = BTreeMap::new();
+    for (&id, tris) in &parts {
+        let Some(Element::Part(p)) = m.elements.get(id) else { continue };
+        let Some(host) = m.elements.id(p.host) else { continue };
+        // Where its host is placed, and the origin and the axes model points are given in there.
+        let (x, z) = ([1.0, 0.0, 0.0], [0.0, 0.0, 1.0]);
+        let frame = match m.elements.get(host) {
+            Some(Element::Wall(wl)) => placed.get(&host).map(|(_, at)| {
+                let u = Axis::of(wl).tangent(0.0);
+                (*at, [wl.start.0, wl.start.1, m.own_base(wl)], [[u.0, u.1, 0.0], [-u.1, u.0, 0.0], z])
+            }),
+            Some(Element::Floor(_) | Element::Ceiling(_) | Element::Roof(_)) => {
+                hosts.get(&host).map(|(_, at, height)| (*at, [0.0, 0.0, *height], [x, [0.0, 1.0, 0.0], z]))
+            }
+            Some(Element::Component(_)) => stood.get(&host).map(|(at, placed)| (*at, placed.origin, placed.axes)),
+            _ => None,
+        };
+        // A host that wasn't written (it stands on no level) has no parts written either.
+        let Some((host_at, origin, axes)) = frame else { continue };
+        let local = |q: P3| {
+            let d = [q[0] - origin[0], q[1] - origin[1], q[2] - origin[2]];
+            axes.map(|a| d[0] * a[0] + d[1] * a[1] + d[2] * a[2])
+        };
+        let at = w.place(Some(host_at), (0.0, 0.0, 0.0), None);
+        let material = m.part_material(p).map(str::trim).filter(|name| !name.is_empty());
+        let made_of = material.map(|name| w.material_style(m, name));
+        let whole = summed.contains(&m.guid(id));
+        let shape = body_or_none((!whole).then(|| {
+            let set = w.faceset(&tris.iter().map(|t| t.map(local)).collect::<Vec<_>>());
+            if let Some((_, Some(style))) = made_of {
+                w.add(format!("IFCSTYLEDITEM(#{set},(#{style}),$)"));
+            }
+            w.tessellated(&[set])
+        }));
+        // Named by what it is made of, else by its host's type; what it is in the project's words is its object type.
+        let name = material.map(String::from).unwrap_or_else(|| match m.elements.get(host) {
+            Some(Element::Wall(x)) => x.type_name.clone(),
+            Some(Element::Floor(x)) => x.type_name.clone(),
+            Some(Element::Roof(x)) => x.type_name.clone(),
+            Some(Element::Ceiling(x)) => x.type_name.clone(),
+            Some(Element::Component(x)) => format!("{}:{}", x.family, x.type_name),
+            _ => String::new(),
+        });
+        let object = if p.object_type.trim().is_empty() { "$".to_string() } else { s(p.object_type.trim()) };
+        let ent = w.add(format!(
+            "IFCBUILDINGELEMENTPART({},$,{},$,{object},#{at},{shape},'{id}',.{}.)",
+            w.guid(ELEMENT, id),
+            s(&name),
+            p.predefined_type.ifc()
+        ));
+        products.insert(id, ent);
+        sums.entry(p.parent.and_then(|g| m.elements.id(g)).unwrap_or(host)).or_default().push(ent);
+        if let Some((material, _)) = made_of {
+            w.add(format!("IFCRELASSOCIATESMATERIAL({},$,$,$,(#{ent}),#{material})", w.guid(PART_MATERIALS, id)));
+        }
+        // What it measures, unless it is the sum of its divisions, which measure it between them.
+        if !whole && let Ok((area, volume)) = m.part_quantities(p) {
+            let mut values = Vec::new();
+            values.extend(m.part_thickness(p).map(|t| ("Width", "LENGTH", t)));
+            values.extend(area.map(|a| ("NetArea", "AREA", a / 1e6)));
+            values.push(("NetVolume", "VOLUME", volume / 1e9));
+            w.quantities(ent, PART_QUANTITIES, &values, id);
+        }
+        // How it was divided, in its own axes, for BIMCraft to divide it again as it was.
+        if let (Some(recipe), Some(host_frame)) = (&p.division, m.element_frame(host)) {
+            let turn = |d: P3| axes.map(|a| d[0] * a[0] + d[1] * a[1] + d[2] * a[2]);
+            let ours = host_frame.model_recipe(recipe).moved(&local, &turn);
+            if let Ok(json) = serde_json::to_string(&ours) {
+                let division = w.text_property("Division", Some("JSON: its cuts and offsets, in mm in its own axes"), &json);
+                w.define(ent, PART_DIVISION, &[division], (DIVIDED, DIVIDED_DEFINES), id);
+            }
+        }
+        // What survey and restoration say of it, each value under the name it is shown by, those said only.
+        let h = &p.heritage;
+        let [su, period, decay, severity, intervention] = crate::parts::Heritage::NAMES;
+        let mut said: Vec<u64> = Vec::new();
+        for (name, text) in [(su, h.su_code.as_str()), (period, h.historical_period.as_str())] {
+            if !text.is_empty() {
+                said.push(w.text_property(name, None, text));
+            }
+        }
+        if let Some(d) = &h.decay_pathology {
+            said.push(w.text_property(decay, None, d.label()));
+        }
+        if let Some(n) = h.decay_severity {
+            said.push(w.add(format!("IFCPROPERTYSINGLEVALUE({},$,IFCINTEGER({n}),$)", s(severity))));
+        }
+        if !h.intervention_type.is_empty() {
+            said.push(w.text_property(intervention, None, &h.intervention_type));
+        }
+        if !said.is_empty() {
+            w.define(ent, crate::parts::Heritage::SET, &said, (HERITAGE, HERITAGE_DEFINES), id);
+        }
+    }
+    // A bar is a part of the element it reinforces; one with none, or whose host isn't written, is in its level. An
+    // element's parts, and a part's divisions, are parts of it in the same relation.
     let mut reinforced: BTreeMap<Id, Vec<u64>> = BTreeMap::new();
     for (level, host, ent) in bars {
         match host.filter(|h| products.contains_key(h)) {
             Some(h) => reinforced.entry(h).or_default().push(ent),
             None => contained.entry(level).or_default().push(ent),
         }
+    }
+    for (whole, ents) in sums {
+        reinforced.entry(whole).or_default().extend(ents);
     }
     for (host, parts) in &reinforced {
         if let Some(ent) = products.get(host) {
@@ -2500,7 +2712,7 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
         if created.is_none() && demolished.is_none() && option.is_none() {
             continue;
         }
-        let follows = matches!(e, Element::Door(_) | Element::Window(_));
+        let follows = matches!(e, Element::Door(_) | Element::Window(_) | Element::Part(_));
         let first = m.phases.first().map(String::as_str).filter(|_| !follows);
         let props: Vec<u64> = [
             (phasing::CREATED, created.or(first), created.is_none().then_some(IMPLIED)),

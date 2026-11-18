@@ -88,3 +88,21 @@ type {"category":"structuralcolumn","name":"RHS steel","shape":"RHS","width":200
 structural_column {"at":[3000,14000],"type":"RHS steel","height":3000}
 type {"category":"beam","name":"CHS steel","shape":"CHS","width":168.3,"thickness":6}
 beam {"points":[[0,17000],[6000,17000]],"type":"CHS steel","offset":3000,"end_offset":4000}
+# Parts of elements (IfcBuildingElementPart, each a part of its host by IfcRelAggregates, the host with no body of its own and no
+# area or volume in its quantities): a wall of four layers with a window (100362) and a floor of three with an opening (100364) taken
+# apart into their layers' parts (100365 to 100368 the wall's from its exterior in, 100369 to 100371 the floor's from its top down):
+# what the survey says of one, a user-defined kind, a material of its own, one left out, and the brick divided across into two pieces
+# (100372 and 100373), its cuts in BIMCraft_PartDivision; last, so the ids above stay put.
+wall {"points": [[0,-12000],[6000,-12000]], "type": "Exterior - 300mm"}
+window {"at": [3000,-12000]}
+floor {"boundary": [[80000,0],[86000,0],[86000,4000],[80000,4000]], "type": "Terrace", "openings": [[[81000,1000],[82000,1000],[82000,2000],[81000,2000]]]}
+create_parts {"ids": [100362, 100364]}
+part {"id": 100366, "predefined_type": "userdefined", "object_type": "USR", "su_code": "USR 3", "historical_period": "18th century", "decay_pathology": "efflorescence", "decay_severity": 4, "intervention_type": "Cleaning"}
+part {"id": 100367, "material": "Concrete", "decay_pathology": {"custom": "Lacuna"}}
+part {"id": 100371, "excluded": true}
+divide_parts {"id": 100365, "cuts": [{"cut": {"plane": {"point": [1500,-12000,0], "normal": [1,0,0]}}, "gap": 10}]}
+part {"id": 100373, "decay_pathology": "crust", "su_code": "USR 3b"}
+# What a material says of its weight and its heat (Pset_MaterialCommon and Pset_MaterialThermal on the IfcMaterial, IFC2x3's general
+# and thermal properties of it, and the units they are in): the wall's brick and its insulation.
+material {"name": "Brick", "density": 1800, "conductivity": 0.8, "specific_heat": 840}
+material {"name": "Insulation", "density": 30, "conductivity": 0.035}
