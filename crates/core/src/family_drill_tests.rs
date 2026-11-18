@@ -106,9 +106,9 @@ fn a_void_that_misses_the_body_leaves_the_others_drilled() {
 }
 
 #[test]
-fn checking_where_voids_drill_spends_the_cutting_budget() {
-    // Many holes in a grid, their edges in line: drilled, every one. The checks of each against each are counted, and a
-    // budget too small for them sends it to the cut.
+fn checking_where_voids_drill_has_a_budget() {
+    // Many holes in a grid, their edges in line: drilled, every one. The checks of each against each are counted, on a
+    // budget of their own, and one too small for them sends it to the cut.
     let holes: Vec<Value> = (0..36)
         .map(|k| {
             let (x, y) = (100.0 + 140.0 * (k % 6) as f64, 100.0 + 140.0 * (k / 6) as f64);
@@ -133,4 +133,49 @@ fn checking_where_voids_drill_spends_the_cutting_budget() {
     assert_eq!(f.pieces(&values).unwrap()[0].tris, d.tris, "the build drills it too");
     let mut poor = crate::csg::Meter::poor(2000);
     assert!(f.drill(0, &body, &voids, &values, &mut read, &mut shapes, &mut poor).is_none(), "out of budget: cut instead");
+}
+
+/// The family `forms` make, its values for its one type, and each form's solid.
+fn solids(forms: Vec<Value>) -> (crate::family::Family, BTreeMap<String, crate::family::Val>, Vec<Vec<[P3; 3]>>) {
+    let mut s = Session::new();
+    s.execute("family", &json!({"name": "S", "category": "generic", "types": {"A": {}}, "forms": forms})).unwrap_or_else(|e| panic!("{e}"));
+    let f = s.model.families["S"].clone();
+    let values = f.values("A", &BTreeMap::new()).unwrap();
+    let mut read = std::collections::HashMap::new();
+    let tris = (0..f.forms.len()).map(|i| f.solid(i, &values, &mut read).unwrap().unwrap().tris).collect();
+    (f, values, tris)
+}
+
+#[test]
+fn a_drill_that_falls_back_leaves_the_cut_its_whole_budget() {
+    // A round hole through the slab, then a pocket that doesn't go through: neither drills, and checking whether they do
+    // mustn't take from what cutting them may spend. A family that cut with just enough before still builds.
+    let slab = json!({"profile": [[0, 0], [1000, 0], [1000, 1000], [0, 1000]], "from": 0, "to": 100});
+    let round = json!({"sketch": [{"centre": [300, 300], "radius": 100}], "from": -10, "to": 110, "void": true});
+    let (f, values, tris) = solids(vec![slab, round, square(600.0, 600.0, 800.0, 800.0, 50.0, 110.0)]);
+    let mut csg = crate::csg::Meter::default();
+    let once = crate::csg::subtract(&tris[0], &tris[1], &mut csg).unwrap();
+    let cut = crate::csg::subtract(&once, &tris[2], &mut csg).unwrap();
+    let work = crate::csg::Meter::default().left() - csg.left();
+    let built = f.build(&values, &mut std::collections::HashMap::new(), &mut crate::csg::Meter::poor(work)).expect("as much as before");
+    assert_eq!(built[0].tris, cut, "cut as before");
+    assert!(f.build(&values, &mut std::collections::HashMap::new(), &mut crate::csg::Meter::poor(work - 1)).is_err(), "no more");
+}
+
+#[test]
+fn edges_in_line_but_for_rounding_still_meet() {
+    // A slab turned on its plane, and a void inside it, one side along the slab's own: computed apart, the two lie on one
+    // line only to within rounding. The void's side is the slab's, so it leaves a wall of no width: it isn't drilled.
+    for degrees in [17.0_f64, 30.0, 41.0, 63.0] {
+        let (s, c) = degrees.to_radians().sin_cos();
+        let at = |x: f64, y: f64| json!([x * c - y * s, x * s + y * c]);
+        let slab = json!({"profile": [at(0.0, 0.0), at(1000.0, 0.0), at(1000.0, 1000.0), at(0.0, 1000.0)], "from": 0, "to": 100});
+        let flush = json!({"profile": [at(1000.0 / 3.0, 0.0), at(2000.0 / 3.0, 0.0), at(2000.0 / 3.0, 200.0), at(1000.0 / 3.0, 200.0)],
+                           "from": -10, "to": 110, "void": true});
+        let (f, values, tris) = solids(vec![slab, flush]);
+        let voids = std::collections::HashMap::from([(1, tris[1].clone())]);
+        let (mut read, mut shapes) = (std::collections::HashMap::new(), std::collections::HashMap::new());
+        let d = f.drill(0, &tris[0], &voids, &values, &mut read, &mut shapes, &mut crate::csg::Meter::default());
+        assert!(d.is_none(), "turned {degrees}°: a hole flush with the outline is cut, not drilled");
+    }
 }

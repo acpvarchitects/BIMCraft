@@ -2900,7 +2900,7 @@ impl Family {
 
     /// Its visible forms' solids, sized by `values`, less what its voids cut; `read`, its formulas as
     /// read already, and `cuts`, what the cutting may still cost.
-    fn build<'a>(
+    pub(crate) fn build<'a>(
         &'a self,
         values: &BTreeMap<String, Val>,
         read: &mut HashMap<&'a str, Result<Node, String>>,
@@ -2933,10 +2933,11 @@ impl Family {
         // Each solid cut by what cuts it ([`Family::cutters`]: the voids listed before it, as always, and what FE-16 adds) that
         // is built and reaches it. A cut solid is no longer one round surface, and its outline seen from above is as it was.
         // ponytail: a notch or a hole doesn't show in plan; trace it if it must.
-        let mut shapes = HashMap::new();
+        // Whether voids drill is checked on a budget of its own: a check that ends in the cut leaves it all of its own.
+        let (mut shapes, mut checks) = (HashMap::new(), csg::Meter::default());
         for (piece, &form) in out.iter_mut().zip(&of) {
             let mut done: BTreeSet<usize> = BTreeSet::new();
-            if let Some(d) = self.drill(form, &piece.tris, &voids, values, read, &mut shapes, cuts) {
+            if let Some(d) = self.drill(form, &piece.tris, &voids, values, read, &mut shapes, &mut checks) {
                 let (bottom, top) = heights(&d.tris);
                 piece.caps = d.tris.len();
                 (piece.tris, piece.bottom, piece.top, piece.round) = (d.tris, bottom, top, false);
@@ -2974,7 +2975,7 @@ impl Family {
     /// built that cut forms, by their place in the list: those of them that cut `form` and reach it must all drill through,
     /// each clear of the others, else none does and all are cut, as before, so no hole drawn in the profile meets a void cut
     /// by triangles. One that misses it is left to the cut, which leaves it as it is. `shapes`, the forms' profiles as read
-    /// already; the checks spend `cuts`, and where it runs out none drills.
+    /// already; the checks spend `checks`, a budget apart from the cut's, and where it runs out none drills.
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn drill<'a>(
         &'a self,
@@ -2984,7 +2985,7 @@ impl Family {
         values: &BTreeMap<String, Val>,
         read: &mut HashMap<&'a str, Result<Node, String>>,
         shapes: &mut HashMap<usize, Option<Vec<crate::geom::Region>>>,
-        cuts: &mut csg::Meter,
+        checks: &mut csg::Meter,
     ) -> Option<Drilled> {
         let by: Vec<usize> = self.cutters(form).into_iter().filter(|v| voids.get(v).is_some_and(|tris| !csg::misses(body, tris))).collect();
         if by.is_empty() {
@@ -2993,11 +2994,11 @@ impl Family {
         let mut holes: Vec<(usize, Vec<Vec<P2>>)> = Vec::new();
         for v in by {
             // The first that doesn't drill through sends them all to the cut.
-            holes.push((v, self.through_holes(form, v, values, read, shapes, cuts)?));
+            holes.push((v, self.through_holes(form, v, values, read, shapes, checks)?));
         }
         let rings: Vec<&Vec<P2>> = holes.iter().flat_map(|(_, h)| h).collect();
         let points: usize = rings.iter().map(|r| r.len()).sum();
-        cuts.spend(points.saturating_mul(points)).ok()?;
+        checks.spend(points.saturating_mul(points)).ok()?;
         let apart = rings.iter().enumerate().all(|(i, a)| {
             rings.iter().skip(i + 1).all(|b| {
                 !rings_cross(a, b) && a.iter().all(|q| !crate::geom::contains(b, *q)) && b.iter().all(|q| !crate::geom::contains(a, *q))
@@ -3030,7 +3031,7 @@ impl Family {
     /// GEO-2e: the holes void `v` drills in extrusion `b`, in `b`'s plane, where it drills straight through: both plain
     /// extrusions (no mesh, no axis) on parallel planes, the void reaching past both of `b`'s ends, each of its outlines (it
     /// has no holes of its own) wholly inside one of `b`'s, clear of `b`'s holes and crossing none of `b`'s lines. None where
-    /// any of that fails, or `cuts` runs out: then it is cut as any void is.
+    /// any of that fails, or `checks` runs out: then it is cut as any void is.
     fn through_holes<'a>(
         &'a self,
         b: usize,
@@ -3038,7 +3039,7 @@ impl Family {
         values: &BTreeMap<String, Val>,
         read: &mut HashMap<&'a str, Result<Node, String>>,
         shapes: &mut HashMap<usize, Option<Vec<crate::geom::Region>>>,
-        cuts: &mut csg::Meter,
+        checks: &mut csg::Meter,
     ) -> Option<Vec<Vec<P2>>> {
         let (body, void) = (self.forms.get(b)?, self.forms.get(v)?);
         let plain = |f: &Form| f.mesh.is_empty() && f.kind() == forms::FormKind::Extrusion && f.axis_ends().is_none();
@@ -3074,7 +3075,7 @@ impl Family {
                 ring.reverse();
             }
             let others: usize = body_points + out.iter().map(Vec::len).sum::<usize>();
-            cuts.spend(ring.len().saturating_mul(others)).ok()?;
+            checks.spend(ring.len().saturating_mul(others)).ok()?;
             let inside = |r: &[P2]| ring.iter().all(|q| crate::geom::contains(r, *q));
             let clear = |r: &[P2]| r.iter().all(|q| !crate::geom::contains(&ring, *q)) && !rings_cross(r, &ring);
             let host = regions.iter().find(|r| inside(&r.outer) && !rings_cross(&r.outer, &ring))?;
@@ -3486,17 +3487,26 @@ pub(crate) struct Drilled {
     pub tris: Vec<[P3; 3]>,
 }
 
-/// Whether an edge of ring `a` crosses or touches an edge of ring `b`.
+/// How near a point may be to a line and count as on it, mm: what rounding leaves of a corner worked out on a turned plane.
+const ON_LINE: f64 = 1e-6;
+
+/// Whether an edge of ring `a` crosses or touches an edge of ring `b`. A corner within [`ON_LINE`] of an edge's line counts
+/// as on it, so edges in line but for rounding (turned, or worked out from formulas) meet where their spans do.
 fn rings_cross(a: &[P2], b: &[P2]) -> bool {
-    let side = |p: P2, q: P2, r: P2| (q - p).cross(r - p);
+    // Which side of p-q `r` is, none within ON_LINE of its line.
+    let side = |p: P2, q: P2, r: P2| {
+        let d = (q - p).cross(r - p);
+        if d.abs() <= ON_LINE * p.dist(q) { 0.0 } else { d }
+    };
     crate::geom::ring_edges(a).any(|(p, q)| {
         crate::geom::ring_edges(b).any(|(r, s)| {
             let (d1, d2, d3, d4) = (side(p, q, r), side(p, q, s), side(r, s, p), side(r, s, q));
             if d1 == 0.0 && d2 == 0.0 {
                 // On one line (a grid of holes, edge after edge): they meet only where their spans along it do.
-                let along = |x: P2| (x - p).dot(q - p);
+                let len = p.dist(q);
+                let along = |x: P2| if len > 0.0 { (x - p).dot(q - p) / len } else { 0.0 };
                 let (lo, hi) = (along(r).min(along(s)), along(r).max(along(s)));
-                return lo <= (q - p).dot(q - p) && hi >= 0.0;
+                return lo <= len + ON_LINE && hi >= -ON_LINE;
             }
             d1 * d2 <= 0.0 && d3 * d4 <= 0.0
         })
@@ -4096,6 +4106,22 @@ fn hosted_library(language: crate::language::Language) -> Vec<(String, Value)> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn rings_on_one_line_but_for_rounding_meet_where_their_spans_do() {
+        // Two squares side by side, turned: the edge they share, and one half way along it, lie on one line only to within
+        // rounding. They meet; moved a millimetre apart, or along the line past each other, they don't.
+        for degrees in (1..90).map(f64::from) {
+            let (s, c) = degrees.to_radians().sin_cos();
+            let at = |x: f64, y: f64| P2(x * c - y * s, x * s + y * c);
+            let square = |x: f64, y: f64, w: f64| vec![at(x, y), at(x + w, y), at(x + w, y + w), at(x, y + w)];
+            let a = square(0.0, 0.0, 100.0);
+            assert!(rings_cross(&a, &square(100.0, 0.0, 100.0)), "{degrees}°: side by side");
+            assert!(rings_cross(&a, &square(100.0, 50.0, 100.0)), "{degrees}°: half along");
+            assert!(!rings_cross(&a, &square(101.0, 50.0, 100.0)), "{degrees}°: a millimetre apart");
+            assert!(!rings_cross(&a, &square(100.0, 101.0, 100.0)), "{degrees}°: on one line, past each other");
+        }
+    }
 
     fn with<'a>(values: &'a [(&'a str, f64)]) -> impl FnMut(&str) -> Result<f64, String> + 'a {
         move |n: &str| values.iter().find(|(k, _)| *k == n).map(|(_, v)| *v).ok_or_else(|| format!("no `{n}`"))

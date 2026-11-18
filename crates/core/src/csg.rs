@@ -33,6 +33,12 @@ impl Meter {
         Meter { work, splits: 400_000 }
     }
 
+    /// What is left of its work.
+    #[cfg(test)]
+    pub(crate) fn left(&self) -> u64 {
+        self.work
+    }
+
     /// `steps` of work done outside the cutting that its budget counts (GEO-2e's checks where voids drill): an error once it
     /// is spent.
     pub(crate) fn spend(&mut self, steps: usize) -> Result<(), String> {
