@@ -18,7 +18,14 @@ const COARSEST: i8 = 8;
 
 thread_local! {
     static NOW: Cell<Fineness> = const { Cell::new(Fineness(None)) };
+    /// GEO-2g: while a build is [`recording`], the coarsest fineness any curve chorded so far would take more chords at.
+    static NEEDS: Cell<Option<Needs>> = const { Cell::new(None) };
 }
+
+/// What a build recorded of its curves ([`recording`]): the coarsest fineness, `2^e` mm, at which any of them would take more
+/// chords than the default gives it; none where no fineness would. A build at a fineness no coarser than that may differ from
+/// the default one; at any other it is the default one, bit for bit, since [`steps`] is all a fineness changes.
+pub type Needs = Option<i8>;
 
 impl Fineness {
     /// The default: every curve [`super::SEGMENTS`] chords a turn.
@@ -44,6 +51,12 @@ impl Fineness {
         self.0.map(|e| 2f64.powi(i32::from(e)))
     }
 
+    /// Whether a build at this fineness may differ from the default one, given what the default one recorded
+    /// ([`recording`]). False for the default itself.
+    pub fn changes(self, needs: Needs) -> bool {
+        matches!((self.0, needs), (Some(e), Some(n)) if e <= n)
+    }
+
     /// `f`, with what it builds at this fineness. The fineness before is back after it, however `f` ends.
     pub fn scoped<T>(self, f: impl FnOnce() -> T) -> T {
         struct Back(Fineness);
@@ -66,9 +79,19 @@ impl Fineness {
 /// [`super::SEGMENTS`] rounded up (at least one), or more where that strays further than the fineness allows, up to
 /// [`Fineness::MOST`] a turn.
 pub(crate) fn steps(turn: f64, radius: f64) -> usize {
+    if let Some(was) = NEEDS.get() {
+        // The coarsest fineness this curve would take more chords at: the finer, the more it takes.
+        let mine = (FINEST..COARSEST).rev().find(|e| steps_at(turn, radius, Some(2f64.powi(i32::from(*e)))) > steps_at(turn, radius, None));
+        NEEDS.set(Some(was.max(mine)));
+    }
+    steps_at(turn, radius, Fineness::now().tolerance())
+}
+
+/// [`steps`] within `tolerance` mm, or at the default.
+fn steps_at(turn: f64, radius: f64, tolerance: Option<f64>) -> usize {
     let turns = turn.abs() / 360.0;
     let default = (turns * super::SEGMENTS as f64 - 1e-9).ceil().max(1.0) as usize;
-    let Some(tol) = Fineness::now().tolerance() else { return default };
+    let Some(tol) = tolerance else { return default };
     if !(radius.is_finite() && radius > tol && turns.is_finite()) {
         return default;
     }
@@ -76,6 +99,23 @@ pub(crate) fn steps(turn: f64, radius: f64) -> usize {
     let per_turn = (std::f64::consts::PI / (1.0 - tol / radius).acos()).min(Fineness::MOST as f64);
     let needed = (turns * per_turn - 1e-9).ceil();
     if needed.is_finite() && needed > default as f64 { needed as usize } else { default }
+}
+
+/// `f`, and what the curves it chords record ([`Needs`]): what it builds says which finenesses would build it otherwise. One
+/// recording inside another adds to it.
+pub fn recording<T>(f: impl FnOnce() -> T) -> (T, Needs) {
+    struct Back(Option<Needs>);
+    impl Drop for Back {
+        fn drop(&mut self) {
+            let inner = NEEDS.get().flatten();
+            NEEDS.set(self.0.map(|outer| outer.max(inner)));
+        }
+    }
+    let back = Back(NEEDS.replace(Some(None)));
+    let out = f();
+    let needs = NEEDS.get().flatten();
+    drop(back);
+    (out, needs)
 }
 
 /// The chords of a whole turn, as [`steps`] gives them: what a circle is drawn with.

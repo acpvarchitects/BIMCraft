@@ -153,10 +153,12 @@ pub(crate) struct Built {
     pub(crate) pieces: Vec<Piece>,
     pub(crate) bounds: Option<[[f64; 3]; 2]>,
     pub(crate) heights: (f64, f64),
+    /// What its curves recorded as it was built: which finenesses would build it otherwise (cp's review of #88).
+    pub(crate) needs: crate::family::fineness::Needs,
 }
 
 impl Built {
-    pub(crate) fn new(pieces: Vec<Piece>) -> Self {
+    pub(crate) fn new(pieces: Vec<Piece>, needs: crate::family::fineness::Needs) -> Self {
         let (mut lo, mut hi) = ([f64::INFINITY; 3], [f64::NEG_INFINITY; 3]);
         for p in pieces.iter().flat_map(|pc| pc.tris.iter().flatten()) {
             for k in 0..3 {
@@ -165,7 +167,7 @@ impl Built {
             }
         }
         let heights = pieces.iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), p| (lo.min(p.bottom), hi.max(p.top)));
-        Self { bounds: (lo[0] <= hi[0]).then_some([lo, hi]), heights, pieces }
+        Self { bounds: (lo[0] <= hi[0]).then_some([lo, hi]), heights, pieces, needs }
     }
 }
 
@@ -310,6 +312,15 @@ impl<'a> Components<'a> {
         if let Some(b) = self.known(key, fineness) {
             return b;
         }
+        // cp's review of #88: one whose curves are all within the fineness at the default is its default build, not built
+        // again to find that out.
+        if fineness != Fineness::DEFAULT {
+            let default = self.local_at(key, c, Fineness::DEFAULT);
+            if !fineness.changes(default.needs) {
+                self.local.insert((Arc::clone(key), fineness), Arc::clone(&default));
+                return default;
+            }
+        }
         let model = self.model;
         count(fineness, 1);
         let built = build(model, c, fineness);
@@ -403,6 +414,10 @@ impl<'a> Components<'a> {
         if let Some(inside) = self.seen(c).inside {
             return inside;
         }
+        if self.lines_meet(c, window) {
+            self.seen(c).inside = Some(true);
+            return true;
+        }
         let key = Arc::clone(&self.seen(c).key);
         let built = match self.known(&key, Fineness::DEFAULT) {
             Some(built) => Some(built),
@@ -422,11 +437,26 @@ impl<'a> Components<'a> {
         if let Some(inside) = self.seen(c).inside {
             return inside;
         }
+        if self.lines_meet(c, window) {
+            return true;
+        }
         let key = Arc::clone(&self.seen(c).key);
         match self.known(&key, Fineness::DEFAULT) {
             Some(_) => self.in_window(c),
             None => self.placed_envelope(c).is_none_or(|[lo, hi]| meets([P2(lo[0], lo[1]), P2(hi[0], hi[1])], window)),
         }
+    }
+
+    /// ec's review of #88: whether any of `c`'s model lines (FE-15), at any detail, meets `window`: a model line may reach far
+    /// past its family's solids, and a plan draws it wherever it reaches. False for a family of none, found without building.
+    fn lines_meet(&self, c: &Component, window: [P2; 2]) -> bool {
+        if self.model.families.get(&c.family).is_none_or(|f| f.model_lines.is_empty()) {
+            return false;
+        }
+        self.model
+            .component_model_line_parts(c)
+            .iter()
+            .any(|([a, b], ..)| meets([P2(a[0].min(b[0]), a[1].min(b[1])), P2(a[0].max(b[0]), a[1].max(b[1]))], window))
     }
 
     /// GEO-2g: whether `c` may reach from a floor plan's view depth `depth` (exclusive) to under its cut plane `cut`: false
@@ -490,6 +520,10 @@ impl<'a> Components<'a> {
                 }
             }
             let key = Arc::clone(&self.seen(c).key);
+            // Its curves within the fineness at the default: drawn with its default build, nothing built.
+            if self.known(&key, Fineness::DEFAULT).is_some_and(|d| !fineness.changes(d.needs)) {
+                continue;
+            }
             if !queued.contains(&key) && self.known(&key, fineness).is_none() {
                 queued.insert(Arc::clone(&key));
                 jobs.push((key, c));
@@ -692,9 +726,10 @@ impl<'a> Components<'a> {
 fn build(model: &Model, c: &Component, fineness: Fineness) -> Built {
     #[cfg(test)]
     if c.params.values().any(|v| v.as_f64() == Some(PANIC_PROBE)) {
-        panic!("a probe's build panicked");
+        panic!("a probe's build panicked: W {}", c.params.get("W").map_or(String::new(), |w| w.to_string()));
     }
-    Built::new(fineness.scoped(|| model.component_local_pieces(c)))
+    let (pieces, needs) = crate::family::fineness::recording(|| fineness.scoped(|| model.component_local_pieces(c)));
+    Built::new(pieces, needs)
 }
 
 /// GEO-2g: the plan's own workers, as many as the 3D view's and apart from them, so a plan built while a 3D view renders
@@ -722,7 +757,7 @@ fn in_parallel<J: Sync, T: Send>(jobs: &[J], f: impl Fn(&J) -> T + Sync + Send) 
             f(j)
         };
         let out = match TEST_POOL.with(|p| p.borrow().clone()) {
-            Some(Some(pool)) => pool.install(|| jobs.par_iter().map(&g).collect()),
+            Some(Some(pool)) => in_order(pool.install(|| jobs.par_iter().map(|j| caught(&g, j)).collect())),
             Some(None) => jobs.iter().map(&g).collect(),
             None => on_workers(jobs, g),
         };
@@ -737,9 +772,29 @@ fn in_parallel<J: Sync, T: Send>(jobs: &[J], f: impl Fn(&J) -> T + Sync + Send) 
 fn on_workers<J: Sync, T: Send>(jobs: &[J], f: impl Fn(&J) -> T + Sync + Send) -> Vec<T> {
     use rayon::prelude::*;
     match plan_pool() {
-        Some(pool) if jobs.len() > 1 && pool.current_num_threads() > 1 => pool.install(|| jobs.par_iter().map(f).collect()),
+        Some(pool) if jobs.len() > 1 && pool.current_num_threads() > 1 => {
+            in_order(pool.install(|| jobs.par_iter().map(|j| caught(&f, j)).collect()))
+        }
         _ => jobs.iter().map(f).collect(),
     }
+}
+
+/// `f` of `j`, a panic in it caught.
+fn caught<J, T>(f: &(impl Fn(&J) -> T + Sync), j: &J) -> std::thread::Result<T> {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(j)))
+}
+
+/// What each job came to, in their order; where any panicked, the first of them in that order panics again, as the loop on
+/// one thread would have (ec's review of #88).
+fn in_order<T>(results: Vec<std::thread::Result<T>>) -> Vec<T> {
+    let mut out = Vec::with_capacity(results.len());
+    for r in results {
+        match r {
+            Ok(v) => out.push(v),
+            Err(payload) => std::panic::resume_unwind(payload),
+        }
+    }
+    out
 }
 
 /// `n` builds at `fineness`, counted on this thread.
@@ -1015,6 +1070,22 @@ struct Kept {
     used: u64,
 }
 
+impl Kept {
+    /// ec's review of #88: `key`'s default build `gone` no longer kept, its finer builds that shared it charged what they take,
+    /// since they now keep it alive on their own. The bytes that adds.
+    fn unshare(&mut self, key: &Arc<Key>, gone: &Arc<Built>) -> usize {
+        let mut added = 0;
+        for ((k, fineness), shape) in self.shapes.iter_mut() {
+            if *fineness != Fineness::DEFAULT && k == key && Arc::ptr_eq(&shape.built, gone) {
+                let full = estimate(&shape.built.pieces);
+                added += full.saturating_sub(shape.bytes);
+                shape.bytes = shape.bytes.max(full);
+            }
+        }
+        added
+    }
+}
+
 /// A shape kept: its build, about how many bytes it takes, and when it was last used.
 struct Shape {
     built: Arc<Built>,
@@ -1051,7 +1122,7 @@ fn tier(fineness: Fineness) -> usize {
 fn budgets() -> [usize; 2] {
     #[cfg(test)]
     if let Some(b) = BUDGETS.with(std::cell::Cell::get) {
-        return [b, b];
+        return b;
     }
     [DEFAULT_BUDGET, BUDGET]
 }
@@ -1116,8 +1187,13 @@ impl Store {
                 if self.bytes[t] <= budgets[t] / 4 * 3 {
                     break;
                 }
-                if let Some(s) = self.generations.get_mut(i).and_then(|g| g.shapes.remove(&k)) {
+                if let Some(g) = self.generations.get_mut(i)
+                    && let Some(s) = g.shapes.remove(&k)
+                {
                     self.bytes[t] -= s.bytes;
+                    if k.1 == Fineness::DEFAULT {
+                        self.bytes[1] += g.unshare(&k.0, &s.built);
+                    }
                 }
             }
         }
@@ -1169,6 +1245,9 @@ fn keep(model: &Model, shapes: &[Keeping]) {
             let bytes = if shared { std::mem::size_of::<Shape>() } else { estimate(&built.pieces) };
             if let Some(was) = s.generations[i].shapes.insert(key.clone(), Shape { built: Arc::clone(built), bytes, used: now }) {
                 s.bytes[tier(key.1)] -= was.bytes;
+                if key.1 == Fineness::DEFAULT && !Arc::ptr_eq(&was.built, built) {
+                    s.bytes[1] += s.generations[i].unshare(&key.0, &was.built);
+                }
             }
             s.bytes[tier(key.1)] += bytes;
         }
@@ -1199,7 +1278,7 @@ thread_local! {
     static DEFAULT_BUILDS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
     static COARSE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     static UNCULLED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
-    static BUDGETS: std::cell::Cell<Option<usize>> = const { std::cell::Cell::new(None) };
+    static BUDGETS: std::cell::Cell<Option<[usize; 2]>> = const { std::cell::Cell::new(None) };
     static BUILD_THREADS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
     /// The workers a test asks for: none asked, the plan's; `Some(None)`, this thread alone.
     static TEST_POOL: std::cell::RefCell<Option<Option<Arc<rayon::ThreadPool>>>> = const { std::cell::RefCell::new(None) };
@@ -1234,7 +1313,27 @@ pub(crate) fn without_culling<T>(f: impl FnOnce() -> T) -> T {
 /// `f`, with what it keeps on this thread kept within `bytes` a tier.
 #[cfg(test)]
 pub(crate) fn with_budget<T>(bytes: usize, f: impl FnOnce() -> T) -> T {
+    with_budgets([bytes, bytes], f)
+}
+
+/// `f`, with what it keeps on this thread kept within `bytes`: the default builds' tier and the finer ones'.
+#[cfg(test)]
+pub(crate) fn with_budgets<T>(bytes: [usize; 2], f: impl FnOnce() -> T) -> T {
     with_cell(&BUDGETS, Some(bytes), f)
+}
+
+/// Whether each finer build kept is charged what it takes, but where its default one, kept, shares it.
+#[cfg(test)]
+pub(crate) fn kept_finer_honest() -> bool {
+    with_store(|s| {
+        s.generations.iter().all(|g| {
+            g.shapes.iter().filter(|(k, _)| k.1 != Fineness::DEFAULT).all(|((key, _), shape)| {
+                let shared = g.shapes.get(&(Arc::clone(key), Fineness::DEFAULT)).is_some_and(|d| Arc::ptr_eq(&d.built, &shape.built));
+                shared || shape.bytes == estimate(&shape.built.pieces)
+            })
+        })
+    })
+    .unwrap_or(false)
 }
 
 /// `f`, with the plans it draws on this thread built on `threads` workers of their own (one: on this thread).

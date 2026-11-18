@@ -351,3 +351,96 @@ fn a_panels_envelope_is_known_and_holds_all_it_builds() {
         assert_eq!(built(&s, view), 1, "the one in the window");
     });
 }
+
+/// ec's review of #88: a family whose solid is a small box at its origin and whose model line runs 30 m from it, viewed at the
+/// line's far end: the line is drawn, culled as unculled, though the box is far off the window.
+#[test]
+fn a_model_line_far_from_its_familys_solid_is_drawn_where_it_reaches_into_the_window() {
+    let mut s = Session::new();
+    s.execute(
+        "family",
+        &json!({"name": "Long", "category": "generic", "types": {"T": {}},
+                "forms": [{"profile": [[0, 0], [200, 0], [200, 200], [0, 200]], "to": 300}],
+                "model_lines": [{"start": [0, 100, 0], "end": [30000, 100, 0]}]}),
+    )
+    .unwrap_or_else(|e| panic!("{e}"));
+    let id = s.execute("component", &json!({"family": "Long", "at": [0, 0]})).unwrap_or_else(|e| panic!("{e}"))["id"]
+        .as_u64()
+        .unwrap_or_else(|| panic!("an id"));
+    for view in [at(29_000.0), View { angle: 30.0, ..at(29_000.0) }] {
+        let culled = render::draw(&s.model, LEVEL, view);
+        let whole = cg::without_culling(|| render::draw(&s.model, LEVEL, view));
+        assert!(whole.owners.contains(&Some(id)), "unculled, its line is drawn");
+        assert!(same(&culled, &whole), "culled, the same: {} against {} primitives", culled.prims.len(), whole.prims.len());
+    }
+}
+
+/// ec's review of #88: a finer build kept as its default one, shared, is charged what it takes once its default one goes.
+#[test]
+fn a_finer_build_shared_with_its_default_is_counted_in_full_once_the_default_goes() {
+    // Too fine to cut at a close zoom: its finer build is its default one, shared (#84).
+    let round = || {
+        let mut s = Session::new();
+        let mut forms = vec![json!({"sketch": [{"centre": [0, 0], "radius": 20000}], "from": 0, "to": 3000})];
+        for x in [-10000, 10000] {
+            forms.push(json!({"sketch": [{"centre": [x, 0], "radius": 6000}], "from": 1000, "to": 4000, "void": true}));
+        }
+        s.execute("family", &json!({"name": "Round", "category": "generic", "types": {"T": {}}, "forms": forms}))
+            .unwrap_or_else(|e| panic!("{e}"));
+        s.execute("component", &json!({"family": "Round", "at": [0, 0]})).unwrap_or_else(|e| panic!("{e}"));
+        s
+    };
+    let view = View { angle: 0.0, scale: 2.0, cx: 20_000.0, cy: 0.0, width: 1000, height: 800 };
+    let s = round();
+    render::draw(&s.model, LEVEL, view);
+    assert!(cg::kept_finer().0 > 0, "a finer build kept as its default one");
+    // Another model's drawing, with no room for a default build: the first one's goes, its finer one stays.
+    let other = round();
+    cg::with_budgets([1, 1 << 30], || render::draw(&other.model, LEVEL, view));
+    assert!(cg::kept_finer().1 > 0, "a finer build kept with no default one");
+    assert!(cg::kept_finer_honest(), "each finer build no default shares is charged in full");
+    let (counted, summed) = cg::kept_bytes();
+    assert_eq!(counted, summed);
+}
+
+/// ec's review of #88: two builds that panic, on one thread or eight: the first in the model's order comes out.
+#[test]
+fn of_two_panics_the_first_in_the_models_order_comes_out() {
+    let view = View { angle: 0.0, scale: 0.08, cx: 7000.0, cy: 4000.0, width: 1600, height: 1000 };
+    let panicked = |threads: usize| {
+        let s = panels(40, 0);
+        let mut model = (*s.model).clone();
+        for e in model.elements.values_mut() {
+            if let crate::model::Element::Component(c) = e
+                && [json!(1003.0), json!(1031.0)].contains(&c.params["W"])
+            {
+                c.params.insert("R".into(), json!(cg::PANIC_PROBE));
+            }
+        }
+        let caught =
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| cg::with_threads(threads, || render::draw(&model, LEVEL, view))));
+        match caught {
+            Err(e) => e.downcast_ref::<String>().cloned().or_else(|| e.downcast_ref::<&str>().map(|s| s.to_string())),
+            Ok(_) => None,
+        }
+    };
+    let serial = panicked(1);
+    assert!(serial.as_deref().is_some_and(|m| m.contains("1003")), "the first one: {serial:?}");
+    for _ in 0..8 {
+        assert_eq!(panicked(8), serial);
+    }
+}
+
+/// cp's review of #88: a plan zoomed to fit a facade asks for a fineness its panels' curves are already within at the default,
+/// so it builds nothing finer and draws as it would at the default.
+#[test]
+fn a_facade_fitted_builds_nothing_finer() {
+    let s = panels(100, 0);
+    let fit = render::plan_fit(&s.model, LEVEL, 2000, 1200, false);
+    assert_ne!(crate::family::Fineness::for_view(fit.scale), crate::family::Fineness::DEFAULT, "a fineness of its own");
+    let before = cg::fine_builds();
+    let fitted = render::draw(&s.model, LEVEL, fit);
+    assert_eq!(cg::fine_builds() - before, 0, "nothing built finer");
+    let s = panels(100, 0);
+    assert!(same(&fitted, &cg::without_fineness(|| render::draw(&s.model, LEVEL, fit))));
+}

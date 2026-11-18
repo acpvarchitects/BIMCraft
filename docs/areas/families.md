@@ -2185,20 +2185,28 @@ builds only what its window needs, keeps what it built, and builds the rest on s
   (`DEFAULT_BUDGET`, 384 MB; 10,000 of GEO-2f's panels take some 240 MB), so a zoom in never pushes out what every drawing
   needs. A redraw or a pan builds nothing it built before, an edit of a component builds that one again, an edit of a family
   starts a new generation. Each build keeps its box and heights (`Built`), so neither is found from its triangles again; a
-  shape too fine to cut shares its default build. Each key's envelope is kept too. A test keeps its own store, on its thread.
+  shape too fine to cut shares its default build. A finer build shared so is charged next to nothing while its default one
+  is kept, and in full once that goes, since it then keeps the shape alive alone. Each key's envelope is kept too. A test keeps
+  its own store, on its thread.
+- **Finer only where it changes anything.** As a build chords its curves (`fineness::steps`, the one place a fineness
+  changes a build), it records the coarsest fineness at which any of them would take more chords (`fineness::recording`,
+  `Built::needs`). A view asking a fineness no finer than that draws the default build, bit for bit the same as a finer one
+  would be, and builds nothing: a facade zoomed to fit, its panels' knobs and holes within half a pixel at the default
+  already, builds nothing finer. A family's sketch holds lines, arcs and circles only, so nothing else is chorded finer.
 - **Culled.** The window is the view's screen and one more screen each way, however it is turned (`window_of`): a pan of up to
   a screen, a pick, a hover, Tab and a snap near the edge find what is there before the next drawing replaces the moved one.
   A component is drawn when its build's box meets the window; where nothing is built, its envelope
   (`Family::conservative_bounds`, which now also boxes revolves and leaves voids out, since a void only takes away) decides
-  without building it when it misses. Only components' forms are culled: walls, rooms, annotation and a component's symbols are
+  without building it when it misses. A component's model lines, which may reach far past its solids, meet the window by their
+  own extent too. Only components' forms are culled: walls, rooms, annotation and a component's symbols are
   drawn as before, and a tag that needs a component's geometry builds it. Exports, prints and sheets pass their own view, so
   they cull to their own window or crop (`plan_cache_tests.rs` holds each to the unculled drawing, pixel for pixel).
 - **Heights without building.** One whose envelope lies wholly at or over the cut plane, or wholly at or under the bottom of the
   view depth, isn't built: a floor plan never draws it. One only beyond the cut, under it and over the view depth, is.
 - **On several threads.** `Components::prepare` collects what the plan will build and isn't kept, builds it on the plan's own
   workers (`plan_pool`, apart from the 3D view's, as many), each at the fineness it asks for, and puts it in the model's
-  order, so one thread or eight draw the same plan. A build that fails is no geometry either way; one that panics panics
-  the drawing the same way.
+  order, so one thread or eight draw the same plan. A build that fails is no geometry either way; where builds panic, the
+  first of them in the model's order panics the drawing, as on one thread.
 
 `zoomed_plan_bench` in `family_fineness_tests.rs` times it.
 

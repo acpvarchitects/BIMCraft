@@ -394,3 +394,50 @@ fn zoomed_plan_bench() {
         }
     });
 }
+
+/// cp's review of #88: what a default build records of its curves says, for each fineness, whether a build at it would be any
+/// different, bit for bit: straight lines (which no fineness changes), a revolve, an arc and a circle, small and large, across
+/// finenesses from far out to close in. A family's sketch has no ellipses or splines: [`crate::family::fineness::steps`] is
+/// the only curve a fineness changes.
+#[test]
+fn a_default_build_says_exactly_which_finenesses_would_build_it_otherwise() {
+    let line = |a: Value, b: Value| json!({"start": a, "end": b});
+    let knob = |r: f64| {
+        vec![
+            line(json!([r, 0]), json!([2.0 * r, 0])),
+            line(json!([2.0 * r, 0]), json!([2.0 * r, 80])),
+            line(json!([2.0 * r, 80]), json!([r, 80])),
+            line(json!([r, 80]), json!([r, 0])),
+            json!({"start": [0, 0], "end": [0, 100], "axis": true}),
+        ]
+    };
+    let cases: Vec<(&str, Vec<Value>)> = vec![
+        ("straight lines", vec![json!({"profile": [[0, 0], [4000, 0], [4000, 3000], [0, 3000]], "to": 500})]),
+        ("a small revolve", vec![json!({"sketch": knob(60.0), "from": 0, "to": 360})]),
+        ("a large part revolve", vec![json!({"sketch": knob(9000.0), "from": 10, "to": 100})]),
+        ("a circle", vec![json!({"sketch": [{"centre": [0, 0], "radius": 3000}], "to": 500})]),
+        (
+            "an arc",
+            vec![json!({"sketch": [
+                {"start": [0, 0], "end": [20000, 0], "turn": 40}, line(json!([20000, 0]), json!([20000, 3000])),
+                line(json!([20000, 3000]), json!([0, 3000])), line(json!([0, 3000]), json!([0, 0]))], "to": 300})],
+        ),
+    ];
+    for (what, forms) in cases {
+        let (f, v) = family(forms);
+        let (default, needs) = crate::family::fineness::recording(|| f.pieces_fine(&v, Fineness::DEFAULT));
+        let default = default.unwrap_or_else(|e| panic!("{what}: {e}"));
+        let mut differ = 0;
+        for k in -12..=12 {
+            let fineness = Fineness::for_view(2f64.powi(k));
+            let fine = f.pieces_fine(&v, fineness).unwrap_or_else(|e| panic!("{what}: {e}"));
+            assert_eq!(fineness.changes(needs), fine != default, "{what} at {fineness:?}, recorded {needs:?}");
+            differ += usize::from(fine != default);
+        }
+        if what == "straight lines" {
+            assert_eq!(differ, 0, "no fineness changes straight lines");
+        } else {
+            assert!(differ > 0 && differ < 25, "{what}: some finenesses change it, not all ({differ})");
+        }
+    }
+}
