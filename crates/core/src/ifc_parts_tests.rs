@@ -459,3 +459,241 @@ fn in_ifc2x3_a_part_is_a_building_element_part_and_a_materials_values_are_its_ge
     assert_eq!(thermal[0][1..], ["840.", "$", "$", "1.4"]);
     let _ = wall;
 }
+
+// Read back: an element taken apart comes in from IFC whole, taken apart as it was.
+
+/// What the session's model reads back as, saved as IFC.
+fn back(s: &Session) -> crate::import::Imported {
+    crate::import::ifc(ifc::export(&s.model).as_bytes(), "parts").unwrap_or_else(|e| panic!("{e}"))
+}
+
+fn of_category(m: &crate::model::Model, cat: &str) -> Vec<Id> {
+    m.elements.iter().filter(|(_, e)| e.category() == cat).map(|(id, _)| *id).collect()
+}
+
+fn a_part(m: &crate::model::Model, id: Id) -> &crate::parts::BuildingPart {
+    match m.elements.get(id) {
+        Some(crate::model::Element::Part(p)) => p,
+        other => panic!("{id} is no part: {other:?}"),
+    }
+}
+
+/// Parts `ids` of `m` and `again` of the model read back are the same parts: each with the GUID of one, of the same layer,
+/// made of the same, of the same kind, saying the same, and measuring the same.
+fn same_parts(m: &crate::model::Model, ids: &[Id], back: &crate::model::Model, again: &[Id]) {
+    assert_eq!(ids.len(), again.len(), "{again:?}");
+    for &a in ids {
+        let b = back.elements.id(m.guid(a)).unwrap_or_else(|| panic!("part {a} didn't come back"));
+        assert!(again.contains(&b), "part {a} came back as {b}, not one of {again:?}");
+        let (was, is) = (a_part(m, a), a_part(back, b));
+        assert_eq!(back.guid(is.host), m.guid(was.host), "part {a}");
+        assert_eq!(was.parent.map(|g| m.guid(g)), is.parent.map(|g| back.guid(g)), "part {a}");
+        let (s0, s1) = (m.part_state(a).unwrap(), back.part_state(b).unwrap());
+        assert_eq!((s1.layer, &s1.material, s1.conflict.as_deref()), (s0.layer, &s0.material, None), "part {a}");
+        assert_eq!((&is.heritage, is.predefined_type, &is.object_type), (&was.heritage, was.predefined_type, &was.object_type));
+        assert_eq!((is.material.as_deref(), is.piece.as_ref()), (was.material.as_deref(), was.piece.as_ref()), "part {a}");
+        let close = |x: f64, y: f64| (x - y).abs() <= 1e-6 * y.abs().max(1.0);
+        assert!(close(s1.net_volume, s0.net_volume), "part {a}: {} for {}", s1.net_volume, s0.net_volume);
+        assert_eq!(s1.net_area.is_some(), s0.net_area.is_some());
+        assert!(close(s1.net_area.unwrap_or(0.0), s0.net_area.unwrap_or(0.0)), "part {a}: {:?} for {:?}", s1.net_area, s0.net_area);
+    }
+}
+
+#[test]
+fn a_wall_taken_apart_with_a_window_and_a_door_comes_back_from_ifc_whole_and_taken_apart_as_it_was() {
+    let (mut s, wall, parts) = historic();
+    run(&mut s, "window", json!({"at": [1000, 3000]}));
+    run(&mut s, "door", json!({"at": [1000, 5000]}));
+    run(
+        &mut s,
+        "part",
+        json!({"id": parts[0], "predefined_type": "userdefined", "object_type": "USR", "su_code": "USR 3", "historical_period": "18th century",
+            "decay_pathology": "efflorescence", "decay_severity": 4, "intervention_type": "Cleaning"}),
+    );
+    run(&mut s, "part", json!({"id": parts[2], "decay_pathology": {"custom": "Lacuna"}, "material": "Rubble Masonry"}));
+    let read = back(&s);
+    assert!(read.skipped.is_empty(), "{:?}", read.skipped);
+    let m = &read.model;
+    // The wall where it was, of its type's three layers, with its window and its door in it.
+    let walls = of_category(m, "wall");
+    assert_eq!(walls.len(), 1);
+    let Some(crate::model::Element::Wall(w)) = m.elements.get(walls[0]) else { panic!("no wall") };
+    assert_eq!((w.start, w.end), (crate::geom::P2(1000.0, 2000.0), crate::geom::P2(1000.0, 6000.0)));
+    let layers: Vec<(f64, &str)> = m.type_layers("wall", &w.type_name).iter().map(|l| (l.thickness, l.material.as_str())).collect();
+    assert_eq!(layers, [(20.0, "Lime Plaster"), (460.0, "Rubble Masonry"), (20.0, "Lime Plaster")]);
+    for cat in ["window", "door"] {
+        let found = of_category(m, cat);
+        assert_eq!(found.len(), 1, "{cat}");
+        let (Some(crate::model::Element::Window(o)) | Some(crate::model::Element::Door(o))) = m.elements.get(found[0]) else {
+            panic!("no {cat}")
+        };
+        assert_eq!(o.host, m.guid(walls[0]), "the {cat} is in the wall");
+    }
+    // Its parts, a layer each from its exterior in, the same parts as they were.
+    assert_eq!(m.guid(walls[0]), s.model.guid(wall));
+    same_parts(&s.model, &parts, m, &m.parts_of(walls[0]));
+}
+
+#[test]
+fn a_floor_a_roof_a_ceiling_and_a_component_come_back_from_ifc_taken_apart_too() {
+    let mut s = Session::new();
+    s.script(
+        r#"type {"category": "floor", "name": "Layered", "layers": [{"function": "finish", "thickness": 20}, {"function": "thermal", "thickness": 80}, {"function": "structure", "thickness": 200}]}
+           floor {"boundary": [[0, 0], [4000, 0], [4000, 3000], [0, 3000]], "type": "Layered", "level": "Level 2", "openings": [[[1000, 1000], [2000, 1000], [2000, 2000], [1000, 2000]]]}
+           ceiling {"boundary": [[0, 0], [4000, 0], [4000, 3000], [0, 3000]]}
+           roof {"boundary": [[-500, -500], [4500, -500], [4500, 3500], [-500, 3500]], "slope": 30}
+           component {"family": "WC", "at": [2000, 2000], "angle": 90}"#,
+    )
+    .unwrap();
+    let hosts: Vec<Id> = ["floor", "ceiling", "roof", "component"].iter().map(|c| of_category(&s.model, c)[0]).collect();
+    run(&mut s, "create_parts", json!({"ids": hosts}));
+    let insulation = s.model.parts_of(hosts[0])[1];
+    run(&mut s, "part", json!({"id": insulation, "su_code": "USR 7"}));
+    let read = back(&s);
+    assert!(read.skipped.is_empty(), "{:?}", read.skipped);
+    let m = &read.model;
+    for (host, cat) in hosts.iter().zip(["floor", "ceiling", "roof", "component"]) {
+        let again = of_category(m, cat);
+        assert_eq!(again.len(), 1, "{cat}");
+        assert_eq!(m.guid(again[0]), s.model.guid(*host), "{cat}");
+        same_parts(&s.model, &s.model.parts_of(*host), m, &m.parts_of(again[0]));
+    }
+}
+
+#[test]
+fn a_divided_part_comes_back_from_ifc_divided_as_it_was_each_piece_with_what_was_said_of_it() {
+    let (mut s, wall, parts) = historic();
+    let cut = json!({"cut": {"plane": {"point": [1000, 4000, 0], "normal": [0, 1, 0]}}, "gap": 10});
+    let made = run(&mut s, "divide_parts", json!({"id": parts[0], "cuts": [cut]}));
+    let pieces: Vec<Id> = made["pieces"].as_array().unwrap().iter().map(|p| p["id"].as_u64().unwrap()).collect();
+    run(&mut s, "part", json!({"id": pieces[1], "decay_pathology": "crust", "su_code": "USR 3b"}));
+    let read = back(&s);
+    assert!(read.skipped.is_empty(), "{:?}", read.skipped);
+    let m = &read.model;
+    let again = of_category(m, "wall")[0];
+    assert_eq!(m.guid(again), s.model.guid(wall));
+    same_parts(&s.model, &s.model.parts_of(wall), m, &m.parts_of(again));
+    let plaster = m.elements.id(s.model.guid(parts[0])).unwrap();
+    assert!(a_part(m, plaster).division.is_some());
+}
+
+#[test]
+fn a_materials_weight_and_heat_come_back_from_ifc() {
+    let (mut s, _, _) = historic();
+    run(&mut s, "material", json!({"name": "Rubble Masonry", "density": 2100, "conductivity": 1.4, "specific_heat": 840}));
+    run(&mut s, "material", json!({"name": "Lime Plaster", "density": 1600}));
+    for schema in [ifc::Schema::Ifc4, ifc::Schema::Ifc2x3] {
+        let text = ifc::export_as(&s.model, ifc::Origin::Internal, schema);
+        let m = crate::import::ifc(text.as_bytes(), "parts").unwrap().model;
+        for name in ["Rubble Masonry", "Lime Plaster"] {
+            assert_eq!(m.materials[name].physics(), s.model.materials[name].physics(), "{name} in {schema:?}");
+        }
+    }
+}
+
+#[test]
+fn a_part_an_export_left_out_does_not_come_back_and_its_host_keeps_its_type() {
+    let (mut s, wall, parts) = historic();
+    run(&mut s, "part", json!({"id": parts[0], "excluded": true}));
+    let read = back(&s);
+    assert!(read.skipped.is_empty(), "{:?}", read.skipped);
+    let m = &read.model;
+    // The file has the wall's other two parts only: it is as thick as its type's layers say all the same, and where it was.
+    let again = of_category(m, "wall")[0];
+    let Some(crate::model::Element::Wall(w)) = m.elements.get(again) else { panic!("no wall") };
+    assert_eq!((w.start, w.end), (crate::geom::P2(1000.0, 2000.0), crate::geom::P2(1000.0, 6000.0)));
+    assert_eq!(m.type_layers("wall", &w.type_name).iter().map(|l| l.thickness).collect::<Vec<_>>(), [20.0, 460.0, 20.0]);
+    same_parts(&s.model, &parts[1..], m, &m.parts_of(again));
+    let _ = wall;
+}
+
+#[test]
+fn a_part_divided_where_the_file_does_not_say_how_comes_back_whole_and_its_pieces_are_listed() {
+    let (mut s, wall, parts) = historic();
+    let cut = json!({"cut": {"plane": {"point": [1000, 4000, 0], "normal": [0, 1, 0]}}});
+    run(&mut s, "divide_parts", json!({"id": parts[0], "cuts": [cut]}));
+    run(&mut s, "part", json!({"id": parts[0], "su_code": "USR 3"}));
+    let text = ifc::export(&s.model);
+    let json = text.lines().find(|l| l.contains("'Division'")).and_then(|l| l.split("IFCTEXT(").nth(1)).unwrap().to_string();
+    // As another program divides a part, saying nothing of how; and a division BIMCraft can't read.
+    for file in [text.replace(ifc::PART_DIVISION, "BIMCraft_Other"), text.replace(&json, "'{not json'),$);")] {
+        let read = crate::import::ifc(file.as_bytes(), "parts").unwrap();
+        let m = &read.model;
+        let plaster = m.elements.id(s.model.guid(parts[0])).unwrap();
+        assert!(a_part(m, plaster).division.is_none());
+        assert_eq!(a_part(m, plaster).heritage.su_code, "USR 3");
+        assert_eq!(m.parts_of(m.elements.id(s.model.guid(wall)).unwrap()).len(), 3, "the plaster whole, and the other two");
+        assert_eq!(read.skipped.len(), 2, "{:?}", read.skipped);
+        assert!(
+            read.skipped.iter().all(|w| w.starts_with("IFCBUILDINGELEMENTPART #") && w.contains("came in whole")),
+            "{:?}",
+            read.skipped
+        );
+    }
+}
+
+#[test]
+fn a_part_that_is_where_no_part_of_its_element_is_is_listed_and_left_out() {
+    let (s, wall, parts) = historic();
+    let text = ifc::export(&s.model);
+    let entities = read(&text);
+    let tag = |id: Id| format!("'{id}'");
+    let numbered = |class: &str, id: Id| *entities.iter().find(|(_, (c, a))| c == class && a.get(7) == Some(&tag(id))).unwrap().0;
+    let (w, masonry) = (numbered("IFCWALL", wall), numbered("IFCBUILDINGELEMENTPART", parts[1]));
+    // The masonry twice: the second is where the first is, which has its part.
+    let n = entities.keys().max().unwrap() + 1;
+    let line = text.lines().find(|l| l.starts_with(&format!("#{masonry}="))).unwrap();
+    let global = &entities[&masonry].1[0];
+    let twin = format!("#{n}={}", line.split_once('=').unwrap().1).replacen(global, &format!("'{}'", ifc::compress(7)), 1);
+    let (rel, (_, args)) = entities.iter().find(|(_, (c, a))| c == "IFCRELAGGREGATES" && a[4] == format!("#{w}")).unwrap();
+    let old = text.lines().find(|l| l.starts_with(&format!("#{rel}="))).unwrap();
+    let more = old.replace(&args[5], &format!("{},#{n})", args[5].trim_end_matches(')')));
+    let file = text.replace(old, &format!("{more}\n{twin}"));
+    let read = crate::import::ifc(file.as_bytes(), "parts").unwrap();
+    assert_eq!(
+        read.skipped,
+        [format!("IFCBUILDINGELEMENTPART #{n} 'Rubble Masonry': no part of its element BIMCraft can make is where it is")]
+    );
+    let m = &read.model;
+    same_parts(&s.model, &parts, m, &m.parts_of(m.elements.id(s.model.guid(wall)).unwrap()));
+}
+
+#[test]
+fn in_ifc2x3_parts_come_back_too_of_no_kind_since_ifc2x3_has_none() {
+    let (mut s, wall, parts) = historic();
+    run(&mut s, "part", json!({"id": parts[0], "predefined_type": "userdefined", "object_type": "USR", "su_code": "USR 3"}));
+    let text = ifc::export_as(&s.model, ifc::Origin::Internal, ifc::Schema::Ifc2x3);
+    let read = crate::import::ifc(text.as_bytes(), "parts").unwrap();
+    assert!(read.skipped.is_empty(), "{:?}", read.skipped);
+    let m = &read.model;
+    assert_eq!(m.parts_of(m.elements.id(s.model.guid(wall)).unwrap()).len(), 3);
+    let p = a_part(m, m.elements.id(s.model.guid(parts[0])).unwrap());
+    assert_eq!(
+        (p.predefined_type, p.object_type.as_str(), p.heritage.su_code.as_str()),
+        (crate::parts::PartType::NotDefined, "USR", "USR 3")
+    );
+}
+
+#[test]
+fn parts_a_file_says_are_parts_of_each_other_or_of_themselves_come_in_once_and_the_file_opens() {
+    let (s, wall, parts) = historic();
+    let text = ifc::export(&s.model);
+    let entities = read(&text);
+    let numbered =
+        |id: Id| *entities.iter().find(|(_, (c, a))| c == "IFCBUILDINGELEMENTPART" && a.get(7) == Some(&format!("'{id}'"))).unwrap().0;
+    let (a, b) = (numbered(parts[0]), numbered(parts[1]));
+    let n = entities.keys().max().unwrap() + 1;
+    let loops: String = [(a, b), (b, a), (b, b)]
+        .iter()
+        .enumerate()
+        .map(|(k, (whole, part))| {
+            format!("#{}=IFCRELAGGREGATES('{}',$,$,$,#{whole},(#{part}));\n", n + k as u64, ifc::compress(100 + k as u128))
+        })
+        .collect();
+    let file = text.replace("ENDSEC;\nEND-ISO", &format!("{loops}ENDSEC;\nEND-ISO"));
+    assert_ne!(file, text);
+    let read = crate::import::ifc(file.as_bytes(), "parts").unwrap();
+    let m = &read.model;
+    let again = m.elements.id(s.model.guid(wall)).unwrap();
+    assert_eq!(m.parts_of(again).len(), 3, "{:?}", read.skipped);
+}

@@ -43,6 +43,11 @@ takes at most `MAX_ROUND` points round it and `MAX_INSIDE` inside. Why an item b
 `Reader::give_up`'s, kept by item (`Reader::unread`): a product left out as having no body says it after `it has no body
 BIMCraft can read: `, and one that came in without part of its body has its own note, `part of its body was left out, …`.
 
+A product with no body of its own that is the sum of `IfcBuildingElementPart`s (an element BIMCraft exported taken apart, or
+one Revit shows by its parts) has its parts' bodies, brought into its own coordinates (`Reader::items`, which `body_items` and
+`looked_items` read through), and its parts' parts' in turn; a layer set then says how thick it is even where a part is
+missing. `import/parts.rs` takes it apart again once everything is in: [parts](parts.md#ifc).
+
 ## Colours
 
 A material takes the colour a file shades it in: a surface style of its name, else its `IfcMaterialDefinitionRepresentation`'s

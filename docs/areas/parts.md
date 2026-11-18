@@ -1,7 +1,7 @@
 # Parts of elements and the heritage set
 
 Read when touching `crates/core/src/parts.rs`, `parts/solid.rs`, `parts/state.rs`, the `create_parts`, `part` and `parts`
-commands, or how a part goes to IFC. Aimed at the recording and restoration of historic buildings (HBIM): a wall is its
+commands, or how a part goes to IFC and comes back (`ifc.rs`, `import/parts.rs`). Aimed at the recording and restoration of historic buildings (HBIM): a wall is its
 plaster and its masonry, and each is described, dated, measured and treated on its own.
 
 ## What a part is
@@ -113,11 +113,34 @@ are left out; parts in conflict are listed with no area or volume, and named in 
 
 ## IFC
 
-**Parts don't go to IFC yet**: a host with parts is exported as it always was, with its own body, and its parts are left
-out. Their export (`IfcBuildingElementPart`, the host the sum of its parts by `IfcRelAggregates` with no `Body` of its own, its
-area and volume left out) comes in one step with reading them back, so that a file BIMCraft writes comes back whole: today's
-import leaves out a wall with no body, and its doors and windows with it (the maintainers' answer on #440). A material's
-weight and heat go with them (`Pset_MaterialCommon`, `Pset_MaterialThermal`).
+**Out** (`ifc.rs`). Each part an export writes (`parts::exported`: not excluded, not in conflict, and not divided from one it
+leaves out) is an `IfcBuildingElementPart`: its GUID its GlobalId, its id its tag, placed where its host is, its body a closed
+face set in its host's own axes, shaded in and associated with what it is made of (named by that, else by its host's type),
+its `PredefinedType` and `ObjectType` its own (IFC2x3 has no kind of part). `BIMCraft_PartQuantities` holds its `Width`,
+`NetArea` and `NetVolume`, since IFC4 has no quantity set for a part; `BIMCraft_Heritage` the heritage values said. Host to
+parts and part to pieces are `IfcRelAggregates`, as a host's bars are. What is the sum of parts (a host with any written, a
+divided part) has no `Body` of its own (a wall keeps its `Axis`), so nothing is drawn or measured twice, and its base quantities
+say its lengths only, no area or volume (the maintainers' conditions on #440). A divided part says how in
+`BIMCraft_PartDivision` (`Division`: its recipe as JSON, in millimetres in its own placement's axes), which only BIMCraft reads.
+A material's weight and heat go out as `Pset_MaterialCommon` and `Pset_MaterialThermal` (IFC2x3: `IfcGeneralMaterialProperties`
+and `IfcThermalMaterialProperties`), in the derived units the project names once a material says any. `ci/ifc-coverage.txt`
+has parts, a division and a material's values, for IfcOpenShell in all three schemas.
+
+**Back** (`import.rs`, `import/parts.rs`). A product with no body of its own that is the sum of `IfcBuildingElementPart`s
+(BIMCraft's, or Revit's shown by parts) takes their bodies as its own (`Reader::items`), so a wall, a slab, a roof, a covering
+or a component comes in measured from its parts; the layer set says how thick it is even where a part is missing. Once
+everything is in, the element is taken apart again as `create_parts` would, and each part of the file is made the part whose
+box holds the middle of its own, the nearest first; only where the file has one, so a part an export left out stays out. Each
+takes the file's GlobalId, kind, object type, material (where it isn't its layer's), heritage set, project parameters and
+phase. A part whose division BIMCraft reads is divided so again, its pieces matched in their turn; a division the file doesn't
+say (another program's) or that can't be read leaves the part whole and lists its pieces in `skipped`, as a part where no part
+of its element is. A part names its layer by the layer's GUID, which the import gives anew at the end (`relayer`). Materials
+take their weight and heat back. `ifc_parts_tests.rs` exports, imports and compares a wall with a window and a door, a floor,
+a roof, a ceiling, a component, a divided part, and IFC2x3.
+
+**Not yet**: an excluded part isn't in the file, so it doesn't come back, nor that it was excluded; a floor whose top layer's
+part was excluded comes back that much lower (its top is its parts'), and a roof or a ceiling the same at the face it is read
+by; a part divided by hand (`parent` without `piece`) comes back whole.
 
 ## The file
 
@@ -136,4 +159,4 @@ view draw and pick a part, what stands for what, and what is left for later are 
 ## Next
 
 Divide Parts in the desktop (a sketch on the part's face), tags of parts, the desktop's tools (the material's weight and
-heat among them), and parts and a material's values to IFC and back.
+heat among them), and a slab whose outer layer's part is excluded read back where it was.
