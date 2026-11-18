@@ -26,11 +26,14 @@ pub enum FormFace {
     All,
     /// The side swept from profile line `line`; a Sweep's (and a Swept Blend's) as it goes `along` a line of its path.
     Side { line: Guid, along: Option<Guid> },
-    /// A blend's side that comes from a line of its top alone (the base's corner held while the top's line passes).
+    /// A blend's side that comes from a line of its top alone (the base's corner held while the top's line passes). A top
+    /// line without a GUID has no key of its own here (there is no top edge by place): its sides are [`FormFace::All`]. A
+    /// Swept Blend's are keyed so too, with no path line: the path is one line, and the shape has no `along`.
     TopSide(Guid),
     /// The side swept from the profile line at this place in the profile, where the lines have no GUID.
     Edge(usize),
-    /// A face that form `by` (a void, or a solid joined to it) made cutting this one: `face`, that form's own.
+    /// A face that form `by` (a void, or a solid joined to it) made cutting this one, or drilling it (GEO-2e): `face`, that
+    /// form's own. A cutter without a GUID can't be told from another, so the faces it makes are [`FormFace::All`].
     Cut { by: Guid, face: Box<FormFace> },
 }
 
@@ -160,6 +163,32 @@ impl Table {
             .map(|(r, n)| (0..n).map(|e| self.id(edges.get(r).and_then(|x| x.get(e)).cloned().unwrap_or(FormFace::All))).collect())
             .collect()
     }
+}
+
+/// `faces` and `keys` with every key no triangle uses taken out, the tags renumbered to match (a full revolve's caps, a
+/// cutter's face that made none of the piece's): a piece names only the faces it has.
+pub fn prune(faces: &mut [u32], keys: &mut Vec<FormFace>) {
+    let mut used = vec![false; keys.len()];
+    for f in faces.iter() {
+        if let Some(u) = used.get_mut(*f as usize) {
+            *u = true;
+        }
+    }
+    let mut to = vec![0u32; keys.len()];
+    let mut next = 0u32;
+    for (i, u) in used.iter().enumerate() {
+        if *u {
+            to[i] = next;
+            next += 1;
+        }
+    }
+    let mut i = 0;
+    keys.retain(|_| {
+        i += 1;
+        used[i - 1]
+    });
+    // A tag past the keys stays past them: its piece is checked, not mended, here.
+    faces.iter_mut().for_each(|f| *f = to.get(*f as usize).copied().unwrap_or(next));
 }
 
 /// The lines a profile was drawn with, each its key and the points it is drawn through (an arc's chords), to find which

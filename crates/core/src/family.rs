@@ -2928,8 +2928,7 @@ impl Family {
         let mut solids: HashMap<usize, kernel::Mesh> = HashMap::new();
         // A cutter's faces, as the faces it makes in what it cuts (GEO-2b): its own keys, each under its GUID.
         let cutting = |i: usize, tris: Vec<[P3; 3]>, faces: Vec<u32>, keys: &[FormFace]| {
-            let by = self.forms[i].guid;
-            let keys = keys.iter().map(|k| FormFace::Cut { by, face: Box::new(k.clone()) }).collect();
+            let keys = keys.iter().map(|k| cut_key(self.forms[i].guid, k)).collect();
             kernel::Mesh { tris, caps: 0, faces, keys }
         };
         for i in 0..self.forms.len() {
@@ -2968,7 +2967,7 @@ impl Family {
                 let (bottom, top) = heights(&d.tris);
                 piece.caps = d.tris.len();
                 (piece.tris, piece.bottom, piece.top, piece.round) = (d.tris, bottom, top, false);
-                (piece.faces, piece.keys) = (Vec::new(), Vec::new());
+                (piece.faces, piece.keys) = (d.faces, d.keys);
                 done = d.holes.iter().map(|(by, _)| *by).collect();
             }
             for by in self.cutters(form) {
@@ -3006,6 +3005,10 @@ impl Family {
             }
         }
         out.retain(|p| !p.tris.is_empty());
+        // Each names only the faces it has (GEO-2b): what a cut, a full turn or a mapping left unused, out.
+        for p in &mut out {
+            faces::prune(&mut p.faces, &mut p.keys);
+        }
         Ok(out)
     }
 
@@ -3047,8 +3050,8 @@ impl Family {
         if !apart {
             return None;
         }
-        let tris = self.drilled(form, holes.iter().flat_map(|(_, h)| h.iter().cloned()).collect(), values, read, shapes)?;
-        Some(Drilled { holes, tris })
+        let mesh = self.drilled(form, &holes, values, read, shapes)?;
+        Some(Drilled { holes, tris: mesh.tris, faces: mesh.faces, keys: mesh.keys })
     }
 
     /// Form `i`'s profile, read once a build (`shapes`).
@@ -3100,10 +3103,7 @@ impl Family {
         }
         let regions = self.shape(b, values, read, shapes)?;
         let drills = self.shape(v, values, read, shapes)?;
-        let into = |p: &P2| {
-            let d = crate::view3d::sub(vf.point(*p, 0.0), bf.origin);
-            P2(crate::view3d::dot(d, bf.x), crate::view3d::dot(d, bf.y))
-        };
+        let into = |p: &P2| into_plane(&bf, &vf, *p);
         let body_points: usize = rings(&regions).map(Vec::len).sum();
         let mut out: Vec<Vec<P2>> = Vec::new();
         for d in &drills {
@@ -3128,25 +3128,51 @@ impl Family {
     }
 
     /// Extrusion `b` swept again with `holes` added to its profile (each into the outline holding it): its triangles, every
-    /// one turned out. None where that can't be built.
+    /// one turned out, tagged as a cut would tag them (GEO-2b): its own faces, and each hole's walls as the void that drilled
+    /// it ([`cut_key`]) and the line of the void's profile each runs along. None where that can't be built.
     fn drilled<'a>(
         &'a self,
         b: usize,
-        holes: Vec<Vec<P2>>,
+        holes: &[(usize, Vec<Vec<P2>>)],
         values: &BTreeMap<String, Val>,
         read: &mut HashMap<&'a str, Result<Node, String>>,
         shapes: &mut HashMap<usize, Option<Vec<crate::geom::Region>>>,
-    ) -> Option<Vec<[P3; 3]>> {
+    ) -> Option<kernel::Mesh> {
         let body = self.forms.get(b)?;
         let mut regions = self.shape(b, values, read, shapes)?;
-        for h in holes {
-            let r = regions.iter_mut().find(|r| h.iter().all(|q| crate::geom::contains(&r.outer, *q)))?;
-            r.holes.push(h);
-        }
+        let bf = self.frame(&body.host).ok()?;
         let mut num = |e: &'a Expr| number(e, values, read);
+        // The body's ring edges' keys, by region: its outline's, then each hole's.
+        let (_, own) = body.loops_tagged(&mut num).ok()?;
+        let mut own = own.into_iter();
+        let mut keys: Vec<Vec<Vec<FormFace>>> =
+            regions.iter().map(|r| (0..=r.holes.len()).map(|_| own.next().unwrap_or_default()).collect()).collect();
+        for (v, rings) in holes {
+            let void = self.forms.get(*v)?;
+            let vf = self.frame(&void.host).ok()?;
+            let (outlines, edges) = void.loops_tagged(&mut num).ok()?;
+            for (k, h) in rings.iter().enumerate() {
+                // The hole is the void's outline `k` in the body's plane, turned round where that made it clockwise.
+                let drawn = outlines.get(k).map(|r| r.outer.iter().map(|p| into_plane(&bf, &vf, *p)).collect::<Vec<P2>>());
+                let edge = edges.get(k).cloned().unwrap_or_default();
+                let n = h.len();
+                let ring_keys: Vec<FormFace> = match drawn {
+                    Some(d) if d == *h => edge,
+                    Some(d) if d.iter().rev().eq(h.iter()) => {
+                        (0..n).map(|j| edge.get((2 * n - 2 - j) % n).cloned().unwrap_or(FormFace::All)).collect()
+                    }
+                    _ => vec![FormFace::All; n],
+                };
+                let ring_keys = ring_keys.iter().map(|k| cut_key(void.guid, k)).collect();
+                let at = regions.iter().position(|r| h.iter().all(|q| crate::geom::contains(&r.outer, *q)))?;
+                regions.get_mut(at)?.holes.push(h.clone());
+                keys.get_mut(at)?.push(ring_keys);
+            }
+        }
         let (from, to) = (num(&body.from).ok()?, num(&body.to).ok()?);
         let frame = self.frame(&body.host).ok()?;
-        sweep(&regions, &[], from, to, &frame).ok().map(|m| m.tris)
+        let edges: Vec<Vec<FormFace>> = keys.into_iter().flatten().collect();
+        sweep(&regions, &edges, from, to, &frame).ok()
     }
 
     /// Form `i`'s own solid, sized by `values`, before any void cuts it: `None` where its `visible`
@@ -3549,10 +3575,25 @@ fn caps(regions: &[crate::geom::Region]) -> Result<Vec<Capped>, String> {
         .collect()
 }
 
-/// GEO-2e: a form drilled by voids ([`Family::drill`]): the hole rings each void made, in its plane, and its triangles.
+/// GEO-2e: a form drilled by voids ([`Family::drill`]): the hole rings each void made, in its plane, and its triangles,
+/// tagged (GEO-2b: `faces` index `keys`).
 pub(crate) struct Drilled {
     pub holes: Vec<(usize, Vec<Vec<P2>>)>,
     pub tris: Vec<[P3; 3]>,
+    pub faces: Vec<u32>,
+    pub keys: Vec<FormFace>,
+}
+
+/// Point `p` of plane `vf` in plane `bf`'s axes.
+fn into_plane(bf: &Frame, vf: &Frame, p: P2) -> P2 {
+    let d = crate::view3d::sub(vf.point(p, 0.0), bf.origin);
+    P2(crate::view3d::dot(d, bf.x), crate::view3d::dot(d, bf.y))
+}
+
+/// The face form `by` makes cutting another with its own face `face` (GEO-2b): [`FormFace::Cut`]; a form without a GUID
+/// (a file from before them) can't be told from another, so the faces it cuts are [`FormFace::All`].
+fn cut_key(by: crate::ids::Guid, face: &FormFace) -> FormFace {
+    if by.is_nil() { FormFace::All } else { FormFace::Cut { by, face: Box::new(face.clone()) } }
 }
 
 /// How near a point may be to a line and count as on it, mm: what rounding leaves of a corner worked out on a turned plane.

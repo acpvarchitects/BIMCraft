@@ -1462,7 +1462,12 @@ an arc or a circle is one face, every chord its line's), `{"side": L, "along": P
 goes along path line `P`), `{"top_side": T}` (a blend's side made by top line `T` alone, where the vertex mapping holds a base
 corner), `{"edge": i}` (a profile whose lines have no GUID, by the line's place), `{"cut": G, "face": …}` (a face form `G`, a
 void or a joined solid, cut into it: its own key nested) and `"all"` (a mesh form, an adaptive one, or a side no line is
-found for). Nothing is stored: the tags are worked out with the triangles, never change them (`family_kernel_tests` still
+found for). Where the agreed shapes have no key, a face is `"all"`: a blend's or a swept blend's top line without a GUID (there
+is no top edge by place), and the faces a cutter without a GUID makes (two such voids couldn't be told apart). A swept
+blend's `{"top_side": T}` carries no `along`: its path is one line. A piece lists only the keys its triangles use
+(`faces::prune`, at the end of `Family::build`): a full revolve has no `"start"` or `"end"`, a flush void's face that made
+none of the slab's is not listed. A host's voids cut the host's own forms only, never a nested instance's pieces, which keep
+their own keys. Nothing is stored: the tags are worked out with the triangles, never change them (`family_kernel_tests` still
 hashes them bit for bit), and no `FORMAT` changed.
 
 Where they come from: `Form::loops_tagged` (and `forms::profile_loops`, `one_loop`) key each ring edge by the line it lies
@@ -1471,7 +1476,9 @@ along (`faces::Traced`, by `sketch::along` on the chorded lines), carried as `ke
 `family::revolve`, `forms::blend`, `forms::sweep`, `forms::swept_blend`) return a `kernel::Mesh` with `faces` and `keys`,
 tags filtered in step with what has no area. A cut goes through `csg::subtract_tagged` (each polygon keeps its triangle's tag
 through every split; `subtract` is it untagged, the same triangles): `Family::build` wraps a cutter's keys as `Cut` under its
-GUID, and `MeshKernel::cut` joins them to the piece's; a body or a tool untagged leaves the result untagged. Placed, mirrored or
+GUID, and `MeshKernel::cut` joins them to the piece's; an untagged tool's faces are `"all"`, an untagged body leaves the
+result untagged. A void that drills a hole in the profile (GEO-2e, `Family::drilled`) tags the hole's walls as its cut would:
+the void's own ring edges, by `Form::loops_tagged`, carried into the body's plane, so drilling or cutting gives the same keys. Placed, mirrored or
 nested pieces keep their tags (their triangles map one to one). Tests: `family_face_tests.rs`.
 
 ## Family options

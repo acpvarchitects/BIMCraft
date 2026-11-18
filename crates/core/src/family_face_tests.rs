@@ -348,3 +348,130 @@ fn a_sweep_round_a_closed_path_runs_each_side_along_its_own_path_line() {
     }
     assert_eq!(seen.len(), 4, "every path line, the wrap's too");
 }
+
+/// A slab of four lines (GUIDs 1 to 4) less a square void through it (form GUID 200, lines 21 to 24) and a round one
+/// (form GUID 300, line 31).
+fn drilled_slab() -> Family {
+    family(json!([
+        {"guid": gstr(100), "sketch": rect(1, 0.0, 0.0, 1000.0, 1000.0), "from": 0, "to": 100},
+        {"guid": gstr(200), "sketch": rect(21, 400.0, 400.0, 600.0, 600.0), "from": -10, "to": 110, "void": true},
+        {"guid": gstr(300), "sketch": [{"guid": gstr(31), "centre": [200, 200], "radius": 50}], "from": -10, "to": 110, "void": true}
+    ]))
+}
+
+#[test]
+fn a_drilled_hole_is_tagged_as_the_cut_that_made_it_would_be() {
+    let f = drilled_slab();
+    let drilled = one(&f);
+    let cut = crate::family::without_drilling(|| one(&f));
+    assert!(drilled.tris.len() < cut.tris.len(), "drilled, not cut: {} triangles to {}", drilled.tris.len(), cut.tris.len());
+    let set = |p: &Piece| tagged(p).into_iter().map(|(_, k)| k.clone()).collect::<BTreeSet<FormFace>>();
+    assert_eq!(set(&drilled), set(&cut));
+    let mut want: BTreeSet<FormFace> = [FormFace::Start, FormFace::End].into();
+    want.extend((1..=4).map(side));
+    want.extend((21..=24).map(|l| FormFace::Cut { by: guid(200), face: Box::new(side(l)) }));
+    want.insert(FormFace::Cut { by: guid(300), face: Box::new(side(31)) });
+    assert_eq!(set(&drilled), want);
+    for (t, k) in tagged(&drilled) {
+        if *k == (FormFace::Cut { by: guid(200), face: Box::new(side(21)) }) {
+            assert!(t.iter().all(|q| q[1] == 400.0 && (400.0..=600.0).contains(&q[0])), "{t:?}");
+        }
+        if *k == (FormFace::Cut { by: guid(300), face: Box::new(side(31)) }) {
+            assert!(t.iter().all(|q| ((q[0] - 200.0).hypot(q[1] - 200.0) - 50.0).abs() < 1e-6), "{t:?}");
+        }
+    }
+}
+
+#[test]
+fn a_cutter_without_a_guid_cuts_faces_that_are_all() {
+    // Built as a file from before GUIDs would be: two voids with none, which no key could tell apart.
+    let f: Family = serde_json::from_value(json!({
+        "category": "generic", "types": {"A": {}},
+        "forms": [
+            {"sketch": rect(1, 0.0, 0.0, 1000.0, 1000.0), "from": 0, "to": 100},
+            {"sketch": rect(21, 100.0, 100.0, 300.0, 300.0), "from": -10, "to": 110, "void": true},
+            {"sketch": rect(31, 600.0, 600.0, 800.0, 800.0), "from": -10, "to": 50, "void": true}
+        ]
+    }))
+    .unwrap();
+    assert!(f.forms.iter().all(|x| x.guid.is_nil()));
+    for p in [one(&f), crate::family::without_drilling(|| one(&f))] {
+        let got: BTreeSet<FormFace> = tagged(&p).into_iter().map(|(_, k)| k.clone()).collect();
+        let mut want: BTreeSet<FormFace> = [FormFace::Start, FormFace::End, FormFace::All].into();
+        want.extend((1..=4).map(side));
+        assert_eq!(got, want);
+    }
+}
+
+#[test]
+fn a_piece_keeps_only_the_keys_its_triangles_use() {
+    let mut sketch = rect(1, 200.0, 0.0, 500.0, 800.0);
+    sketch.push(json!({"guid": gstr(5), "start": [0, 0], "end": [0, 100], "axis": true}));
+    let p = one(&family(json!([{"sketch": sketch, "from": 0, "to": 360}])));
+    assert!(!p.keys.contains(&FormFace::Start) && !p.keys.contains(&FormFace::End), "{:?}", p.keys);
+    // A void flush with the slab's top: its own top face makes none of the slab's.
+    let flush = one(&family(json!([
+        {"guid": gstr(100), "sketch": rect(1, 0.0, 0.0, 1000.0, 1000.0), "from": 0, "to": 100},
+        {"guid": gstr(200), "sketch": rect(21, 400.0, 400.0, 600.0, 600.0), "from": 50, "to": 100, "void": true}
+    ])));
+    let all_used = |p: &Piece, what: &str| {
+        let used: BTreeSet<u32> = p.faces.iter().copied().collect();
+        assert_eq!(used.len(), p.keys.len(), "{what}: {:?} keys, {} used", p.keys, used.len());
+    };
+    all_used(&flush, "a flush void");
+    for (name, f) in crate::family_kernel_tests::families() {
+        for t in f.types.keys() {
+            let Ok(Ok(pieces)) = f.values(t, &BTreeMap::new()).map(|v| f.pieces(&v)) else { continue };
+            pieces.iter().for_each(|p| all_used(p, &format!("{name} {t}")));
+        }
+    }
+}
+
+#[test]
+fn an_extrusion_on_a_plane_facing_minus_y_has_its_caps_and_sides_right() {
+    let host = crate::family::CENTER_FRONT_BACK.to_string();
+    let p = one(&family(json!([{"host": {"plane": host}, "sketch": rect(1, 0.0, 0.0, 1000.0, 500.0), "from": 0, "to": 300}])));
+    let want: BTreeSet<FormFace> = [FormFace::Start, FormFace::End, side(1), side(2), side(3), side(4)].into();
+    assert_eq!(tagged(&p).into_iter().map(|(_, k)| k.clone()).collect::<BTreeSet<_>>(), want);
+    // Its plane's x is the world's x, its y the world's z, its normal -y: `from` at y = 0, `to` at y = -300.
+    for (t, k) in tagged(&p) {
+        let n = normal(t);
+        match k {
+            FormFace::Start => assert!(n[1] > 1.0 - 1e-9 && t.iter().all(|q| q[1].abs() < 1e-9), "{t:?}"),
+            FormFace::End => assert!(n[1] < -1.0 + 1e-9 && t.iter().all(|q| (q[1] + 300.0).abs() < 1e-9), "{t:?}"),
+            k if *k == side(1) => assert!(n[2] < -1.0 + 1e-9 && t.iter().all(|q| q[2].abs() < 1e-9), "{t:?}"),
+            k if *k == side(2) => assert!(n[0] > 1.0 - 1e-9 && t.iter().all(|q| (q[0] - 1000.0).abs() < 1e-9), "{t:?}"),
+            k if *k == side(3) => assert!(n[2] > 1.0 - 1e-9 && t.iter().all(|q| (q[2] - 500.0).abs() < 1e-9), "{t:?}"),
+            k if *k == side(4) => assert!(n[0] < -1.0 + 1e-9 && t.iter().all(|q| q[0].abs() < 1e-9), "{t:?}"),
+            k => panic!("{k:?}"),
+        }
+    }
+}
+
+#[test]
+fn a_nested_instances_piece_keeps_its_own_keys_and_the_hosts_voids_leave_it_alone() {
+    let leaf = json!({"category": "generic", "types": {"B": {}},
+        "forms": [{"guid": gstr(500), "sketch": rect(41, 0.0, 0.0, 100.0, 100.0), "from": 0, "to": 50}]});
+    let f: Family = serde_json::from_value(json!({
+        "category": "generic", "types": {"A": {}},
+        "forms": [
+            {"guid": gstr(100), "sketch": rect(1, 0.0, 0.0, 1000.0, 1000.0), "from": 0, "to": 100},
+            {"guid": gstr(200), "sketch": rect(21, 1990.0, -10.0, 2050.0, 200.0), "from": -10, "to": 300, "void": true}
+        ],
+        "nested": [{"name": "Leaf", "family": leaf}],
+        "nested_instances": [{"family": "Leaf", "type": "B", "at": [2000, 0]}]
+    }))
+    .unwrap();
+    let pieces = pieces_of(&f, "A");
+    assert_eq!(pieces.len(), 2);
+    let nested = &pieces[1];
+    assert!(nested.tris.iter().flatten().all(|q| q[0] >= 2000.0 - 1e-9), "placed at 2000");
+    let want: BTreeSet<FormFace> = [FormFace::Start, FormFace::End, side(41), side(42), side(43), side(44)].into();
+    // A host's void cuts the host's own forms only: the nested piece is whole, its faces its own.
+    assert_eq!(tagged(nested).into_iter().map(|(_, k)| k.clone()).collect::<BTreeSet<_>>(), want);
+    for (t, k) in tagged(nested) {
+        if *k == side(41) {
+            assert!(t.iter().all(|q| q[1].abs() < 1e-9), "{t:?}");
+        }
+    }
+}

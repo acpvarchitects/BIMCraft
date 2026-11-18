@@ -224,16 +224,18 @@ impl FormKernel for MeshKernel {
 
     fn cut(&self, body: &MeshSolid, tool: &MeshSolid, budget: &mut Budget) -> Result<MeshSolid, KernelError> {
         let (a, b) = (&body.mesh, &tool.mesh);
-        // Tagged where both are (GEO-2b): the tool's keys joined to the body's, its triangles' tags moved to theirs.
-        let tagged = a.faces.len() == a.tris.len() && b.faces.len() == b.tris.len();
+        // Tagged where the body is (GEO-2b): the tool's keys joined to the body's, its triangles' tags moved to theirs; an
+        // untagged tool's, and a tag that names none of its keys, all (never the key numbered 0).
+        let tagged = a.faces.len() == a.tris.len();
         let mut table = Table::of(a.keys.clone());
-        let moved: Vec<u32> = if tagged {
+        let moved: Vec<u32> = if !tagged {
+            Vec::new()
+        } else if b.faces.len() == b.tris.len() {
             let ids: Vec<u32> = b.keys.iter().map(|k| table.id(k.clone())).collect();
-            // A tag that names none of the tool's keys: all, never the key numbered 0.
             let mut all = None;
             b.faces.iter().map(|f| ids.get(*f as usize).copied().unwrap_or_else(|| *all.get_or_insert_with(|| table.all()))).collect()
         } else {
-            Vec::new()
+            vec![table.all(); b.tris.len()]
         };
         let (tris, faces) = csg::subtract_tagged(&a.tris, &a.faces, &b.tris, &moved, budget)?;
         let (faces, keys) = if tagged { (faces, table.keys) } else { (Vec::new(), Vec::new()) };
@@ -322,6 +324,33 @@ mod tests {
                 assert_eq!(cut.keys[*f as usize], FormFace::All, "a hole's wall {t:?}");
             }
         }
+    }
+
+    #[test]
+    fn an_untagged_tool_leaves_the_body_its_tags_and_cuts_faces_that_are_all() {
+        let k = MeshKernel;
+        let body = k.extrude(&square(), &Frame::LEVEL, 0.0, 50.0).unwrap();
+        let small = Loops {
+            regions: vec![Region { outer: vec![P2(25.0, 25.0), P2(75.0, 25.0), P2(75.0, 75.0), P2(25.0, 75.0)], holes: Vec::new() }],
+            ..Loops::default()
+        };
+        let mut tool = k.extrude(&small, &Frame::LEVEL, -10.0, 60.0).unwrap();
+        (tool.mesh.faces, tool.mesh.keys) = (Vec::new(), Vec::new());
+        let cut = k.cut(&body, &tool, &mut Budget::default()).unwrap().mesh;
+        assert_eq!(cut.faces.len(), cut.tris.len(), "the body's tags kept");
+        for (t, f) in cut.tris.iter().zip(&cut.faces) {
+            let flat = t.iter().all(|q| q[2] == t[0][2]);
+            let want = match (flat, t[0][2]) {
+                (true, 0.0) => FormFace::Start,
+                (true, _) => FormFace::End,
+                _ => FormFace::All,
+            };
+            assert_eq!(cut.keys[*f as usize], want, "{t:?}");
+        }
+        // An untagged body: the cut is untagged.
+        let mut bare = body.clone();
+        (bare.mesh.faces, bare.mesh.keys) = (Vec::new(), Vec::new());
+        assert!(k.cut(&bare, &tool, &mut Budget::default()).unwrap().mesh.faces.is_empty());
     }
 
     #[test]
