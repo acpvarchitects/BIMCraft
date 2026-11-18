@@ -29,6 +29,33 @@ A spike (a scratch crate, nothing in the repo) built the six forms and their voi
 
 **arris** is the recommendation: the only one that kept analytic faces exact, did the shared-face booleans and never panicked.
 
+### The six-kernel bench
+
+A second run put six candidates through one suite on one machine (a shared 72-core Linux box, so ratios count, not
+decimals): the six forms, the shared-face booleans, hostile input, the NURBS table and 10,000 different panels, each call in
+a child process under a 90 s budget. Tables, logs and the harness are on the fork's orphan branch `bench/kernels`.
+
+| | arris 0.11.1 | solidcore 1.0.1 | OCCT 7.8 (opencascade-rs) | truck 0.6 | Fornjot 0.49 |
+|---|---|---|---|---|---|
+| Forms | all but the cornered sweep | all, cornered sweep too | all | no cornered sweep, no smooth loft | no revolve, loft, sweep or boolean |
+| Shared-face booleans | ok | ok | ok, fast | four return nothing | can't build |
+| Hostile input | errors | degenerate input accepted as valid | NaN segfaults | errors | panics |
+| Meshing | chord-controlled | none yet | yes | yes | plane and circle only |
+| 10,000 panels, void as a profile hole, 8 / 72 threads | 4.2 / 0.8 s | 23 / 7.4 s | 5.8 / 5.2 s | 0.12 / 0.21 s | 8.1 / 3.2 s (slab only) |
+| The same, void as a boolean cut | 49 / 15 s | 35 / 13 s | 14 / 27 s | over 90 s | 9.0 / 3.9 s (slab only) |
+| Licence, `unsafe` | MIT/Apache, forbidden | Apache, forbidden | LGPL C++ | Apache, not forbidden | MIT/Apache, used |
+
+The mesh path builds its own 10,000 panels in 0.04 s without voids and 0.12 s with a mesh-CSG void on 72 threads, at a fixed
+tessellation with no curved surfaces. The reading:
+- **arris** stays the choice;
+- **solidcore** is the one to watch: it has the strongest geometry (free-form booleans in 17 to 52 ms, fillets), but no surface
+  tessellator or STEP writer yet;
+- **OCCT** is an oracle for tests, not the product's kernel;
+- **truck** and **Fornjot** are out.
+
+An exact kernel is chosen for exactness (curved panels, true arcs at any zoom, exact STEP and IFC), not for raw speed. Its speed
+comes from the fast paths, the cache and the lazy meshing below.
+
 ### Pin and upgrades
 
 arris is pre-1.0 and breaks its API about every ten days. It is pinned exactly (`arris = "=0.11.1"`, and its sub-crates), with
@@ -160,9 +187,14 @@ is a decision of its own; it is not proposed here.
 
 ## Meanwhile
 
-Until `ArrisKernel` lands, a zoomed circle stays faceted (32 chords a turn): the chord no longer follows the zoom in a
-bridge of its own, since the kernel makes it exact. That is the trade-off of waiting for the kernel rather than patching
-the mesh.
+The mesh path improves first, with no new dependency (GEO-2):
+- a through-void becomes a profile hole;
+- the chord follows the zoom;
+- plans draw exact curves from the recipe;
+- faces are tagged by `FormFace`;
+- IFC4 is written from the recipe.
+
+The kernel trait (step 2) routes family forms only. Adaptive void cuts and `view3d.rs` still call `csg::subtract` directly.
 
 ## Costs
 
