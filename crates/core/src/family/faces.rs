@@ -49,78 +49,76 @@ impl FormFace {
     }
 }
 
-#[derive(Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-enum Named {
-    Start,
-    End,
-    All,
+/// What a bad key is told: every shape a face takes, and what it got (cut short).
+fn shapes(got: &serde_json::Value) -> String {
+    let mut said = got.to_string();
+    if said.chars().count() > 60 {
+        said = said.chars().take(60).collect::<String>() + "…";
+    }
+    format!(
+        r#"a face is "start", "end", "all", {{"side": L}}, {{"side": L, "along": P}}, {{"top_side": T}}, {{"edge": i}} or {{"cut": G, "face": …}}; got {said}"#
+    )
 }
 
-#[derive(Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct SideRaw {
-    side: Guid,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    along: Option<Guid>,
-}
+impl FormFace {
+    /// A key from its JSON; a value that is none of the shapes refused, naming them all.
+    fn read(v: &serde_json::Value) -> Result<FormFace, String> {
+        use serde_json::Value;
+        let guid = |x: Option<&Value>| x.and_then(|g| serde_json::from_value::<Guid>(g.clone()).ok());
+        let found = match v {
+            Value::String(s) => match s.as_str() {
+                "start" => Some(FormFace::Start),
+                "end" => Some(FormFace::End),
+                "all" => Some(FormFace::All),
+                _ => None,
+            },
+            Value::Object(o) => {
+                let mut keys: Vec<&str> = o.keys().map(String::as_str).collect();
+                keys.sort_unstable();
+                match keys.as_slice() {
+                    ["side"] => guid(o.get("side")).map(FormFace::side),
+                    ["along", "side"] => {
+                        guid(o.get("side")).zip(guid(o.get("along"))).map(|(line, p)| FormFace::Side { line, along: Some(p) })
+                    }
+                    ["top_side"] => guid(o.get("top_side")).map(FormFace::TopSide),
+                    ["edge"] => o.get("edge").and_then(Value::as_u64).and_then(|i| usize::try_from(i).ok()).map(FormFace::Edge),
+                    ["cut", "face"] => match (guid(o.get("cut")), o.get("face")) {
+                        (Some(by), Some(face)) => return Ok(FormFace::Cut { by, face: Box::new(FormFace::read(face)?) }),
+                        _ => None,
+                    },
+                    _ => None,
+                }
+            }
+            _ => None,
+        };
+        found.ok_or_else(|| shapes(v))
+    }
 
-#[derive(Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct TopRaw {
-    top_side: Guid,
-}
-
-#[derive(Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct EdgeRaw {
-    edge: usize,
-}
-
-#[derive(Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct CutRaw {
-    cut: Guid,
-    face: Box<FormFace>,
-}
-
-/// A face key as JSON has it: a name, or one object of its own keys.
-#[derive(Serialize, Deserialize)]
-#[serde(untagged)]
-enum Raw {
-    Named(Named),
-    Side(SideRaw),
-    Top(TopRaw),
-    Edge(EdgeRaw),
-    Cut(CutRaw),
+    /// Its JSON.
+    fn json(&self) -> serde_json::Value {
+        use serde_json::json;
+        match self {
+            FormFace::Start => json!("start"),
+            FormFace::End => json!("end"),
+            FormFace::All => json!("all"),
+            FormFace::Side { line, along: None } => json!({"side": line}),
+            FormFace::Side { line, along: Some(p) } => json!({"side": line, "along": p}),
+            FormFace::TopSide(t) => json!({"top_side": t}),
+            FormFace::Edge(i) => json!({"edge": i}),
+            FormFace::Cut { by, face } => json!({"cut": by, "face": face.json()}),
+        }
+    }
 }
 
 impl Serialize for FormFace {
     fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-        let raw = match self.clone() {
-            FormFace::Start => Raw::Named(Named::Start),
-            FormFace::End => Raw::Named(Named::End),
-            FormFace::All => Raw::Named(Named::All),
-            FormFace::Side { line, along } => Raw::Side(SideRaw { side: line, along }),
-            FormFace::TopSide(top_side) => Raw::Top(TopRaw { top_side }),
-            FormFace::Edge(edge) => Raw::Edge(EdgeRaw { edge }),
-            FormFace::Cut { by, face } => Raw::Cut(CutRaw { cut: by, face }),
-        };
-        raw.serialize(s)
+        self.json().serialize(s)
     }
 }
 
 impl<'de> Deserialize<'de> for FormFace {
     fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<FormFace, D::Error> {
-        Ok(match Raw::deserialize(d)? {
-            Raw::Named(Named::Start) => FormFace::Start,
-            Raw::Named(Named::End) => FormFace::End,
-            Raw::Named(Named::All) => FormFace::All,
-            Raw::Side(SideRaw { side, along }) => FormFace::Side { line: side, along },
-            Raw::Top(TopRaw { top_side }) => FormFace::TopSide(top_side),
-            Raw::Edge(EdgeRaw { edge }) => FormFace::Edge(edge),
-            Raw::Cut(CutRaw { cut, face }) => FormFace::Cut { by: cut, face },
-        })
+        FormFace::read(&serde_json::Value::deserialize(d)?).map_err(serde::de::Error::custom)
     }
 }
 
@@ -147,6 +145,11 @@ impl Table {
         self.at.insert(key.clone(), i);
         self.keys.push(key);
         i
+    }
+
+    /// [`FormFace::All`]'s number: what a tag that names no key is.
+    pub fn all(&mut self) -> u32 {
+        self.id(FormFace::All)
     }
 
     /// Each edge of each ring of `edges` numbered; a ring or an edge `edges` lacks, [`FormFace::All`]. `rings` is how many

@@ -3519,7 +3519,10 @@ pub(crate) fn revolve(
     for (ring, ids) in rings(regions).zip(&ids) {
         for i in 0..ring.len() {
             let (a, b) = (ring[i], ring[(i + 1) % ring.len()]);
-            let id = ids.get(i).copied().unwrap_or_default();
+            let id = match ids.get(i) {
+                Some(id) => *id,
+                None => table.all(),
+            };
             for k in 0..steps {
                 let (a0, b0, a1, b1) = (at(a, k), at(b, k), at(a, k + 1), at(b, k + 1));
                 push([a0, b0, b1], id);

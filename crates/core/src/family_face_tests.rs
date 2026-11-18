@@ -305,7 +305,46 @@ fn every_key_is_written_as_its_json() {
         assert_eq!(serde_json::to_value(&key).unwrap(), want);
         assert_eq!(serde_json::from_value::<FormFace>(want).unwrap(), key);
     }
-    for bad in [json!("middle"), json!({"side": gstr(1), "top_side": gstr(2)}), json!({"edge": -1}), json!({})] {
-        assert!(serde_json::from_value::<FormFace>(bad.clone()).is_err(), "{bad}");
+}
+
+#[test]
+fn a_bad_key_is_refused_naming_every_shape_a_face_takes() {
+    let shapes = r#"a face is "start", "end", "all", {"side": L}, {"side": L, "along": P}, {"top_side": T}, {"edge": i} or {"cut": G, "face": …}; got "#;
+    for bad in [
+        json!("middle"),
+        json!({"side": 3.5}),
+        json!({"side": gstr(1), "x": 1}),
+        json!({"side": gstr(1), "top_side": gstr(2)}),
+        json!({"edge": -1}),
+        json!({}),
+        json!({"cut": gstr(1), "face": "middle"}),
+    ] {
+        let e = serde_json::from_value::<FormFace>(bad.clone()).unwrap_err().to_string();
+        assert!(e.starts_with(shapes), "{bad}: {e}");
     }
+    // What it got is said, short.
+    let long = json!({"side": "x".repeat(500)});
+    let e = serde_json::from_value::<FormFace>(long).unwrap_err().to_string();
+    assert!(e.contains("{\"side\":\"xxx") && e.chars().count() < shapes.chars().count() + 100, "{e}");
+}
+
+#[test]
+fn a_sweep_round_a_closed_path_runs_each_side_along_its_own_path_line() {
+    // A rectangle of four path lines, drawn from (0, 0) round to it again: the last, back to the start, is the wrap.
+    let path = rect(11, 0.0, 0.0, 2000.0, 1000.0);
+    let p = one(&family(json!([{"sketch": path, "sweep": {"profile": rect(1, -50.0, 0.0, 50.0, 100.0)}}])));
+    let lines =
+        [((0.0, 0.0), (2000.0, 0.0)), ((2000.0, 0.0), (2000.0, 1000.0)), ((2000.0, 1000.0), (0.0, 1000.0)), ((0.0, 1000.0), (0.0, 0.0))];
+    let mut seen = BTreeSet::new();
+    for (t, k) in tagged(&p) {
+        let FormFace::Side { along: Some(a), .. } = k else { panic!("a closed path has no caps: {k:?}") };
+        let n = (11..=14).position(|m| guid(m) == *a).unwrap();
+        seen.insert(n);
+        let c = P2(t.iter().map(|q| q[0]).sum::<f64>() / 3.0, t.iter().map(|q| q[1]).sum::<f64>() / 3.0);
+        let near = |((x0, y0), (x1, y1)): ((f64, f64), (f64, f64))| crate::geom::dist_to_segment(c, P2(x0, y0), P2(x1, y1));
+        let d = near(lines[n]);
+        assert!(d <= 50.0 + 1e-6, "{k:?}: its centroid {c:?} is {d} off its path line");
+        assert!(lines.iter().all(|l| near(*l) >= d - 1e-9), "{k:?}: its centroid {c:?} is nearer another path line");
+    }
+    assert_eq!(seen.len(), 4, "every path line, the wrap's too");
 }

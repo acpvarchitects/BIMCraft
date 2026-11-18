@@ -222,7 +222,9 @@ impl FormKernel for MeshKernel {
         let mut table = Table::of(a.keys.clone());
         let moved: Vec<u32> = if tagged {
             let ids: Vec<u32> = b.keys.iter().map(|k| table.id(k.clone())).collect();
-            b.faces.iter().map(|f| ids.get(*f as usize).copied().unwrap_or_default()).collect()
+            // A tag that names none of the tool's keys: all, never the key numbered 0.
+            let mut all = None;
+            b.faces.iter().map(|f| ids.get(*f as usize).copied().unwrap_or_else(|| *all.get_or_insert_with(|| table.all()))).collect()
         } else {
             Vec::new()
         };
@@ -284,6 +286,35 @@ mod tests {
     fn square() -> Loops {
         let outer = vec![P2(0.0, 0.0), P2(100.0, 0.0), P2(100.0, 100.0), P2(0.0, 100.0)];
         Loops { regions: vec![Region { outer, holes: Vec::new() }], ..Loops::default() }
+    }
+
+    #[test]
+    fn a_tool_face_past_its_keys_is_all_never_the_start() {
+        let k = MeshKernel;
+        let body = k.extrude(&square(), &Frame::LEVEL, 0.0, 50.0).unwrap();
+        let small = Loops {
+            regions: vec![Region { outer: vec![P2(25.0, 25.0), P2(75.0, 25.0), P2(75.0, 75.0), P2(25.0, 75.0)], holes: Vec::new() }],
+            ..Loops::default()
+        };
+        let mut tool = k.extrude(&small, &Frame::LEVEL, -10.0, 60.0).unwrap();
+        // Tags that index no key of the tool's.
+        tool.mesh.faces.iter_mut().for_each(|f| *f = 99);
+        let cut = k.cut(&body, &tool, &mut Budget::default()).unwrap().mesh;
+        assert_eq!(cut.faces.len(), cut.tris.len());
+        let used: std::collections::BTreeSet<&FormFace> = cut.faces.iter().map(|f| &cut.keys[*f as usize]).collect();
+        // The hole's walls: the tool's, tagged as none of its keys says, so all; the body's sides are All too (no lines).
+        assert!(used.contains(&FormFace::All) && used.contains(&FormFace::Start) && used.contains(&FormFace::End), "{used:?}");
+        let walls = cut
+            .tris
+            .iter()
+            .zip(&cut.faces)
+            .filter(|(t, _)| t.iter().all(|q| (25.0..=75.0).contains(&q[0]) && (25.0..=75.0).contains(&q[1])));
+        for (t, f) in walls {
+            let n = crate::view3d::cross(std::array::from_fn(|i| t[1][i] - t[0][i]), std::array::from_fn(|i| t[2][i] - t[0][i]));
+            if n[2].abs() < 1e-9 {
+                assert_eq!(cut.keys[*f as usize], FormFace::All, "a hole's wall {t:?}");
+            }
+        }
     }
 
     #[test]
