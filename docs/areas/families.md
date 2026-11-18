@@ -1452,6 +1452,35 @@ Left out, each a task: Edit Vertices' connecting chosen vertex pairs by hand (F6
 Profile category: loading one, `sweep.family`, its offsets and angle; F6c); dimensions between a sweep's profile and what lies off its plane (F6d);
 paths across planes and Pick Path of 3D edges (F6e).
 
+## Face tags (GEO-2b)
+
+Every triangle of a built piece knows which face of its form it is (`Piece::faces`, one per triangle, each an index into
+`Piece::keys`; none, untagged), so later work (painting a face, picking one) can name a face across flexes and edits. The keys
+(`FormFace`, `family/faces.rs`) are keyed by the sketch: `"start"` and `"end"` (an extrusion's `from` and `to` caps, a blend's
+base and top, a path's start and end, a part revolve's two ends), `{"side": L}` (the side profile line `L` sweeps, by its GUID:
+an arc or a circle is one face, every chord its line's), `{"side": L, "along": P}` (a Sweep's or a Swept Blend's side as it
+goes along path line `P`), `{"top_side": T}` (a blend's side made by top line `T` alone, where the vertex mapping holds a base
+corner), `{"edge": i}` (a profile whose lines have no GUID, by the line's place), `{"cut": G, "face": …}` (a face form `G`, a
+void or a joined solid, cut into it: its own key nested) and `"all"` (a mesh form, an adaptive one, or a side no line is
+found for). Where the agreed shapes have no key, a face is `"all"`: a blend's or a swept blend's top line without a GUID (there
+is no top edge by place), and the faces a cutter without a GUID makes (two such voids couldn't be told apart). A swept
+blend's `{"top_side": T}` carries no `along`: its path is one line. A piece lists only the keys its triangles use
+(`faces::prune`, at the end of `Family::build`): a full revolve has no `"start"` or `"end"`, a flush void's face that made
+none of the slab's is not listed. A host's voids cut the host's own forms only, never a nested instance's pieces, which keep
+their own keys. Nothing is stored: the tags are worked out with the triangles, never change them (`family_kernel_tests` still
+hashes them bit for bit), and no `FORMAT` changed.
+
+Where they come from: `Form::loops_tagged` (and `forms::profile_loops`, `one_loop`) key each ring edge by the line it lies
+along (`faces::Traced`, by `sketch::along` on the chorded lines), carried as `kernel::Loops::edges` and a blend's
+`Sections` `keys`; a path's segments know their line (`forms::Path::lines`, `kernel::Path::along`). The builders (`family::sweep`,
+`family::revolve`, `forms::blend`, `forms::sweep`, `forms::swept_blend`) return a `kernel::Mesh` with `faces` and `keys`,
+tags filtered in step with what has no area. A cut goes through `csg::subtract_tagged` (each polygon keeps its triangle's tag
+through every split; `subtract` is it untagged, the same triangles): `Family::build` wraps a cutter's keys as `Cut` under its
+GUID, and `MeshKernel::cut` joins them to the piece's; an untagged tool's faces are `"all"`, an untagged body leaves the
+result untagged. A void that drills a hole in the profile (GEO-2e, `Family::drilled`) tags the hole's walls as its cut would:
+the void's own ring edges, by `Form::loops_tagged`, carried into the body's plane, so drilling or cutting gives the same keys. Placed, mirrored or
+nested pieces keep their tags (their triangles map one to one). Tests: `family_face_tests.rs`.
+
 ## Family options
 
 A family's options are those of Revit's Family Category and Parameters dialog (`family/options.rs`), each a flat field of
@@ -2162,6 +2191,7 @@ planes, components hosted on them or on faces (Place on Face), and where a compo
 - `family/sketch.rs`: forms' sketches. `family/handles.rs`: shape handles on a profile's edges (FE-5).
 - `family/fineness.rs`: how near a build chords its curves, `Fineness`, which a plan sets from its scale (GEO-2c).
 - `family/forms.rs`: Blend, Sweep and Swept Blend: their kinds, paths, vertex mapping and triangles.
+- `family/faces.rs`: face tags (GEO-2b): `FormFace`, the key table a piece's triangles index, and the lines ring edges lie along.
 - `family/kernel.rs`: what the forms are built through (GEO-1: the design note `docs/brep-plan.md`, #74): the `FormKernel`
   trait (extrude, revolve, sweep, loft, cut and fuse spending a `Budget`, bounds, silhouette, tessellate, edges, faces) over BIMCraft's own types (`Loops` and
   `Path`, which keep the arcs and circles drawn exact beside the chorded regions; `Sections`, a blend's and a swept blend's

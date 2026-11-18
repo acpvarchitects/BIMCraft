@@ -12,7 +12,8 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::kernel::{FormKernel, Loops, MeshSolid, Sections};
+use super::faces::{FormFace, Table, Traced, line_key};
+use super::kernel::{FormKernel, Loops, Mesh, MeshSolid, Sections};
 use super::sketch::{FormLine, MAX_SKETCH};
 use super::{Expr, Form, Frame};
 use crate::geom::{P2, Region};
@@ -130,12 +131,13 @@ fn drawn<'a>(lines: &'a [FormLine], num: &mut dyn FnMut(&'a Expr) -> Result<f64,
 }
 
 /// The loops a profile's `lines` make, read by `num`, as a sketch's are ([`Form::loops`]): each outline counter-clockwise
-/// with its holes clockwise. `what` names the profile in what is said.
+/// with its holes clockwise; and each ring's edges' faces, the line each lies along (GEO-2b, [`Loops::edges`]). `what` names
+/// the profile in what is said.
 pub fn profile_loops<'a>(
     lines: &'a [FormLine],
     what: &str,
     num: &mut dyn FnMut(&'a Expr) -> Result<f64, String>,
-) -> Result<Vec<Region>, String> {
+) -> Result<(Vec<Region>, Vec<Vec<FormFace>>), String> {
     if lines.is_empty() {
         return Err(format!("its {what} has no lines: draw it"));
     }
@@ -159,14 +161,21 @@ pub fn profile_loops<'a>(
     if regions.iter().flat_map(|r| std::iter::once(&r.outer).chain(&r.holes)).map(Vec::len).sum::<usize>() > MAX_RING {
         return Err(format!("its {what} has more than {MAX_RING} corners"));
     }
-    Ok(regions)
+    let traced = Traced::new(lines.iter().zip(&lines_drawn).enumerate().map(|(i, (l, d))| (line_key(i, l.guid), d.points())));
+    let edges = traced.rings(&regions);
+    Ok((regions, edges))
 }
 
-/// The one loop a Blend's end or a Swept Blend's profile makes, counter-clockwise: refused for several or a hole, as Revit's.
-pub fn one_loop<'a>(lines: &'a [FormLine], what: &str, num: &mut dyn FnMut(&'a Expr) -> Result<f64, String>) -> Result<Vec<P2>, String> {
-    let regions = profile_loops(lines, what, num)?;
+/// The one loop a Blend's end or a Swept Blend's profile makes, counter-clockwise, and its edges' faces: refused for several
+/// or a hole, as Revit's.
+pub fn one_loop<'a>(
+    lines: &'a [FormLine],
+    what: &str,
+    num: &mut dyn FnMut(&'a Expr) -> Result<f64, String>,
+) -> Result<(Vec<P2>, Vec<FormFace>), String> {
+    let (regions, mut edges) = profile_loops(lines, what, num)?;
     match regions.as_slice() {
-        [one] if one.holes.is_empty() => Ok(one.outer.clone()),
+        [one] if one.holes.is_empty() => Ok((one.outer.clone(), edges.pop().unwrap_or_default())),
         _ => Err(format!(
             "its {what} makes {} loops (or a hole): a blend's ends and a swept blend's profiles are one loop each",
             regions.len().max(2)
@@ -184,6 +193,8 @@ pub struct Path {
     pub way: P2,
     /// The way it runs at its last point: a Swept Blend's end profile plane.
     pub end_way: P2,
+    /// The place in the sketch of the line each segment (from each point to the next) is of.
+    pub lines: Vec<usize>,
 }
 
 /// `lines` (a sweep's sketch) chained end to end into one path, read by `num`: refused, saying why, where they make no
@@ -209,7 +220,8 @@ pub fn path<'a>(lines: &'a [FormLine], num: &mut dyn FnMut(&'a Expr) -> Result<f
             .map(|(s, c)| P2(centre.0 + radius * c, centre.1 + radius * s))
             .collect();
         let way = (points[1] - points[0]).unit();
-        let path = Path { at: (points[0] + points[1]) * 0.5, way, end_way: way, points, closed: true };
+        let lines = vec![0; points.len()];
+        let path = Path { at: (points[0] + points[1]) * 0.5, way, end_way: way, points, closed: true, lines };
         return checked(path);
     }
     if curves.iter().any(|c| matches!(c.curve, crate::curves::Curve::Circle { .. })) {
@@ -276,6 +288,7 @@ pub fn path<'a>(lines: &'a [FormLine], num: &mut dyn FnMut(&'a Expr) -> Result<f
         order.iter_mut().for_each(|o| o.1 = !o.1);
     }
     let mut points: Vec<P2> = Vec::new();
+    let mut of: Vec<usize> = Vec::new();
     let mut first: Option<(P2, P2)> = None;
     for (k, forward) in &order {
         let mut p = pieces[*k].clone();
@@ -287,6 +300,7 @@ pub fn path<'a>(lines: &'a [FormLine], num: &mut dyn FnMut(&'a Expr) -> Result<f
             first = Some(along(&p, len / 2.0));
         }
         let skip = usize::from(!points.is_empty());
+        of.extend(std::iter::repeat_n(*k, p.len().saturating_sub(1)));
         points.extend(p.into_iter().skip(skip));
         if points.len() > MAX_RING {
             return Err(format!("its path has more than {MAX_RING} points"));
@@ -298,7 +312,7 @@ pub fn path<'a>(lines: &'a [FormLine], num: &mut dyn FnMut(&'a Expr) -> Result<f
     let (at, way) = first.unwrap_or((points[0], P2(1.0, 0.0)));
     let n = points.len();
     let end_way = if closed { (points[1] - points[0]).unit() } else { (points[n - 1] - points[n - 2]).unit() };
-    checked(Path { points, closed, at, way, end_way })
+    checked(Path { points, closed, at, way, end_way, lines: of })
 }
 
 /// The point `d` along polyline `p` and the way it runs there.
@@ -485,28 +499,83 @@ fn closed(mut tris: Vec<[P3; 3]>) -> Result<Vec<[P3; 3]>, String> {
     Ok(tris)
 }
 
-/// Rings `a` (at `from`) and `b` (at `to`) of a Blend on `frame`, mapped ([`mapped`]): its triangles, turned out.
-pub fn blend(a: &[P2], b: &[P2], (from, to): (f64, f64), twist: i32, frame: &Frame) -> Result<Vec<[P3; 3]>, String> {
+/// The faces of closed `ring`'s edges by their ends (GEO-2b), `keys` one per edge, to look [`mapped`]'s pairs up by: a top's
+/// as the sides it alone makes ([`FormFace::TopSide`]), its lines' that have a GUID; the rest [`FormFace::All`].
+struct Edges(std::collections::HashMap<[u64; 4], FormFace>);
+
+impl Edges {
+    fn of(ring: &[P2], keys: &[FormFace], top: bool) -> Edges {
+        let key = |k: Option<&FormFace>| match (k, top) {
+            (Some(FormFace::Side { line, .. }), true) => FormFace::TopSide(*line),
+            (Some(k), false) => k.clone(),
+            _ => FormFace::All,
+        };
+        Edges(crate::geom::ring_edges(ring).enumerate().map(|(i, (a, b))| (Edges::bits(a, b), key(keys.get(i)))).collect())
+    }
+
+    fn bits(a: P2, b: P2) -> [u64; 4] {
+        [a.0.to_bits(), a.1.to_bits(), b.0.to_bits(), b.1.to_bits()]
+    }
+
+    /// The face of the edge from `a` to `b`; [`FormFace::All`] for one the ring hasn't.
+    fn key(&self, a: P2, b: P2) -> FormFace {
+        self.0.get(&Edges::bits(a, b)).cloned().unwrap_or(FormFace::All)
+    }
+}
+
+/// The face of the side between the `i`th corners of mapped rings `ra` and `rb` and the next: the first's edge there (a Blend's
+/// base, a Swept Blend's first profile), or where its corner is held, the second's.
+fn mapped_key(ra: &[P2], rb: &[P2], i: usize, edges: &[Edges; 2]) -> FormFace {
+    let j = (i + 1) % ra.len().max(1);
+    match (ra.get(i), ra.get(j), rb.get(i), rb.get(j)) {
+        (Some(a), Some(b), _, _) if a != b => edges[0].key(*a, *b),
+        (_, _, Some(a), Some(b)) => edges[1].key(*a, *b),
+        _ => FormFace::All,
+    }
+}
+
+/// `tris` and their `tags` less those with no area (GEO-2b: the tags kept in step).
+fn kept(tris: Vec<[P3; 3]>, tags: Vec<u32>) -> (Vec<[P3; 3]>, Vec<u32>) {
+    tris.into_iter().zip(tags).filter(|(t, _)| area3(t) > 1e-6).unzip()
+}
+
+/// A closed solid's mesh: `tris` turned out ([`closed`]), each its tag, numbered in `table`.
+fn solid(tris: Vec<[P3; 3]>, tags: Vec<u32>, table: Table) -> Result<Mesh, String> {
+    let (tris, faces) = kept(tris, tags);
+    let tris = closed(tris)?;
+    Ok(Mesh { caps: tris.len(), tris, faces, keys: table.keys })
+}
+
+/// Rings `a` (at `from`) and `b` (at `to`) of a Blend on `frame`, mapped ([`mapped`]): its triangles, turned out. Each is
+/// tagged (GEO-2b): the base [`FormFace::Start`], the top [`FormFace::End`], a side by `keys`, each ring's edges' faces, as
+/// [`mapped_key`] finds it.
+pub fn blend([a, b]: [&[P2]; 2], keys: &[Vec<FormFace>; 2], (from, to): (f64, f64), twist: i32, frame: &Frame) -> Result<Mesh, String> {
     let (ra, rb) = mapped(a, b, twist);
     if ra.len() > MAX_RING {
         return Err(format!("its ends together have more than {MAX_RING} corners"));
     }
     let base: Vec<P3> = ra.iter().map(|p| frame.point(*p, from)).collect();
     let top: Vec<P3> = rb.iter().map(|p| frame.point(*p, to)).collect();
+    let mut table = Table::default();
+    let (start, end) = (table.id(FormFace::Start), table.id(FormFace::End));
     let mut tris = Vec::new();
+    let mut tags = Vec::new();
     for [x, y, z] in cap(&ra)? {
         tris.push([base[x], base[z], base[y]]);
+        tags.push(start);
     }
     for [x, y, z] in cap(&rb)? {
         tris.push([top[x], top[y], top[z]]);
+        tags.push(end);
     }
-    bands(&mut tris, &[base, top], false);
-    closed(tris.into_iter().filter(|t| area3(t) > 1e-6).collect())
+    let edges = [Edges::of(a, &keys[0], false), Edges::of(b, &keys[1], true)];
+    bands(&mut tris, &mut tags, &[base, top], false, &mut |_, i| table.id(mapped_key(&ra, &rb, i, &edges)));
+    solid(tris, tags, table)
 }
 
 /// Each quad between ring `k` and ring `k + 1` of `rings` (all of one count) as two triangles; `wrap`, the last back to the
-/// first.
-fn bands(tris: &mut Vec<[P3; 3]>, rings: &[Vec<P3>], wrap: bool) {
+/// first. Each quad's two tagged `tag(k, i)`, `i` its first corner.
+fn bands(tris: &mut Vec<[P3; 3]>, tags: &mut Vec<u32>, rings: &[Vec<P3>], wrap: bool, tag: &mut dyn FnMut(usize, usize) -> u32) {
     let n = rings.len();
     let steps = if wrap { n } else { n.saturating_sub(1) };
     for k in 0..steps {
@@ -516,6 +585,8 @@ fn bands(tris: &mut Vec<[P3; 3]>, rings: &[Vec<P3>], wrap: bool) {
             let j = (i + 1) % m;
             tris.push([r0[i], r0[j], r1[j]]);
             tris.push([r0[i], r1[j], r1[i]]);
+            let t = tag(k, i);
+            tags.extend([t, t]);
         }
     }
 }
@@ -589,8 +660,8 @@ fn placed(s: &Station, q: P2) -> P3 {
 /// (clockwise): the band between each station's least and greatest x (`span`, per station) of the profile.
 pub type Plan = (Vec<P2>, Vec<Vec<P2>>);
 
-/// A form's triangles and, where it has one, what it covers seen from above.
-pub type Built = (Vec<[P3; 3]>, Option<Plan>);
+/// A form's mesh (its triangles, tagged) and, where it has one, what it covers seen from above.
+pub type Built = (Mesh, Option<Plan>);
 
 /// The band [`Plan`] is, from the stations and each one's span of x; none where the host isn't level.
 fn band(st: &[Station], span: &[(f64, f64)], closed: bool, host: &Frame) -> Option<Plan> {
@@ -616,38 +687,58 @@ fn span<'a>(pts: impl Iterator<Item = &'a P2>) -> (f64, f64) {
     pts.fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), p| (lo.min(p.0), hi.max(p.0)))
 }
 
-/// A Sweep: `regions` (its profile, in the profile plane's axes) carried along `path` on `host`, its triangles turned out,
-/// and on a level plane what it covers seen from above.
-pub fn sweep(regions: &[Region], path: &Path, host: &Frame) -> Result<(Vec<[P3; 3]>, Option<Plan>), String> {
+/// A Sweep: `profile` (in the profile plane's axes) carried along `path` on `host`, its triangles turned out, and on a level
+/// plane what it covers seen from above. Each triangle is tagged (GEO-2b): the cap at the path's start [`FormFace::Start`],
+/// at its end [`FormFace::End`], a side its profile edge's face ([`Loops::edges`]) `along` its path line's.
+pub fn sweep(profile: &Loops, path: &super::kernel::Path, host: &Frame) -> Result<(Mesh, Option<Plan>), String> {
+    let (regions, along) = (&profile.regions, &path.along);
+    let path = &path.chorded;
     let rings: Vec<&Vec<P2>> = regions.iter().flat_map(|r| std::iter::once(&r.outer).chain(&r.holes)).collect();
     let st = stations(path, host, reach(rings.iter().flat_map(|r| r.iter())))?;
     let count = st.len() * rings.iter().map(|r| r.len()).sum::<usize>();
     if count * 2 > super::MAX_TRIANGLES {
         return Err(format!("it would be more than {} triangles", super::MAX_TRIANGLES));
     }
+    let mut table = Table::default();
     let mut tris = Vec::new();
-    for ring in &rings {
-        let along: Vec<Vec<P3>> = st.iter().map(|s| ring.iter().map(|q| placed(s, *q)).collect()).collect();
-        bands(&mut tris, &along, path.closed);
+    let mut tags = Vec::new();
+    for (r, ring) in rings.iter().enumerate() {
+        let along_st: Vec<Vec<P3>> = st.iter().map(|s| ring.iter().map(|q| placed(s, *q)).collect()).collect();
+        let edges = profile.edges.get(r);
+        bands(&mut tris, &mut tags, &along_st, path.closed, &mut |k, i| {
+            let key = edges.and_then(|e| e.get(i)).cloned().unwrap_or(FormFace::All);
+            table.id(key.along(along.get(k).copied().flatten()))
+        });
     }
     if !path.closed {
         let (first, last) = (&st[0], &st[st.len() - 1]);
+        let (start, end) = (table.id(FormFace::Start), table.id(FormFace::End));
         for (points, caps) in super::caps(regions)? {
             for [a, b, c] in caps {
                 let (pa, pb, pc) = (points[a], points[b], points[c]);
                 tris.push([placed(first, pa), placed(first, pc), placed(first, pb)]);
                 tris.push([placed(last, pa), placed(last, pb), placed(last, pc)]);
+                tags.extend([start, end]);
             }
         }
     }
     let width = span(regions.iter().flat_map(|r| r.outer.iter()));
     let plan = band(&st, &vec![width; st.len()], path.closed, host);
-    Ok((closed(tris.into_iter().filter(|t| area3(t) > 1e-6).collect())?, plan))
+    Ok((solid(tris, tags, table)?, plan))
 }
 
 /// A Swept Blend: profile `a` at `path`'s start turning into `b` at its end (each one loop, in its profile plane's axes,
-/// mapped as a Blend's), its triangles turned out.
-pub fn swept_blend(a: &[P2], b: &[P2], twist: i32, path: &Path, host: &Frame) -> Result<(Vec<[P3; 3]>, Option<Plan>), String> {
+/// mapped as a Blend's), its triangles turned out. Each is tagged (GEO-2b) as a Blend's are, a side of the first profile's
+/// `along` the path's line.
+pub fn swept_blend(
+    [a, b]: [&[P2]; 2],
+    keys: &[Vec<FormFace>; 2],
+    twist: i32,
+    path: &super::kernel::Path,
+    host: &Frame,
+) -> Result<(Mesh, Option<Plan>), String> {
+    let along = &path.along;
+    let path = &path.chorded;
     let (ra, rb) = mapped(a, b, twist);
     if path.closed {
         return Err("its path closes: a swept blend's path is one line or one arc".into());
@@ -676,17 +767,25 @@ pub fn swept_blend(a: &[P2], b: &[P2], twist: i32, path: &Path, host: &Frame) ->
         spans.push(span(local.iter()));
         rings.push(local.iter().map(|q| placed(s, *q)).collect::<Vec<P3>>());
     }
+    let mut table = Table::default();
+    let (start, end) = (table.id(FormFace::Start), table.id(FormFace::End));
+    let edges = [Edges::of(a, &keys[0], false), Edges::of(b, &keys[1], true)];
     let mut tris = Vec::new();
-    bands(&mut tris, &rings, false);
+    let mut tags = Vec::new();
+    bands(&mut tris, &mut tags, &rings, false, &mut |k, i| {
+        table.id(mapped_key(&ra, &rb, i, &edges).along(along.get(k).copied().flatten()))
+    });
     let (first, last) = (&st[0], &st[st.len() - 1]);
     for [x, y, z] in cap(&ra)? {
         tris.push([placed(first, ra[x]), placed(first, ra[z]), placed(first, ra[y])]);
+        tags.push(start);
     }
     for [x, y, z] in cap(&rb)? {
         tris.push([placed(last, rb[x]), placed(last, rb[y]), placed(last, rb[z])]);
+        tags.push(end);
     }
     let plan = band(&st, &spans, false, host);
-    Ok((closed(tris.into_iter().filter(|t| area3(t) > 1e-6).collect())?, plan))
+    Ok((solid(tris, tags, table)?, plan))
 }
 
 /// Form `form`'s triangles when it is a Blend, a Sweep or a Swept Blend (none for another kind), on `host`, its numbers
@@ -705,20 +804,21 @@ pub(crate) fn build<'a, K: FormKernel<Solid = MeshSolid>>(
     let made = match form.kind() {
         FormKind::Extrusion | FormKind::Revolve => return Ok(None),
         FormKind::Blend => {
-            let base = one_loop(&form.sketch, "base", num)?;
-            let top = one_loop(&form.top, "top", num)?;
+            let (base, kb) = one_loop(&form.sketch, "base", num)?;
+            let (top, kt) = one_loop(&form.top, "top", num)?;
             let (from, to) = (num(&form.from)?, num(&form.to)?);
             if (to - from).abs() <= TOL {
                 return Err(format!("its ends are at one place: first end {from}, second end {to}"));
             }
-            kernel.loft(&Sections::Blend { base, top, from, to, twist: form.twist, frame: *host })?
+            kernel.loft(&Sections::Blend { base, top, keys: [kb, kt], from, to, twist: form.twist, frame: *host })?
         }
         FormKind::Sweep => {
             let p = path(&form.sketch, num)?;
             let profile = form.sweep.as_ref().map(|s| s.profile.as_slice()).unwrap_or_default();
-            let regions = profile_loops(profile, "profile", num)?;
-            let loops = Loops { regions, curves: exact(profile, num) };
-            let path = super::kernel::Path { chorded: p, curves: exact(&form.sketch, num) };
+            let (regions, edges) = profile_loops(profile, "profile", num)?;
+            let loops = Loops { regions, curves: exact(profile, num), edges };
+            let along = path_lines(form, &p);
+            let path = super::kernel::Path { chorded: p, curves: exact(&form.sketch, num), along };
             kernel.sweep(&loops, &path, host)?
         }
         FormKind::SweptBlend => {
@@ -727,13 +827,19 @@ pub(crate) fn build<'a, K: FormKernel<Solid = MeshSolid>>(
             }
             let p = path(&form.sketch, num)?;
             let (profile, end) = form.sweep.as_ref().map(|s| (s.profile.as_slice(), s.end.as_slice())).unwrap_or_default();
-            let first = one_loop(profile, "first profile", num)?;
-            let last = one_loop(end, "second profile", num)?;
-            let path = super::kernel::Path { chorded: p, curves: exact(&form.sketch, num) };
-            kernel.loft(&Sections::Along { first, last, twist: form.twist, path, host: *host })?
+            let (first, kf) = one_loop(profile, "first profile", num)?;
+            let (last, kl) = one_loop(end, "second profile", num)?;
+            let along = path_lines(form, &p);
+            let path = super::kernel::Path { chorded: p, curves: exact(&form.sketch, num), along };
+            kernel.loft(&Sections::Along { first, last, keys: [kf, kl], twist: form.twist, path, host: *host })?
         }
     };
-    Ok(Some((made.mesh.tris, made.plan)))
+    Ok(Some((made.mesh, made.plan)))
+}
+
+/// The GUID of the line of `form`'s sketch each segment of its path `p` is of (none, a line without one).
+fn path_lines(form: &Form, p: &Path) -> Vec<Option<crate::ids::Guid>> {
+    p.lines.iter().map(|k| form.sketch.get(*k).map(|l| l.guid).filter(|g| !g.is_nil())).collect()
 }
 
 /// The profile planes of form `form` on `host` as numbers `num` read it: a Sweep's one, a Swept Blend's two (start, end);

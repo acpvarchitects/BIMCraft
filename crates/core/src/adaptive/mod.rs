@@ -677,6 +677,8 @@ impl Evaluation {
                     match cuts {
                         Ok(cuts) => {
                             for (piece, cut) in out.iter_mut().zip(cuts) {
+                                // A mesh's, all one face (GEO-2b).
+                                (piece.faces, piece.keys) = (vec![0; cut.len()], vec![crate::family::FormFace::All]);
                                 piece.tris = cut;
                             }
                         }

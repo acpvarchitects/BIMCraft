@@ -398,6 +398,29 @@ impl Form {
         self.all_lines().flat_map(FormLine::exprs)
     }
 
+    /// [`Form::loops`], with the face each ring edge sweeps (GEO-2b, [`super::kernel::Loops::edges`]): the side of the profile
+    /// line it lies along, by its GUID ([`super::faces::line_key`]: by its place in the profile, where it has none). A circle's
+    /// every chord is its line's.
+    pub fn loops_tagged<'a>(
+        &'a self,
+        num: &mut dyn FnMut(&'a Expr) -> Result<f64, String>,
+    ) -> Result<(Vec<Region>, Vec<Vec<super::faces::FormFace>>), String> {
+        use super::faces::{Traced, line_key};
+        let regions = self.loops(num)?;
+        let lines: Vec<&'a FormLine> = self.boundary().collect();
+        if let (Some(_), Some(l)) = (self.circle_ref(), lines.first()) {
+            let key = line_key(0, l.guid);
+            let edges = regions.iter().map(|r| vec![key.clone(); r.outer.len()]).collect();
+            return Ok((regions, edges));
+        }
+        let mut drawn = Vec::with_capacity(lines.len());
+        for (i, l) in lines.iter().enumerate() {
+            drawn.push((line_key(i, l.guid), chorded(&l.curve(num)?).points()));
+        }
+        let edges = Traced::new(drawn).rings(&regions);
+        Ok((regions, edges))
+    }
+
     /// The loops its profile makes, read by `num` for a type: each outline counter-clockwise with its holes clockwise, the
     /// first drawn first; an arc cut into chords. Refused, saying why: a number it can't read, more lines than it may have,
     /// and the problems [`crate::sketch::solve`] names (lines that don't close, cross or overlap), each line by its id.

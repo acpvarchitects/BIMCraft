@@ -186,9 +186,9 @@ fn kinds() -> Vec<(&'static str, Value)> {
     ]
 }
 
-/// The hash of every family here, built as the code builds them.
-fn built() -> u64 {
-    let mut h = Fnv::new();
+/// Every family here, by name: the sample house's, the forms of every kind, the door, the starter fixtures; and the session
+/// that holds those made by command.
+fn made() -> (Session, Vec<(String, Family)>) {
     let mut s = Session::new();
     s.script(crate::sample::SAMPLE).unwrap();
     for (name, forms) in kinds() {
@@ -222,6 +222,18 @@ fn built() -> u64 {
         }
     }
     families.sort_by(|a, b| a.0.cmp(&b.0));
+    (s, families)
+}
+
+/// Every family here, by name ([`made`]).
+pub(crate) fn families() -> Vec<(String, Family)> {
+    made().1
+}
+
+/// The hash of every family here, built as the code builds them.
+fn built() -> u64 {
+    let mut h = Fnv::new();
+    let (s, families) = made();
     // Each hand-made kind builds, both its types, into pieces: an error hashes too, so one that didn't would prove nothing.
     for (name, _) in kinds() {
         let f = &s.model.families[name];
