@@ -1,12 +1,13 @@
 //! FE-16c-1: a form's faces painted ([`super::Form::paint`]), each by the GEO-2b key its triangles carry ([`FormFace`]). A
 //! build gives each piece the material each of its keys is painted ([`super::Piece::paint`]); its triangles are never split, so
-//! a piece stays the closed solid sections and plans cut. Which faces a form has is worked out from what it builds
-//! ([`Family::faces_built`]), and paint naming one it no longer has is dropped ([`Family::drop_dead_paint`]): after every
+//! a piece stays the closed solid sections and plans cut. Whether a form still has a face is read from the family alone, with
+//! no build ([`Family::has_face`]), and paint naming one it no longer has is dropped ([`Family::drop_dead_paint`]): after every
 //! command, by the engine, and when a file is read, where it is listed as left out.
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet};
 
-use super::{Family, Form, FormFace, Kind, MAX_PAINT, Val, csg};
+use super::{Family, Form, FormFace, Kind, MAX_PAINT, Val};
+use crate::ids::Guid;
 
 impl Family {
     /// What form `form` paints each of `keys`, its material parameters read in `values`, as a built piece names them; empty
@@ -50,28 +51,33 @@ impl Family {
         Ok(())
     }
 
-    /// The faces each form builds, by its place in the list: the keys of its piece under any of the family's types, every
-    /// form shown (a form its `visible` hides under every type keeps its faces). None where no type builds, when nothing can
-    /// be said of them.
-    pub fn faces_built(&self) -> Option<Vec<BTreeSet<FormFace>>> {
-        let mut shown = self.clone();
-        shown.forms.iter_mut().for_each(|f| f.visible = None);
-        // What a form builds never hangs on what the family nests.
-        shown.nested_instances.clear();
-        let mut out = vec![BTreeSet::new(); self.forms.len()];
-        let mut any = false;
-        for t in shown.types.keys() {
-            let Ok(values) = shown.values(t, &BTreeMap::new()) else { continue };
-            let Ok(flexed) = shown.flexed(&values) else { continue };
-            let Ok(built) = flexed.build_of(&values, &mut HashMap::new(), &mut csg::Meter::default()) else { continue };
-            any = true;
-            for (i, p) in built {
-                if let Some(keys) = out.get_mut(i) {
-                    keys.extend(p.keys);
+    /// Whether form `i` still has face `key`, read from the family alone, with no build: a side's line (and the path line it
+    /// goes along) is still a line of the form; an edge's place is still in its lines; a cut's form still cuts it (a void or
+    /// a solid that cuts or joins it) and still has the face it names; a cap or the whole form always. What a build makes
+    /// hangs on a placed instance's values too, so a face that only some instances have keeps its paint: paint on one that
+    /// none has paints nothing.
+    pub fn has_face(&self, i: usize, key: &FormFace) -> bool {
+        self.has_face_in(i, key, 0)
+    }
+
+    fn has_face_in(&self, i: usize, key: &FormFace, depth: usize) -> bool {
+        let Some(form) = self.forms.get(i) else { return false };
+        let line = |g: &Guid| !g.is_nil() && form.all_lines().any(|l| l.guid == *g);
+        match key {
+            FormFace::Start | FormFace::End | FormFace::All => true,
+            FormFace::Side { line: l, along } => line(l) && along.as_ref().is_none_or(line),
+            FormFace::TopSide(t) => line(t),
+            FormFace::Edge(k) => *k < form.all_lines().count(),
+            FormFace::Cut { by, face } => {
+                // A key is as deep as the cuts that made it, never deeper than the family's forms.
+                if depth > self.forms.len() || by.is_nil() {
+                    return false;
                 }
+                let Some(m) = self.forms.iter().position(|f| f.guid == *by) else { return false };
+                let cuts = self.cutters(i).contains(&m) || self.forms[m].joined_by.contains(&form.guid);
+                cuts && self.has_face_in(m, face, depth + 1)
             }
         }
-        any.then_some(out)
     }
 
     /// Whether any of its forms, or of the families it nests, is painted.
@@ -79,25 +85,21 @@ impl Family {
         self.forms.iter().any(|f| !f.paint.is_empty()) || self.nested.iter().any(|n| n.family.painted())
     }
 
-    /// Its paint, and its nested families', that names a face its form no longer builds ([`Family::faces_built`]) taken away;
-    /// what went, as JSON pointers from the family (`/forms/0/paint/1`, `/nested/0/family/forms/0/paint/0`). Nothing goes where
-    /// no type builds.
+    /// Its paint, and its nested families', that names a face its form no longer has ([`Family::has_face`]) taken away;
+    /// what went, as JSON pointers from the family (`/forms/0/paint/1`, `/nested/0/family/forms/0/paint/0`).
     pub fn drop_dead_paint(&mut self) -> Vec<String> {
         let mut gone = Vec::new();
-        if self.forms.iter().any(|f| !f.paint.is_empty())
-            && let Some(built) = self.faces_built()
-        {
-            for (i, (form, faces)) in self.forms.iter_mut().zip(&built).enumerate() {
-                let mut k = 0;
-                form.paint.retain(|p| {
-                    k += 1;
-                    let alive = faces.contains(&p.face);
-                    if !alive {
-                        gone.push(format!("/forms/{i}/paint/{}", k - 1));
-                    }
-                    alive
-                });
-            }
+        let dead: Vec<Vec<bool>> =
+            (0..self.forms.len()).map(|i| self.forms[i].paint.iter().map(|p| !self.has_face(i, &p.face)).collect()).collect();
+        for (i, (form, dead)) in self.forms.iter_mut().zip(dead).enumerate() {
+            let mut k = 0;
+            form.paint.retain(|_| {
+                k += 1;
+                if dead.get(k - 1).copied().unwrap_or(false) {
+                    gone.push(format!("/forms/{i}/paint/{}", k - 1));
+                }
+                !dead.get(k - 1).copied().unwrap_or(false)
+            });
         }
         for (i, n) in self.nested.iter_mut().enumerate() {
             if n.family.painted() {
@@ -108,13 +110,10 @@ impl Family {
     }
 
     /// FE-16c-1's `paint` edit: form `form`'s `face` painted `material`, or its paint there taken off (`material` none), or all
-    /// of its paint taken off (`face` none too). A face is refused unless the form builds it; a material is checked with the
-    /// family.
+    /// of its paint taken off (`face` none too). A face is refused unless the form has it ([`Family::has_face`]); a material is
+    /// checked with the family.
     pub fn paint_face(&mut self, form: usize, face: Option<FormFace>, material: Option<String>) -> Result<(), String> {
-        let built = match &face {
-            Some(_) if material.is_some() => Some(self.faces_built()),
-            _ => None,
-        };
+        let known = face.as_ref().is_none_or(|k| self.has_face(form, k));
         let Some(f) = self.forms.get_mut(form) else { return Err(format!("the family has no form {}", form + 1)) };
         if f.void && material.is_some() {
             return Err(format!("form {} is a void, never seen: it takes no paint", form + 1));
@@ -126,15 +125,12 @@ impl Family {
             }
             (Some(face), None) => f.paint.retain(|p| p.face != face),
             (Some(face), Some(material)) => {
-                let faces = built.flatten().ok_or("the family builds under none of its types, so its faces aren't known")?;
-                let has = faces.get(form).cloned().unwrap_or_default();
-                if !has.contains(&face) {
-                    let mut named: Vec<String> = has.iter().take(12).map(|k| serde_json::to_string(k).unwrap_or_default()).collect();
-                    if has.len() > 12 {
-                        named.push("…".into());
-                    }
+                if !known {
                     let said = serde_json::to_string(&face).unwrap_or_default();
-                    return Err(format!("form {} has no face {said}; its faces are {}", form + 1, named.join(", ")));
+                    return Err(format!(
+                        "form {} has no face {said}: a side's line, or a cut's form, is no longer the form's (keys: `Form::paint`)",
+                        form + 1
+                    ));
                 }
                 match f.paint.iter_mut().find(|p| p.face == face) {
                     Some(p) => p.material = material,

@@ -632,8 +632,8 @@ impl Session {
                         self.model_mut().sync_library();
                     }
                 }
-                // Paint on a face a family's form no longer builds goes with the edit that took the face away, in its step
-                // (FE-16c-1): a file never holds a key that names nothing.
+                // Paint on a face a family's form no longer has (its line or cutter gone) goes with the edit that took the face
+                // away, in its step (FE-16c-1): a file never holds a key that names nothing.
                 if cmd.undoable && !self.model.families.same_allocation(&before.families) {
                     let painted: Vec<String> = self
                         .model

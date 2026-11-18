@@ -400,3 +400,46 @@ fn a_point_on_a_components_surface_names_its_face() {
     assert_eq!(s.model.component_face(id, [200.0, 250.0, 900.0], [0.0, 0.0, 1.0]), None, "off it");
     assert_eq!(s.model.component_face(id, [f64::NAN, 0.0, 0.0], [0.0, 0.0, 1.0]), None);
 }
+
+/// cp's review of #89: whether a face is still there is read from the family, never from a type's build. A void that reaches
+/// the box only on an instance whose `Bottom` is low enough makes no face under the type's values, yet the instance shows it:
+/// it is painted from a click on that instance, and an unrelated edit keeps its paint.
+#[test]
+fn a_face_only_some_instances_have_is_painted_from_one_and_kept_by_unrelated_edits() {
+    let mut s = Session::new();
+    run(&mut s, "material", json!({"name": "Red", "color": [220, 30, 30]}));
+    run(
+        &mut s,
+        "family",
+        json!({"name": "Box", "category": "generic",
+               "parameters": [{"name": "W", "value": 1000}, {"name": "Bottom", "value": 350, "instance": true}],
+               "types": {"A": {}},
+               "forms": [boxed(json!([])),
+                         {"guid": gstr(VOID), "sketch": rect(21, 400.0, 200.0, 600.0, 300.0), "from": "Bottom", "to": 400, "void": true}]}),
+    );
+    let id =
+        run(&mut s, "component", json!({"family": "Box", "type": "A", "at": [0, 0], "params": {"Bottom": 100}}))["id"].as_u64().unwrap();
+    let cut = FormFace::Cut { by: guid(VOID), face: Box::new(side(21)) };
+    // Under the type's values the void stays above the box: no build of the type has the pocket's side.
+    let f = &s.model.families["Box"];
+    assert!(pieces_of(f, "A").iter().all(|p| !p.keys.contains(&cut)), "the type's build has no pocket");
+    // The instance has it: a click on the pocket's side (line 21, y = 200) names it, and the command paints it.
+    let at = s.model.component_face(id, [500.0, 200.0, 200.0], [0.0, 1.0, 0.0]);
+    assert_eq!(at, Some(cut.clone()));
+    let face = serde_json::to_value(&cut).unwrap();
+    run(&mut s, "family", json!({"name": "Box", "paint": {"form": gstr(BOX), "face": face, "material": "Red"}}));
+    let reds = |s: &Session| {
+        let Some(crate::model::Element::Component(c)) = s.model.elements.get(id) else { panic!("the component") };
+        s.model.component_pieces(c).iter().map(|p| painted(p).into_iter().filter(|(k, m)| *k == cut && m == "Red").count()).sum::<usize>()
+    };
+    assert!(reds(&s) > 0, "the instance's pocket side is red");
+    // An unrelated edit, which the engine follows by dropping dead paint: the pocket's paint stays.
+    run(&mut s, "family", json!({"name": "Box", "paint": {"form": gstr(BOX), "face": "end", "material": "Red"}}));
+    run(&mut s, "family", json!({"name": "Box", "form": {"guid": gstr(BOX), "material": "Concrete", "to": 320}}));
+    assert_eq!(form(&s).paint.len(), 2, "{:?}", form(&s).paint);
+    assert!(reds(&s) > 0);
+    // And a file keeps it.
+    let (back, left_out) = crate::model::Model::read(&s.model.to_json().unwrap()).unwrap();
+    assert!(left_out.is_empty(), "{left_out:?}");
+    assert_eq!(back.families["Box"].forms[0].paint.len(), 2);
+}

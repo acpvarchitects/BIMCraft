@@ -1932,7 +1932,7 @@ other_files(
          (\"start\", \"end\", \"all\", {\"side\": line GUID}, {\"side\": L, \"along\": path line}, {\"top_side\": T}, {\"edge\": i}, \
          {\"cut\": cutter GUID, \"face\": its key}) painted a material of the library or a material parameter, over the form's \
          own, in the 3D view and glTF only; `material`: null takes that face's paint off, and `face`: null with it all the \
-         form's; a form patch's `paint` gives the list whole; paint on a face the form no longer builds goes with the edit), \
+         form's; a form patch's `paint` gives the list whole; paint on a face whose line or cutter is gone goes with the edit), \
          ref_planes?: [{guid?, name?, start: [x, y, z], end: [x, y, z], up: [x, y, z], reference?: not_a_reference|strong|weak|\
          left|center_left_right|right|front|center_front_back|back|bottom|center_elevation|top, defines_origin?, subcategory?}], \
          ref_plane?: {id | guid, …a plane's fields}, delete_ref_plane?: [id | guid, …], ref_lines?: [{guid?, start: [x, y, z], \

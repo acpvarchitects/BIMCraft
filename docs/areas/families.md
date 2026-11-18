@@ -1502,16 +1502,19 @@ sections (their cut patterns and edges), IFC and schedules keep the form's mater
 pattern face by face in projection yet (a plan draws one for a floor's, a ceiling's or a toposolid's top only), so the
 painted material's surface pattern in an elevation waits for FE-16c-2.
 
-Which faces a form has is worked out from what it builds (`Family::faces_built`): the keys of its piece under any of the
-family's types, every form shown (a form its `visible` hides keeps its paint); where no type builds, nothing is said and
-nothing dropped. Paint on a face the form no longer builds is dropped, never kept: the engine drops it after any command that
+Whether a form still has a face is read from the family alone, with no build (`Family::has_face`): a side's line, and the
+path line it goes along, is still a line of the form; an edge's place is still in its lines; a cut's form still cuts it (a
+void that cuts forms, its `cut_by` or a join either way) and still has the face the key names; a cap or the whole form always.
+What a build makes hangs on a placed instance's values too, so a face only some instances have (a void an instance parameter
+lowers into the form) keeps its paint, and Paint lays it from a click on that instance; paint on a face no instance has
+paints nothing. Paint on a face the form no longer has is dropped, never kept: the engine drops it after any command that
 changed a painted family (`Family::drop_dead_paint`), in that command's step, so deleting a sketch line or a void takes the paint
 of its faces with it and one undo brings both back; `Model::read` leaves it out of a file and lists it in `left_out`
 (`/families/Box/forms/0/paint/1`). A file never holds a key that names nothing. FORMAT stays 21 (`Model::migrate` notes it): a
 build of 21 from before paint leaves the field out and opens the family unpainted.
 
-`family {name, paint: {form, face, material}}` paints one face (the form by id or GUID; refused unless the form builds that
-face, naming the faces it has), `material: null` takes that face's paint off and `face: null` with it all the form's; a form
+`family {name, paint: {form, face, material}}` paints one face (the form by id or GUID; refused unless the form has that
+face), `material: null` takes that face's paint off and `face: null` with it all the form's; a form
 patch's `paint` gives the list whole. `Model::component_face` names the face of a component under a point on its surface (its
 nearest triangle facing that way), what a click in a 3D view finds. The family document has Paint (PT) and Remove Paint on
 its Geometry panel, beside Cut and Join (`editor/paint.rs`): {3D} opens, the Options Bar picks the material, and a click on a form's face paints
