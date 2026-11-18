@@ -12,6 +12,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use super::kernel::{FormKernel, Loops, MeshSolid, Sections};
 use super::sketch::{FormLine, MAX_SKETCH};
 use super::{Expr, Form, Frame};
 use crate::geom::{P2, Region};
@@ -690,12 +691,18 @@ pub fn swept_blend(a: &[P2], b: &[P2], twist: i32, path: &Path, host: &Frame) ->
 
 /// Form `form`'s triangles when it is a Blend, a Sweep or a Swept Blend (none for another kind), on `host`, its numbers
 /// read by `num`.
-pub(crate) fn build<'a>(
+pub(crate) fn build<'a, K: FormKernel<Solid = MeshSolid>>(
     form: &'a Form,
     host: &Frame,
     num: &mut dyn FnMut(&'a Expr) -> Result<f64, String>,
+    kernel: &K,
 ) -> Result<Option<Built>, String> {
-    let tris = match form.kind() {
+    // The curves drawn, exact beside the chorded ones (GEO-1), for a kernel that reads them: read where they can be, else
+    // none.
+    let exact = |lines: &'a [FormLine], num: &mut dyn FnMut(&'a Expr) -> Result<f64, String>| {
+        if K::EXACT { super::kernel::curves(lines.iter(), num).unwrap_or_default() } else { Vec::new() }
+    };
+    let made = match form.kind() {
         FormKind::Extrusion | FormKind::Revolve => return Ok(None),
         FormKind::Blend => {
             let base = one_loop(&form.sketch, "base", num)?;
@@ -704,13 +711,15 @@ pub(crate) fn build<'a>(
             if (to - from).abs() <= TOL {
                 return Err(format!("its ends are at one place: first end {from}, second end {to}"));
             }
-            (blend(&base, &top, (from, to), form.twist, host)?, None)
+            kernel.loft(&Sections::Blend { base, top, from, to, twist: form.twist, frame: *host })?
         }
         FormKind::Sweep => {
             let p = path(&form.sketch, num)?;
             let profile = form.sweep.as_ref().map(|s| s.profile.as_slice()).unwrap_or_default();
             let regions = profile_loops(profile, "profile", num)?;
-            sweep(&regions, &p, host)?
+            let loops = Loops { regions, curves: exact(profile, num) };
+            let path = super::kernel::Path { chorded: p, curves: exact(&form.sketch, num) };
+            kernel.sweep(&loops, &path, host)?
         }
         FormKind::SweptBlend => {
             if form.sketch.len() != 1 {
@@ -718,12 +727,13 @@ pub(crate) fn build<'a>(
             }
             let p = path(&form.sketch, num)?;
             let (profile, end) = form.sweep.as_ref().map(|s| (s.profile.as_slice(), s.end.as_slice())).unwrap_or_default();
-            let a = one_loop(profile, "first profile", num)?;
-            let b = one_loop(end, "second profile", num)?;
-            swept_blend(&a, &b, form.twist, &p, host)?
+            let first = one_loop(profile, "first profile", num)?;
+            let last = one_loop(end, "second profile", num)?;
+            let path = super::kernel::Path { chorded: p, curves: exact(&form.sketch, num) };
+            kernel.loft(&Sections::Along { first, last, twist: form.twist, path, host: *host })?
         }
     };
-    Ok(Some(tris))
+    Ok(Some((made.mesh.tris, made.plan)))
 }
 
 /// The profile planes of form `form` on `host` as numbers `num` read it: a Sweep's one, a Swept Blend's two (start, end);
