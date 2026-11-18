@@ -1006,6 +1006,12 @@ impl Orbit {
         self.picker.as_ref()?.at(cam, x, y)
     }
 
+    /// The surface the picture shows at `at` through `cam`, and the point on it there; `scene` the one it was drawn from, which
+    /// the processor's picture needs.
+    pub(crate) fn surface_at(&self, input: &Input, cam: &Camera, at: Pos2, scene: Option<&Scene>) -> Option<Surface> {
+        self.picker.as_ref()?.surface(scene, cam, input.px(at))
+    }
+
     /// Whether the hand is turning or panning the view.
     pub(crate) fn turning(&self) -> bool {
         self.drag.is_some()

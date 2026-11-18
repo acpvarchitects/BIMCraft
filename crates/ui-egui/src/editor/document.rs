@@ -195,6 +195,7 @@ impl FamilyEditor {
             && self.views.drawing.is_none()
             && self.views.measuring.is_none()
             && self.views.cutting.is_none()
+            && self.views.painting.is_none()
             && self.views.picking.is_none()
             && self.views.dimensioning.is_none()
             && self.views.aligning.is_none()
@@ -215,6 +216,8 @@ impl FamilyEditor {
             return self.cutting_tool(mode);
         }
         match action {
+            "Paint" => self.paint_tool(false),
+            "Remove Paint" => self.paint_tool(true),
             "Reference Plane" => self.reference_plane_tool(),
             "Reference Line" => self.reference_line_tool(),
             "Model Line" => self.model_line_tool(),
@@ -483,6 +486,10 @@ fn context(ed: &FamilyEditor) -> Option<&'static str> {
     if ed.adaptive.is_none() {
         if let Some(title) = ed.sketch_title() {
             return Some(title);
+        }
+        // Paint and Remove Paint (FE-16c-1), named as the project names the tool.
+        if let Some(remove) = ed.views.painting {
+            return Some(if remove { msg!("Remove Paint") } else { msg!("Paint") });
         }
         if ed.editing_2d() && ed.views.drawing.is_some() && ed.views.drawing_model {
             return Some(msg!("Modify | Place Lines"));
@@ -1103,6 +1110,7 @@ impl BimApp {
                 // FE-16b: Geometry's Cut and Join, each one small button dropping down its tools, as the project's panel has them; small,
                 // so the ribbon keeps the room it had at 1600 px.
                 let mut cutting: Option<super::cutting::CutTool> = None;
+                let mut painting: Option<bool> = None;
                 ribbon::panel(ui, msg!("Geometry"), |ui| {
                     use super::cutting::CutTool;
                     let why = ed.cutting_blocked();
@@ -1147,9 +1155,30 @@ impl BimApp {
                             }
                         });
                     }
+                    // FE-16c-1: Paint and Remove Paint, as the project's Geometry panel has them, on the forms' faces in {3D}.
+                    let ready = ed.paint_ready();
+                    let paint = [
+                        (
+                            false,
+                            Icon::Paint,
+                            "Paint",
+                            msg!("Paint (PT): lay a material, and its texture, over the face you click in the 3D view"),
+                        ),
+                        (true, Icon::Unpaint, "Remove Paint", msg!("Remove Paint: take the paint off the face you click in the 3D view")),
+                    ];
+                    for (remove, icon, label, tip) in paint {
+                        let on = ed.views.painting == Some(remove);
+                        if ui.add_enabled_ui(ready, |ui| crate::small_button(ui, icon, label, on, tip)).inner.clicked() {
+                            painting = Some(remove);
+                        }
+                    }
                     // Small buttons only: the panel keeps the ribbon's height, its name on the others' baseline.
                     ribbon::full_height(ui);
                 });
+                if let Some(remove) = painting {
+                    ed.paint_tool(remove);
+                    self.status = Status::default();
+                }
                 if let Some(mode) = cutting {
                     match ed.cutting_tool(mode) {
                         Ok(()) => self.status = Status::default(),
@@ -1959,6 +1988,7 @@ impl BimApp {
     /// depth Create Form gives a solid or a void.
     pub(crate) fn family_options(&mut self, ui: &mut Ui) -> bool {
         let units = self.session.model.units;
+        let materials: Vec<String> = self.session.model.materials.keys().cloned().collect();
         let Some(ed) = super::tabs::active_in(&mut self.families, self.sheet) else { return false };
         let Some(name) = context(ed) else { return false };
         if ed.sketching() {
@@ -1984,6 +2014,16 @@ impl BimApp {
         ui.horizontal(|ui| {
             ui.set_min_height(24.0);
             ui.label(t(name));
+            // Paint's material (FE-16c-1), as the project's Options Bar gives it.
+            if ed.views.painting == Some(false) {
+                ui.separator();
+                let label = ui.label(t("Material:"));
+                let now = ed.paint_material(&materials).unwrap_or_default();
+                if let Some(n) = crate::properties::combo(ui, (0, "family-paint-material"), label.id, &now, &materials) {
+                    ed.views.paint_material = n;
+                }
+                return;
+            }
             // A Modify tool's options (FE-8).
             let views = &mut ed.views;
             if let Some(m) = views.modify.as_mut() {
@@ -2084,6 +2124,14 @@ impl BimApp {
                 ));
             }
             return Some(super::sketch::prompt(s, &ed.views.modify_options));
+        }
+        // Paint or Remove Paint in hand (FE-16c-1), as the project's prompt.
+        if let (None, Some(remove)) = (ed.adaptive.as_ref(), ed.views.painting) {
+            return Some(if remove {
+                msg!("Click a painted face to take its paint off.")
+            } else {
+                msg!("Click a face to paint it with the material in the Options Bar; the 3D view orbits as ever.")
+            });
         }
         // Cut, Join or one of their undoing tools in hand (FE-16b): what to pick next.
         if let (None, Some(text)) = (ed.adaptive.as_ref(), ed.cutting_prompt()) {
@@ -2372,6 +2420,7 @@ impl BimApp {
                 || ed.modify_escape()
                 || ed.measure_escape()
                 || ed.cutting_escape()
+                || ed.views.painting.take().is_some()
                 || ed.views.witnessing.take().is_some()
             {
             } else if let Some(refs) = ed.views.dimensioning.as_mut() {
@@ -2897,6 +2946,25 @@ impl BimApp {
         if ed.sketching() {
             ed.views.hover3d = None;
             ed.connector_hover = None;
+        } else if ed.views.painting.is_some() {
+            // Paint and Remove Paint (FE-16c-1): the face clicked of a form, by its key in the family.
+            ed.views.hover3d = None;
+            ed.connector_hover = None;
+            let click = response.clicked().then(|| response.interact_pointer_pos()).flatten().or(self.canvas.quick_press());
+            if let Some(p) = click.filter(|p| !crate::orbit::Orbit::on_cube(pane, *p) && !cube.hovered()) {
+                let face = ed.orbit.surface_at(&input, &cam, p, fresh.then_some(&*scene)).and_then(|under| {
+                    let staged = ed.scene3d.as_ref()?;
+                    let bimcraft_core::family::views::Part::Form(i) = *staged.part.get(&under.id)? else { return None };
+                    let key = staged.model.component_face(under.id, under.at, under.normal)?;
+                    Some((i, super::paint::key_back(key, staged.guids.get(&under.id)?)))
+                });
+                let names: Vec<String> = self.session.model.materials.keys().cloned().collect();
+                let material = ed.paint_material(&names);
+                match ed.paint_click(face, material) {
+                    Ok(()) => self.status = Status::default(),
+                    Err(e) => self.status = Status { text: e, error: true },
+                }
+            }
         } else if ed.views.cutting.is_some() {
             // Cut, Join and their undoing tools (FE-16b): the form clicked in the picture; a void is picked from the forms list.
             ed.views.hover3d = None;

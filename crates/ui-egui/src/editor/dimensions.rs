@@ -703,6 +703,7 @@ impl FamilyEditor {
         self.views.drawing = None;
         self.views.measuring = None;
         self.views.cutting = None;
+        self.views.painting = None;
         self.views.picking = None;
         self.views.dimensioning = None;
         self.views.witnessing = None;
