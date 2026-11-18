@@ -377,6 +377,7 @@ impl FamilyEditor {
         self.views.drawing = None;
         self.views.picking = None;
         self.views.dimensioning = None;
+        self.views.witnessing = None;
         self.views.cutting = None;
         self.views.aligning = None;
         self.views.align_lock = None;
