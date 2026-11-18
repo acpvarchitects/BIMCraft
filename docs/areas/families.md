@@ -21,7 +21,12 @@ triangles turned out, and reads one family per family name the file gives.
 A form is swept, or with an `axis` turned about it (`family::revolve`: `from` to `to` degrees, 32 steps to a turn, the profile to
 one side of the axis); a `void` cuts the solid forms listed before it (`csg::subtract`: convex polygons in binary space
 partitions, built and walked with a worklist rather than recursion and bounded by a `Meter`, so a hostile shape ends in an error;
-a cut piece keeps its uncut outline in plan). A family of category `door` or `window` is hosted: its `Width` and `Height` (English
+a cut piece keeps its uncut outline in plan). A void that drills straight through an extrusion (GEO-2e: both plain
+extrusions on parallel planes, the void reaching past both its ends, its outlines inside the extrusion's and clear of its holes
+and of each other's) is a hole of the extrusion's profile instead, swept with it (`Family::through_holes`, `drilled`): the same
+solid, with no cut of triangles and fewer of them. Only where every void cutting that extrusion drills so; else all are cut, as
+before. `geo_bench` (ignored; `--release -- --ignored`) is the mesh path's baseline for GEO-1: a facade of panels each different,
+with and without a void each. A family of category `door` or `window` is hosted: its `Width` and `Height` (English
 names, whatever the project's language) size the wall's opening, `Sill Height` is a window's default sill, its forms are drawn in
 the opening's axes (x along the wall from the middle of the opening, y across it from the wall's middle plane and + toward its
 exterior, z up from the sill) and its formulas read `Wall Thickness`; its `symbols` also draw in plan (a door's swing). Its `connectors` say what an electrical device draws ([structure and MEP](structure-and-mep.md)); a family file keeps them. An

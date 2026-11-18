@@ -264,6 +264,7 @@ const BEFORE: u64 = 0x1398_ea93_dcfb_0c31;
     ignore = "the hash was recorded with Linux x86-64's maths library, whose sines and cosines others may round an ulp apart"
 )]
 fn every_form_builds_bit_for_bit_as_before_the_kernel() {
-    let now = built();
+    // GEO-2e's drill builds a through-void as a profile hole on purpose; `family_cutting_tests` holds it to the cut.
+    let now = crate::family::without_drilling(built);
     assert_eq!(now, BEFORE, "the forms built now hash to {now:#018x}");
 }

@@ -2908,7 +2908,7 @@ impl Family {
 
     /// Its visible forms' solids, sized by `values`, less what its voids cut; `read`, its formulas as
     /// read already, and `cuts`, what the cutting may still cost.
-    fn build<'a>(
+    pub(crate) fn build<'a>(
         &'a self,
         values: &BTreeMap<String, Val>,
         read: &mut HashMap<&'a str, Result<Node, String>>,
@@ -2941,6 +2941,8 @@ impl Family {
         // Each solid cut by what cuts it ([`Family::cutters`]: the voids listed before it, as always, and what FE-16 adds) that
         // is built and reaches it. A cut solid is no longer one round surface, and its outline seen from above is as it was.
         // ponytail: a notch or a hole doesn't show in plan; trace it if it must.
+        // Whether voids drill is checked on a budget of its own: a check that ends in the cut leaves it all of its own.
+        let (mut shapes, mut checks) = (HashMap::new(), csg::Meter::default());
         // Through the mesh kernel (GEO-1), spending `cuts`.
         use kernel::FormKernel;
         let k = kernel::MeshKernel;
@@ -2949,7 +2951,17 @@ impl Family {
         let voids: HashMap<usize, kernel::MeshSolid> = voids.into_iter().map(|(i, t)| (i, solid_of(t))).collect();
         let solids: HashMap<usize, kernel::MeshSolid> = solids.into_iter().map(|(i, t)| (i, solid_of(t))).collect();
         for (piece, &form) in out.iter_mut().zip(&of) {
+            let mut done: BTreeSet<usize> = BTreeSet::new();
+            if let Some(d) = drilling().then(|| self.drill(form, &piece.tris, &voids, values, read, &mut shapes, &mut checks)).flatten() {
+                let (bottom, top) = heights(&d.tris);
+                piece.caps = d.tris.len();
+                (piece.tris, piece.bottom, piece.top, piece.round) = (d.tris, bottom, top, false);
+                done = d.holes.iter().map(|(by, _)| *by).collect();
+            }
             for by in self.cutters(form) {
+                if done.contains(&by) {
+                    continue;
+                }
                 let Some(cutter) = voids.get(&by).or_else(|| solids.get(&by)) else { continue };
                 let body = solid_of(std::mem::take(&mut piece.tris));
                 let cut = k.cut(&body, cutter, cuts).map(|s| s.mesh.tris);
@@ -2974,6 +2986,146 @@ impl Family {
         }
         out.retain(|p| !p.tris.is_empty());
         Ok(out)
+    }
+
+    /// GEO-2e: form `form`, whose solid is `body`, with the voids that drill straight through it made holes of its profile
+    /// and swept with it, before any other cut (what one solid less several is doesn't hang on the order). `voids`, the voids
+    /// built that cut forms, by their place in the list: those of them that cut `form` and reach it must all drill through,
+    /// each clear of the others, else none does and all are cut, as before, so no hole drawn in the profile meets a void cut
+    /// by triangles. One that misses it is left to the cut, which leaves it as it is. `shapes`, the forms' profiles as read
+    /// already; the checks spend `checks`, a budget apart from the cut's, and where it runs out none drills.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn drill<'a>(
+        &'a self,
+        form: usize,
+        body: &[[P3; 3]],
+        voids: &HashMap<usize, impl AsRef<[[P3; 3]]>>,
+        values: &BTreeMap<String, Val>,
+        read: &mut HashMap<&'a str, Result<Node, String>>,
+        shapes: &mut HashMap<usize, Option<Vec<crate::geom::Region>>>,
+        checks: &mut csg::Meter,
+    ) -> Option<Drilled> {
+        let by: Vec<usize> =
+            self.cutters(form).into_iter().filter(|v| voids.get(v).is_some_and(|tris| !csg::misses(body, tris.as_ref()))).collect();
+        if by.is_empty() {
+            return None;
+        }
+        let mut holes: Vec<(usize, Vec<Vec<P2>>)> = Vec::new();
+        for v in by {
+            // The first that doesn't drill through sends them all to the cut.
+            holes.push((v, self.through_holes(form, v, values, read, shapes, checks)?));
+        }
+        let rings: Vec<&Vec<P2>> = holes.iter().flat_map(|(_, h)| h).collect();
+        let points: usize = rings.iter().map(|r| r.len()).sum();
+        checks.spend(points.saturating_mul(points)).ok()?;
+        let apart = rings.iter().enumerate().all(|(i, a)| {
+            rings.iter().skip(i + 1).all(|b| {
+                !rings_cross(a, b) && a.iter().all(|q| !crate::geom::contains(b, *q)) && b.iter().all(|q| !crate::geom::contains(a, *q))
+            })
+        });
+        if !apart {
+            return None;
+        }
+        let tris = self.drilled(form, holes.iter().flat_map(|(_, h)| h.iter().cloned()).collect(), values, read, shapes)?;
+        Some(Drilled { holes, tris })
+    }
+
+    /// Form `i`'s profile, read once a build (`shapes`).
+    fn shape<'a>(
+        &'a self,
+        i: usize,
+        values: &BTreeMap<String, Val>,
+        read: &mut HashMap<&'a str, Result<Node, String>>,
+        shapes: &mut HashMap<usize, Option<Vec<crate::geom::Region>>>,
+    ) -> Option<Vec<crate::geom::Region>> {
+        if let Some(s) = shapes.get(&i) {
+            return s.clone();
+        }
+        let mut num = |e: &'a Expr| number(e, values, read);
+        let s = self.forms.get(i)?.loops(&mut num).ok();
+        shapes.insert(i, s.clone());
+        s
+    }
+
+    /// GEO-2e: the holes void `v` drills in extrusion `b`, in `b`'s plane, where it drills straight through: both plain
+    /// extrusions (no mesh, no axis) on parallel planes, the void reaching past both of `b`'s ends, each of its outlines (it
+    /// has no holes of its own) wholly inside one of `b`'s, clear of `b`'s holes and crossing none of `b`'s lines. None where
+    /// any of that fails, or `checks` runs out: then it is cut as any void is.
+    fn through_holes<'a>(
+        &'a self,
+        b: usize,
+        v: usize,
+        values: &BTreeMap<String, Val>,
+        read: &mut HashMap<&'a str, Result<Node, String>>,
+        shapes: &mut HashMap<usize, Option<Vec<crate::geom::Region>>>,
+        checks: &mut csg::Meter,
+    ) -> Option<Vec<Vec<P2>>> {
+        let (body, void) = (self.forms.get(b)?, self.forms.get(v)?);
+        let plain = |f: &Form| f.mesh.is_empty() && f.kind() == forms::FormKind::Extrusion && f.axis_ends().is_none();
+        if !plain(body) || !plain(void) {
+            return None;
+        }
+        let (bf, vf) = (self.frame(&body.host).ok()?, self.frame(&void.host).ok()?);
+        let along = crate::view3d::dot(bf.z, vf.z);
+        if (along.abs() - 1.0).abs() > 1e-9 {
+            return None;
+        }
+        let mut num = |e: &'a Expr| number(e, values, read);
+        let (b0, b1, v0, v1) = (num(&body.from).ok()?, num(&body.to).ok()?, num(&void.from).ok()?, num(&void.to).ok()?);
+        let base = crate::view3d::dot(crate::view3d::sub(vf.origin, bf.origin), bf.z);
+        let (a, z) = (base + along * v0, base + along * v1);
+        if a.min(z) > b0.min(b1) + 1e-6 || a.max(z) < b0.max(b1) - 1e-6 {
+            return None;
+        }
+        let regions = self.shape(b, values, read, shapes)?;
+        let drills = self.shape(v, values, read, shapes)?;
+        let into = |p: &P2| {
+            let d = crate::view3d::sub(vf.point(*p, 0.0), bf.origin);
+            P2(crate::view3d::dot(d, bf.x), crate::view3d::dot(d, bf.y))
+        };
+        let body_points: usize = rings(&regions).map(Vec::len).sum();
+        let mut out: Vec<Vec<P2>> = Vec::new();
+        for d in &drills {
+            if !d.holes.is_empty() {
+                return None;
+            }
+            let mut ring: Vec<P2> = d.outer.iter().map(into).collect();
+            if crate::geom::area(&ring) > 0.0 {
+                ring.reverse();
+            }
+            let others: usize = body_points + out.iter().map(Vec::len).sum::<usize>();
+            checks.spend(ring.len().saturating_mul(others)).ok()?;
+            let inside = |r: &[P2]| ring.iter().all(|q| crate::geom::contains(r, *q));
+            let clear = |r: &[P2]| r.iter().all(|q| !crate::geom::contains(&ring, *q)) && !rings_cross(r, &ring);
+            let host = regions.iter().find(|r| inside(&r.outer) && !rings_cross(&r.outer, &ring))?;
+            if !host.holes.iter().chain(&out).all(|h| clear(h) && ring.iter().all(|q| !crate::geom::contains(h, *q))) {
+                return None;
+            }
+            out.push(ring);
+        }
+        Some(out)
+    }
+
+    /// Extrusion `b` swept again with `holes` added to its profile (each into the outline holding it): its triangles, every
+    /// one turned out. None where that can't be built.
+    fn drilled<'a>(
+        &'a self,
+        b: usize,
+        holes: Vec<Vec<P2>>,
+        values: &BTreeMap<String, Val>,
+        read: &mut HashMap<&'a str, Result<Node, String>>,
+        shapes: &mut HashMap<usize, Option<Vec<crate::geom::Region>>>,
+    ) -> Option<Vec<[P3; 3]>> {
+        let body = self.forms.get(b)?;
+        let mut regions = self.shape(b, values, read, shapes)?;
+        for h in holes {
+            let r = regions.iter_mut().find(|r| h.iter().all(|q| crate::geom::contains(&r.outer, *q)))?;
+            r.holes.push(h);
+        }
+        let mut num = |e: &'a Expr| number(e, values, read);
+        let (from, to) = (num(&body.from).ok()?, num(&body.to).ok()?);
+        let frame = self.frame(&body.host).ok()?;
+        sweep(&regions, from, to, &frame).ok().map(|(tris, _)| tris)
     }
 
     /// Form `i`'s own solid, sized by `values`, before any void cuts it: `None` where its `visible`
@@ -3356,6 +3508,38 @@ fn caps(regions: &[crate::geom::Region]) -> Result<Vec<Capped>, String> {
             }
         })
         .collect()
+}
+
+/// GEO-2e: a form drilled by voids ([`Family::drill`]): the hole rings each void made, in its plane, and its triangles.
+pub(crate) struct Drilled {
+    pub holes: Vec<(usize, Vec<Vec<P2>>)>,
+    pub tris: Vec<[P3; 3]>,
+}
+
+/// How near a point may be to a line and count as on it, mm: what rounding leaves of a corner worked out on a turned plane.
+const ON_LINE: f64 = 1e-6;
+
+/// Whether an edge of ring `a` crosses or touches an edge of ring `b`. A corner within [`ON_LINE`] of an edge's line counts
+/// as on it, so edges in line but for rounding (turned, or worked out from formulas) meet where their spans do.
+fn rings_cross(a: &[P2], b: &[P2]) -> bool {
+    // Which side of p-q `r` is, none within ON_LINE of its line.
+    let side = |p: P2, q: P2, r: P2| {
+        let d = (q - p).cross(r - p);
+        if d.abs() <= ON_LINE * p.dist(q) { 0.0 } else { d }
+    };
+    crate::geom::ring_edges(a).any(|(p, q)| {
+        crate::geom::ring_edges(b).any(|(r, s)| {
+            let (d1, d2, d3, d4) = (side(p, q, r), side(p, q, s), side(r, s, p), side(r, s, q));
+            if d1 == 0.0 && d2 == 0.0 {
+                // On one line (a grid of holes, edge after edge): they meet only where their spans along it do.
+                let len = p.dist(q);
+                let along = |x: P2| if len > 0.0 { (x - p).dot(q - p) / len } else { 0.0 };
+                let (lo, hi) = (along(r).min(along(s)), along(r).max(along(s)));
+                return lo <= len + ON_LINE && hi >= -ON_LINE;
+            }
+            d1 * d2 <= 0.0 && d3 * d4 <= 0.0
+        })
+    })
 }
 
 /// Every ring of `regions`: each outline (counter-clockwise), then its holes (clockwise).
@@ -3947,10 +4131,55 @@ fn hosted_library(language: crate::language::Language) -> Vec<(String, Value)> {
     out
 }
 
+/// Whether GEO-2e's drill is tried: always, but in a test that builds as before it ([`without_drilling`]).
+#[cfg(not(test))]
+fn drilling() -> bool {
+    true
+}
+
+#[cfg(test)]
+thread_local! {
+    static NO_DRILL: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+#[cfg(test)]
+fn drilling() -> bool {
+    !NO_DRILL.with(std::cell::Cell::get)
+}
+
+/// `f`, with every void cut as before GEO-2e: what a test holding the forms to an older hash builds them with.
+#[cfg(test)]
+pub(crate) fn without_drilling<T>(f: impl FnOnce() -> T) -> T {
+    struct Back(bool);
+    impl Drop for Back {
+        fn drop(&mut self) {
+            NO_DRILL.with(|n| n.set(self.0));
+        }
+    }
+    let _back = Back(NO_DRILL.with(|n| n.replace(true)));
+    f()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn rings_on_one_line_but_for_rounding_meet_where_their_spans_do() {
+        // Two squares side by side, turned: the edge they share, and one half way along it, lie on one line only to within
+        // rounding. They meet; moved a millimetre apart, or along the line past each other, they don't.
+        for degrees in (1..90).map(f64::from) {
+            let (s, c) = degrees.to_radians().sin_cos();
+            let at = |x: f64, y: f64| P2(x * c - y * s, x * s + y * c);
+            let square = |x: f64, y: f64, w: f64| vec![at(x, y), at(x + w, y), at(x + w, y + w), at(x, y + w)];
+            let a = square(0.0, 0.0, 100.0);
+            assert!(rings_cross(&a, &square(100.0, 0.0, 100.0)), "{degrees}°: side by side");
+            assert!(rings_cross(&a, &square(100.0, 50.0, 100.0)), "{degrees}°: half along");
+            assert!(!rings_cross(&a, &square(101.0, 50.0, 100.0)), "{degrees}°: a millimetre apart");
+            assert!(!rings_cross(&a, &square(100.0, 101.0, 100.0)), "{degrees}°: on one line, past each other");
+        }
+    }
 
     fn with<'a>(values: &'a [(&'a str, f64)]) -> impl FnMut(&str) -> Result<f64, String> + 'a {
         move |n: &str| values.iter().find(|(k, _)| *k == n).map(|(_, v)| *v).ok_or_else(|| format!("no `{n}`"))
