@@ -2952,12 +2952,18 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
         }
     }
     // Join Geometry (T23): each pair said to be joined, the element that cuts relating, the one it cuts related. Neither body
-    // is clipped: each goes out whole, for IfcRelConnectsElements connects two elements and changes neither's shape.
+    // is clipped: each goes out whole, for IfcRelConnectsElements connects two elements and changes neither's shape. A join
+    // naming a curtain wall or a wall in a curtain panel's place (made before its type became a curtain one) cuts nothing in
+    // 3D or in a section (`view3d::join_voids`), so it isn't written either ([`Model::curtain_refusal`]).
     for (&id, e) in &m.elements {
         let Some(&cut) = products.get(&id) else { continue };
+        if m.curtain_refusal(id).is_some() {
+            continue;
+        }
         for g in e.joined_by() {
-            let Some(&cutter) = m.elements.id(*g).and_then(|by| products.get(&by)) else { continue };
-            let key = mix(m.elements.id(*g).unwrap_or_default()) ^ id;
+            let Some(by) = m.elements.id(*g).filter(|by| m.curtain_refusal(*by).is_none()) else { continue };
+            let Some(&cutter) = products.get(&by) else { continue };
+            let key = mix(by) ^ id;
             w.add(format!("IFCRELCONNECTSELEMENTS({},$,$,$,$,#{cutter},#{cut})", w.guid(JOINS, key)));
         }
     }
