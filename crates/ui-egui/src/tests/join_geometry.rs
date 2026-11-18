@@ -403,3 +403,33 @@ fn join_cleanup_screenshots() {
         save(&mut h, "concrete-unjoined");
     }
 }
+
+/// CROSSING's wall a curtain wall: a type with a pattern, along x at y 2000, and the floor through its foot.
+const CURTAIN: &str = r#"type {"category": "wall", "name": "CW", "curtain": {"columns": {"segments": [2000]}, "rows": {"segments": [1000]}}}
+wall {"points": [[0, 2000], [6000, 2000]], "height": 3000, "type": "CW"}
+floor {"boundary": [[0, 0], [6000, 0], [6000, 4000], [0, 4000]], "offset": 300}"#;
+
+#[test]
+fn join_and_cut_say_a_curtain_wall_cant_be_joined_or_cut_and_pick_nothing() {
+    let mut h = app(CURTAIN);
+    let (w, f) = wall_and_floor(&h);
+    // Its own solid is never drawn: a join would notch the floor with a block no one sees.
+    h.state_mut().set_tool(Tool::JoinGeometry { mode: JoinMode::Join, first: None });
+    h.run();
+    click(&mut h, WALL);
+    assert_eq!(h.state().tool, Tool::JoinGeometry { mode: JoinMode::Join, first: None }, "the curtain wall isn't the first");
+    let said = (h.state().status.text.clone(), h.state().status.error);
+    assert_eq!(said, (format!("Wall {w} is a curtain wall: its panels and mullions can't be joined or cut."), true));
+    // Nor the second.
+    click(&mut h, FLOOR);
+    assert_eq!(h.state().tool, Tool::JoinGeometry { mode: JoinMode::Join, first: Some(f) });
+    click(&mut h, WALL);
+    assert!(h.state().status.error && h.state().status.text.contains("is a curtain wall"), "{:?}", h.state().status);
+    assert_eq!(joins(&h), []);
+    // Cut Geometry takes no curtain wall either.
+    h.state_mut().set_tool(Tool::CutGeometry { uncut: false, wall: None });
+    h.run();
+    click(&mut h, WALL);
+    assert_eq!(h.state().tool, Tool::CutGeometry { uncut: false, wall: None });
+    assert!(h.state().status.error && h.state().status.text.contains("is a curtain wall"), "{:?}", h.state().status);
+}

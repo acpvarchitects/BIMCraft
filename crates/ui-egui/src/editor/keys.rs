@@ -12,9 +12,9 @@ use bimcraft_core::family::DimKind;
 
 /// Revit's default keys for the family editor's commands, each to the name of its action in `shortcuts::ACTIONS`. A key the
 /// project has too means the same command here (`the_family_table_gives_no_project_key_another_meaning`); the others (DD, AN,
-/// WP, WW, FA, AA, PL, FG, CG, ZX, FE-3's ZR, ZZ, ZO, ZV, ZP, ZC, FE-8's RE, FE-20's FF, PR, ID, SV, BF, and FE-18's VR) are the family's
+/// WP, WW, FA, AA, PL, FG, ZX, FE-3's ZR, ZZ, ZO, ZV, ZP, ZC, FE-8's RE, FE-20's FF, PR, ID, SV, BF, and FE-18's VR) are the family's
 /// alone; FE-21's snap overrides are the project's. Trim/Extend Single and Multiple Elements have no key, as in Revit: Keyboard Shortcuts gives them one; nor has
-/// Drag Elements on Selection ([`FAMILY_KEYLESS`]), nor Uncut Geometry, Unjoin Geometry or Switch Join Order (FE-16b).
+/// Drag Elements on Selection ([`FAMILY_KEYLESS`]), nor Cancel Edit Mode (CG is the project's Curtain Grid), nor Uncut Geometry, Unjoin Geometry or Switch Join Order (FE-16b).
 pub(crate) const FAMILY_SHORTCUTS: &[(&str, &str)] = &[
     ("MD", "Modify"),
     ("PP", "Properties"),
@@ -42,7 +42,6 @@ pub(crate) const FAMILY_SHORTCUTS: &[(&str, &str)] = &[
     ("DE", "Delete"),
     ("PL", "Pick Lines"),
     ("FG", "Finish Edit Mode"),
-    ("CG", "Cancel Edit Mode"),
     ("KS", "Keyboard Shortcuts"),
     ("CH", "Close Inactive Views"),
     ("TW", "Tab Windows"),
@@ -116,6 +115,7 @@ pub(crate) const FAMILY_SHORTCUTS: &[(&str, &str)] = &[
 /// tab. FE-8's Trim/Extend Single and Multiple Elements, FE-14's clipboard (Ctrl+C, Ctrl+X and Ctrl+V are fixed; Paste
 /// Aligned's choices have no key), and the status bar's Drag Elements on Selection.
 pub(crate) const FAMILY_KEYLESS: &[&str] = &[
+    "Cancel Edit Mode",
     "Trim/Extend Single Element",
     "Trim/Extend Multiple Elements",
     "Copy to Clipboard",

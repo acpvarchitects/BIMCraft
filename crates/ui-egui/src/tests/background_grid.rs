@@ -34,6 +34,8 @@ fn background_grid_menu_and_instance_editor_change_only_the_active_view() {
         modifiers: Modifiers::NONE,
     });
     h.run();
+    h.get_by_label("Edit Background Grids").scroll_to_me();
+    h.run();
     press(&mut h, "Edit Background Grids");
     assert!(h.state().background_grid_dialog.is_some());
     type_into(&mut h, "Main spacing X", "2.5 m");
@@ -116,7 +118,7 @@ fn background_grid_preferences_live_in_the_project_and_cancel_discards_drafts() 
     let kept: Value = serde_json::from_str(&std::fs::read_to_string(settings).unwrap()).unwrap();
     assert!(kept.get("background_grid").is_none());
     assert_eq!(kept["grid_snapping"], true);
-    let saved: Value = serde_json::from_str(&std::fs::read_to_string(project).unwrap()).unwrap();
+    let saved: Value = serde_json::from_str(&bimcraft_core::bimc::unpack(std::fs::read(project).unwrap(), u64::MAX).unwrap()).unwrap();
     assert!(!saved.to_string().contains("snapping"), "the project does not store the global snap preference");
 }
 

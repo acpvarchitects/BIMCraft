@@ -181,7 +181,7 @@ fn each_key_does_the_family_documents_command_and_never_the_projects() {
 #[test]
 fn finish_cancel_pick_lines_and_trim_work_while_a_form_is_sketched_and_do_nothing_otherwise() {
     let mut h = open();
-    for keys in ["FG", "CG", "PL", "TR"] {
+    for keys in ["FG", "PL", "TR"] {
         shortcut(&mut h, keys);
         assert!(!editor(&h).sketching(), "{keys}");
         assert_eq!(forms(&h), 1, "{keys}");
@@ -217,8 +217,9 @@ fn finish_cancel_pick_lines_and_trim_work_while_a_form_is_sketched_and_do_nothin
     editor_mut(&mut h).sketch.as_mut().unwrap().sketch.picked.insert(0);
     shortcut(&mut h, "DE");
     assert_eq!(sketch(&h).sketch.lines.len(), 3, "DE: the line picked");
-    shortcut(&mut h, "CG");
-    assert!(!editor(&h).sketching(), "CG: Cancel Edit Mode");
+    // Cancel Edit Mode has no key (CG is the project's Curtain Grid): its button.
+    button(&mut h, "Cancel Edit Mode");
+    assert!(!editor(&h).sketching(), "Cancel Edit Mode");
     assert_eq!(forms(&h), 1);
     button(&mut h, "Extrusion");
     rectangle(&mut h, P2(-1000.0, -800.0), P2(-600.0, -500.0));
@@ -234,7 +235,7 @@ fn keys_whose_command_is_greyed_do_nothing() {
     // {3D}: no plan or elevation to draw or dimension in, no family loaded to place, nothing to move and no sketch. Align
     // (AL, AA) works there, on what the picture shows (FE-24b: `family_modify_3d_refs.rs`).
     view(&mut h, None);
-    for keys in ["DI", "DD", "AN", "RP", "CM", "MV", "CO", "RO", "PL", "FG", "CG", "TR"] {
+    for keys in ["DI", "DD", "AN", "RP", "CM", "MV", "CO", "RO", "PL", "FG", "TR"] {
         shortcut(&mut h, keys);
         let ed = editor(&h);
         assert!(ed.views.dimensioning.is_none() && ed.views.aligning.is_none() && ed.views.drawing.is_none(), "{keys} in {{3D}}");
@@ -275,7 +276,7 @@ fn the_projects_keys_are_unchanged_on_its_tab_with_a_family_open() {
     press(&mut h, "Level 1");
     assert!(h.state().active_family().is_none(), "the project's tab");
     // The keys the family alone has do nothing in the project.
-    for keys in ["FG", "CG", "PL", "DD", "AA", "AN", "WP", "WW", "FA", "ZX"] {
+    for keys in ["FG", "PL", "DD", "AA", "AN", "WP", "WW", "FA", "ZX"] {
         h.state_mut().typed.clear();
         shortcut(&mut h, keys);
         assert_eq!(h.state().tool, Tool::Modify, "{keys}");
