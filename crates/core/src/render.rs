@@ -3435,7 +3435,8 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
         range.cut = m.elevation(level) + CEILING_CUT;
         range.top = range.top.max(range.cut);
     }
-    let mut components = crate::component_geometry::Components::new(m);
+    // GEO-2c: what it shows, its curves as near as its scale draws them.
+    let mut components = crate::component_geometry::Components::for_view(m, &view);
     let elements: Vec<(Id, &Element)> =
         if among { plan_elements(m, key, level, &range, up, &mut components) } else { m.elements.iter().map(|(id, e)| (*id, e)).collect() };
     let all = || elements.iter().map(|(id, e)| (id, *e));
@@ -6511,12 +6512,13 @@ pub(crate) fn family_plan(m: &Model, level: Id, view: View, seen: Option<(f64, f
     let look = Look::of(m, level);
     let mut extra = Drawing::new(view);
     (extra.k, extra.paper, extra.detail, extra.weights) = (d.k, d.paper, d.detail, d.weights);
+    let mut components = crate::component_geometry::Components::for_view(m, &view);
     for (&id, e) in m.elements.iter() {
         let Element::Component(c) = e else { continue };
         if !look.shows(id) {
             continue;
         }
-        let mut pieces = m.component_pieces(c);
+        let mut pieces = components.pieces(c);
         pieces.retain(|p| plan_draws(p, d.detail, cut) && seen.is_none_or(|(lo, hi)| p.top > lo && p.bottom < hi));
         extra.owner = Some(id);
         extra.part(Part::Projection);

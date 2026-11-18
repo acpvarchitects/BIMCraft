@@ -23,6 +23,7 @@ pub mod clipboard;
 pub mod constraints;
 pub mod cutting;
 pub mod faces;
+pub mod fineness;
 pub mod forms;
 pub mod handles;
 pub mod kernel;
@@ -44,6 +45,7 @@ pub use constraints::{
     Pivoted, Spot, Unsat,
 };
 pub use faces::FormFace;
+pub use fineness::Fineness;
 pub use nested::{Keep, NestedFamily, NestedInstance};
 pub use options::{MAX_OMNICLASS, OPTION_KEYS, OmniClass};
 pub use origin::PlacedOrigin;
@@ -2741,6 +2743,15 @@ impl Family {
         self.pieces_at(values, None)
     }
 
+    /// [`Family::pieces`] with its curves chorded at `fineness` (GEO-2c): what a view that shows them larger builds. Where
+    /// that is more than its cutting may take, it is built as always, never refused for being looked at closely.
+    pub fn pieces_fine(&self, values: &BTreeMap<String, Val>, fineness: Fineness) -> Result<Vec<Piece>, String> {
+        match fineness.scoped(|| self.pieces(values)) {
+            Err(_) if fineness != Fineness::DEFAULT => self.pieces(values),
+            built => built,
+        }
+    }
+
     pub fn pieces_at(&self, values: &BTreeMap<String, Val>, placement: Option<&crate::adaptive::Placement>) -> Result<Vec<Piece>, String> {
         self.pieces_metered(values, placement, &mut nested::Meter::default())
     }
@@ -3714,7 +3725,7 @@ pub(crate) fn revolve(
     let w = cross(u, n);
     let turn = to - from;
     let full = turn > 360.0 - 1e-9;
-    let steps = (turn / 360.0 * SEGMENTS as f64 - 1e-9).ceil().max(1.0) as usize;
+    let steps = fineness::steps(turn, most.max(-least));
     let angle = |k: usize| (from + turn * (if full { k % steps } else { k }) as f64 / steps as f64).to_radians().sin_cos();
     let at = |c: P2, k: usize| -> P3 {
         let (t, r) = reach_of(c);

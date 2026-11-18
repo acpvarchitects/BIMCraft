@@ -438,10 +438,9 @@ impl Form {
             if r <= 0.0 {
                 return Err(format!("its circle's radius is {r}; it needs one above zero"));
             }
-            let ring = (0..SEGMENTS)
-                .map(|k| (k as f64 * std::f64::consts::TAU / SEGMENTS as f64).sin_cos())
-                .map(|(s, c)| P2(x + r * c, y + r * s))
-                .collect();
+            let n = super::fineness::ring(r);
+            let ring =
+                (0..n).map(|k| (k as f64 * std::f64::consts::TAU / n as f64).sin_cos()).map(|(s, c)| P2(x + r * c, y + r * s)).collect();
             return Ok(vec![Region { outer: ring, holes: Vec::new() }]);
         }
         if let Some(corners) = self.corner_refs() {
@@ -525,15 +524,15 @@ pub enum Finish {
     CrossesAxis,
 }
 
-/// A line or an arc as straight pieces, an arc's [`SEGMENTS`] to a whole turn (at least one), a circle's all round: what a
+/// A line or an arc as straight pieces, an arc's [`SEGMENTS`] to a whole turn (at least one), or as many as the build's
+/// [`super::Fineness`] needs, a circle's all round: what a
 /// form is built of, and what its loops are found from. It keeps its id and GUID.
 pub(crate) fn chorded(l: &SketchLine) -> SketchLine {
     use crate::curves::Curve;
-    let steps = |turn: f64| ((turn.abs() / 360.0 * SEGMENTS as f64) - 1e-9).ceil().max(1.0) as usize;
     let curve = match &l.curve {
         Curve::Poly { points, arcs, closed: false } if points.len() == 2 && arcs.first().is_some_and(|t| *t != 0.0) => {
             let ax = Axis::new(points[0], points[1], arcs[0]);
-            let n = steps(arcs[0]);
+            let n = super::fineness::steps(arcs[0], ax.radius().unwrap_or(0.0));
             let len = ax.length();
             let mut pts: Vec<P2> = (0..n).map(|k| ax.at(len * k as f64 / n as f64, 0.0)).collect();
             pts[0] = points[0];
@@ -541,8 +540,9 @@ pub(crate) fn chorded(l: &SketchLine) -> SketchLine {
             Curve::Poly { points: pts, arcs: Vec::new(), closed: false }
         }
         Curve::Circle { centre, radius } => {
-            let ring = (0..SEGMENTS)
-                .map(|k| (k as f64 * std::f64::consts::TAU / SEGMENTS as f64).sin_cos())
+            let n = super::fineness::ring(*radius);
+            let ring = (0..n)
+                .map(|k| (k as f64 * std::f64::consts::TAU / n as f64).sin_cos())
                 .map(|(s, c)| P2(centre.0 + radius * c, centre.1 + radius * s))
                 .collect();
             Curve::Poly { points: ring, arcs: Vec::new(), closed: true }

@@ -18,6 +18,16 @@ impl<T> Identity<T> {
     pub fn is_of(&self, value: &Shared<T>) -> bool {
         std::ptr::eq(self.0.as_ptr(), Arc::as_ptr(&value.0))
     }
+
+    /// Whether this is the identity `other` is: the same allocation, alive or not.
+    pub fn is(&self, other: &Identity<T>) -> bool {
+        Weak::ptr_eq(&self.0, &other.0)
+    }
+
+    /// Whether what it is of is still held anywhere.
+    pub fn alive(&self) -> bool {
+        self.0.strong_count() > 0
+    }
 }
 
 impl<T> Clone for Identity<T> {
