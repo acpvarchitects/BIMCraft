@@ -23,7 +23,7 @@ pub mod solid;
 mod state;
 
 pub(crate) use state::json;
-pub use state::{HostFrame, PartState};
+pub use state::{HostFrame, PartState, exported};
 
 /// The categories of element that may have parts.
 pub const HOSTS: [&str; 5] = ["wall", "floor", "roof", "ceiling", "component"];
