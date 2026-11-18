@@ -453,7 +453,14 @@ type Shape = (Arc<Vec<Piece>>, usize, u64);
 const GENERATIONS: usize = 4;
 const BUDGET: usize = 256 << 20;
 
-static KEPT: Mutex<(Vec<Kept>, u64)> = Mutex::new((Vec::new(), 0));
+/// The generations kept, a clock that marks each use, and the bytes they hold, counted as shapes come and go.
+struct Store {
+    generations: Vec<Kept>,
+    clock: u64,
+    bytes: usize,
+}
+
+static KEPT: Mutex<Store> = Mutex::new(Store { generations: Vec::new(), clock: 0, bytes: 0 });
 
 #[cfg(test)]
 thread_local! {
@@ -468,10 +475,14 @@ thread_local! {
 /// `f`, with the plans it draws on this thread built at the default however near they are: as before GEO-2c, to compare.
 #[cfg(test)]
 pub(crate) fn without_fineness<T>(f: impl FnOnce() -> T) -> T {
-    COARSE.with(|c| c.set(true));
-    let out = f();
-    COARSE.with(|c| c.set(false));
-    out
+    struct Back(bool);
+    impl Drop for Back {
+        fn drop(&mut self) {
+            COARSE.with(|c| c.set(self.0));
+        }
+    }
+    let _back = Back(COARSE.with(|c| c.replace(true)));
+    f()
 }
 
 /// How many components this thread has built finer than the default, not finding them kept.
@@ -480,9 +491,21 @@ pub(crate) fn fine_builds() -> usize {
     FINE_BUILDS.with(std::cell::Cell::get)
 }
 
+/// Whether a generation of `families` is kept.
+#[cfg(test)]
+pub(crate) fn keeps(families: &crate::shared::Identity<BTreeMap<String, crate::family::Family>>) -> bool {
+    KEPT.lock().is_ok_and(|k| k.generations.iter().any(|g| g.families.is(families)))
+}
+
+/// The bytes kept, as counted and as summed afresh.
+#[cfg(test)]
+pub(crate) fn kept_bytes() -> (usize, usize) {
+    KEPT.lock().map_or((0, 0), |k| (k.bytes, k.generations.iter().flat_map(|g| g.shapes.values()).map(|(_, b, _)| *b).sum()))
+}
+
 fn kept(model: &Model, key: &(Key, Fineness)) -> Option<Arc<Vec<Piece>>> {
     let mut guard = KEPT.lock().ok()?;
-    let (generations, clock) = &mut *guard;
+    let Store { generations, clock, .. } = &mut *guard;
     *clock += 1;
     let now = *clock;
     let g = generations.iter_mut().find(|g| g.families.is_of(&model.families))?;
@@ -494,35 +517,45 @@ fn kept(model: &Model, key: &(Key, Fineness)) -> Option<Arc<Vec<Piece>>> {
 
 fn keep(model: &Model, key: &(Key, Fineness), pieces: &Arc<Vec<Piece>>) {
     let Ok(mut guard) = KEPT.lock() else { return };
-    let (generations, clock) = &mut *guard;
+    let Store { generations, clock, bytes: total } = &mut *guard;
     *clock += 1;
     let now = *clock;
+    let held = |g: &Kept| g.shapes.values().map(|(_, b, _)| *b).sum::<usize>();
+    // The generations of models gone (closed, or a family editor's drag a step behind): nothing can ask for them again.
+    generations.retain(|g| {
+        let alive = g.families.alive();
+        if !alive {
+            *total -= held(g);
+        }
+        alive
+    });
     let bytes = pieces.iter().map(|p| 128 + p.tris.len() * 72 + (p.outline.len() + p.holes.iter().map(Vec::len).sum::<usize>()) * 16).sum();
     if !generations.iter().any(|g| g.families.is_of(&model.families)) {
         if generations.len() >= GENERATIONS
             && let Some(oldest) = (0..generations.len()).min_by_key(|i| generations[*i].used)
         {
-            generations.swap_remove(oldest);
+            *total -= held(&generations.swap_remove(oldest));
         }
         generations.push(Kept { families: model.families.identity(), shapes: HashMap::new(), used: now });
     }
     if let Some(g) = generations.iter_mut().find(|g| g.families.is_of(&model.families)) {
         g.used = now;
-        g.shapes.insert(key.clone(), (Arc::clone(pieces), bytes, now));
+        if let Some((_, was, _)) = g.shapes.insert(key.clone(), (Arc::clone(pieces), bytes, now)) {
+            *total -= was;
+        }
+        *total += bytes;
     }
     // Over the budget: the least lately used shapes go, of every generation, until a quarter of it is free.
-    let total: usize = generations.iter().flat_map(|g| g.shapes.values()).map(|(_, b, _)| *b).sum();
-    if total > BUDGET {
+    if *total > BUDGET {
         let mut by_use: Vec<(u64, usize, (Key, Fineness))> =
             generations.iter().enumerate().flat_map(|(i, g)| g.shapes.iter().map(move |(k, (_, _, u))| (*u, i, k.clone()))).collect();
         by_use.sort_by_key(|(u, ..)| *u);
-        let mut left = total;
         for (_, i, k) in by_use {
-            if left <= BUDGET / 4 * 3 {
+            if *total <= BUDGET / 4 * 3 {
                 break;
             }
             if let Some((_, b, _)) = generations.get_mut(i).and_then(|g| g.shapes.remove(&k)) {
-                left -= b;
+                *total -= b;
             }
         }
     }

@@ -249,6 +249,29 @@ fn a_zoomed_plan_drawn_again_builds_nothing_finer() {
     assert_eq!((tried(&s), tried(&s)), (1, 0));
 }
 
+/// ec's review: a model gone (closed, or a family editor's drag making a family a step at a time) leaves nothing kept: its
+/// generation goes at the next keep, so dead shapes neither hold the budget nor push out a live model's. And the kept bytes are
+/// counted as they go, never summed again under the lock.
+#[test]
+fn a_model_gone_keeps_nothing_and_the_bytes_kept_are_counted_as_they_go() {
+    let view = View { angle: 0.0, scale: 0.4, cx: 0.0, cy: 0.0, width: 2000, height: 800 };
+    let gone = {
+        let mut s = session(vec![json!({"sketch": [{"centre": [0, 0], "radius": "R"}], "from": 0, "to": 3000})]);
+        s.execute("component", &json!({"family": "Round", "at": [0, 0], "params": {"R": 611}})).unwrap_or_else(|e| panic!("{e}"));
+        render::draw(&s.model, 100000, view);
+        let id = s.model.families.identity();
+        assert!(crate::component_geometry::keeps(&id), "drawn finer, kept");
+        id
+    };
+    let mut s = session(vec![json!({"sketch": [{"centre": [0, 0], "radius": "R"}], "from": 0, "to": 3000})]);
+    s.execute("component", &json!({"family": "Round", "at": [0, 0], "params": {"R": 612}})).unwrap_or_else(|e| panic!("{e}"));
+    render::draw(&s.model, 100000, view);
+    assert!(!crate::component_geometry::keeps(&gone), "the model gone, its shapes are");
+    assert!(crate::component_geometry::keeps(&s.model.families.identity()));
+    let (counted, summed) = crate::component_geometry::kept_bytes();
+    assert_eq!(counted, summed, "the running total is what is kept");
+}
+
 /// GEO-2c's cost in a plan: GEO-2f's facade panel (an L, a knob turned about an axis, a blend and a round through-void), `GEO_PANELS`
 /// of them (10,000 unless it says), each its own size, in a grid; a plan zoomed in on a few hundred, drawn first, again, and
 /// panned by half a screen. `cargo test --release -p bimcraft-core zoomed_plan_bench -- --ignored --nocapture`.
