@@ -1134,44 +1134,44 @@ impl BimApp {
                             ),
                         ),
                     ];
-                    for (tools, (icon, label), tip) in groups {
-                        let active = hand.filter(|m| tools.iter().any(|(t, _)| t == m));
-                        let icon = match active {
-                            Some(CutTool::Uncut) => Icon::UncutGeometry,
-                            Some(CutTool::Switch) => Icon::SwitchJoinOrder,
-                            Some(CutTool::Unjoin) => Icon::UnjoinGeometry,
-                            _ => icon,
-                        };
-                        let r = ui.add_enabled_ui(why.is_none(), |ui| crate::small_button(ui, icon, label, active.is_some(), tip));
-                        let button = match why.as_deref() {
-                            Some(why) => r.inner.on_disabled_hover_text(why),
-                            None => r.inner,
-                        };
-                        ribbon::choices(ui, &button, false, |ui| {
-                            for (mode, name) in tools {
-                                if ui.button(t(name)).clicked() {
-                                    cutting = Some(*mode);
+                    // Cut over Join, two high, so Paint beside them leaves the panel as wide as it was (FE-16c-1).
+                    crate::stacked(ui, |ui| {
+                        for (tools, (icon, label), tip) in groups {
+                            let active = hand.filter(|m| tools.iter().any(|(t, _)| t == m));
+                            let icon = match active {
+                                Some(CutTool::Uncut) => Icon::UncutGeometry,
+                                Some(CutTool::Switch) => Icon::SwitchJoinOrder,
+                                Some(CutTool::Unjoin) => Icon::UnjoinGeometry,
+                                _ => icon,
+                            };
+                            let r = ui.add_enabled_ui(why.is_none(), |ui| crate::small_button(ui, icon, label, active.is_some(), tip));
+                            let button = match why.as_deref() {
+                                Some(why) => r.inner.on_disabled_hover_text(why),
+                                None => r.inner,
+                            };
+                            ribbon::choices(ui, &button, false, |ui| {
+                                for (mode, name) in tools {
+                                    if ui.button(t(name)).clicked() {
+                                        cutting = Some(*mode);
+                                    }
                                 }
-                            }
-                        });
-                    }
-                    // FE-16c-1: Paint and Remove Paint, as the project's Geometry panel has them, on the forms' faces in {3D}.
-                    let ready = ed.paint_ready();
-                    let paint = [
-                        (
-                            false,
-                            Icon::Paint,
-                            "Paint",
-                            msg!("Paint (PT): lay a material, and its texture, over the face you click in the 3D view"),
-                        ),
-                        (true, Icon::Unpaint, "Remove Paint", msg!("Remove Paint: take the paint off the face you click in the 3D view")),
-                    ];
-                    for (remove, icon, label, tip) in paint {
-                        let on = ed.views.painting == Some(remove);
-                        if ui.add_enabled_ui(ready, |ui| crate::small_button(ui, icon, label, on, tip)).inner.clicked() {
-                            painting = Some(remove);
+                            });
                         }
-                    }
+                    });
+                    // FE-16c-1: Paint and Remove Paint, on the forms' faces in {3D}: one small button dropping both down, as Cut and
+                    // Join do, so the contextual tabs beside the panel keep their room at 1280 px.
+                    let ready = ed.paint_ready();
+                    let icon = if ed.views.painting == Some(true) { Icon::Unpaint } else { Icon::Paint };
+                    let tip = msg!("Paint (PT): lay a material, and its texture, over the face you click in the 3D view");
+                    let button =
+                        ui.add_enabled_ui(ready, |ui| crate::small_button(ui, icon, "Paint", ed.views.painting.is_some(), tip)).inner;
+                    ribbon::choices(ui, &button, false, |ui| {
+                        for (remove, name) in [(false, msg!("Paint")), (true, msg!("Remove Paint"))] {
+                            if ui.button(t(name)).clicked() {
+                                painting = Some(remove);
+                            }
+                        }
+                    });
                     // Small buttons only: the panel keeps the ribbon's height, its name on the others' baseline.
                     ribbon::full_height(ui);
                 });

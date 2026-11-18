@@ -80,7 +80,10 @@ fn paint_lays_a_material_on_the_face_clicked_in_3d_and_undo_and_remove_paint_tak
     h.state_mut().family_undo();
     h.run();
     assert_eq!(painted(&h).len(), 1);
-    // Remove Paint takes the top's off; a click on nothing says so.
+    // Remove Paint, dropped down from the Geometry panel's Paint button, takes the top's off; a click on nothing says so. The
+    // contextual tab is named "Paint" too, and comes first.
+    h.get_all_by_role_and_label(egui::accesskit::Role::Button, "Paint").last().expect("Geometry's Paint").click();
+    h.run();
     press(&mut h, "Remove Paint");
     assert_eq!(editor(&h).views.painting, Some(true));
     click3(&mut h, TOP);
