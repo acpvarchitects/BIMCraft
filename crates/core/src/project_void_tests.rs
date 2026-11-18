@@ -326,3 +326,25 @@ fn the_tool_picks_a_void_only_cutter_by_its_outline_and_a_sleeping_tie_by_its_pl
     run(&mut s, "uncut_geometry", json!({"target": w, "cutter": c}));
     assert!(cutters(&s.model, w, true).is_empty());
 }
+
+#[test]
+fn cut_geometry_refuses_a_curtain_wall_and_a_file_with_such_a_cut_opens_without_it() {
+    let mut s = Session::new();
+    run(
+        &mut s,
+        "type",
+        json!({"category": "wall", "name": "CW", "curtain": {"columns": {"segments": [2000]}, "rows": {"segments": [1000]}}}),
+    );
+    let cw = run(&mut s, "wall", json!({"points": [[0, 0], [6000, 0]], "type": "CW", "height": 3000}))["ids"][0].as_u64().unwrap();
+    cutter_family(&mut s, "Cutter", true);
+    let c = place(&mut s, "Cutter", [3000.0, 0.0]);
+    let e = cut(&mut s, cw, c).unwrap_err();
+    assert!(e.contains("is a curtain wall"), "{e}");
+    // As a build before it was refused could save it: the curtain wall naming the cutter.
+    let g = s.model.guid(c);
+    let mut file: Value = serde_json::from_str(&s.model.to_json().unwrap()).unwrap();
+    file["elements"][cw.to_string()]["void_cuts"] = json!([g]);
+    let (m, left_out) = crate::model::Model::read(&file.to_string()).unwrap();
+    assert!(m.wall(cw).unwrap().void_cuts.is_empty(), "the cut is left out");
+    assert_eq!(left_out, vec![format!("/elements/{cw}/void_cuts/0")]);
+}

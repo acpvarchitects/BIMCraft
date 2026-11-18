@@ -75,6 +75,9 @@ pub(super) fn cut_geometry(s: &mut Session, p: &Value) -> R {
     let c = "cut_geometry";
     let m = &s.model;
     let (target, cutter) = pair(c, m, p)?;
+    if let Some(why) = m.curtain_refusal(target) {
+        return Err(bad(c, why));
+    }
     let Some(Element::Component(comp)) = m.elements.get(cutter) else { return Err(bad(c, "the cutter is a component")) };
     let (wall, by) = (m.shown(target), m.shown(cutter));
     let Some(f) = m.families.get(&comp.family) else { return Err(bad(c, format!("{by}'s family `{}` isn't loaded", comp.family))) };

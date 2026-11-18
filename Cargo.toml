@@ -17,7 +17,7 @@ bimcraft-core = { path = "crates/core" }
 bimcraft-plugin = { path = "crates/plugin" }
 bimcraft-i18n = { path = "crates/i18n", default-features = false }
 serde = { version = "1", features = ["derive", "rc"] }
-serde_json = "1"
+serde_json = { version = "1", features = ["raw_value"] }
 tiny-skia = { version = "0.11", default-features = false, features = ["std", "simd", "png-format"] }
 # Deflates PDF streams; png, under tiny-skia, already builds it.
 flate2 = "1"
@@ -37,6 +37,7 @@ bimcraft-update = { path = "crates/update" }
 # The assistant: an AI chat on the user's own key; the second code that reaches the network, desktop only.
 bimcraft-assistant = { path = "crates/assistant" }
 bimcraft-cowork = { path = "crates/cowork" }
+bimcraft-pyaddins = { path = "crates/pyaddins" }
 # The Revit reader: Apache-2.0 only, so the command line and the desktop take it through an optional feature.
 bimcraft-rvt = { path = "crates/rvt" }
 # The DWG bridge: MIT OR Apache-2.0 itself, over acadrust (MPL-2.0, unmodified); the core never depends on it.

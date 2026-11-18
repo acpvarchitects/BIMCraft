@@ -20,6 +20,8 @@ use crate::style::canvas_pal;
 use crate::view_worker::Latest;
 use crate::{BimApp, Status, Tool};
 
+mod tools;
+
 /// Geometry and visibility identity, independent of interaction paint.
 type Shot = (Arc<Model>, Id, View, View);
 
@@ -221,7 +223,8 @@ impl BimApp {
         let (rect, response) = ui.allocate_exact_size(ui.available_size(), Sense::CLICK | Sense::DRAG);
         let model = self.view_model();
         let ground = color(render::PAPER);
-        let grid_background = self.background_grid().shown();
+        // Under a background grid or an underlay drawn behind, the picture's paper is clear.
+        let grid_background = self.background_grid().shown() || crate::underlay::Layer::behind(&model, id);
         if self.cut.mode.0 {
             self.cut.poll(ui.ctx(), &model, id, ground, grid_background);
             if !self.canvas.has_view(id) {
@@ -236,7 +239,7 @@ impl BimApp {
                         size: [rect.width().max(1.0) as u32, rect.height().max(1.0) as u32],
                         fit_height: (rect.height() - self.canvas.room).max(1.0) as u32,
                         ppp: f64::from(ui.ctx().pixels_per_point()),
-                        tints: self.selection.iter().map(|id| (*id, rgb(canvas_pal().accent))).collect(),
+                        tints: self.lit_selection().iter().map(|id| (*id, rgb(canvas_pal().accent))).collect(),
                     };
                     if let Err(error) = self.cut.request(ui.ctx(), request) {
                         self.status = Status { text: error, error: true };
@@ -267,7 +270,8 @@ impl BimApp {
         let pixels = View { scale: view.scale * ppp, width: side(view.width), height: side(view.height), ..view };
         let ground = color(render::PAPER);
         // Framing/model changes rebuild visibility; interaction changes only paint.
-        let grid_background = self.background_grid().shown();
+        // Under a background grid or an underlay drawn behind, the picture's paper is clear.
+        let grid_background = self.background_grid().shown() || crate::underlay::Layer::behind(&model, id);
         // A new canvas colour, or the background grid shown or hidden, paints the same picture's paper again.
         if self.cut.ground != ground || self.cut.grid_background != grid_background {
             self.cut.upload(ui.ctx(), ground, grid_background);
@@ -302,19 +306,67 @@ impl BimApp {
             d.pick((x, y), PICK / k)
                 .or_else(|| cut.image.as_ref().filter(|_| displaying)?.pick(f64::from(x) * source_ppp[0], f64::from(y) * source_ppp[1]))
         };
-        let hovered = local.filter(|_| matches!(self.tool, Tool::Modify | Tool::Demolish)).and_then(|q| pick(&self.cut, &d, q));
-        // Tab over a component reaches its shared nested instances after it (T6b), as in a plan.
+        // Modify and Demolish pick what is under the cursor, and the section tools take their references from it.
+        let picks = matches!(
+            self.tool,
+            Tool::Modify | Tool::Demolish | Tool::Dimension(..) | Tool::Move(_) | Tool::DetailLine(_) | Tool::Trim(_) | Tool::TrimTo { .. }
+        );
+        let hovered = local.filter(|_| picks).and_then(|q| pick(&self.cut, &d, q));
+        // On the selected curtain wall under the cursor, Tab goes through its parts there, on the plane the view looks at.
         let tab = ui.input(|i| i.key_pressed(egui::Key::Tab)) && local.is_some();
-        let tabbed = std::mem::take(&mut self.tab_cycle) || tab;
+        if tab {
+            ui.ctx().memory_mut(|m| {
+                if let Some(f) = m.focused() {
+                    m.surrender_focus(f);
+                }
+            });
+        }
+        let tabbed = std::mem::take(&mut self.tab_cycle) | std::mem::take(&mut self.face_cycle) || tab;
+        let mut curtain_tabbed = false;
+        if tabbed
+            && let (Some(q), Some(wall)) = (local, hovered)
+            && crate::curtain::tab_wall(&model, &self.selection, &[wall], Some(wall), self.tool == Tool::Modify) == Some(wall)
+            && let Some((cam, _)) = render::section_camera(&model, id, view)
+            && let at = (f64::from(q.0), f64::from(q.1))
+            && let laid = self.curtain_laid.of(&model, wall)
+            && let Some(list) =
+                crate::curtain::parts_on_ray(&model, &laid, id, wall, cam.point_at(at, 0.0), cam.point_at(at, 1000.0), 1.0 / view.scale)
+        {
+            self.curtain_part = crate::curtain::next_part(self.curtain_part, wall, &list);
+            self.curtain_more.clear();
+            if self.curtain_part.is_some() {
+                self.selection = vec![wall];
+            }
+            curtain_tabbed = true;
+        }
+        // Elsewhere, Tab over a component reaches its shared nested instances after it (T6b), as in a plan.
         let nested = crate::nested_tab::seen(&model, hovered, &self.selection, &|p| render::section_px(&model, id, source, p));
-        let hovered =
-            if matches!(self.tool, Tool::Modify) { self.nested_tab.step(hovered, &nested, local.map(unproject), tabbed) } else { hovered };
-        let tints: Vec<(Id, Rgb)> = self
-            .selection
+        let hovered = if matches!(self.tool, Tool::Modify) {
+            self.nested_tab.step(hovered, &nested, local.map(unproject), tabbed && !curtain_tabbed)
+        } else {
+            hovered
+        };
+        // A selected group lights its members, and a curtain wall selected stays as it is drawn, for the part Tab picks to be
+        // seen on it; a group under the pointer lights its members, as a click would take it; in Edit Group the rest is greyed.
+        let lit = crate::curtain::tinted_selection(&model, &self.lit_selection());
+        let scope = self.session.group_scope();
+        let hover_lit = match self.tool {
+            Tool::Modify => crate::groups::hover_lit(&model, hovered, scope.as_ref(), self.group_pick()),
+            _ => hovered.into_iter().collect(),
+        };
+        let lit_hover = crate::curtain::tinted_hover(&model, &self.selection, hovered);
+        let mut tints: Vec<(Id, Rgb)> = lit
             .iter()
             .map(|id| (*id, rgb(canvas_pal().accent)))
-            .chain(hovered.filter(|h| !self.selection.contains(h)).map(|h| (h, rgb(canvas_pal().hover))))
+            .chain(
+                hover_lit
+                    .iter()
+                    .filter(|h| !lit.contains(h) && !(self.selection.contains(h) && crate::curtain::is_curtain(&model, **h)))
+                    .map(|h| (*h, rgb(canvas_pal().hover))),
+            )
             .collect();
+        let lit_now: Vec<Id> = tints.iter().map(|(id, _)| *id).collect();
+        tints.extend(crate::groups::greyed(&model, scope.as_ref(), &lit_now).into_iter().map(|id| (id, crate::groups::grey())));
         if self.cut.mode.0 {
             let request = Request {
                 model: Arc::clone(&model),
@@ -349,13 +401,89 @@ impl BimApp {
         let p = ui.painter_at(rect);
         p.rect_filled(rect, 0.0, color(render::PAPER));
         self.paint_background_grid(&p, rect, view);
+        // The underlay, made once the section is: behind it here, or over it below.
+        let hold = self.cut.worker.as_ref().is_some_and(Latest::busy);
+        let under = self.underlay_now(ui.ctx(), &model, id, view, hold);
+        self.paint_underlay(ui.ctx(), &p, rect, view, under.as_ref(), false);
         if let Some(t) = self.cut.texture.as_ref().filter(|_| displaying) {
             let image_rect = Rect::from_min_size(place.origin, egui::vec2(source.width as f32, source.height as f32) * k);
             p.image(t.id(), image_rect, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
         }
-        paint(&p, place, &d, &self.selection, hovered, self.thin, &[]);
+        paint(&p, place, &d, &lit, lit_hover, self.thin, &[]);
         crate::nested_tab::outline(&p, &nested, hovered, &self.selection, &|q| place.pos(q));
+        self.paint_underlay(ui.ctx(), &p, rect, view, under.as_ref(), true);
+        // Underlay Settings' Move or Rotate is picking here: the view's own clicks wait.
+        let picking = self.underlay_pick(ui, &response, &p, rect, &view, id, None);
         crate::cowork::paint_plan(&p, &self.cowork, &self.cowork_seen, &model, ("section", id), rect, &view, (&d, place));
+        if let Some((cam, _)) = render::section_camera(&model, id, view) {
+            let screen = |c: [f64; 3]| {
+                let (x, y, _) = cam.project(c);
+                rect.min + egui::vec2(x as f32, y as f32)
+            };
+            // A curtain wall selected shows by its outline, and the part Tab has picked, and the one it would go to, on it.
+            if self.curtain_part.is_none() {
+                for w in self.selection.iter().filter_map(|i| model.wall(*i).filter(|_| crate::curtain::is_curtain(&model, *i))) {
+                    let ring = bimcraft_core::curtain::outline_on_face(&model, w).iter().map(|c| screen(*c)).collect();
+                    crate::curtain::mark_wall(&p, ring);
+                }
+            }
+            let aim = crate::curtain::wall_to_tab(&model, &self.selection, &self.tool).zip(local).and_then(|(wall, q)| {
+                let at = (f64::from(q.0), f64::from(q.1));
+                let laid = self.curtain_laid.of(&model, wall);
+                let list = crate::curtain::parts_on_ray(
+                    &model,
+                    &laid,
+                    id,
+                    wall,
+                    cam.point_at(at, 0.0),
+                    cam.point_at(at, 1000.0),
+                    1.0 / view.scale,
+                )?;
+                Some((wall, list))
+            });
+            self.curtain_part_aim(aim);
+            let face_mark = |p: &egui::Painter, wall: Id, part, picked: bool| {
+                let l = self.curtain_laid.of(&model, wall);
+                for ring in model.wall(wall).map_or_else(Vec::new, |w| bimcraft_core::curtain::face_rings(&l, &model, w, part)) {
+                    crate::curtain::mark_part(p, ring.iter().map(|c| screen(*c)).collect(), picked);
+                }
+            };
+            if let Some((wall, part)) = self.curtain_aim {
+                face_mark(&p, wall, part, false);
+            }
+            if let Some((part_of, _)) = self.curtain_part {
+                for part in self.curtain_parts_picked() {
+                    face_mark(&p, part_of, part, true);
+                }
+            }
+            // Add/Remove Segments: the stretch of line a click would take off or put back.
+            if let Tool::CurtainSegment { wall } = self.tool {
+                let aim = local.zip(model.wall(wall)).and_then(|(q, w)| {
+                    let at = (f64::from(q.0), f64::from(q.1));
+                    bimcraft_core::curtain::on_plane(&model, w, cam.point_at(at, 0.0), cam.point_at(at, 1000.0))
+                });
+                self.curtain_segment_aim(aim);
+                if let Some((wall, at)) = self.curtain_segment_hover
+                    && let Some([a, b]) = model.wall(wall).and_then(|w| bimcraft_core::curtain::segment_on_face(&model, w, at))
+                {
+                    p.line_segment([screen(a), screen(b)], egui::Stroke::new(3.0, canvas_pal().accent));
+                }
+            }
+            // The Curtain Grid tool: where the cursor would place a line.
+            if let Tool::CurtainGrid { wall, .. } = self.tool {
+                let aim = local.zip(model.wall(wall)).and_then(|(q, w)| {
+                    let at = (f64::from(q.0), f64::from(q.1));
+                    bimcraft_core::curtain::on_plane(&model, w, cam.point_at(at, 0.0), cam.point_at(at, 1000.0))
+                });
+                self.curtain_grid_aim(aim);
+                if let Some((wall, at, way)) = self.curtain_grid_hover()
+                    && let Some(w) = model.wall(wall)
+                {
+                    let [a, b] = bimcraft_core::curtain::line_on_face(&model, w, way, at);
+                    p.line_segment([screen(a), screen(b)], egui::Stroke::new(2.0, canvas_pal().accent));
+                }
+            }
+        }
         // While a note is written here, the pointer is its editor's.
         if self.writing_in(id) {
             p.extend(crop);
@@ -382,12 +510,19 @@ impl BimApp {
         self.cut.image = held;
         p.extend(boxed);
         p.extend(datum);
-        let clicked = self.clicked_at(&response).map(|at| (at.x - rect.min.x, at.y - rect.min.y));
+        let clicked = self.clicked_at(&response).filter(|_| !picking).map(|at| (at.x - rect.min.x, at.y - rect.min.y));
         // Along the line and up, to the nearest 10 mm.
         let grid = self.background_grid();
         let snapping = self.grid_snapping;
+        let snaps = self.snaps_now();
         let at = |q: (f32, f32)| {
             let p = view.mm(q);
+            // What the view shows there first: a stair's nosing, a detail line's end.
+            let reach = bimcraft_core::snap::Reach { point: crate::canvas::SNAP / view.scale, line: f64::from(PICK) / view.scale };
+            let found = bimcraft_core::snap::snap(&model, id, p, reach, &[], false, &snaps);
+            if !matches!(found.kind, bimcraft_core::snap::Kind::Free) {
+                return found.at;
+            }
             if snapping && let Some(at) = grid.nearest(p) {
                 return at;
             }
@@ -411,11 +546,31 @@ impl BimApp {
             }
             return;
         }
+        // Only edit through the model generation being displayed. A stale picture must never
+        // lend a reference to geometry from a newer snapshot.
+        let fresh = self.cut.shown.as_ref().is_some_and(|(m, v, ..)| *v == id && Arc::ptr_eq(m, &model));
+        if self.vertical_tools(ui, &p, rect, view, id, local, clicked.filter(|_| fresh), hovered) {
+            self.context_menu(&response);
+            self.nav_bar(ui, rect, id);
+            return;
+        }
         match (clicked, &self.tool) {
+            (Some(q), _) if self.curtain_face_tool() => {
+                let wall = match self.tool {
+                    Tool::CurtainGrid { wall, .. } | Tool::CurtainSegment { wall } => Some(wall),
+                    _ => self.curtain_grid_moving().map(|(w, _)| w),
+                };
+                let on = wall.and_then(|w| model.wall(w)).zip(render::section_camera(&model, id, view)).and_then(|(w, (cam, _))| {
+                    let at = (f64::from(q.0), f64::from(q.1));
+                    bimcraft_core::curtain::on_plane(&model, w, cam.point_at(at, 0.0), cam.point_at(at, 1000.0))
+                });
+                self.curtain_face_click(on);
+            }
             (Some(q), Tool::Modify) => {
-                // Where the cursor is, what Tab has reached there.
-                let found = if Some(q) == local { hovered } else { pick(&self.cut, &d, q) };
-                self.pick_up(found.into_iter().collect(), click_modifiers(ui));
+                // Where the cursor is, what Tab has reached there; a member of a group is picked as its group, as in a plan.
+                let found: Vec<Id> = if Some(q) == local { hovered } else { pick(&self.cut, &d, q) }.into_iter().collect();
+                let found = self.group_picks(&self.session.model, &found, true);
+                self.pick_up(found, click_modifiers(ui));
             }
             (Some(q), Tool::Demolish) => {
                 if let Some(id) = pick(&self.cut, &d, q) {

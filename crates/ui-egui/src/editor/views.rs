@@ -529,6 +529,7 @@ impl FamilyEditor {
                 if let Some((p, _, z)) = frame {
                     (place["at"], place["offset"]) = (json!([p.0, p.1]), json!(z));
                 }
+                super::at_origin(&f, &mut place);
                 s.model_mut().families.insert(name.clone(), g);
                 let made = s.execute("component", &place)?;
                 if let Some(guid) = made["id"].as_u64().and_then(|id| s.model.elements.guid(id)) {
@@ -1130,6 +1131,10 @@ impl FamilyEditor {
         let chosen_connectors: Vec<usize> =
             self.selection.items().iter().filter_map(|p| if let Picked::Connector(i) = p { Some(*i) } else { None }).collect();
         super::connector_marks::paint(&painter, &connector_marks, &project, &chosen_connectors, self.connector_hover, lit);
+        // The insertion point, where the planes that define the origin cross (O1).
+        if let Some(at) = self.origin_mark() {
+            super::origin_mark::paint(&painter, &project, at);
+        }
         // What is selected, over the picture: each of it as one selected alone is drawn (FE-1, `select_box.rs`); the
         // reference line selected, its pivots' marks and its grips (F7d).
         // The forms the view leaves out: Temporary Hide/Isolate's, and while Preview Visibility shows the family as placed,

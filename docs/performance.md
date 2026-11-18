@@ -82,6 +82,10 @@ For example, a space-only coordination file may yield levels but no usable build
   failure falls back to serial work. No model mutations run concurrently.
 * An IFC railing with a nonpositive/unmeasurable height is skipped with a diagnostic before a bad
   type enters the library. It no longer invalidates the entire project import.
+* A level's room plan and a schedule's table are kept with the model's derived answers, keyed by the
+  elements' state: a repaint of one model asks the answer it already made, and a command's model makes
+  it again. The full computation stays the oracle the kept answer is tested against, and a command's
+  copy starts with none: the model it replaces lets them go when it goes into the undo history.
 
 Regression tests compare parallel geometry and raster depth, picking and smooth-light buffers
 with the serial implementation. Existing rendering tests cover transparent materials, textures,
@@ -354,7 +358,9 @@ view lets show (a tinted one at least 35%). Edges and level lines stay the opaqu
 with its walls 60% see-through differs from the processor's picture in 255 pixels of 307,200, with a mass in it 192.
 
 This was measured before the mesh cap was removed. The several-million-triangle measurement and current limits are in the
-[3D acceleration plan](3d-acceleration-plan.md#piece-1-measured-2026-11-02). Integrated cards, macOS and Windows remain unmeasured here.
+[3D acceleration plan](3d-acceleration-plan.md#piece-1-measured-2026-11-02). Integrated cards and macOS remain unmeasured here. On Windows (2026-11-15, Radeon RX 590, Ryzen, 12 threads) the core's numbers above
+matched Linux's (plan redrawn 7.6 ms, the scene built in 260 ms, a changing-camera frame 132 ms); the window was slow only because the
+driver's vsync held it to 32 frames a second or fewer, which the window now paces itself ([the desktop](areas/desktop.md), Frame pacing).
 
 ## Verification
 
@@ -393,6 +399,16 @@ The measured next priorities are:
    speed work; never count skipped source geometry as a performance improvement.
 6. Introduce dependency-aware validation while retaining a full-check oracle and command rollback.
    Keep command mutation ordered; parallelize independent read-only work rather than racing edits.
+7. Opening, saving and checking a project of a million elements. Measured in the window itself (`bimcraft --bench`,
+   [the desktop](areas/desktop.md#benchmarking-the-window)) on the annotated 100-storey tower, 2026-11-14: the open no longer
+   holds the window (it reads on a thread, with a progress box and Cancel), a frame with nothing to do went from 0.9 s to
+   17 ms, a zoom's frames from up to 0.9 s to 38 ms, the 3D view streams within a budget rather than run out of memory, and
+   the file is 316 MB of compact JSON, or 44 MB with Compressed save (455 MB of pretty JSON before). What is still on one core, and the rest, in
+   [large projects: opening, saving and checking](large-project-files-todo.md).
+
+Numbers from a headless test measure the core's work alone. Measure what the user waits for in the window too: on the tower
+the two differed by more than a factor of ten, because the window did work every frame (whole-model scans for dimensions,
+the Properties palette and the browser, a run's joins scanning every element) that no headless path did.
 
 No matched Revit benchmark was run. Outperforming it requires the same represented model,
 operation, view quality, resolution, hardware, warm/cold state and correctness checks in both apps.

@@ -64,8 +64,8 @@ impl Tab {
 }
 
 /// The categories of the system's families the browser lists, besides the runs': what Edit Type edits and the Type Selector picks.
-const SYSTEM_FAMILIES: [&str; 10] =
-    ["wall", "floor", "roof", "ceiling", "door", "window", "column", "railing", "structuralcolumn", "footing"];
+const SYSTEM_FAMILIES: [&str; 11] =
+    ["wall", "floor", "roof", "ceiling", "door", "window", "column", "railing", "stair", "structuralcolumn", "footing"];
 
 /// A view or sheet picked in the browser: Ctrl adds or takes one, Shift a run of them, as in any list of the system's.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -116,6 +116,10 @@ enum Act {
     Publisher,
     /// Expand All, or Collapse All.
     Fold(bool),
+    /// A curtain panel's or a mullion's type: Type Properties on it.
+    EditType(&'static str, String),
+    /// Show as Underlay: the view under the one on screen.
+    Underlay(Id),
 }
 
 /// An entry of the tree, or a group of them.
@@ -406,6 +410,7 @@ impl BimApp {
                 self.set_tool(Tool::Component);
             }
             Some(Act::Duplicate(view, mode)) => self.duplicate_view_of(view, mode),
+            Some(Act::Underlay(source)) => self.show_as_underlay(source),
             Some(Act::Delete(ids)) => {
                 self.delete_elements(ids);
             }
@@ -416,6 +421,9 @@ impl BimApp {
                 self.types.insert(category, name);
             }
             Some(Act::Select(id)) => self.selection = vec![id],
+            Some(Act::EditType(category, name)) => {
+                self.type_dialog = Some(crate::properties::TypeDialog::new(&self.session.model, category, name, Vec::new()));
+            }
             Some(Act::SelectInstances(params, scope)) => self.select_instances(params, scope),
             _ => {}
         }
@@ -584,6 +592,9 @@ impl BimApp {
             if view {
                 menu.push(("Delete", Act::Delete(vec![id])));
             }
+            if self.underlay_target().is_some_and(|on| on != id) {
+                menu.push((msg!("Show as Underlay"), Act::Underlay(id)));
+            }
             self.view_leaf(name, sheet).with_menu(menu)
         };
         let plans = keyed.iter().map(|(id, name, view)| plan_leaf(*id, name, *view, Sheet::Plan(*id))).collect();
@@ -599,10 +610,11 @@ impl BimApp {
                     Some(id) => Node::leaf("{3D}", Act::Open3D(Some(id)), active == Some(id)),
                     None => Node::leaf("{3D}", Act::Open3D(None), active.is_none()),
                 }];
-                three.extend(m.elements.iter().filter_map(|(id, e)| match e {
+                // A rare kind, kept by the lookup: the browser is built every frame.
+                three.extend(m.lookup().rare("view3d").filter_map(|id| Some((id, m.elements.get(id)?))).filter_map(|(id, e)| match e {
                     Element::View3D(v) if v.name != "{3D}" => {
-                        let leaf = Node::leaf(&v.name, Act::Open3D(Some(*id)), active == Some(*id));
-                        Some(leaf.with_menu(vec![("Delete", Act::Delete(vec![*id]))]))
+                        let leaf = Node::leaf(&v.name, Act::Open3D(Some(id)), active == Some(id));
+                        Some(leaf.with_menu(vec![("Delete", Act::Delete(vec![id]))]))
                     }
                     _ => None,
                 }));
@@ -613,7 +625,15 @@ impl BimApp {
         {
             let views = views(category);
             if !views.is_empty() {
-                kids.push(Node::group(t(group), true, views.iter().map(|(id, name)| self.view_leaf(name, Sheet::Section(*id))).collect()));
+                let leaf = |id: Id, name: &str| {
+                    let node = self.view_leaf(name, Sheet::Section(id));
+                    if self.underlay_target().is_some_and(|on| on != id) {
+                        node.with_menu(vec![(msg!("Show as Underlay"), Act::Underlay(id))])
+                    } else {
+                        node
+                    }
+                };
+                kids.push(Node::group(t(group), true, views.iter().map(|(id, name)| leaf(*id, name)).collect()));
             }
         }
         Node::group(t("Views (all)"), true, kids)
@@ -697,6 +717,24 @@ impl BimApp {
                 .collect();
             (!names.is_empty()).then(|| Node::group(&crate::lang::category(category, true), false, leaves))
         });
+        // Panels and mullions are system families with a family's level of their own: `Generic Panel` holds `Glazed`.
+        let curtain = [("curtainpanel", t("Generic Panel")), ("mullion", t("Rectangular Mullion")), ("cornermullion", t("Corner Mullion"))]
+            .into_iter()
+            .filter_map(|(category, family)| {
+                let names = m.type_names(category);
+                let leaves = names
+                    .iter()
+                    .map(|ty| {
+                        let on = self.types.get(category).is_some_and(|t| t == ty);
+                        Node::leaf(ty, Act::Pick(category, ty.to_string()), on).with_menu(vec![
+                            ("Edit Type", Act::EditType(category, ty.to_string())),
+                            ("Delete", Act::Do("delete_type", serde_json::json!({"category": category, "type": ty}))),
+                        ])
+                    })
+                    .collect();
+                (!names.is_empty())
+                    .then(|| Node::group(&crate::lang::category(category, true), false, vec![Node::group(family, false, leaves)]))
+            });
         let components = m.families.iter().map(|(name, f)| {
             let types = f
                 .types
@@ -709,7 +747,7 @@ impl BimApp {
                 .collect();
             Node::group(name, false, types).with_menu(delete(serde_json::json!({"family": name})))
         });
-        Node::group(t("Families"), open, system.chain(components).collect())
+        Node::group(t("Families"), open, system.chain(curtain).chain(components).collect())
     }
 }
 
@@ -717,7 +755,7 @@ impl BimApp {
 fn browser_menu(ui: &mut Ui, entries: &[(&'static str, Act)], act: &mut Option<Act>) {
     for (label, item) in entries {
         if let Act::Instances(params) = item {
-            if let Some(scope) = crate::context::instances_menu(ui, true) {
+            if let Some(scope) = crate::context::instances_menu(ui, true, false) {
                 *act = Some(Act::SelectInstances(params.clone(), scope));
             }
         } else if ui.button(t(label)).clicked() {

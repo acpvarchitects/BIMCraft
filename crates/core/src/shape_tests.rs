@@ -168,7 +168,7 @@ fn a_shape_is_kept_in_the_file_and_goes_to_ifc_as_its_planes() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("shaped.bimcraft");
     run(&mut s, "save", json!({"path": path}));
-    let file: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    let file: Value = serde_json::from_str(&crate::bimc::read_to_string(&path).unwrap()).unwrap();
     assert_eq!(file["format"], crate::model::FORMAT);
     let mut t = Session::new();
     run(&mut t, "open", json!({"path": path}));
@@ -177,7 +177,7 @@ fn a_shape_is_kept_in_the_file_and_goes_to_ifc_as_its_planes() {
     // In IFC, its slab is shells round its four planes, not a profile swept up.
     let ifc = dir.path().join("shaped.ifc");
     run(&mut s, "save", json!({"path": ifc}));
-    let text = std::fs::read_to_string(&ifc).unwrap();
+    let text = crate::bimc::read_to_string(&ifc).unwrap();
     assert!(text.contains("'Body','Brep'") && !text.contains("SweptSolid"), "the slab isn't its planes");
 }
 
@@ -622,7 +622,7 @@ fn only_a_flat_roof_by_footprint_takes_a_shape_and_a_shaped_one_keeps_flat() {
     // Other elements still say what has a shape.
     let wall = run(&mut s, "wall", json!({"points": [[0, 0], [1000, 0]]}))["ids"][0].as_u64().unwrap();
     let e = fails(&mut s, "add_point", json!({"id": wall, "at": [500, 0]}));
-    assert!(e.contains("floors and flat roofs"), "{e}");
+    assert!(e.contains("floors, flat roofs and toposolids have shapes"), "{e}");
 }
 
 #[test]

@@ -1403,6 +1403,26 @@ impl BimApp {
                     self.status = Status { text: e, error: true };
                 }
             }
+            // Defines Origin (O1): where the planes ticked cross is the insertion point the family is placed by. Ticked on one
+            // plane, the other of its direction lets go; a datum ticked stays so until another plane takes it. An adaptive family
+            // has no insertion point.
+            if ed.adaptive.is_none()
+                && let Some(p) = ed.planes.iter().find(|p| p.guid == g)
+            {
+                let (mut on, square, datum) = (p.defines_origin, p.direction().is_some(), p.datum());
+                let mut changed = false;
+                group(ui, msg!("Other"), |ui| {
+                    let l = ui.label(t("Defines Origin"));
+                    let enabled = square && !(datum && on);
+                    let r = ui.add_enabled(enabled, egui::Checkbox::without_text(&mut on)).labelled_by(l.id);
+                    r.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, enabled, on, t("Defines Origin")));
+                    changed = r.changed();
+                    ui.end_row();
+                });
+                if changed {
+                    ed.define_origin(g, on);
+                }
+            }
             self.put_family(ed);
             return;
         }
@@ -2979,6 +2999,10 @@ impl BimApp {
             .filter_map(|x| if let super::select_box::Picked::Connector(i) = x { Some(*i) } else { None })
             .collect();
         super::connector_marks::paint(&p, &marks, &project, &chosen, ed.connector_hover, lit);
+        // The insertion point, where the planes that define the origin cross (O1).
+        if let Some(at) = ed.origin_mark() {
+            super::origin_mark::paint_3d(&p, &project, at);
+        }
         // The selected form's handles over it, where the view shows them now: blue, or grey where they can't be dragged.
         let shown = ed.handles_3d_on(&project, &cam);
         // The one under the pointer a drag takes, lit; a greyed one never is. One held is drawn where the hand has it, lit.

@@ -36,6 +36,15 @@ fn pair(c: &str, m: &Model, p: &Value) -> Result<(Id, Id), String> {
     Ok((first, second))
 }
 
+/// Refused where any of `ids` is a curtain wall or a wall in a curtain panel's place ([`Model::curtain_refusal`]): Join and
+/// Switch Join Order. Unjoin takes such a join off (one made before its wall's type became a curtain one).
+fn no_curtain(c: &str, m: &Model, ids: &[Id]) -> Result<(), String> {
+    match ids.iter().find_map(|id| m.curtain_refusal(*id)) {
+        Some(why) => Err(bad(c, why)),
+        None => Ok(()),
+    }
+}
+
 /// Whether `by` cuts `id` by a join.
 fn cuts(m: &Model, by: Id, id: Id) -> bool {
     m.elements.get(id).is_some_and(|e| e.joined_by().contains(&m.guid(by)))
@@ -114,6 +123,7 @@ pub(super) fn join_geometry(s: &mut Session, p: &Value) -> R {
     let c = "join_geometry";
     let m = &s.model;
     let (first, second) = pair(c, m, p)?;
+    no_curtain(c, m, &[first, second])?;
     let (a, b) = (m.shown(first), m.shown(second));
     if cuts(m, first, second) || cuts(m, second, first) {
         return Err(bad(c, format!("{a} and {b} are already joined: switch_join_order flips which cuts which")));
@@ -144,6 +154,7 @@ fn joined(c: &str, m: &Model, p: &Value) -> Result<(Id, Id), String> {
 pub(super) fn switch_join_order(s: &mut Session, p: &Value) -> R {
     let c = "switch_join_order";
     let (by, cut) = joined(c, &s.model, p)?;
+    no_curtain(c, &s.model, &[by, cut])?;
     // The one that cut is cut from now on: it must have room for one more.
     full(c, &s.model, by)?;
     no_loop(c, &s.model, cut, by, Some((cut, by)))?;

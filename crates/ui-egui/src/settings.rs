@@ -26,7 +26,7 @@ use crate::assistant::Secret;
 use crate::dock::{Docking, Palette};
 use crate::lang::{Lang, t, tf};
 use crate::presets::{Preset, Scale, hidden_from_json, presets_from_json};
-use crate::style::{Profile, Scheme, pal};
+use crate::style::{GuideStyle, Profile, Scheme, pal};
 use crate::updates::failed;
 use std::collections::BTreeSet;
 
@@ -126,6 +126,10 @@ pub struct Settings {
     pub drag_on_selection: bool,
     /// Select Pinned Elements (PE), in a family document: a click and a box take what is pinned.
     pub select_pinned: bool,
+    /// How guides and the live drawing's aids are drawn: the refined look, or the classic one to compare it with.
+    pub guide_style: GuideStyle,
+    /// Save and Save As write the project zipped (`bimcraft_core::bimc`): a much smaller file, slower to save and open.
+    pub compressed_save: bool,
     /// The plans' old origin marker (now the Internal Origin, Site's in Visibility/Graphics: kept so a settings file reads
     /// back as it was written), and the view's name in their corner, a working aid on the screen.
     pub origin_marker: bool,
@@ -192,6 +196,8 @@ impl Settings {
             "select_by_face": self.select_by_face,
             "drag_on_selection": self.drag_on_selection,
             "select_pinned": self.select_pinned,
+            "guide_style": self.guide_style.code(),
+            "compressed_save": self.compressed_save,
             "origin_marker": self.origin_marker,
             "view_name": self.view_name,
             "shortcuts": self.shortcuts,
@@ -244,6 +250,8 @@ impl Settings {
             select_by_face: v["select_by_face"].as_bool().unwrap_or(base.select_by_face),
             drag_on_selection: v["drag_on_selection"].as_bool().unwrap_or(base.drag_on_selection),
             select_pinned: v["select_pinned"].as_bool().unwrap_or(base.select_pinned),
+            guide_style: v["guide_style"].as_str().and_then(GuideStyle::from_code).unwrap_or(base.guide_style),
+            compressed_save: v["compressed_save"].as_bool().unwrap_or(base.compressed_save),
             origin_marker: v["origin_marker"].as_bool().unwrap_or(base.origin_marker),
             view_name: v["view_name"].as_bool().unwrap_or(base.view_name),
             shortcuts: shortcuts_from(&v["shortcuts"], base.shortcuts),
@@ -386,6 +394,8 @@ impl BimApp {
         self.grid_snapping = kept.grid_snapping;
         (self.select_by_face, self.drag_on_selection) = (kept.select_by_face, kept.drag_on_selection);
         self.select_pinned = kept.select_pinned;
+        self.guide_style = kept.guide_style;
+        self.compressed_save = kept.compressed_save;
         (self.show_origin, self.show_view_name) = (kept.origin_marker, kept.view_name);
         self.custom_shortcuts = kept.shortcuts.clone();
         self.shortcuts_need_ctrl = kept.shortcuts_need_ctrl;
@@ -441,6 +451,8 @@ impl BimApp {
             select_by_face: self.select_by_face,
             drag_on_selection: self.drag_on_selection,
             select_pinned: self.select_pinned,
+            guide_style: self.guide_style,
+            compressed_save: self.compressed_save,
             origin_marker: self.show_origin,
             view_name: self.show_view_name,
             shortcuts: self.custom_shortcuts.clone(),
@@ -768,6 +780,9 @@ fn graphics_later(ui: &mut Ui) {
 
 impl BimApp {
     fn files_page(&mut self, ui: &mut Ui) {
+        heading(ui, msg!("Saving"));
+        self.compressed_save_box(ui);
+        ui.add_space(8.0);
         heading(ui, "Autosave");
         let mut enabled = self.autosave.interval_minutes > 0;
         if ui.checkbox(&mut enabled, t("Autosave in the background")).changed() {
@@ -794,6 +809,17 @@ impl BimApp {
 }
 
 impl BimApp {
+    /// The Compressed save box, with what it costs: in File > Settings > Files and, as a tick, in the File menu.
+    pub(crate) fn compressed_save_box(&mut self, ui: &mut Ui) {
+        ui.checkbox(&mut self.compressed_save, t("Compressed save")).on_hover_text(t(
+            "Save and Save As write the project zipped: the file is several times smaller. Either kind opens as before, and an \
+             uncompressed project stays readable as text.",
+        ));
+        ui.label(
+            RichText::new(t("⚠ A compressed project is much smaller, but saving and opening it take longer.")).small().color(pal().muted),
+        );
+    }
+
     /// Agents: the control port, through which an agent works on this project (`bimcraft-cli mcp --connect`), opened and closed
     /// here as `--control PORT` opens it at the start, and whether agents may change the project or only read it.
     fn agents_page(&mut self, ui: &mut Ui) {
