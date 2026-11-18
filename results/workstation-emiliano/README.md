@@ -39,6 +39,32 @@ logs: `logs/<call>.out` and `.err`; one line per call: `runs.csv`.
 - **c (void as a profile hole)** at 10,000 panels builds in 20.0 s at 1 thread, 3.0 s at 8 and 1.5 s at 24 (gnu: 17.0, 2.55, 1.33; ADE: 26.1 at 1, 4.21 at 8). Meshing dominates: 137 s at 2 mm on one thread.
 - **BIMCraft's mesh path:** 10,000 panels in 0.17 s (no void) and 0.28 s (void) at 24 threads, and 0.77 and 2.48 s at 1 thread, with 344 and 476 triangles a panel and under 30 MB. Its panel is comparable in kind to arris's, not value for value (see the ADE README's Method). The void case is about 5 to 8 times faster than arris's profile-hole variant (c), and more than 100 times faster than its boolean variant (b) on the default allocator.
 
+## geo_bench with mimalloc (A/B, added later the same day)
+
+The apps' global allocator is `cap::Cap<std::alloc::System>`, so on Windows BIMCraft's own mesh path also runs on the system
+heap. To see what mimalloc does there:
+
+- **Binaries:** two release builds of `bimcraft-core`'s tests at `f3901009`. `geo-system` is the code as it is, the same
+  binary as the main run (`bimcraft_core-881d6430b5e6e2c7`). `geo-mimalloc` adds `mimalloc = "0.1"` (0.1.52) to
+  `crates/core`'s `[dev-dependencies]` and, at the top of `src/lib.rs`, `#[cfg(test)] #[global_allocator] static GLOBAL:
+  mimalloc::MiMalloc = mimalloc::MiMalloc;` (`bimcraft_core-8b3bfbea48945fdb`). Not committed anywhere.
+- **Runs:** `GEO_PANELS=10000`, `RAYON_NUM_THREADS` 1, 8 and 24, three rounds with the two binaries alternating within each
+  round, the same open apps as above. Every run is in `geo-mimalloc.csv`, with logs `logs/geo_bench-ab-*`. Round 3 was
+  noisier (other apps picked up), so the table gives the median of the three rounds.
+
+| threads | no void, system | no void, mimalloc | with void, system | with void, mimalloc |
+|---|---|---|---|---|
+| 1 | 0.78 s | 0.57 s | 2.50 s | 2.16 s |
+| 8 | 0.27 s | 0.11 s | 0.61 s | 0.38 s |
+| 24 | 0.18 s | 0.06 s | 0.36 s | 0.22 s |
+
+- **With mimalloc**, the void case is about 1.6 times faster at 8 and 24 threads and 1.16 times at 1 thread. The no-void
+  case is 2.5 times faster at 8 threads and 3 times at 24.
+- **The void case scales better with threads:** 5.7 times from 1 to 8 threads with mimalloc, against 4.1 times with the
+  system heap.
+- **The per-panel figures barely change:** one core per panel, 10 panels changed, and the probe. The difference is in the
+  parallel builds, which is where the system heap is contended.
+
 ## Results
 
 ### geo_bench (BIMCraft mesh path, #81 head f3901009), times as it prints them, extrapolated to 10,000 panels
