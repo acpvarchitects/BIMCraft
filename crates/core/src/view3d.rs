@@ -1326,7 +1326,17 @@ fn own_meshes(m: &Model, id: Id, index: Option<&walls::Index>) -> Vec<Vec<[P3; 3
 /// they are before anything cuts them, so nothing recurses (and joins never go round in a loop: `join_geometry` refuses one).
 pub(crate) fn join_voids(m: &Model, id: Id, index: Option<&walls::Index>) -> Vec<Vec<[P3; 3]>> {
     let Some(e) = m.elements.get(id) else { return Vec::new() };
-    e.joined_by().iter().filter_map(|g| m.elements.id(*g)).flat_map(|by| own_meshes(m, by, index)).collect()
+    // A curtain wall's own solid is never drawn: it neither cuts nor is cut, though its type became a curtain one after the
+    // join was made (`Model::curtain_refusal`; `warnings` says so).
+    if m.curtain_refusal(id).is_some() {
+        return Vec::new();
+    }
+    e.joined_by()
+        .iter()
+        .filter_map(|g| m.elements.id(*g))
+        .filter(|by| m.curtain_refusal(*by).is_none())
+        .flat_map(|by| own_meshes(m, by, index))
+        .collect()
 }
 
 /// How near two elements' solids must come to meet, mm: within it, two that only share a face (a floor under a wall's foot)

@@ -3307,6 +3307,10 @@ impl BimApp {
             },
             Tool::Trim(_) | Tool::TrimTo { .. } => self.trim_click(hovered, v.mm(at)),
             &Tool::CutGeometry { uncut, wall } => match (wall, hovered) {
+                // A curtain wall, or a wall in a curtain panel's place, is refused as the command would refuse it.
+                (None, Some(w)) if !uncut && m.curtain_refusal(w).is_some() => {
+                    self.status = Status { text: curtain_refusal(m, w), error: true };
+                }
                 (None, Some(w)) => {
                     self.canvas.first_in = Some((key, matches!(self.sheet, Sheet::Ceiling(_))));
                     self.tool = Tool::CutGeometry { uncut, wall: Some(w) };
@@ -3325,6 +3329,9 @@ impl BimApp {
                 _ => {}
             },
             &Tool::JoinGeometry { mode, first } => match (first, hovered) {
+                (_, Some(a)) if mode != JoinMode::Unjoin && m.curtain_refusal(a).is_some() => {
+                    self.status = Status { text: curtain_refusal(m, a), error: true };
+                }
                 (None, Some(a)) => {
                     self.canvas.first_in = Some((key, matches!(self.sheet, Sheet::Ceiling(_))));
                     self.tool = Tool::JoinGeometry { mode, first: Some(a) };
@@ -6572,6 +6579,15 @@ fn named(m: &Model, id: Id) -> String {
 
 /// What Join Geometry's, Switch Join Order's or Unjoin Geometry's refusal `error` (the core's, written for agents) says to
 /// someone at the window, about the model `m`; any other error as it is.
+/// What the status bar says when Join Geometry or Cut Geometry is given curtain wall `id`, or a wall in a curtain panel's
+/// place ([`Model::curtain_refusal`]).
+fn curtain_refusal(m: &Model, id: Id) -> String {
+    match m.wall(id).is_some_and(|w| w.panel_of.is_some()) {
+        true => tf("{} stands in a curtain wall's panel: it can't be joined or cut.", &[&named(m, id)]),
+        false => tf("{} is a curtain wall: its panels and mullions can't be joined or cut.", &[&named(m, id)]),
+    }
+}
+
 fn join_refusal(error: &str, m: &Model) -> String {
     if error.contains("don't meet") {
         t("These two don't meet. Move one so they overlap or share a face, then join them.").to_string()

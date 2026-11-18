@@ -232,7 +232,7 @@ msgstr ""
 msgid "A dictionary is a file of parameter definitions to share between projects: keep it on a shared drive or in a Git repository."
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:5146
+#: crates/ui-egui/src/canvas.rs:5153
 msgid "A dimension has two references at least."
 msgstr ""
 
@@ -2031,7 +2031,7 @@ msgstr "砖"
 msgid "Brick 225 x 75"
 msgstr "砖 225 x 75"
 
-#: crates/core/src/model.rs:5206
+#: crates/core/src/model.rs:5262
 msgid "Bringing the project up to date"
 msgstr ""
 
@@ -2504,7 +2504,7 @@ msgstr ""
 msgid "Centre Stringer Width (Optional)"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:6457
+#: crates/ui-egui/src/canvas.rs:6464
 msgid "Centreline"
 msgstr ""
 
@@ -2925,7 +2925,7 @@ msgstr ""
 msgid "Click away from the origin."
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:3906
+#: crates/ui-egui/src/canvas.rs:3913
 msgid "Click both ends of each riser. A stair needs two risers at least."
 msgstr ""
 
@@ -3427,7 +3427,7 @@ msgstr "单击定位线应经过的位置"
 msgid "Click where the middle of a side goes. Esc cancels."
 msgstr "单击一条边中点的位置。按 Esc 取消。"
 
-#: crates/ui-egui/src/canvas.rs:4159
+#: crates/ui-egui/src/canvas.rs:4166
 msgid "Click where the note goes: its top left corner."
 msgstr ""
 
@@ -5040,12 +5040,12 @@ msgstr ""
 msgid "Dimension lines, witness lines, terminators, text placement, and level marker symbols."
 msgstr "尺寸线、尺寸界线、端点符号、文字对齐及标高符号。"
 
-#: crates/ui-egui/src/canvas.rs:4912
+#: crates/ui-egui/src/canvas.rs:4919
 msgid "Dimension text"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:4921
-#: crates/ui-egui/src/canvas.rs:4983
+#: crates/ui-egui/src/canvas.rs:4928
+#: crates/ui-egui/src/canvas.rs:4990
 msgid "Dimension {}"
 msgstr "尺寸标注 {}"
 
@@ -5847,7 +5847,7 @@ msgstr "图元"
 msgid "Elev"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:5684
+#: crates/ui-egui/src/canvas.rs:5691
 #: crates/ui-egui/src/coordinates.rs:576
 #: crates/ui-egui/src/coordinates.rs:793
 #: crates/ui-egui/src/coordinates.rs:1192
@@ -6004,7 +6004,7 @@ msgstr ""
 msgid "Entities"
 msgstr "图元数"
 
-#: crates/ui-egui/src/canvas.rs:5077
+#: crates/ui-egui/src/canvas.rs:5084
 msgid "Equal"
 msgstr "相等"
 
@@ -6157,7 +6157,7 @@ msgstr ""
 msgid "Extents"
 msgstr "范围"
 
-#: crates/ui-egui/src/canvas.rs:6455
+#: crates/ui-egui/src/canvas.rs:6462
 #: crates/ui-egui/src/sketch.rs:86
 msgid "Exterior Face"
 msgstr ""
@@ -7865,7 +7865,7 @@ msgstr "插入到之前"
 msgid "Insert Layer"
 msgstr "插入构造层"
 
-#: crates/ui-egui/src/canvas.rs:5599
+#: crates/ui-egui/src/canvas.rs:5606
 #: crates/ui-egui/src/stairgrips.rs:152
 msgid "Inside the rules"
 msgstr ""
@@ -7955,7 +7955,7 @@ msgstr ""
 msgid "Interface scale"
 msgstr "界面缩放"
 
-#: crates/ui-egui/src/canvas.rs:6456
+#: crates/ui-egui/src/canvas.rs:6463
 #: crates/ui-egui/src/sketch.rs:85
 msgid "Interior Face"
 msgstr ""
@@ -8153,7 +8153,7 @@ msgstr "合并为多段线"
 msgid "Join into Polyline (PJ): the lines selected, meeting end to end, become one polyline"
 msgstr "合并为多段线 (PJ)：首尾相接的选定线合并为一条多段线"
 
-#: crates/ui-egui/src/canvas.rs:3338
+#: crates/ui-egui/src/canvas.rs:3345
 msgid "Joined: {} cuts {}."
 msgstr ""
 
@@ -8908,7 +8908,7 @@ msgstr ""
 msgid "Lock Tread Depth: keep every tread the same depth. Turn it off to let each flight stretch or squeeze its treads, within the rules, so it ends exactly where you click."
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:5254
+#: crates/ui-egui/src/canvas.rs:5261
 msgid "Lock alignment"
 msgstr "锁定对齐"
 
@@ -8916,11 +8916,11 @@ msgstr "锁定对齐"
 msgid "Lock locks a line picked with no Offset, in a plan or an elevation"
 msgstr "锁定仅锁定在无偏移时拾取的线，适用于平面或立面"
 
-#: crates/ui-egui/src/canvas.rs:4876
+#: crates/ui-egui/src/canvas.rs:4883
 msgid "Lock segment {}"
 msgstr "锁定第 {} 段"
 
-#: crates/ui-egui/src/canvas.rs:4889
+#: crates/ui-egui/src/canvas.rs:4896
 msgid "Lock segment {} at its length, so what it measures to moves together"
 msgstr ""
 
@@ -8932,7 +8932,7 @@ msgstr "锁定：每条拾取的线都锁定到其拾取来源上，如同“对
 msgid "Lock: the dimensions this parameter labels keep its value when planes are dragged"
 msgstr "锁定：拖动平面时，此参数所标记的尺寸标注保持其值"
 
-#: crates/ui-egui/src/canvas.rs:5233
+#: crates/ui-egui/src/canvas.rs:5240
 msgid "Locked segment {}"
 msgstr "已锁定第 {} 段"
 
@@ -9021,7 +9021,7 @@ msgstr ""
 msgid "Make Checked Type"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:5328
+#: crates/ui-egui/src/canvas.rs:5335
 msgid "Make Dimension Permanent"
 msgstr ""
 
@@ -11013,13 +11013,13 @@ msgstr ""
 msgid "Outline Offset: a number in {}"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:5600
+#: crates/ui-egui/src/canvas.rs:5607
 #: crates/ui-egui/src/properties.rs:2377
 #: crates/ui-egui/src/stairgrips.rs:153
 msgid "Outside 1 rule"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:5601
+#: crates/ui-egui/src/canvas.rs:5608
 #: crates/ui-egui/src/properties.rs:2377
 #: crates/ui-egui/src/stairgrips.rs:154
 msgid "Outside {} rules"
@@ -12511,8 +12511,8 @@ msgstr ""
 msgid "Project Name"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:5781
-#: crates/ui-egui/src/canvas.rs:5793
+#: crates/ui-egui/src/canvas.rs:5788
+#: crates/ui-egui/src/canvas.rs:5800
 #: crates/ui-egui/src/graphics.rs:631
 msgid "Project North"
 msgstr ""
@@ -12800,7 +12800,7 @@ msgstr ""
 msgid "Read a title block drawn at full size (in mm on paper) in the model space of a DXF or DWG: its lines, solid hatches and texts; each {KEY} its texts name becomes a field"
 msgstr ""
 
-#: crates/core/src/model.rs:5174
+#: crates/core/src/model.rs:5230
 msgid "Reading elements"
 msgstr ""
 
@@ -12808,7 +12808,7 @@ msgstr ""
 msgid "Reading the file"
 msgstr ""
 
-#: crates/core/src/model.rs:5218
+#: crates/core/src/model.rs:5274
 msgid "Reading the project"
 msgstr ""
 
@@ -14162,7 +14162,7 @@ msgstr "段 {} 间距"
 msgid "Segment {} Text"
 msgstr "段 {} 文字"
 
-#: crates/ui-egui/src/canvas.rs:4887
+#: crates/ui-egui/src/canvas.rs:4894
 msgid "Segment {} is locked at its length: what it measures to moves together. Click to unlock it"
 msgstr ""
 
@@ -14936,15 +14936,15 @@ msgstr ""
 msgid "Smooth lines (anti-aliasing)"
 msgstr "平滑线条（抗锯齿）"
 
-#: crates/ui-egui/src/canvas.rs:6307
+#: crates/ui-egui/src/canvas.rs:6314
 msgid "Snap reference cleared"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:6306
+#: crates/ui-egui/src/canvas.rs:6313
 msgid "Snap reference marked"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:6308
+#: crates/ui-egui/src/canvas.rs:6315
 msgid "Snap reference moved"
 msgstr ""
 
@@ -15352,7 +15352,7 @@ msgstr ""
 msgid "Step in"
 msgstr "向内偏移"
 
-#: crates/ui-egui/src/canvas.rs:5580
+#: crates/ui-egui/src/canvas.rs:5587
 msgid "Step {} of {} - {}"
 msgstr ""
 
@@ -15604,7 +15604,7 @@ msgstr ""
 msgid "Switch Join Order: click the form it is joined to. Esc lets the first form go."
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:3339
+#: crates/ui-egui/src/canvas.rs:3346
 msgid "Switched: {} now cuts {}."
 msgstr ""
 
@@ -15748,7 +15748,7 @@ msgstr ""
 msgid "Tab with {}"
 msgstr "与 {} 合并为选项卡"
 
-#: crates/ui-egui/src/canvas.rs:5611
+#: crates/ui-egui/src/canvas.rs:5618
 msgid "Tab: {} risers of {}, treads {}"
 msgstr ""
 
@@ -15897,7 +15897,7 @@ msgstr "临时隔离类别"
 msgid "Temporary Isolate Element"
 msgstr "临时隔离图元"
 
-#: crates/ui-egui/src/canvas.rs:4806
+#: crates/ui-egui/src/canvas.rs:4813
 msgid "Temporary dimension {}"
 msgstr "临时尺寸标注 {}"
 
@@ -16051,7 +16051,7 @@ msgstr ""
 msgid "That runs square to the work plane: it has no line on it to pick."
 msgstr "该对象与工作平面垂直：在工作平面上没有可拾取的线。"
 
-#: crates/ui-egui/src/canvas.rs:6586
+#: crates/ui-egui/src/canvas.rs:6602
 msgid "That would close a loop of joins, each cutting the next: {}. Join these two the other way round, or unjoin one of the loop first."
 msgstr ""
 
@@ -16179,19 +16179,19 @@ msgstr ""
 msgid "The clipboard holds what was copied in {}: paste it there. Pasting from one family into another isn't done yet."
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:6611
+#: crates/ui-egui/src/canvas.rs:6627
 msgid "The component cuts this wall already."
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:6613
+#: crates/ui-egui/src/canvas.rs:6629
 msgid "The component doesn't cut this wall: there is nothing to uncut."
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:6609
+#: crates/ui-egui/src/canvas.rs:6625
 msgid "The component stands on a face of this wall and cuts it already."
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:6607
+#: crates/ui-egui/src/canvas.rs:6623
 msgid "The component's voids don't reach the wall. Move it so they pass into the wall, then cut."
 msgstr ""
 
@@ -16365,7 +16365,7 @@ msgstr "名称“{}”已被使用。"
 msgid "The name of the floor plan or ceiling plan in its bottom left corner. It is drawn on the screen only, and the view's tab names it too"
 msgstr "楼层平面或天花板平面的名称，显示在其左下角。仅绘制在屏幕上，视图的选项卡上也会标明该名称"
 
-#: crates/ui-egui/src/canvas.rs:6591
+#: crates/ui-egui/src/canvas.rs:6607
 msgid "The one to cut is joined to {} that cut it already, the most there may be. Unjoin one of them first."
 msgstr ""
 
@@ -16660,7 +16660,7 @@ msgstr "项目的电压（单位为伏），以及设备读数允许的范围。
 msgid "The whole project: {}"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:3866
+#: crates/ui-egui/src/canvas.rs:3873
 msgid "The width \"{}\" isn't a length. Type a number, such as 1200."
 msgstr ""
 
@@ -16753,15 +16753,15 @@ msgstr "将这些图案导出为 PAT 文件（实心除外）"
 msgid "These rooms have floors or ceilings connected to them. Delete those too, or keep them as ordinary floors and ceilings?"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:6579
+#: crates/ui-egui/src/canvas.rs:6595
 msgid "These two are joined already. Switch Join Order changes which cuts which."
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:6581
+#: crates/ui-egui/src/canvas.rs:6597
 msgid "These two aren't joined."
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:6577
+#: crates/ui-egui/src/canvas.rs:6593
 msgid "These two don't meet. Move one so they overlap or share a face, then join them."
 msgstr ""
 
@@ -17267,8 +17267,8 @@ msgstr ""
 msgid "Trip"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:5782
-#: crates/ui-egui/src/canvas.rs:5794
+#: crates/ui-egui/src/canvas.rs:5789
+#: crates/ui-egui/src/canvas.rs:5801
 #: crates/ui-egui/src/graphics.rs:632
 msgid "True North"
 msgstr ""
@@ -17301,7 +17301,7 @@ msgstr "关闭捕捉替换"
 msgid "Turn the underlay about a point picked in the view"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:4770
+#: crates/ui-egui/src/canvas.rs:4777
 msgid "Turn the wall about its {}: {}"
 msgstr "绕墙的{}旋转墙：{}"
 
@@ -17618,7 +17618,7 @@ msgstr ""
 msgid "Unjoin Geometry: click the form it is joined to. Esc lets the first form go."
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:3340
+#: crates/ui-egui/src/canvas.rs:3347
 msgid "Unjoined: {} and {}."
 msgstr ""
 
@@ -17630,7 +17630,7 @@ msgstr ""
 msgid "Unlock"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:5215
+#: crates/ui-egui/src/canvas.rs:5222
 msgid "Unlock alignment"
 msgstr "解锁对齐"
 
@@ -18691,13 +18691,13 @@ msgstr "`{}` 不是有效的高度"
 
 #: crates/ui-egui/src/camera.rs:91
 #: crates/ui-egui/src/camera.rs:103
-#: crates/ui-egui/src/canvas.rs:4427
-#: crates/ui-egui/src/canvas.rs:4928
-#: crates/ui-egui/src/canvas.rs:4987
-#: crates/ui-egui/src/canvas.rs:5358
-#: crates/ui-egui/src/canvas.rs:5373
-#: crates/ui-egui/src/canvas.rs:5471
-#: crates/ui-egui/src/canvas.rs:5491
+#: crates/ui-egui/src/canvas.rs:4434
+#: crates/ui-egui/src/canvas.rs:4935
+#: crates/ui-egui/src/canvas.rs:4994
+#: crates/ui-egui/src/canvas.rs:5365
+#: crates/ui-egui/src/canvas.rs:5380
+#: crates/ui-egui/src/canvas.rs:5478
+#: crates/ui-egui/src/canvas.rs:5498
 #: crates/ui-egui/src/curtain.rs:133
 #: crates/ui-egui/src/curtain.rs:139
 #: crates/ui-egui/src/draw.rs:285
@@ -18752,8 +18752,8 @@ msgstr "`{}` 不是有效的尺寸、角度或偏移"
 msgid "`{}` is not a spacing"
 msgstr "`{}` 不是间距"
 
-#: crates/ui-egui/src/canvas.rs:4412
-#: crates/ui-egui/src/canvas.rs:4797
+#: crates/ui-egui/src/canvas.rs:4419
+#: crates/ui-egui/src/canvas.rs:4804
 #: crates/ui-egui/src/properties.rs:1335
 msgid "`{}` is not an angle"
 msgstr "`{}` 不是有效的角度"
@@ -18874,7 +18874,7 @@ msgstr "开头是"
 msgid "by"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:3727
+#: crates/ui-egui/src/canvas.rs:3734
 msgid "ceiling: `{}` is not a height"
 msgstr "天花板：`{}` 不是有效的高度"
 
@@ -18882,7 +18882,7 @@ msgstr "天花板：`{}` 不是有效的高度"
 msgid "circle"
 msgstr "圆"
 
-#: crates/ui-egui/src/canvas.rs:3798
+#: crates/ui-egui/src/canvas.rs:3805
 msgid "click its line's end"
 msgstr "单击其直线的终点"
 
@@ -18898,11 +18898,11 @@ msgstr ""
 msgid "click on the floor's top"
 msgstr "请单击楼板的顶面"
 
-#: crates/ui-egui/src/canvas.rs:3966
+#: crates/ui-egui/src/canvas.rs:3973
 msgid "click where its first stretch ends"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:3822
+#: crates/ui-egui/src/canvas.rs:3829
 msgid "click where its run ends"
 msgstr "单击其梯段终点"
 
@@ -18966,7 +18966,7 @@ msgstr "结尾不是"
 msgid "does not equal"
 msgstr "不等于"
 
-#: crates/ui-egui/src/canvas.rs:3691
+#: crates/ui-egui/src/canvas.rs:3698
 msgid "dormer: the width `{}`, the height `{}` and the slope `{}` must be numbers"
 msgstr "老虎窗：宽度 `{}`、高度 `{}` 和坡度 `{}` 必须是数字"
 
@@ -19094,7 +19094,7 @@ msgstr "直线"
 msgid "location"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:4144
+#: crates/ui-egui/src/canvas.rs:4151
 msgid "mass: {}"
 msgstr "体量：{}"
 
@@ -19153,12 +19153,12 @@ msgstr ""
 msgid "not loaded"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:3362
-#: crates/ui-egui/src/canvas.rs:4248
+#: crates/ui-egui/src/canvas.rs:3369
+#: crates/ui-egui/src/canvas.rs:4255
 msgid "offset: `{}` is not a distance"
 msgstr "偏移：`{}` 不是有效的距离"
 
-#: crates/ui-egui/src/canvas.rs:4244
+#: crates/ui-egui/src/canvas.rs:4251
 msgid "offset: it offsets straight walls"
 msgstr "偏移：仅可偏移直墙"
 
@@ -19202,15 +19202,15 @@ msgstr ""
 msgid "publishing set"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:3840
+#: crates/ui-egui/src/canvas.rs:3847
 msgid "ramp: `{}` is not a slope"
 msgstr "坡道：`{}` 不是有效的坡度"
 
-#: crates/ui-egui/src/canvas.rs:3841
+#: crates/ui-egui/src/canvas.rs:3848
 msgid "ramp: `{}` is not a width"
 msgstr "坡道：`{}` 不是有效的宽度"
 
-#: crates/ui-egui/src/canvas.rs:3842
+#: crates/ui-egui/src/canvas.rs:3849
 msgid "ramp: {}"
 msgstr "坡道：{}"
 
@@ -19218,11 +19218,11 @@ msgstr "坡道：{}"
 msgid "reference planes have no category to hide in a family's view: Hide Element (EH) hides each"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:3799
+#: crates/ui-egui/src/canvas.rs:3806
 msgid "roof: `{}` is not a slope"
 msgstr "屋顶：`{}` 不是有效的坡度"
 
-#: crates/ui-egui/src/canvas.rs:3643
+#: crates/ui-egui/src/canvas.rs:3650
 msgid "roof: the slope `{}` and the overhang `{}` must be numbers"
 msgstr "屋顶：坡度 `{}` 和悬挑 `{}` 必须是数字"
 
@@ -19300,11 +19300,11 @@ msgstr "请先选择要隐藏或隔离的对象"
 msgid "select what to move, copy, rotate or mirror first"
 msgstr "请先选择要移动、复制、旋转或镜像的对象"
 
-#: crates/ui-egui/src/canvas.rs:3751
+#: crates/ui-egui/src/canvas.rs:3758
 msgid "shaft: {}"
 msgstr "竖井：{}"
 
-#: crates/ui-egui/src/canvas.rs:3769
+#: crates/ui-egui/src/canvas.rs:3776
 msgid "slope arrow: `{}` is not a slope"
 msgstr "坡度箭头：`{}` 不是有效的坡度"
 
@@ -19324,11 +19324,11 @@ msgstr "西南"
 msgid "spline"
 msgstr "样条曲线"
 
-#: crates/ui-egui/src/canvas.rs:3923
+#: crates/ui-egui/src/canvas.rs:3930
 msgid "stair: its centre is {} from its middle line at least, half its width"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:3871
+#: crates/ui-egui/src/canvas.rs:3878
 msgid "stair: {}"
 msgstr ""
 
@@ -19385,7 +19385,7 @@ msgstr ""
 msgid "the next free name"
 msgstr "下一个可用名称"
 
-#: crates/ui-egui/src/canvas.rs:5470
+#: crates/ui-egui/src/canvas.rs:5477
 msgid "the opening has to stay on its wall"
 msgstr "洞口必须保留在其所在的墙上"
 
@@ -19476,7 +19476,7 @@ msgstr "电压"
 msgid "voltages"
 msgstr "电压"
 
-#: crates/ui-egui/src/canvas.rs:4479
+#: crates/ui-egui/src/canvas.rs:4486
 msgid "wall: {}"
 msgstr "墙：{}"
 
@@ -19713,7 +19713,7 @@ msgstr ""
 msgid "{} h ago"
 msgstr "{} 小时前"
 
-#: crates/ui-egui/src/canvas.rs:6605
+#: crates/ui-egui/src/canvas.rs:6621
 msgid "{} has no void that cuts a host. Give it one in the Family Editor (a void that cuts the host, or both), then cut."
 msgstr ""
 
@@ -19735,6 +19735,10 @@ msgstr "{} 现在主持会话：其他人已转到那里"
 
 #: crates/ui-egui/src/assistant.rs:284
 msgid "{} in · {} out · {} total"
+msgstr ""
+
+#: crates/ui-egui/src/canvas.rs:6587
+msgid "{} is a curtain wall: its panels and mullions can't be joined or cut."
 msgstr ""
 
 #: crates/ui-egui/src/editor/drag_move.rs:117
@@ -19818,7 +19822,7 @@ msgstr "{} 与此视图不平行。请打开一个正对显示它的视图："
 msgid "{} isn't scaled: Scale takes reference planes and reference lines; a form is sized by its dimensions and parameters."
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:6603
+#: crates/ui-egui/src/canvas.rs:6619
 msgid "{} isn't set to Cut with Voids When Loaded. Turn it on in the family's Family Category and Parameters, then cut."
 msgstr ""
 
@@ -19890,12 +19894,12 @@ msgstr ""
 msgid "{} of {} pages ({} × {})"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:5585
+#: crates/ui-egui/src/canvas.rs:5592
 #: crates/ui-egui/src/stairgrips.rs:140
 msgid "{} of {} risers"
 msgstr "{} 个踢面（共 {} 个）"
 
-#: crates/ui-egui/src/canvas.rs:6460
+#: crates/ui-egui/src/canvas.rs:6467
 #: crates/ui-egui/src/orbit.rs:2526
 msgid "{} of {} {}"
 msgstr "{}：{} {}"
@@ -19990,6 +19994,10 @@ msgstr ""
 msgid "{} selected."
 msgstr "已选择 {}。"
 
+#: crates/ui-egui/src/canvas.rs:6586
+msgid "{} stands in a curtain wall's panel: it can't be joined or cut."
+msgstr ""
+
 #: crates/ui-egui/src/cowork.rs:184
 msgid "{} stopped the assistant"
 msgstr "{} 停止了助手"
@@ -20020,7 +20028,7 @@ msgstr ""
 msgid "{} turns about its pivot: turn it by its rotate grip."
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:5587
+#: crates/ui-egui/src/canvas.rs:5594
 msgid "{} up"
 msgstr "上行 {}"
 

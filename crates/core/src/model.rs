@@ -4973,6 +4973,62 @@ impl Model {
         marks.iter().map(|k| k.map(place)).collect()
     }
 
+    /// Takes the joins and cuts (T23) that name a curtain wall or a wall in a curtain panel's place off the elements that hold
+    /// them, and says where each was, as a file's left-out parts are named.
+    pub(crate) fn drop_curtain_joins(&mut self) -> Vec<String> {
+        let refused = |m: &Model, g: &Guid| m.elements.id(*g).is_some_and(|id| m.curtain_refusal(id).is_some());
+        let mut gone = Vec::new();
+        let ids: Vec<Id> = self.elements.keys().copied().collect();
+        for id in ids {
+            let curtain = self.curtain_refusal(id).is_some();
+            let joins: Vec<Guid> = self.elements.get(id).map(|e| e.joined_by().to_vec()).unwrap_or_default();
+            let keep: Vec<Guid> = joins.iter().copied().filter(|g| !curtain && !refused(self, g)).collect();
+            let cuts = self.wall(id).map(|w| w.void_cuts.len()).unwrap_or(0);
+            let cut = curtain && cuts > 0;
+            if keep.len() == joins.len() && !cut {
+                continue;
+            }
+            for (i, g) in joins.iter().enumerate().rev() {
+                if !keep.contains(g) {
+                    gone.push(format!("/elements/{id}/joined_by/{i}"));
+                }
+            }
+            if let Some(list) = self.elements.get_mut(id).and_then(Element::joined_by_mut) {
+                *list = keep;
+            }
+            if cut {
+                gone.extend((0..cuts).rev().map(|i| format!("/elements/{id}/void_cuts/{i}")));
+                if let Some(Element::Wall(w)) = self.elements.get_mut(id) {
+                    w.void_cuts.clear();
+                }
+            }
+        }
+        gone
+    }
+
+    /// Why Join Geometry and Cut Geometry (T23) leave element `id` alone though it is a wall: a curtain wall (its type has a
+    /// pattern), whose own solid is never drawn, only its panels and mullions, so what it cut out of another would be a block no
+    /// one sees; or a wall standing in a curtain panel's place (`panel_of`), which is its curtain wall's. None for any other.
+    pub fn curtain_refusal(&self, id: Id) -> Option<String> {
+        let w = self.wall(id)?;
+        if crate::curtain::pattern(self, w).is_some() {
+            Some(format!("{} is a curtain wall: its panels and mullions are drawn, not a solid to join or cut", self.shown(id)))
+        } else if w.panel_of.is_some() {
+            Some(format!(
+                "{} stands in a curtain wall's panel: it is part of that curtain wall, which can't be joined or cut",
+                self.shown(id)
+            ))
+        } else {
+            None
+        }
+    }
+
+    /// Whether element `id` may be joined by Join Geometry: a wall, a floor, a roof or a ceiling, and no curtain wall or wall in
+    /// a curtain panel's place ([`Model::curtain_refusal`]).
+    pub fn joins_geometry(&self, id: Id) -> bool {
+        self.elements.get(id).is_some_and(Element::joinable) && self.curtain_refusal(id).is_none()
+    }
+
     /// Component `c`'s model lines (FE-15) in the model, at `detail` in a plan (`plan`) if it says: its family's for its
     /// values, mirrored if it is, then placed as its family's axes are ([`Model::component_placement`]).
     pub fn component_model_lines(
@@ -5360,6 +5416,9 @@ impl Model {
         }
         // A pin of an element this build left out (a newer one's kind) is dropped, and the rest of the file opens.
         m.pinned.retain(|g| m.elements.id(*g).is_some());
+        // A join or a cut (T23) of a curtain wall, or of a wall in a curtain panel's place, which a build before they were
+        // refused could save: left out, and the rest of the file opens ([`Model::curtain_refusal`]).
+        left_out.extend(m.drop_curtain_joins());
         // A family's instances placed against an origin that isn't its own (a file of a build that placed every family by its
         // datums, whose family had a plane marked as defining the origin) stay where they were drawn (O1).
         m.settle_origins(None);
@@ -8689,6 +8748,15 @@ impl Model {
         for (id, e) in self.elements.iter() {
             for g in e.joined_by() {
                 let Some(by) = self.elements.id(*g) else { continue };
+                // A curtain wall's own solid isn't drawn, so a join with one cuts nothing (its type became a curtain one after).
+                if let Some(why) = self.curtain_refusal(*id).or_else(|| self.curtain_refusal(by)) {
+                    out.push(format!(
+                        "{} and {} are joined, but {why}: the join cuts nothing; take it off with `unjoin_geometry`",
+                        self.shown(by),
+                        self.shown(*id)
+                    ));
+                    continue;
+                }
                 if !crate::view3d::meets(self, by, *id, index.as_ref()) {
                     out.push(format!(
                         "{} and {} are joined but no longer meet, so the join cuts nothing: move them back together, or take the \
