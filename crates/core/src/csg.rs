@@ -39,22 +39,23 @@ impl Meter {
 }
 
 /// A convex polygon, its corners counter-clockwise seen from where its normal `n` points, in the
-/// plane of the points `p` where `n · p = w`.
+/// plane of the points `p` where `n · p = w`; `tag`, the face of the triangle it was cut from, which its parts keep.
 #[derive(Clone)]
 struct Poly {
     v: Vec<P3>,
     n: P3,
     w: f64,
+    tag: u32,
 }
 
 impl Poly {
     /// A triangle as a polygon; none for one too small to have a plane.
-    fn of(t: &[P3; 3]) -> Option<Poly> {
+    fn of(t: &[P3; 3], tag: u32) -> Option<Poly> {
         let n = cross(sub(t[1], t[0]), sub(t[2], t[0]));
         let len = dot(n, n).sqrt();
         (len > 2.0 * SLIVER).then(|| {
             let n = mul(n, 1.0 / len);
-            Poly { v: t.to_vec(), n, w: dot(n, t[0]) }
+            Poly { v: t.to_vec(), n, w: dot(n, t[0]), tag }
         })
     }
 
@@ -127,7 +128,7 @@ fn divide(n: P3, w: f64, p: Poly) -> Side {
                     back.push(c);
                 }
             }
-            let part = |v: Vec<P3>| (v.len() >= 3).then_some(Poly { v, n: p.n, w: p.w });
+            let part = |v: Vec<P3>| (v.len() >= 3).then_some(Poly { v, n: p.n, w: p.w, tag: p.tag });
             Side::Across(part(front), part(back))
         }
     }
@@ -148,9 +149,10 @@ struct Bsp {
 }
 
 impl Bsp {
-    fn of(tris: &[[P3; 3]], meter: &mut Meter) -> Result<Bsp, String> {
+    fn of(tris: &[[P3; 3]], tags: &[u32], meter: &mut Meter) -> Result<Bsp, String> {
         let mut bsp = Bsp { nodes: Vec::new() };
-        bsp.build(tris.iter().filter_map(Poly::of).collect(), meter)?;
+        let tag = |i: usize| tags.get(i).copied().unwrap_or_default();
+        bsp.build(tris.iter().enumerate().filter_map(|(i, t)| Poly::of(t, tag(i))).collect(), meter)?;
         Ok(bsp)
     }
 
@@ -268,6 +270,19 @@ fn bounds(tris: &[[P3; 3]]) -> (P3, P3) {
 /// `solid` less what `void` takes of it: each a closed surface of triangles turned outward; what's
 /// left, as triangles, none if the void swallows it. A void away from it leaves it as it was.
 pub fn subtract(solid: &[[P3; 3]], void: &[[P3; 3]], meter: &mut Meter) -> Result<Vec<[P3; 3]>, String> {
+    subtract_tagged(solid, &[], void, &[], meter).map(|(tris, _)| tris)
+}
+
+/// [`subtract`], each triangle tagged (GEO-2b: the face of its form it is): `solid`'s and `void`'s each by its tag in
+/// `solid_tags` and `void_tags` (one it lacks, 0), and what is left by the tag of the triangle it was cut from, one per
+/// triangle. The triangles are [`subtract`]'s, bit for bit.
+pub fn subtract_tagged(
+    solid: &[[P3; 3]],
+    solid_tags: &[u32],
+    void: &[[P3; 3]],
+    void_tags: &[u32],
+    meter: &mut Meter,
+) -> Result<(Vec<[P3; 3]>, Vec<u32>), String> {
     for (what, n) in [("the form cut", solid.len()), ("the void", void.len())] {
         if n > MAX_TRIANGLES {
             return Err(format!("{what} has {n} triangles; it can't have more than {MAX_TRIANGLES} to cut"));
@@ -275,9 +290,9 @@ pub fn subtract(solid: &[[P3; 3]], void: &[[P3; 3]], meter: &mut Meter) -> Resul
     }
     let ((lo_s, hi_s), (lo_v, hi_v)) = (bounds(solid), bounds(void));
     if (0..3).any(|k| lo_v[k] > hi_s[k] + EPS || hi_v[k] < lo_s[k] - EPS) {
-        return Ok(solid.to_vec());
+        return Ok((solid.to_vec(), (0..solid.len()).map(|i| solid_tags.get(i).copied().unwrap_or_default()).collect()));
     }
-    let (mut a, mut b) = (Bsp::of(solid, meter)?, Bsp::of(void, meter)?);
+    let (mut a, mut b) = (Bsp::of(solid, solid_tags, meter)?, Bsp::of(void, void_tags, meter)?);
     a.invert();
     a.clip_to(&b, meter)?;
     b.clip_to(&a, meter)?;
@@ -286,7 +301,7 @@ pub fn subtract(solid: &[[P3; 3]], void: &[[P3; 3]], meter: &mut Meter) -> Resul
     b.invert();
     a.build(b.polygons(), meter)?;
     a.invert();
-    Ok(a.polygons().iter().flat_map(Poly::triangles).collect())
+    Ok(a.polygons().iter().flat_map(|p| p.triangles().map(|t| (t, p.tag))).unzip())
 }
 
 #[cfg(test)]

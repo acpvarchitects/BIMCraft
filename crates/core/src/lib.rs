@@ -92,6 +92,8 @@ mod family_constraint_tests;
 #[cfg(test)]
 mod family_cutting_tests;
 #[cfg(test)]
+mod family_face_tests;
+#[cfg(test)]
 mod family_kernel_tests;
 #[cfg(test)]
 mod family_model_line_ref_tests;

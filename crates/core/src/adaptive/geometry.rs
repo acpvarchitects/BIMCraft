@@ -73,8 +73,11 @@ impl Mesh {
     }
     pub fn piece(&self, material: String) -> Piece {
         let (bottom, top) = self.vertices.iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), p| (lo.min(p[2]), hi.max(p[2])));
+        let tris = self.triangles();
         Piece {
-            tris: self.triangles(),
+            faces: vec![0; tris.len()],
+            keys: vec![crate::family::FormFace::All],
+            tris,
             caps: self.faces.len(),
             outline: geom::hull(self.vertices.iter().map(|p| P2(p[0], p[1])).collect()),
             holes: Vec::new(),

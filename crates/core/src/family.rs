@@ -22,6 +22,7 @@ mod bounds;
 pub mod clipboard;
 pub mod constraints;
 pub mod cutting;
+pub mod faces;
 pub mod forms;
 pub mod handles;
 pub mod kernel;
@@ -42,6 +43,7 @@ pub use constraints::{
     DimKind, DimRef, DimView, Extent, FamilyDimension, MAX_DIMENSIONS, MAX_SWING, Pivot, PivotAt, PivotFrom, PivotMark, PivotPoint,
     Pivoted, Spot, Unsat,
 };
+pub use faces::FormFace;
 pub use nested::{Keep, NestedFamily, NestedInstance};
 pub use options::{MAX_OMNICLASS, OPTION_KEYS, OmniClass};
 pub use origin::PlacedOrigin;
@@ -1308,6 +1310,10 @@ pub struct Piece {
     /// element of its own in a project ([`crate::nested_elements`]). Empty for the family's own forms and what a nested
     /// instance that isn't shared absorbs.
     pub nested: Vec<crate::ids::Guid>,
+    /// GEO-2b: which face of its form each triangle is, as its place in `keys`, one per triangle; none, untagged.
+    pub faces: Vec<u32>,
+    /// The face keys `faces` index ([`FormFace`]), each once.
+    pub keys: Vec<FormFace>,
 }
 
 /// Where one form lies before any void cuts it: its box in the family's own axes (x along a
@@ -2914,12 +2920,18 @@ impl Family {
         read: &mut HashMap<&'a str, Result<Node, String>>,
         cuts: &mut csg::Meter,
     ) -> Result<Vec<Piece>, String> {
-        let (mut out, mut voids): (Vec<Piece>, HashMap<usize, Vec<[P3; 3]>>) = (Vec::new(), HashMap::new());
+        let (mut out, mut voids): (Vec<Piece>, HashMap<usize, kernel::Mesh>) = (Vec::new(), HashMap::new());
         // The form each piece is of, as its place in the list: invisible forms have no piece, so the two differ (FE-16).
         let mut of: Vec<usize> = Vec::new();
         // The solids another form is cut by, as they stand before any cutting.
         let named: BTreeSet<usize> = (0..self.forms.len()).flat_map(|i| self.cutters(i)).filter(|m| !self.forms[*m].void).collect();
-        let mut solids: HashMap<usize, Vec<[P3; 3]>> = HashMap::new();
+        let mut solids: HashMap<usize, kernel::Mesh> = HashMap::new();
+        // A cutter's faces, as the faces it makes in what it cuts (GEO-2b): its own keys, each under its GUID.
+        let cutting = |i: usize, tris: Vec<[P3; 3]>, faces: Vec<u32>, keys: &[FormFace]| {
+            let by = self.forms[i].guid;
+            let keys = keys.iter().map(|k| FormFace::Cut { by, face: Box::new(k.clone()) }).collect();
+            kernel::Mesh { tris, caps: 0, faces, keys }
+        };
         for i in 0..self.forms.len() {
             let what = format!("form {}", i + 1);
             let Some(piece) = self.solid(i, values, read).map_err(|e| format!("{what}: {e}"))? else {
@@ -2928,11 +2940,11 @@ impl Family {
             if self.forms[i].void {
                 // A void that cuts its host alone (F10d) cuts none of its forms.
                 if self.forms[i].cuts().forms() {
-                    voids.insert(i, piece.tris);
+                    voids.insert(i, cutting(i, piece.tris, piece.faces, &piece.keys));
                 }
             } else {
                 if named.contains(&i) {
-                    solids.insert(i, piece.tris.clone());
+                    solids.insert(i, cutting(i, piece.tris.clone(), piece.faces.clone(), &piece.keys));
                 }
                 of.push(i);
                 out.push(piece);
@@ -2945,17 +2957,23 @@ impl Family {
         use kernel::FormKernel;
         let k = kernel::MeshKernel;
         // Each as the kernel's solid once, the piece being cut moved in and out of one: no triangles copied a cut.
-        let solid_of = |tris: Vec<[P3; 3]>| kernel::MeshSolid { mesh: kernel::Mesh { tris, caps: 0 }, plan: None };
+        let solid_of = |mesh: kernel::Mesh| kernel::MeshSolid { mesh, plan: None };
         let voids: HashMap<usize, kernel::MeshSolid> = voids.into_iter().map(|(i, t)| (i, solid_of(t))).collect();
         let solids: HashMap<usize, kernel::MeshSolid> = solids.into_iter().map(|(i, t)| (i, solid_of(t))).collect();
         for (piece, &form) in out.iter_mut().zip(&of) {
             for by in self.cutters(form) {
                 let Some(cutter) = voids.get(&by).or_else(|| solids.get(&by)) else { continue };
-                let body = solid_of(std::mem::take(&mut piece.tris));
-                let cut = k.cut(&body, cutter, cuts).map(|s| s.mesh.tris);
-                piece.tris = body.mesh.tris;
-                let tris = cut.map_err(|e| format!("form {}: {}", by + 1, e.0))?;
-                if tris != piece.tris {
+                let body = solid_of(kernel::Mesh {
+                    tris: std::mem::take(&mut piece.tris),
+                    caps: 0,
+                    faces: std::mem::take(&mut piece.faces),
+                    keys: std::mem::take(&mut piece.keys),
+                });
+                let cut = k.cut(&body, cutter, cuts).map(|s| s.mesh);
+                (piece.tris, piece.faces, piece.keys) = (body.mesh.tris, body.mesh.faces, body.mesh.keys);
+                let made = cut.map_err(|e| format!("form {}: {}", by + 1, e.0))?;
+                if made.tris != piece.tris {
+                    let kernel::Mesh { tris, faces, keys, .. } = made;
                     let (bottom, top) = heights(&tris);
                     *piece = Piece {
                         caps: tris.len(),
@@ -2968,6 +2986,8 @@ impl Family {
                         material: std::mem::take(&mut piece.material),
                         vis: piece.vis,
                         nested: std::mem::take(&mut piece.nested),
+                        faces,
+                        keys,
                     };
                 }
             }
@@ -2999,20 +3019,34 @@ impl Family {
             mesh(&form.mesh, material)?
         } else if form.kind() != forms::FormKind::Extrusion && form.kind() != forms::FormKind::Revolve {
             let frame = self.frame(&form.host).map_err(|e| format!("its host: {e}"))?;
-            let (tris, plan) = forms::build(form, &frame, &mut num, &kernel::MeshKernel)?.unwrap_or_default();
+            let (made, plan) = forms::build(form, &frame, &mut num, &kernel::MeshKernel)?.unwrap_or_default();
+            let kernel::Mesh { tris, faces, keys, .. } = made;
             let (bottom, top) = heights(&tris);
             // Seen from above: a sweep on a level plane, the band it covers; else the hull of what it builds.
             let (outline, holes) =
                 plan.unwrap_or_else(|| (crate::geom::hull(tris.iter().flatten().map(|p| P2(p[0], p[1])).collect()), Vec::new()));
-            Piece { caps: tris.len(), tris, outline, holes, bottom, top, material, round: false, vis: None, nested: Vec::new() }
+            Piece {
+                caps: tris.len(),
+                tris,
+                outline,
+                holes,
+                bottom,
+                top,
+                material,
+                round: false,
+                vis: None,
+                nested: Vec::new(),
+                faces,
+                keys,
+            }
         } else {
-            let regions = form.loops(&mut num)?;
+            let (regions, edges) = form.loops_tagged(&mut num)?;
             use kernel::FormKernel;
             let k = kernel::MeshKernel;
             // The curves drawn, exact beside the chorded regions (GEO-1), for a kernel that reads them: read where they can
             // be, else none, so they change nothing the regions build.
             let curves = if kernel::MeshKernel::EXACT { kernel::curves(form.boundary(), &mut num).unwrap_or_default() } else { Vec::new() };
-            let loops = kernel::Loops { regions, curves };
+            let loops = kernel::Loops { regions, curves, edges };
             let regions = &loops.regions;
             let (from, to) = (num(&form.from)?, num(&form.to)?);
             if to <= from {
@@ -3028,7 +3062,7 @@ impl Family {
                     let axis = [P2(num(&p[0])?, num(&p[1])?), P2(num(&q[0])?, num(&q[1])?)];
                     let made = k.revolve(&loops, axis, &frame, from, to)?;
                     let outline = k.silhouette(&made).map(|(o, _)| o).unwrap_or_default();
-                    let tris = made.mesh.tris;
+                    let kernel::Mesh { tris, faces, keys, .. } = made.mesh;
                     let (bottom, top) = heights(&tris);
                     Piece {
                         caps: tris.len(),
@@ -3041,11 +3075,13 @@ impl Family {
                         round: false,
                         vis: None,
                         nested: Vec::new(),
+                        faces,
+                        keys,
                     }
                 }
                 None => {
                     let made = k.extrude(&loops, &frame, from, to)?;
-                    let (tris, caps) = (made.mesh.tris, made.mesh.caps);
+                    let kernel::Mesh { tris, caps, faces, keys } = made.mesh;
                     let (bottom, top) = heights(&tris);
                     // Seen from above: on a level plane, the profile where it lies (one loop); else the hull of what it sweeps.
                     let outline = match regions.as_slice() {
@@ -3069,6 +3105,8 @@ impl Family {
                         round: form.circle().is_some(),
                         vis: None,
                         nested: Vec::new(),
+                        faces,
+                        keys,
                     }
                 }
             }
@@ -3364,47 +3402,68 @@ fn rings(regions: &[crate::geom::Region]) -> impl Iterator<Item = &Vec<P2>> {
 }
 
 /// `regions`, each outline counter-clockwise and its holes clockwise in `frame`'s plane, swept along its normal from `from`
-/// to `to`: their caps, then their sides, every triangle turned out; and how many the caps take.
-pub(crate) fn sweep(regions: &[crate::geom::Region], from: f64, to: f64, frame: &Frame) -> Result<(Vec<[P3; 3]>, usize), String> {
+/// to `to`: their caps, then their sides, every triangle turned out; and how many the caps take. Each triangle is tagged
+/// (GEO-2b): the caps [`FormFace::Start`] (at `from`) and [`FormFace::End`], a side its ring edge's key in `edges` (each
+/// ring's, as [`rings`] walks them; one it lacks, [`FormFace::All`]).
+pub(crate) fn sweep(
+    regions: &[crate::geom::Region],
+    edges: &[Vec<FormFace>],
+    from: f64,
+    to: f64,
+    frame: &Frame,
+) -> Result<kernel::Mesh, String> {
     // A normal that points down the family's axis it lies most along (Center (Front/Back)'s, -y) is swept the axis' own way,
     // in the frame mirrored: the same solid, its triangles as they were when such a form named `xz`.
     let k = (1..3).fold(0, |k, i| if frame.z[i].abs() > frame.z[k].abs() { i } else { k });
-    let (frame, from, to) = if frame.z[k] < 0.0 { (Frame { z: frame.z.map(|x| -x), ..*frame }, -to, -from) } else { (*frame, from, to) };
+    let flipped = frame.z[k] < 0.0;
+    let (frame, from, to) = if flipped { (Frame { z: frame.z.map(|x| -x), ..*frame }, -to, -from) } else { (*frame, from, to) };
     let at = |p: P2, t: f64| frame.point(p, t);
     let capped = caps(regions)?;
+    let mut table = faces::Table::default();
+    // Mirrored, the cap at `to` here is the form's `from`.
+    let (top, bottom) = if flipped { (FormFace::Start, FormFace::End) } else { (FormFace::End, FormFace::Start) };
+    let (top, bottom) = (table.id(top), table.id(bottom));
     let mut tris = Vec::new();
+    let mut tags = Vec::new();
     for (points, caps) in &capped {
         let pt = |i: usize| points.get(i).copied().unwrap_or_default();
         for &[a, b, c] in caps {
             tris.push([at(pt(a), to), at(pt(b), to), at(pt(c), to)]);
             tris.push([at(pt(a), from), at(pt(c), from), at(pt(b), from)]);
+            tags.extend([top, bottom]);
         }
     }
     let count = tris.len();
-    for ring in rings(regions) {
-        for (a, b) in crate::geom::ring_edges(ring) {
+    let ids = table.edges(edges, rings(regions).map(Vec::len));
+    for (ring, ids) in rings(regions).zip(&ids) {
+        for ((a, b), id) in crate::geom::ring_edges(ring).zip(ids) {
             let (a0, b0, a1, b1) = (at(a, from), at(b, from), at(a, to), at(b, to));
             tris.push([a0, b0, b1]);
             tris.push([a0, b1, a1]);
+            tags.extend([*id, *id]);
         }
     }
     // A mirrored frame (its normal not x × y) turns its triangles the other way to face out.
     if !frame.right_handed() {
         tris.iter_mut().for_each(|t| t.swap(1, 2));
     }
-    Ok((tris, count))
+    Ok(kernel::Mesh { tris, caps: count, faces: tags, keys: table.keys })
 }
 
 /// `regions`, each outline counter-clockwise and its holes clockwise in `frame`'s plane, turned about the line through
 /// `axis` (in that plane) from `from` to `to` degrees, right-handed from the axis' first point toward its second: its
 /// triangles, every one turned out, a full turn's sides only and a part-turn's with its two ends capped; and its outline
 /// seen from above.
+///
+/// Each triangle is tagged (GEO-2b): a part-turn's end at `from` [`FormFace::Start`], at `to` [`FormFace::End`], a side its
+/// ring edge's key in `edges`, as [`sweep`]'s.
 pub(crate) fn revolve(
     regions: &[crate::geom::Region],
+    edges: &[Vec<FormFace>],
     [p0, p1]: [P2; 2],
     (from, to): (f64, f64),
     frame: &Frame,
-) -> Result<(Vec<[P3; 3]>, Vec<P2>), String> {
+) -> Result<(kernel::Mesh, Vec<P2>), String> {
     if p0.dist(p1) < 1e-6 {
         return Err("its axis starts and ends at one point: it needs a direction".into());
     }
@@ -3437,28 +3496,34 @@ pub(crate) fn revolve(
         add(add(o, mul(u, t)), mul(add(mul(n, c), mul(w, s)), r)).map(|x| (x * 1e9).round() / 1e9 + 0.0)
     };
     let mut tris = Vec::new();
-    let mut push = |t: [P3; 3]| {
+    let mut tags = Vec::new();
+    let mut table = faces::Table::default();
+    let (start, end) = (table.id(FormFace::Start), table.id(FormFace::End));
+    let ids = table.edges(edges, rings(regions).map(Vec::len));
+    let mut push = |t: [P3; 3], tag: u32| {
         // A corner on the axis stays put as it turns, which leaves a side with no area.
         if t[0] != t[1] && t[1] != t[2] && t[0] != t[2] {
             tris.push(if least < 0.0 { [t[0], t[2], t[1]] } else { t });
+            tags.push(tag);
         }
     };
     if !full {
         for (points, caps) in &capped {
             let pt = |i: usize| points.get(i).copied().unwrap_or_default();
             for &[a, b, c] in caps {
-                push([at(pt(a), steps), at(pt(b), steps), at(pt(c), steps)]);
-                push([at(pt(a), 0), at(pt(c), 0), at(pt(b), 0)]);
+                push([at(pt(a), steps), at(pt(b), steps), at(pt(c), steps)], end);
+                push([at(pt(a), 0), at(pt(c), 0), at(pt(b), 0)], start);
             }
         }
     }
-    for ring in rings(regions) {
+    for (ring, ids) in rings(regions).zip(&ids) {
         for i in 0..ring.len() {
             let (a, b) = (ring[i], ring[(i + 1) % ring.len()]);
+            let id = ids.get(i).copied().unwrap_or_default();
             for k in 0..steps {
                 let (a0, b0, a1, b1) = (at(a, k), at(b, k), at(a, k + 1), at(b, k + 1));
-                push([a0, b0, b1]);
-                push([a0, b1, a1]);
+                push([a0, b0, b1], id);
+                push([a0, b1, a1], id);
             }
         }
     }
@@ -3485,7 +3550,8 @@ pub(crate) fn revolve(
     } else {
         crate::geom::hull(tris.iter().flatten().map(|p| P2(p[0], p[1])).collect())
     };
-    Ok((tris, outline))
+    let caps = tris.len();
+    Ok((kernel::Mesh { tris, caps, faces: tags, keys: table.keys }, outline))
 }
 
 /// A form a file brought as triangles: its outline seen from above, the hull round them.
@@ -3510,6 +3576,8 @@ fn mesh(tris: &[[P3; 3]], material: String) -> Result<Piece, String> {
         round: false,
         vis: None,
         nested: Vec::new(),
+        faces: vec![0; tris.len()],
+        keys: vec![FormFace::All],
     })
 }
 

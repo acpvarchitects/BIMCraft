@@ -17,6 +17,7 @@ use crate::geom::{P2, Region};
 use crate::view3d::P3;
 
 use super::Frame;
+use super::faces::{FormFace, Table};
 use super::forms;
 use super::sketch::{FormCurve, FormLine};
 use super::{Expr, sketch};
@@ -68,26 +69,32 @@ pub fn curves<'a>(
 }
 
 /// A profile: the regions the mesh is made of (each outline counter-clockwise, its holes clockwise, arcs chorded), and the
-/// curves they were drawn with, exact.
+/// curves they were drawn with, exact; and (GEO-2b) the face each ring edge sweeps: a key per edge of each ring, in the order
+/// the regions' rings are walked (each outline, then its holes), the line it lies along ([`FormFace::Side`]). An edge or
+/// a ring it lacks (none at all, untagged) sweeps [`FormFace::All`].
 #[derive(Clone, Debug, Default)]
 pub struct Loops {
     pub regions: Vec<Region>,
     pub curves: Vec<Curve2>,
+    pub edges: Vec<Vec<FormFace>>,
 }
 
-/// A sweep's path: the chorded one the mesh follows ([`forms::Path`]), and the curves it was drawn with, exact.
+/// A sweep's path: the chorded one the mesh follows ([`forms::Path`]), and the curves it was drawn with, exact; and the
+/// GUID of the path line each chorded segment is of (GEO-2b: what a side runs `along`; none, untold).
 #[derive(Clone, Debug)]
 pub struct Path {
     pub chorded: forms::Path,
     pub curves: Vec<Curve2>,
+    pub along: Vec<Option<crate::ids::Guid>>,
 }
 
 /// A loft's recipe: a Blend's two rings on `frame` at `from` and `to`, mapped corner to corner by `twist`; or a Swept
-/// Blend's, carried along `path` on `host` from the first to the second.
+/// Blend's, carried along `path` on `host` from the first to the second. `keys` are the two rings' edges' faces (GEO-2b),
+/// as [`Loops::edges`] has them.
 #[derive(Clone, Debug)]
 pub enum Sections {
-    Blend { base: Vec<P2>, top: Vec<P2>, from: f64, to: f64, twist: i32, frame: Frame },
-    Along { first: Vec<P2>, last: Vec<P2>, twist: i32, path: Path, host: Frame },
+    Blend { base: Vec<P2>, top: Vec<P2>, keys: [Vec<FormFace>; 2], from: f64, to: f64, twist: i32, frame: Frame },
+    Along { first: Vec<P2>, last: Vec<P2>, keys: [Vec<FormFace>; 2], twist: i32, path: Path, host: Frame },
 }
 
 /// Why a kernel couldn't build what it was asked: said as the form's errors are.
@@ -106,11 +113,14 @@ impl From<KernelError> for String {
     }
 }
 
-/// A solid's triangles, every one turned out, the first `caps` of them its caps (where it was built so).
+/// A solid's triangles, every one turned out, the first `caps` of them its caps (where it was built so); and (GEO-2b) the
+/// face of its form each is, as its place in `keys`, one per triangle (none: untagged).
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Mesh {
     pub tris: Vec<[P3; 3]>,
     pub caps: usize,
+    pub faces: Vec<u32>,
+    pub keys: Vec<FormFace>,
 }
 
 /// An edge of a solid: a line, or (for a kernel that keeps them) an arc or a circle, in the family's axes.
@@ -179,32 +189,46 @@ impl FormKernel for MeshKernel {
     const EXACT: bool = false;
 
     fn extrude(&self, profile: &Loops, frame: &Frame, from: f64, to: f64) -> Result<MeshSolid, KernelError> {
-        let (tris, caps) = super::sweep(&profile.regions, from, to, frame)?;
-        Ok(MeshSolid { mesh: Mesh { tris, caps }, plan: None })
+        let mesh = super::sweep(&profile.regions, &profile.edges, from, to, frame)?;
+        Ok(MeshSolid { mesh, plan: None })
     }
 
     fn revolve(&self, profile: &Loops, axis: [P2; 2], frame: &Frame, start: f64, end: f64) -> Result<MeshSolid, KernelError> {
-        let (tris, outline) = super::revolve(&profile.regions, axis, (start, end), frame)?;
-        let caps = tris.len();
-        Ok(MeshSolid { mesh: Mesh { tris, caps }, plan: Some((outline, Vec::new())) })
+        let (mesh, outline) = super::revolve(&profile.regions, &profile.edges, axis, (start, end), frame)?;
+        Ok(MeshSolid { mesh, plan: Some((outline, Vec::new())) })
     }
 
     fn sweep(&self, profile: &Loops, path: &Path, host: &Frame) -> Result<MeshSolid, KernelError> {
-        let (tris, plan) = forms::sweep(&profile.regions, &path.chorded, host)?;
-        Ok(MeshSolid { mesh: Mesh { caps: tris.len(), tris }, plan })
+        let (mesh, plan) = forms::sweep(profile, path, host)?;
+        Ok(MeshSolid { mesh, plan })
     }
 
     fn loft(&self, sections: &Sections) -> Result<MeshSolid, KernelError> {
-        let (tris, plan) = match sections {
-            Sections::Blend { base, top, from, to, twist, frame } => (forms::blend(base, top, (*from, *to), *twist, frame)?, None),
-            Sections::Along { first, last, twist, path, host } => forms::swept_blend(first, last, *twist, &path.chorded, host)?,
+        let (mesh, plan) = match sections {
+            Sections::Blend { base, top, keys, from, to, twist, frame } => {
+                (forms::blend([base.as_slice(), top.as_slice()], keys, (*from, *to), *twist, frame)?, None)
+            }
+            Sections::Along { first, last, keys, twist, path, host } => {
+                forms::swept_blend([first.as_slice(), last.as_slice()], keys, *twist, path, host)?
+            }
         };
-        Ok(MeshSolid { mesh: Mesh { caps: tris.len(), tris }, plan })
+        Ok(MeshSolid { mesh, plan })
     }
 
     fn cut(&self, body: &MeshSolid, tool: &MeshSolid, budget: &mut Budget) -> Result<MeshSolid, KernelError> {
-        let tris = csg::subtract(&body.mesh.tris, &tool.mesh.tris, budget)?;
-        Ok(MeshSolid { mesh: Mesh { caps: tris.len(), tris }, plan: body.plan.clone() })
+        let (a, b) = (&body.mesh, &tool.mesh);
+        // Tagged where both are (GEO-2b): the tool's keys joined to the body's, its triangles' tags moved to theirs.
+        let tagged = a.faces.len() == a.tris.len() && b.faces.len() == b.tris.len();
+        let mut table = Table::of(a.keys.clone());
+        let moved: Vec<u32> = if tagged {
+            let ids: Vec<u32> = b.keys.iter().map(|k| table.id(k.clone())).collect();
+            b.faces.iter().map(|f| ids.get(*f as usize).copied().unwrap_or_default()).collect()
+        } else {
+            Vec::new()
+        };
+        let (tris, faces) = csg::subtract_tagged(&a.tris, &a.faces, &b.tris, &moved, budget)?;
+        let (faces, keys) = if tagged { (faces, table.keys) } else { (Vec::new(), Vec::new()) };
+        Ok(MeshSolid { mesh: Mesh { caps: tris.len(), tris, faces, keys }, plan: body.plan.clone() })
     }
 
     fn fuse(&self, _: &MeshSolid, _: &MeshSolid, _: &mut Budget) -> Result<MeshSolid, KernelError> {
@@ -259,7 +283,7 @@ mod tests {
 
     fn square() -> Loops {
         let outer = vec![P2(0.0, 0.0), P2(100.0, 0.0), P2(100.0, 100.0), P2(0.0, 100.0)];
-        Loops { regions: vec![Region { outer, holes: Vec::new() }], curves: Vec::new() }
+        Loops { regions: vec![Region { outer, holes: Vec::new() }], ..Loops::default() }
     }
 
     #[test]
@@ -276,7 +300,7 @@ mod tests {
         // A box less a smaller one through it: a hole, so more faces.
         let small = Loops {
             regions: vec![Region { outer: vec![P2(25.0, 25.0), P2(75.0, 25.0), P2(75.0, 75.0), P2(25.0, 75.0)], holes: Vec::new() }],
-            curves: Vec::new(),
+            ..Loops::default()
         };
         let tool = k.extrude(&small, &Frame::LEVEL, -10.0, 60.0).unwrap();
         let cut = k.cut(&b, &tool, &mut budget).unwrap();
