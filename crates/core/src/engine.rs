@@ -632,6 +632,23 @@ impl Session {
                         self.model_mut().sync_library();
                     }
                 }
+                // Paint on a face a family's form no longer builds goes with the edit that took the face away, in its step
+                // (FE-16c-1): a file never holds a key that names nothing.
+                if cmd.undoable && !self.model.families.same_allocation(&before.families) {
+                    let painted: Vec<String> = self
+                        .model
+                        .families
+                        .iter()
+                        .filter(|(n, f)| f.painted() && before.families.get(*n) != Some(*f))
+                        .map(|(n, _)| n.clone())
+                        .collect();
+                    for name in painted {
+                        let mut f = self.model.families.get(&name).cloned().unwrap_or_default();
+                        if !f.drop_dead_paint().is_empty() {
+                            self.model_mut().families.insert(name, f);
+                        }
+                    }
+                }
                 // Each component's shared nested instances as the elements they are now (T6b).
                 if let Some(c) = self.model.nested_changes() {
                     self.model_mut().apply_nested(c);

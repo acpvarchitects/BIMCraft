@@ -1481,6 +1481,44 @@ result untagged. A void that drills a hole in the profile (GEO-2e, `Family::dril
 the void's own ring edges, by `Form::loops_tagged`, carried into the body's plane, so drilling or cutting gives the same keys. Placed, mirrored or
 nested pieces keep their tags (their triangles map one to one). Tests: `family_face_tests.rs`.
 
+## Painted faces of a form (FE-16c-1)
+
+A form's faces may be painted, each by its GEO-2b key: `Form::paint`, a list of `{face, material}` (`FormPaint`, unknown keys
+refused), written only where a form has some. `face` is a `FormFace` (`"start"`, `"end"`, `"all"`, `{"side": L}`, `{"side": L,
+"along": P}`, `{"top_side": T}`, `{"edge": i}`, `{"cut": G, "face": …}`) and `material` a material of the library or a material
+parameter of the family, the same rule as the form's own `material` (a type's value of the parameter is what a build paints).
+`Family::check` refuses a face painted twice, an empty or unknown material, more than `MAX_PAINT` faces, and paint on a void.
+The materials go wherever a form's material goes: `Family::materials` (so a favorite family, Insert from File and
+`adopt_materials` bring them), `material_refs_mut` (a file holds the material's GUID), `rename_material` and
+`rename_parameter`, and a material painted on a face is in use.
+
+A build never splits a piece, which would open the closed solids sections and plans cut: `Piece::paint` holds one material
+per entry of `Piece::keys` (an empty name, unpainted; an empty list, nothing painted), set at the end of `Family::build` after
+`faces::prune` (`Family::paint_of`), and kept in step with the keys wherever they go: placed, mirrored, nested (a nested
+instance's pieces keep their own family's paint), a cut's `{"cut": G, …}` faces and a drilled hole's alike. Paint is surface
+only: the 3D view's `Solid::Mesh` takes a colour and a texture per triangle (`skins`, from `view3d::piece_skins`), so the
+processor's picture, the card's mesh and glTF show it, and a project's paint of a whole component lies over it. Plans,
+sections (their cut patterns and edges), IFC and schedules keep the form's material. No view draws a family form's surface
+pattern face by face in projection yet (a plan draws one for a floor's, a ceiling's or a toposolid's top only), so the
+painted material's surface pattern in an elevation waits for FE-16c-2.
+
+Which faces a form has is worked out from what it builds (`Family::faces_built`): the keys of its piece under any of the
+family's types, every form shown (a form its `visible` hides keeps its paint); where no type builds, nothing is said and
+nothing dropped. Paint on a face the form no longer builds is dropped, never kept: the engine drops it after any command that
+changed a painted family (`Family::drop_dead_paint`), in that command's step, so deleting a sketch line or a void takes the paint
+of its faces with it and one undo brings both back; `Model::read` leaves it out of a file and lists it in `left_out`
+(`/families/Box/forms/0/paint/1`). A file never holds a key that names nothing. FORMAT stays 21 (`Model::migrate` notes it): a
+build of 21 from before paint leaves the field out and opens the family unpainted.
+
+`family {name, paint: {form, face, material}}` paints one face (the form by id or GUID; refused unless the form builds that
+face, naming the faces it has), `material: null` takes that face's paint off and `face: null` with it all the form's; a form
+patch's `paint` gives the list whole. `Model::component_face` names the face of a component under a point on its surface (its
+nearest triangle facing that way), what a click in a 3D view finds. The family document has Paint (PT) and Remove Paint on
+its Geometry panel, beside Cut and Join (`editor/paint.rs`): {3D} opens, the Options Bar picks the material, and a click on a form's face paints
+it (`FamilyScene::guids` gives the staged part's GUIDs back as the family's), one step of the document's history. Project-side
+paint of a component's single faces is FE-16c-2; picking and snapping on faces is GEO-2b-2. Tests: `family_paint_tests.rs`,
+`tests/family_paint.rs`.
+
 ## Family options
 
 A family's options are those of Revit's Family Category and Parameters dialog (`family/options.rs`), each a flat field of
@@ -2192,6 +2230,7 @@ planes, components hosted on them or on faces (Place on Face), and where a compo
 - `family/fineness.rs`: how near a build chords its curves, `Fineness`, which a plan sets from its scale (GEO-2c).
 - `family/forms.rs`: Blend, Sweep and Swept Blend: their kinds, paths, vertex mapping and triangles.
 - `family/faces.rs`: face tags (GEO-2b): `FormFace`, the key table a piece's triangles index, and the lines ring edges lie along.
+- `family/paint.rs`: painted faces of a form (FE-16c-1): what a build paints, which faces a form builds, dead paint dropped, the `paint` edit, and the face under a point.
 - `family/kernel.rs`: what the forms are built through (GEO-1: the design note `docs/brep-plan.md`, #74): the `FormKernel`
   trait (extrude, revolve, sweep, loft, cut and fuse spending a `Budget`, bounds, silhouette, tessellate, edges, faces) over BIMCraft's own types (`Loops` and
   `Path`, which keep the arcs and circles drawn exact beside the chorded regions; `Sections`, a blend's and a swept blend's
@@ -2233,4 +2272,5 @@ In `crates/ui-egui`, the Family Editor:
   Ctrl+V, Paste Aligned (FE-14).
 - `editor/selection.rs`: the selection's commands (FE-20): Filter, Select Previous, Select by ID, IDs of Selection, Select All
   Instances, Select Elements by Face and Drag Elements on Selection.
+- `editor/paint.rs`: Paint (PT) and Remove Paint on a form's faces in {3D} (FE-16c-1; tests `tests/family_paint.rs`).
 - `editor/cutting.rs`: Cut Geometry (CU), Uncut Geometry, Join Geometry (JO), Unjoin Geometry and Switch Join Order in a family document (FE-16b; tests `tests/family_cut_join.rs`): two picks, the form cut or joined, then the one that cuts it (a form clicked in a view, a void by its row in the forms list), each pair one step of the history. `editor/pin.rs`: Pin and Unpin, and what a pin refuses (FE-17). `editor/measure.rs`: Measure and Create Similar (FE-17).

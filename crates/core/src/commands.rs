@@ -1928,6 +1928,11 @@ other_files(
          and `end` at its end, one loop each), twist?: n (a Blend's top or a Swept Blend's end profile paired from its vertex n \
          on: Edit Vertices' Twist)}], symbols?: [{line?: [[x, y], …] | arc?: {centre: [x, y], radius, from?, to} | text?: {at: [x, y], height, value, align?: left|center|right} | dot?: {centre: [x, y], radius}, visible?, visibility?: {coarse?, medium?, fine?}}], form?: {id | guid, …a \
          form's fields}, symbol?: {id | guid, …a symbol's fields}, delete_form?: [id | guid, …], delete_symbol?: [id | guid, …], \
+         paint?: {form: id | guid, face: key | null, material: name | null} (FE-16c-1: the face of the form whose key is `face` \
+         (\"start\", \"end\", \"all\", {\"side\": line GUID}, {\"side\": L, \"along\": path line}, {\"top_side\": T}, {\"edge\": i}, \
+         {\"cut\": cutter GUID, \"face\": its key}) painted a material of the library or a material parameter, over the form's \
+         own, in the 3D view and glTF only; `material`: null takes that face's paint off, and `face`: null with it all the \
+         form's; a form patch's `paint` gives the list whole; paint on a face the form no longer builds goes with the edit), \
          ref_planes?: [{guid?, name?, start: [x, y, z], end: [x, y, z], up: [x, y, z], reference?: not_a_reference|strong|weak|\
          left|center_left_right|right|front|center_front_back|back|bottom|center_elevation|top, defines_origin?, subcategory?}], \
          ref_plane?: {id | guid, …a plane's fields}, delete_ref_plane?: [id | guid, …], ref_lines?: [{guid?, start: [x, y, z], \
@@ -16690,6 +16695,7 @@ fn family(s: &mut Session, p: &Value) -> R {
         "nested_instance",
         "delete_nested",
         "delete_nested_instance",
+        "paint",
     ];
     // Its dimensions solved for a type, which changes nothing: where its planes go, and each dimension's lengths.
     if let Some(type_name) = string(c, &p, "solve")? {
@@ -16980,6 +16986,10 @@ fn family(s: &mut Session, p: &Value) -> R {
     // Hosts named by id are given by GUID; which plane defines the origin in each direction settled.
     f.resolve_hosts();
     f.settle_planes();
+    // FE-16c-1: a face of a form painted, its paint there taken off, or all of it.
+    if let Some(v) = p.get("paint") {
+        patches.forms_patched.push(paint_form(c, &name, &mut f, v)?);
+    }
     // A dimension that measures to what the family hasn't: refused, unless the caller says to delete it (T14's Delete
     // Dimension(s)); a reload can't leave one behind unasked.
     let dangling = f.dangling_dimensions();
@@ -17254,6 +17264,41 @@ where
     let mut gone = parts.remove(at);
     let (id, _) = gone.ident();
     Ok(*id)
+}
+
+/// The `family` command's `paint`: `{form, face, material}`, a form by its id or GUID, a face key (`null` with `material`
+/// `null`: all of the form's paint) and a material (`null`: the face's paint taken off). Gives the form's id.
+fn paint_form(c: &str, family: &str, f: &mut crate::family::Family, v: &Value) -> Result<Id, String> {
+    let Value::Object(map) = v else {
+        return Err(bad(c, format!("`paint` is {{form: id | guid, face: a face's key | null, material: name | null}}, not {}", short(v))));
+    };
+    if let Some(k) = map.keys().find(|k| !["form", "face", "material"].contains(&k.as_str())) {
+        return Err(bad(c, format!("`paint` has no `{k}`: it takes `form`, `face` and `material`")));
+    }
+    let form = map.get("form").filter(|v| !v.is_null()).ok_or_else(|| bad(c, "`paint` needs its `form`, by id or GUID"))?;
+    let at = part_at(c, &mut f.forms, form, "form", family)?;
+    let face = match map.get("face") {
+        None => return Err(bad(c, "`face` is required: the face's key (\"end\", {\"side\": line}, …), or null with `material`: null")),
+        Some(Value::Null) => None,
+        Some(k) => Some(serde_json::from_value::<crate::family::FormFace>(k.clone()).map_err(|e| bad(c, format!("`face`: {e}")))?),
+    };
+    let material = match map.get("material") {
+        None => return Err(bad(c, "`material` is required: the material to paint, or null to take the paint off")),
+        Some(Value::Null) => None,
+        Some(Value::String(m)) => Some(m.trim().to_string()),
+        Some(m) => return Err(bad(c, format!("`material` is a material's name or null, not {}", short(m)))),
+    };
+    if face.is_none() && material.is_some() {
+        return Err(bad(c, "`face` is required: the face to paint, or null with `material`: null to take all its paint off"));
+    }
+    f.paint_face(at, face, material).map_err(|e| bad(c, e))?;
+    Ok(f.forms[at].id)
+}
+
+/// `v` as a message says it, cut short.
+fn short(v: &Value) -> String {
+    let said = shown(v);
+    if said.chars().count() > 60 { said.chars().take(60).collect::<String>() + "…" } else { said }
 }
 
 /// The place in `parts` of the one `key` names, by its id or its GUID.

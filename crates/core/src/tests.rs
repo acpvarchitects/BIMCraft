@@ -2765,6 +2765,13 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"name": "F", "types": {"A": {}}, "symbols": [{"line": [[0, 0], [1e300, 0]], "visibility": {"plan": false, "only_when_cut": true}}, {"dot": {"centre": [0, 0], "radius": 1}, "visibility": "coarse"}]}),
         json!({"name": "F", "types": {"A": {}}, "symbols": [{"arc": {"centre": [0, 0], "radius": 1e300, "from": 0, "to": 90}, "visibility": {"coarse": true, "medium": false, "fine": false}}]}),
         json!({"name": "Generic", "form": {"id": 1, "visibility": {"plan": null, "fine": [], "x": 1}}}),
+        // FE-16c-1: a form's faces painted.
+        json!({"name": "Generic", "paint": {"form": 1, "face": {"side": "x"}, "material": 5}}),
+        json!({"name": "Generic", "paint": {"form": 1, "face": {"cut": "9e3c0a10-1f0b-4d8c-8a5e-0000000000a3", "face": {"cut": 1e300, "face": []}}, "material": null}}),
+        json!({"name": "Generic", "paint": {"form": 1, "face": null, "material": null, "x": 1}}),
+        json!({"name": "Generic", "paint": {"form": 1, "face": "end", "material": "Concrete"}}),
+        json!({"name": "Generic", "paint": [], "form": {"id": 1, "paint": [{"face": "end", "material": "Concrete"}, {"face": "end", "material": "Nope"}]}}),
+        json!({"name": "F", "types": {"A": {}}, "forms": [{"profile": [[0, 0], [1, 0], [0, 1]], "to": 1, "void": true, "paint": [{"face": {"edge": 1e300}, "material": ""}]}]}),
         json!({"name": "Generic", "symbol": {"id": 1, "visibility": {"coarse": "yes"}}, "nested_instance": {"family": "Nope", "type": "A", "visibility": {"plan": 1e300}}}),
         json!({"view": "{3D}", "detail": "ultra"}),
         json!({"view": "{3D}", "detail": ["coarse"]}),
