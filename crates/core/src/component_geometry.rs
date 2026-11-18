@@ -1,4 +1,6 @@
 //! Per-operation reuse of family geometry, bound to an immutable model snapshot.
+mod index;
+
 use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex};
 
@@ -141,7 +143,7 @@ pub(crate) fn plain_envelopes<'a>(
     Some(plain)
 }
 
-fn local_envelope(m: &Model, c: &Component) -> Option<[[f64; 3]; 2]> {
+pub(crate) fn local_envelope(m: &Model, c: &Component) -> Option<[[f64; 3]; 2]> {
     let family = m.families.get(&c.family)?;
     let values = family.values(&c.type_name, &c.params).ok()?;
     family.conservative_bounds(&values)
@@ -190,6 +192,16 @@ struct Seen {
     key: Arc<Key>,
     inside: Option<bool>,
     shown: Option<Arc<Built>>,
+    /// Its envelope placed, once found (none inside: not known); from the index, where it was a candidate of it.
+    placed: Option<Option<[[f64; 3]; 2]>>,
+    /// Its model lines in its family's axes, once found.
+    lines: Option<Arc<Vec<index::Line>>>,
+}
+
+impl Seen {
+    fn new(key: Arc<Key>) -> Self {
+        Seen { key, inside: None, shown: None, placed: None, lines: None }
+    }
 }
 
 pub(crate) struct Components<'a> {
@@ -215,6 +227,8 @@ pub(crate) struct Components<'a> {
     envelopes: HashMap<Arc<Key>, Option<[[f64; 3]; 2]>>,
     /// Each piece's corners, each once, by geometry: what a tilted copy's heights and outline in plan are found from.
     corners: BTreeMap<Key, Vec<Vec<[f64; 3]>>>,
+    /// Each key's model lines in its family's axes (ec's review of #88: found once a key, not once a question).
+    lines: HashMap<Arc<Key>, Arc<Vec<index::Line>>>,
 }
 
 /// GEO-2g: the part of the plan `view` builds and draws components in: its screen and one more screen each way, however it is
@@ -247,6 +261,7 @@ impl<'a> Components<'a> {
             extremes: BTreeMap::new(),
             envelopes: HashMap::new(),
             corners: BTreeMap::new(),
+            lines: HashMap::new(),
         }
     }
 
@@ -278,11 +293,34 @@ impl<'a> Components<'a> {
     /// What it found of `c`, a component of the model's: its key made once.
     fn seen(&mut self, c: &'a Component) -> &mut Seen {
         let model = self.model;
-        self.seen.entry(std::ptr::from_ref(c) as usize).or_insert_with(|| Seen {
-            key: Arc::new(model.shape_key(c)),
-            inside: None,
-            shown: None,
+        self.seen.entry(std::ptr::from_ref(c) as usize).or_insert_with(|| {
+            #[cfg(test)]
+            KEYS.with(|k| k.set(k.get() + 1));
+            Seen::new(Arc::new(model.shape_key(c)))
         })
+    }
+
+    /// GEO-2g-2: the model's components that may show in a floor plan of `level` whose cut plane and view depth are `range`,
+    /// by id, from the model's index ([`index::Index`]): those near its window, and what is found of each kept for the
+    /// drawing, so none of them has its key made again. Every component where the index can't be had.
+    pub(crate) fn candidates(&mut self, level: crate::ids::Guid, range: (f64, f64)) -> std::collections::BTreeSet<Id> {
+        let model = self.model;
+        #[cfg(test)]
+        let model_index = if UNINDEXED.with(std::cell::Cell::get) { None } else { index_of(model) };
+        #[cfg(not(test))]
+        let model_index = index_of(model);
+        let Some(index) = model_index else {
+            return model.elements.iter().filter(|(_, e)| matches!(e, crate::model::Element::Component(_))).map(|(id, _)| *id).collect();
+        };
+        let found = index.query(index::Query { window: self.window, range: Some(range), level });
+        for &id in &found {
+            let (Some(crate::model::Element::Component(c)), Some(e)) = (model.elements.get(id), index.get(id)) else { continue };
+            let seen = self.seen.entry(std::ptr::from_ref(c) as usize).or_insert_with(|| Seen::new(Arc::clone(&e.key)));
+            seen.placed.get_or_insert(e.forms);
+            seen.lines.get_or_insert_with(|| Arc::clone(&e.local.lines));
+            self.envelopes.entry(Arc::clone(&e.key)).or_insert(e.local.envelope);
+        }
+        found
     }
 
     /// Its build at `fineness` where one is at hand, here or kept from an earlier drawing: none built.
@@ -382,6 +420,15 @@ impl<'a> Components<'a> {
     /// Its supported local form envelope ([`crate::family::Family::conservative_bounds`]), placed: none where it isn't
     /// known. Found once for a key, and kept across drawings with its builds.
     fn placed_envelope(&mut self, c: &'a Component) -> Option<[[f64; 3]; 2]> {
+        if let Some(placed) = self.seen(c).placed {
+            return placed;
+        }
+        let placed = self.find_placed_envelope(c);
+        self.seen(c).placed = Some(placed);
+        placed
+    }
+
+    fn find_placed_envelope(&mut self, c: &'a Component) -> Option<[[f64; 3]; 2]> {
         let key = Arc::clone(&self.seen(c).key);
         let local = match self.envelopes.get(&key) {
             Some(local) => *local,
@@ -406,17 +453,14 @@ impl<'a> Components<'a> {
         }
     }
 
-    /// GEO-2g: whether `c` meets the plan's window: by its default build's box where that is at hand; else not where its
-    /// envelope is known to miss the window; else by the box of its default build, built. A component of no geometry
-    /// meets it (there is nothing of it to build, and its lines and symbols are drawn as they always were).
+    /// GEO-2g: whether `c`'s forms meet the plan's window: by its default build's box where that is at hand; else not where
+    /// its envelope is known to miss the window; else by the box of its default build, built. A component of no geometry
+    /// meets it (there is nothing of it to build). Its model lines are asked apart ([`Components::lines_in_window`], ec's
+    /// review of #88): one whose lines alone reach the window draws them, and isn't built for them.
     pub(crate) fn in_window(&mut self, c: &'a Component) -> bool {
         let Some(window) = self.window else { return true };
         if let Some(inside) = self.seen(c).inside {
             return inside;
-        }
-        if self.lines_meet(c, window) {
-            self.seen(c).inside = Some(true);
-            return true;
         }
         let key = Arc::clone(&self.seen(c).key);
         let built = match self.known(&key, Fineness::DEFAULT) {
@@ -431,32 +475,42 @@ impl<'a> Components<'a> {
         inside
     }
 
-    /// [`Components::in_window`] where that is known without building `c`; else, that it may.
-    pub(crate) fn near_window(&mut self, c: &'a Component) -> bool {
+    /// Whether any of `c`'s model lines (FE-15), at any detail, meets the plan's window: a model line may reach far past its
+    /// family's solids, and a plan draws it wherever it reaches. False for a family of none; true for every component of a
+    /// plan with no window. Found without building.
+    pub(crate) fn lines_in_window(&mut self, c: &'a Component) -> bool {
         let Some(window) = self.window else { return true };
-        if let Some(inside) = self.seen(c).inside {
-            return inside;
-        }
-        if self.lines_meet(c, window) {
-            return true;
-        }
-        let key = Arc::clone(&self.seen(c).key);
-        match self.known(&key, Fineness::DEFAULT) {
-            Some(_) => self.in_window(c),
-            None => self.placed_envelope(c).is_none_or(|[lo, hi]| meets([P2(lo[0], lo[1]), P2(hi[0], hi[1])], window)),
-        }
+        self.placed_lines(c).iter().any(|[a, b]| meets([P2(a[0].min(b[0]), a[1].min(b[1])), P2(a[0].max(b[0]), a[1].max(b[1]))], window))
     }
 
-    /// ec's review of #88: whether any of `c`'s model lines (FE-15), at any detail, meets `window`: a model line may reach far
-    /// past its family's solids, and a plan draws it wherever it reaches. False for a family of none, found without building.
-    fn lines_meet(&self, c: &Component, window: [P2; 2]) -> bool {
+    /// Whether `c` has a model line in the plan's window that may reach from a floor plan's view depth `depth` to its cut
+    /// plane `cut` (each a hair past): one it may draw.
+    pub(crate) fn lines_reach(&mut self, c: &'a Component, cut: f64, depth: f64) -> bool {
+        let window = self.window;
+        self.placed_lines(c).iter().any(|[a, b]| {
+            let inside = window.is_none_or(|w| meets(w, [P2(a[0].min(b[0]), a[1].min(b[1])), P2(a[0].max(b[0]), a[1].max(b[1]))]));
+            inside && a[2].min(b[2]) <= cut + crate::model::TOL && a[2].max(b[2]) >= depth - crate::model::TOL
+        })
+    }
+
+    /// `c`'s model lines placed, as [`Model::component_model_line_parts`] places them: their ends in its family's axes found
+    /// once a key (ec's review of #88), placed here.
+    fn placed_lines(&mut self, c: &'a Component) -> Vec<index::Line> {
         if self.model.families.get(&c.family).is_none_or(|f| f.model_lines.is_empty()) {
-            return false;
+            return Vec::new();
         }
-        self.model
-            .component_model_line_parts(c)
-            .iter()
-            .any(|([a, b], ..)| meets([P2(a[0].min(b[0]), a[1].min(b[1])), P2(a[0].max(b[0]), a[1].max(b[1]))], window))
+        let local = match &self.seen(c).lines {
+            Some(l) => Arc::clone(l),
+            None => {
+                let key = Arc::clone(&self.seen(c).key);
+                let model = self.model;
+                let l = Arc::clone(self.lines.entry(key).or_insert_with(|| Arc::new(index::local_lines(model, c))));
+                self.seen(c).lines = Some(Arc::clone(&l));
+                l
+            }
+        };
+        let placed = self.model.component_placement(c);
+        local.iter().map(|[a, b]| [placed.place(*a), placed.place(*b)]).collect()
     }
 
     /// GEO-2g: whether `c` may reach from a floor plan's view depth `depth` (exclusive) to under its cut plane `cut`: false
@@ -468,19 +522,6 @@ impl<'a> Components<'a> {
             return true;
         }
         self.placed_envelope(c).is_none_or(|[lo, hi]| !(lo[2] >= cut || hi[2] <= depth))
-    }
-
-    /// Its geometry's heights over its base, lowest and highest, where they are known without building it: its default
-    /// build's, or else its envelope's. None where neither is.
-    pub(crate) fn known_local_heights(&mut self, c: &'a Component) -> Option<(f64, f64)> {
-        let key = Arc::clone(&self.seen(c).key);
-        if let Some(built) = self.known(&key, Fineness::DEFAULT) {
-            return Some(built.heights);
-        }
-        if !self.envelopes.contains_key(&key) {
-            self.placed_envelope(c);
-        }
-        self.envelopes.get(&key).copied().flatten().map(|[lo, hi]| (lo[2], hi[2]))
     }
 
     /// GEO-2g: builds at once, on several threads ([`in_parallel`]), what a plan of `cs` will ask of them: the default build
@@ -714,6 +755,52 @@ impl<'a> Components<'a> {
     pub(crate) fn solids(&mut self, c: &Component) -> Vec<Piece> {
         let placed = self.model.component_placement(c);
         self.default_any(c).pieces.iter().map(|pc| placed.solid(pc)).collect()
+    }
+
+    /// What a plan draws of its pieces where it is placed: upright, each piece's outline, holes, heights and what says how it
+    /// is drawn, as [`Components::pieces`] places them, but none of its triangles, which a plan doesn't draw (GEO-2g-2);
+    /// tilted, its pieces, whose outlines are found from their triangles.
+    pub(crate) fn plan_pieces(&mut self, c: &'a Component) -> Vec<Piece> {
+        let placed = self.model.component_placement(c);
+        if !placed.upright {
+            return self.pieces(c);
+        }
+        let flat = |q: &P2| {
+            let p = placed.place([q.0, q.1, 0.0]);
+            P2(p[0], p[1])
+        };
+        let base = placed.origin[2];
+        let pieces: Vec<Piece> = self
+            .shown(c)
+            .pieces
+            .iter()
+            .map(|pc| Piece {
+                tris: Vec::new(),
+                caps: pc.caps,
+                outline: pc.outline.iter().map(flat).collect(),
+                holes: pc.holes.iter().map(|h| h.iter().map(flat).collect()).collect(),
+                bottom: base + pc.bottom,
+                top: base + pc.top,
+                material: pc.material.clone(),
+                round: pc.round,
+                vis: pc.vis,
+                nested: pc.nested.clone(),
+                faces: Vec::new(),
+                keys: Vec::new(),
+                paint: Vec::new(),
+            })
+            .collect();
+        #[cfg(test)]
+        for (a, b) in pieces.iter().zip(self.pieces(c)) {
+            assert!(
+                a.outline == b.outline
+                    && a.holes == b.holes
+                    && (a.bottom, a.top) == (b.bottom, b.top)
+                    && a.vis == b.vis
+                    && a.nested == b.nested
+            );
+        }
+        pieces
     }
 
     pub(crate) fn pieces(&mut self, c: &'a Component) -> Vec<Piece> {
@@ -1066,24 +1153,60 @@ mod tests {
 struct Kept {
     families: crate::shared::Identity<BTreeMap<String, crate::family::Family>>,
     shapes: HashMap<(Arc<Key>, Fineness), Shape>,
+    /// The finenesses of each key's finer builds kept: what a default build gone may have shared.
+    finer: HashMap<Arc<Key>, Vec<Fineness>>,
     envelopes: HashMap<Arc<Key>, Option<[[f64; 3]; 2]>>,
+    /// GEO-2g-2: what a plan reads of each component of a model of these families before building any, and where each
+    /// stands ([`index::Index`]): taken out while it is brought up to a model, put back after.
+    index: Option<Arc<index::Index>>,
     used: u64,
 }
 
 impl Kept {
-    /// ec's review of #88: `key`'s default build `gone` no longer kept, its finer builds that shared it charged what they take,
-    /// since they now keep it alive on their own. The bytes that adds.
-    fn unshare(&mut self, key: &Arc<Key>, gone: &Arc<Built>) -> usize {
+    fn new(families: crate::shared::Identity<BTreeMap<String, crate::family::Family>>, used: u64) -> Self {
+        Kept { families, shapes: HashMap::new(), finer: HashMap::new(), envelopes: HashMap::new(), index: None, used }
+    }
+
+    /// ec's review of #88: the default builds `gone` no longer kept, the finer builds of their keys that shared them charged
+    /// what they take, since they now keep them alive on their own. Once an eviction pass, each key's finer builds looked up
+    /// by key, not found among all the generation's. The bytes that adds.
+    fn unshare(&mut self, gone: &[Gone]) -> usize {
+        count_unshare(0);
         let mut added = 0;
-        for ((k, fineness), shape) in self.shapes.iter_mut() {
-            if *fineness != Fineness::DEFAULT && k == key && Arc::ptr_eq(&shape.built, gone) {
-                let full = estimate(&shape.built.pieces);
-                added += full.saturating_sub(shape.bytes);
-                shape.bytes = shape.bytes.max(full);
+        for (key, built) in gone {
+            for fineness in self.finer.get(key).into_iter().flatten() {
+                count_unshare(1);
+                let Some(shape) = self.shapes.get_mut(&(Arc::clone(key), *fineness)) else { continue };
+                if Arc::ptr_eq(&shape.built, built) {
+                    let full = estimate(&shape.built.pieces);
+                    added += full.saturating_sub(shape.bytes);
+                    shape.bytes = shape.bytes.max(full);
+                }
             }
         }
         added
     }
+
+    /// `key`'s finer build at `fineness` gone.
+    fn forget_finer(&mut self, key: &Arc<Key>, fineness: Fineness) {
+        if let Some(list) = self.finer.get_mut(key) {
+            list.retain(|f| *f != fineness);
+            if list.is_empty() {
+                self.finer.remove(key);
+            }
+        }
+    }
+}
+
+/// An unsharing pass (`looked` 0) or a finer build looked at in one, counted on this thread.
+fn count_unshare(looked: usize) {
+    #[cfg(test)]
+    UNSHARES.with(|u| {
+        let (passes, looks) = u.get();
+        u.set(if looked == 0 { (passes + 1, looks) } else { (passes, looks + looked) })
+    });
+    #[cfg(not(test))]
+    let _ = looked;
 }
 
 /// A shape kept: its build, about how many bytes it takes, and when it was last used.
@@ -1092,6 +1215,9 @@ struct Shape {
     bytes: usize,
     used: u64,
 }
+
+/// A default build gone from the store, with its key.
+type Gone = (Arc<Key>, Arc<Built>);
 
 /// A build to keep: its key and fineness, and itself.
 type Keeping = ((Arc<Key>, Fineness), Arc<Built>);
@@ -1165,7 +1291,7 @@ impl Store {
                 self.bytes[tier(fineness)] -= shape.bytes;
             }
         }
-        self.generations.push(Kept { families: model.families.identity(), shapes: HashMap::new(), envelopes: HashMap::new(), used: now });
+        self.generations.push(Kept::new(model.families.identity(), now));
         self.generations.len() - 1
     }
 
@@ -1183,6 +1309,8 @@ impl Store {
                 .flat_map(|(i, g)| g.shapes.iter().filter(|(k, _)| tier(k.1) == t).map(move |(k, s)| (s.used, i, k.clone())))
                 .collect();
             by_use.sort_by_key(|(u, ..)| *u);
+            // The default builds gone, by generation: their finer builds unshared once the pass is over.
+            let mut gone: BTreeMap<usize, Vec<Gone>> = BTreeMap::new();
             for (_, i, k) in by_use {
                 if self.bytes[t] <= budgets[t] / 4 * 3 {
                     break;
@@ -1192,8 +1320,15 @@ impl Store {
                 {
                     self.bytes[t] -= s.bytes;
                     if k.1 == Fineness::DEFAULT {
-                        self.bytes[1] += g.unshare(&k.0, &s.built);
+                        gone.entry(i).or_default().push((k.0, s.built));
+                    } else {
+                        g.forget_finer(&k.0, k.1);
                     }
+                }
+            }
+            for (i, gone) in gone {
+                if let Some(g) = self.generations.get_mut(i) {
+                    self.bytes[1] += g.unshare(&gone);
                 }
             }
         }
@@ -1243,16 +1378,64 @@ fn keep(model: &Model, shapes: &[Keeping]) {
             let shared = key.1 != Fineness::DEFAULT
                 && s.generations[i].shapes.get(&(Arc::clone(&key.0), Fineness::DEFAULT)).is_some_and(|d| Arc::ptr_eq(&d.built, built));
             let bytes = if shared { std::mem::size_of::<Shape>() } else { estimate(&built.pieces) };
-            if let Some(was) = s.generations[i].shapes.insert(key.clone(), Shape { built: Arc::clone(built), bytes, used: now }) {
-                s.bytes[tier(key.1)] -= was.bytes;
-                if key.1 == Fineness::DEFAULT && !Arc::ptr_eq(&was.built, built) {
-                    s.bytes[1] += s.generations[i].unshare(&key.0, &was.built);
+            let g = &mut s.generations[i];
+            match g.shapes.insert(key.clone(), Shape { built: Arc::clone(built), bytes, used: now }) {
+                Some(was) => {
+                    s.bytes[tier(key.1)] -= was.bytes;
+                    if key.1 == Fineness::DEFAULT && !Arc::ptr_eq(&was.built, built) {
+                        s.bytes[1] += g.unshare(&[(Arc::clone(&key.0), was.built)]);
+                    }
                 }
+                None if key.1 != Fineness::DEFAULT => g.finer.entry(Arc::clone(&key.0)).or_default().push(key.1),
+                None => {}
             }
             s.bytes[tier(key.1)] += bytes;
         }
         s.evict();
     });
+}
+
+/// GEO-2g-2: the index of `model`'s components, brought up to it: kept with its families' generation, so a drawing after
+/// an edit finds again only what changed. None where the store can't be had.
+fn index_of(model: &Model) -> Option<Arc<index::Index>> {
+    let had = with_store(|s| {
+        let now = s.tick();
+        s.prune();
+        let i = s.generation(model, now);
+        s.generations[i].index.take()
+    })?;
+    let mut index = had.unwrap_or_else(|| Arc::new(index::Index::of(model)));
+    Arc::make_mut(&mut index).bring_up(model);
+    with_store(|s| {
+        let now = s.tick();
+        let i = s.generation(model, now);
+        s.generations[i].index = Some(Arc::clone(&index));
+    });
+    Some(index)
+}
+
+/// The index kept for `model`'s families, brought up to it: what a test checks against one made afresh.
+#[cfg(test)]
+pub(crate) fn index_is_made_afresh(model: &Model) -> bool {
+    index_of(model).is_some_and(|i| i.same_as_made(model))
+}
+
+/// How many entries of the index this thread has found, cells it has looked in and candidates it has looked at.
+#[cfg(test)]
+pub(crate) fn index_counts() -> (usize, usize, usize) {
+    index::counts()
+}
+
+/// How many components' keys this thread's drawings have made, not finding them in the index.
+#[cfg(test)]
+pub(crate) fn keys_made() -> usize {
+    KEYS.with(std::cell::Cell::get)
+}
+
+/// How many unsharing passes this thread has made, and finer builds it has looked at in them.
+#[cfg(test)]
+pub(crate) fn unshares() -> (usize, usize) {
+    UNSHARES.with(std::cell::Cell::get)
 }
 
 /// `key`'s envelope, where it is kept: `Some(None)` for one known to be unknown.
@@ -1278,8 +1461,11 @@ thread_local! {
     static DEFAULT_BUILDS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
     static COARSE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     static UNCULLED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    static UNINDEXED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     static BUDGETS: std::cell::Cell<Option<[usize; 2]>> = const { std::cell::Cell::new(None) };
     static BUILD_THREADS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    static UNSHARES: std::cell::Cell<(usize, usize)> = const { std::cell::Cell::new((0, 0)) };
+    static KEYS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
     /// The workers a test asks for: none asked, the plan's; `Some(None)`, this thread alone.
     static TEST_POOL: std::cell::RefCell<Option<Option<Arc<rayon::ThreadPool>>>> = const { std::cell::RefCell::new(None) };
 }
@@ -1308,6 +1494,13 @@ pub(crate) fn without_fineness<T>(f: impl FnOnce() -> T) -> T {
 #[cfg(test)]
 pub(crate) fn without_culling<T>(f: impl FnOnce() -> T) -> T {
     with_cell(&UNCULLED, true, f)
+}
+
+/// `f`, with the plans it draws on this thread finding their components among all of them, not through the index: as
+/// before GEO-2g-2, to compare.
+#[cfg(test)]
+pub(crate) fn without_index<T>(f: impl FnOnce() -> T) -> T {
+    with_cell(&UNINDEXED, true, f)
 }
 
 /// `f`, with what it keeps on this thread kept within `bytes` a tier.

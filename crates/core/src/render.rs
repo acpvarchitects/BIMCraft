@@ -870,23 +870,19 @@ fn plan_candidates<'a>(
     // Every height a plan asks of an element, a hair over and under.
     let lo = r.depth.min(r.cut).min(r.top) - TOL - 1.0;
     let hi = r.cut.max(r.top).max(r.depth) + 1.0;
-    let mut out: std::collections::BTreeSet<Id> = lookup.other().collect();
+    // GEO-2g-2: the components from the model's index of them, those near the plan's window; none from the rest.
+    let component = |id: &Id| matches!(m.elements.get(*id), Some(Element::Component(_)));
+    let mut out: std::collections::BTreeSet<Id> = lookup.other().filter(|id| !component(id)).collect();
     for wall in lookup.walls_between(lo, hi) {
         out.insert(wall);
         let g = m.guid(wall);
         out.extend(lookup.referrers(&g).filter(|id| matches!(m.elements.get(*id), Some(Element::Door(_) | Element::Window(_)))));
     }
     for (group, one) in lookup.groups() {
+        if matches!(group, crate::derived::Group::Component { .. }) {
+            continue;
+        }
         let found = match (group, m.elements.get(one)) {
-            (crate::derived::Group::Component { .. }, Some(Element::Component(c))) => {
-                // GEO-2g: its heights as built where they are at hand, else its envelope's, else any: none built here.
-                let (under, over) = components.known_local_heights(c).unwrap_or((f64::NEG_INFINITY, f64::INFINITY));
-                if under > over {
-                    // No geometry: none of them shows.
-                    continue;
-                }
-                lookup.group_between(group, lo - over - 1.0, hi - under + 1.0)
-            }
             (crate::derived::Group::Run { .. }, Some(e)) => match m.run_type(e) {
                 Some(t) => {
                     let grow = 2.0 * t.width.abs().max(t.depth.abs()) + 1.0;
@@ -898,14 +894,16 @@ fn plan_candidates<'a>(
         };
         out.extend(found);
     }
-    out.extend(lookup.referrers(&key));
+    // (A level's own plan is keyed by the level, which its components point at.)
+    out.extend(lookup.referrers(&key).filter(|id| !component(id)));
     if let Some(Element::PlanView(crate::model::PlanView { parent: Some(p), .. })) = m.elements.get(key) {
-        out.extend(lookup.referrers(p));
+        out.extend(lookup.referrers(p).filter(|id| !component(id)));
     }
-    out.extend(lookup.referrers(&level));
+    out.extend(lookup.referrers(&level).filter(|id| !component(id)));
     out.extend(tags_of_level(m, &lookup, level));
     out.extend(lookup.rare("column"));
     out.extend(lookup.rare("structuralcolumn"));
+    out.extend(components.candidates(level, (r.cut, r.depth)));
     out
 }
 
@@ -951,6 +949,8 @@ fn plan_filter<'a>(
                         let (bottom, top) = components.heights_of(c);
                         bottom < r.cut && top > r.depth
                     }
+                    // Its model lines, which the plan draws wherever they reach into its window and its range.
+                    || components.lines_reach(c, r.cut, r.depth)
             }
             Element::Room(x) => x.level == level,
             Element::RoomSeparator(x) => x.level == level,
@@ -3614,15 +3614,16 @@ fn draw_plan_among<'m>(
     for (&id, e) in all().filter(|(id, _)| shown(**id)) {
         let Element::Component(c) = e else { continue };
         d.owner = Some(id);
-        // GEO-2g: one out of the plan's window draws only its symbols, and one a ceiling plan looks up past, nothing of its
-        // forms: neither is built for it.
-        let reach = !up && components.may_reach(c, range.cut, range.depth);
-        let inside = up || if reach { components.in_window(c) } else { components.near_window(c) };
+        // GEO-2g: one whose forms are out of the plan's window draws only its symbols and its lines, and one a ceiling plan
+        // looks up past, nothing of its forms: neither is built for it. Its lines are drawn where they reach into the window,
+        // whatever its forms do (ec's review of #88).
+        let forms = !up && components.may_reach(c, range.cut, range.depth) && components.in_window(c);
+        let inside = up || components.lines_in_window(c);
         let mut pieces = Vec::new();
-        if reach && inside {
+        if forms {
             let (bottom, top) = components.heights(c);
             if bottom < range.cut && top > range.depth {
-                pieces = components.pieces(c);
+                pieces = components.plan_pieces(c);
                 // Its forms the plan's Visibility Settings leave out (F8) aren't drawn, nor hide what is under them.
                 pieces.retain(|p| plan_draws(p, d.detail, range.cut));
                 component(&mut d, m, &pieces);
@@ -3861,7 +3862,7 @@ fn draw_plan_among<'m>(
             if bottom >= range.cut || top <= range.depth {
                 continue;
             }
-            for p in components.pieces(c).iter().filter(|p| plan_draws(p, d.detail, range.cut)) {
+            for p in components.plan_pieces(c).iter().filter(|p| plan_draws(p, d.detail, range.cut)) {
                 let px: Vec<(f32, f32)> = p.outline.iter().map(|q| d.view.px(*q)).collect();
                 lettered.lines.extend((0..px.len()).map(|i| (px[i], px[(i + 1) % px.len()])).filter(|(a, b)| seen(*a, *b)));
             }
@@ -6598,7 +6599,8 @@ pub(crate) fn family_plan(m: &Model, level: Id, view: View, seen: Option<(f64, f
     (extra.k, extra.paper, extra.detail, extra.weights) = (d.k, d.paper, d.detail, d.weights);
     for (&id, e) in m.elements.iter() {
         let Element::Component(c) = e else { continue };
-        if !look.shows(id) {
+        // GEO-2g-2: what of its forms is out of the plan's window is neither built nor drawn, as in the project's plan.
+        if !look.shows(id) || !components.in_window(c) {
             continue;
         }
         let mut pieces = components.pieces(c);
