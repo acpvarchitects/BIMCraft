@@ -443,3 +443,43 @@ fn a_face_only_some_instances_have_is_painted_from_one_and_kept_by_unrelated_edi
     assert!(left_out.is_empty(), "{left_out:?}");
     assert_eq!(back.families["Box"].forms[0].paint.len(), 2);
 }
+
+/// ec's review of #89: a file's paint this version can't read, or naming a material the file doesn't hold, is left out and
+/// listed, and the project opens; a command's paint is still read strictly, and the check names the paint.
+#[test]
+fn paint_a_file_cant_be_read_by_or_whose_material_is_missing_is_left_out_and_the_project_opens() {
+    let (s, _) = project(json!([{"face": "end", "material": "Red"}]));
+    let mut file: Value = serde_json::from_str(&s.model.to_json().unwrap()).unwrap();
+    let paint = &mut file["families"]["Box"]["forms"][0]["paint"];
+    let red = paint[0]["material"].clone();
+    for p in [
+        json!({"face": {"zzz": 1}, "material": red}),
+        json!({"face": "start", "material": red, "gloss": 3}),
+        json!({"face": {"side": gstr(2)}, "material": "6c1e0000-0000-4000-8000-000000000000"}),
+        json!({"face": {"side": gstr(3)}, "material": "Gold"}),
+    ] {
+        paint.as_array_mut().unwrap().push(p);
+    }
+    let (back, left_out) = crate::model::Model::read(&file.to_string()).unwrap();
+    assert_eq!(
+        left_out,
+        [
+            "/families/Box/forms/0/paint/1",
+            "/families/Box/forms/0/paint/2",
+            "/families/Box/forms/0/paint/3",
+            "/families/Box/forms/0/paint/4"
+        ],
+    );
+    assert_eq!(back.families["Box"].forms[0].paint, form(&s).paint);
+    back.check().unwrap();
+    // A command is read strictly, and the check says it is the paint whose material is missing.
+    let mut s = s;
+    let e = s
+        .execute("family", &json!({"name": "Box", "form": {"guid": gstr(BOX), "paint": [{"face": "end", "material": "Red", "gloss": 3}]}}))
+        .unwrap_err();
+    assert!(e.contains("gloss"), "{e}");
+    let e = s
+        .execute("family", &json!({"name": "Box", "form": {"guid": gstr(BOX), "paint": [{"face": "end", "material": "Gold"}]}}))
+        .unwrap_err();
+    assert!(e.contains("paint on \"end\"") && e.contains("Gold"), "{e}");
+}

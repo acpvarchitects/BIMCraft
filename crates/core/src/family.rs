@@ -50,6 +50,7 @@ pub use fineness::Fineness;
 pub use nested::{Keep, NestedFamily, NestedInstance};
 pub use options::{MAX_OMNICLASS, OPTION_KEYS, OmniClass};
 pub use origin::PlacedOrigin;
+pub use paint::unread_paint;
 pub use visibility::Visibility;
 
 /// A model line (FE-15) as a view draws it: its ends, its Visibility Settings and the subcategory key it is drawn in.

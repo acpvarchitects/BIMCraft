@@ -1510,7 +1510,9 @@ lowers into the form) keeps its paint, and Paint lays it from a click on that in
 paints nothing. Paint on a face the form no longer has is dropped, never kept: the engine drops it after any command that
 changed a painted family (`Family::drop_dead_paint`), in that command's step, so deleting a sketch line or a void takes the paint
 of its faces with it and one undo brings both back; `Model::read` leaves it out of a file and lists it in `left_out`
-(`/families/Box/forms/0/paint/1`). A file never holds a key that names nothing. FORMAT stays 21 (`Model::migrate` notes it): a
+(`/families/Box/forms/0/paint/1`), and so too an entry whose material the file doesn't hold, or one this version can't read (a
+face key or a field of a newer build's: `family::unread_paint`), so a newer build's paint never keeps a project from opening;
+each by its place in the list as the file had it (`Family::drop_paint`). A command's paint is still read strictly. A file never holds a key that names nothing. FORMAT stays 21 (`Model::migrate` notes it): a
 build of 21 from before paint leaves the field out and opens the family unpainted.
 
 `family {name, paint: {form, face, material}}` paints one face (the form by id or GUID; refused unless the form has that

@@ -9,6 +9,25 @@ use std::collections::{BTreeMap, BTreeSet};
 use super::{Family, Form, FormFace, Kind, MAX_PAINT, Val};
 use crate::ids::Guid;
 
+/// The entries of the paint of family JSON `f`'s forms, and its nested families', that this version can't read (a face key or
+/// a field it doesn't know) made a paint of no material, which [`Family::drop_paint`] then leaves out as the file is read: so
+/// every entry left out is said once, by its place in the list as the file had it.
+pub fn unread_paint(f: &mut serde_json::Value) {
+    if let Some(serde_json::Value::Array(forms)) = f.get_mut("forms") {
+        for form in forms.iter_mut() {
+            let Some(serde_json::Value::Array(paint)) = form.get_mut("paint") else { continue };
+            for p in paint.iter_mut().filter(|p| serde_json::from_value::<super::FormPaint>((*p).clone()).is_err()) {
+                *p = serde_json::json!({"face": "all", "material": ""});
+            }
+        }
+    }
+    if let Some(serde_json::Value::Array(nested)) = f.get_mut("nested") {
+        for inner in nested.iter_mut().filter_map(|n| n.get_mut("family")) {
+            unread_paint(inner);
+        }
+    }
+}
+
 impl Family {
     /// What form `form` paints each of `keys`, its material parameters read in `values`, as a built piece names them; empty
     /// where it paints none of them.
@@ -45,7 +64,7 @@ impl Family {
                 return Err(format!("{who}: face {face} is painted twice; keep one"));
             }
             if !self.parameters.iter().any(|q| q.name == p.material && q.kind == Kind::Material) {
-                material_ok(who, &p.material)?;
+                material_ok(&format!("{who}, its paint on {face}"), &p.material)?;
             }
         }
         Ok(())
@@ -88,22 +107,34 @@ impl Family {
     /// Its paint, and its nested families', that names a face its form no longer has ([`Family::has_face`]) taken away;
     /// what went, as JSON pointers from the family (`/forms/0/paint/1`, `/nested/0/family/forms/0/paint/0`).
     pub fn drop_dead_paint(&mut self) -> Vec<String> {
+        self.drop_paint(&|_| true)
+    }
+
+    /// [`Family::drop_dead_paint`], and paint whose material is neither one `known` (the library's) nor a material parameter
+    /// of its family taken away too, as a file is read: each said by its place in the list as the file had it.
+    pub fn drop_paint(&mut self, known: &dyn Fn(&str) -> bool) -> Vec<String> {
+        let params: BTreeSet<String> = self.parameters.iter().filter(|q| q.kind == Kind::Material).map(|q| q.name.clone()).collect();
+        let keep: Vec<Vec<bool>> = (0..self.forms.len())
+            .map(|i| {
+                let ok = |m: &str| params.contains(m) || known(m);
+                self.forms[i].paint.iter().map(|p| self.has_face(i, &p.face) && ok(&p.material)).collect()
+            })
+            .collect();
         let mut gone = Vec::new();
-        let dead: Vec<Vec<bool>> =
-            (0..self.forms.len()).map(|i| self.forms[i].paint.iter().map(|p| !self.has_face(i, &p.face)).collect()).collect();
-        for (i, (form, dead)) in self.forms.iter_mut().zip(dead).enumerate() {
+        for (i, (form, keep)) in self.forms.iter_mut().zip(keep).enumerate() {
             let mut k = 0;
             form.paint.retain(|_| {
                 k += 1;
-                if dead.get(k - 1).copied().unwrap_or(false) {
+                let kept = keep.get(k - 1).copied().unwrap_or(true);
+                if !kept {
                     gone.push(format!("/forms/{i}/paint/{}", k - 1));
                 }
-                !dead.get(k - 1).copied().unwrap_or(false)
+                kept
             });
         }
         for (i, n) in self.nested.iter_mut().enumerate() {
             if n.family.painted() {
-                gone.extend(n.family.drop_dead_paint().into_iter().map(|p| format!("/nested/{i}/family{p}")));
+                gone.extend(n.family.drop_paint(known).into_iter().map(|p| format!("/nested/{i}/family{p}")));
             }
         }
         gone

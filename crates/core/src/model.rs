@@ -5333,6 +5333,11 @@ impl Model {
                 }
             }
         }
+        // A family form's paint (FE-16c-1): an entry this version can't read (a face key or a field of a newer build's) is
+        // left out on its own, by `after_read`, so it never keeps the project from opening.
+        if let Some(Value::Object(families)) = v.get_mut("families") {
+            families.values_mut().for_each(crate::family::unread_paint);
+        }
         if v.is_object() {
             let elements = v.get_mut("elements").map_or(Value::Null, Value::take);
             v["elements"] = Value::Object(serde_json::Map::new());
@@ -5391,10 +5396,13 @@ impl Model {
         }
         // A family's dimension measuring to something it hasn't is left out, as what this version can't read is: a file is
         // read kindly, and a command that would leave one is refused.
+        let materials: std::collections::BTreeSet<String> = m.materials.keys().cloned().collect();
         for (name, f) in m.families.iter_mut() {
-            // Paint naming a face its form doesn't build (FE-16c-1): left out, as a command would have dropped it.
+            // Paint naming a face its form no longer has, or a material the library hasn't (FE-16c-1): left out, as a command
+            // would have dropped it.
             if f.painted() {
-                left_out.extend(f.drop_dead_paint().into_iter().map(|p| format!("/families/{}{p}", crate::lenient::escaped(name))));
+                let gone = f.drop_paint(&|n| materials.contains(n));
+                left_out.extend(gone.into_iter().map(|p| format!("/families/{}{p}", crate::lenient::escaped(name))));
             }
             let gone = f.dangling_dimensions();
             for i in gone.iter().rev() {
