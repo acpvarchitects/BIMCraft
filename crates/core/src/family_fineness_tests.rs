@@ -272,13 +272,10 @@ fn a_model_gone_keeps_nothing_and_the_bytes_kept_are_counted_as_they_go() {
     assert_eq!(counted, summed, "the running total is what is kept");
 }
 
-/// GEO-2c's cost in a plan: GEO-2f's facade panel (an L, a knob turned about an axis, a blend and a round through-void), `GEO_PANELS`
-/// of them (10,000 unless it says), each its own size, in a grid; a plan zoomed in on a few hundred, drawn first, again, and
-/// panned by half a screen. `cargo test --release -p bimcraft-core zoomed_plan_bench -- --ignored --nocapture`.
-#[test]
-#[ignore]
-fn zoomed_plan_bench() {
-    let n: usize = std::env::var("GEO_PANELS").ok().and_then(|v| v.parse().ok()).unwrap_or(10_000);
+/// GEO-2f's facade panel (an L, a knob turned about an axis, a blend and a round through-void), `n` of them, each its own
+/// size, in a grid 1.5 m apart: one placed by the command, the rest copies of it put straight in (the command checks the whole
+/// model each time). Its side, panels.
+fn facade(n: usize) -> (Session, usize) {
     let line = |a: Value, b: Value| json!({"start": a, "end": b});
     let l = vec![
         line(json!([0, 0]), json!(["W", 0])),
@@ -312,9 +309,7 @@ fn zoomed_plan_bench() {
                 {"sketch": [{"centre": [75, "H / 2"], "radius": "R / 3"}], "from": -10, "to": "D + 10", "void": true}]}),
     )
     .unwrap_or_else(|e| panic!("{e}"));
-    let t = std::time::Instant::now();
     let side = (n as f64).sqrt().ceil() as usize;
-    // One placed by the command, the rest copies of it put straight in (the command checks the whole model each time).
     let first = s.execute("component", &json!({"family": "Panel", "at": [0, 0]})).unwrap_or_else(|e| panic!("{e}"));
     let Some(crate::model::Element::Component(first)) =
         s.model.elements.get(first["id"].as_u64().unwrap_or_else(|| panic!("{first}"))).cloned()
@@ -335,23 +330,67 @@ fn zoomed_plan_bench() {
         c.at = P2((i % side) as f64 * 1500.0, (i / side) as f64 * 1500.0);
         model.insert(crate::model::Element::Component(c));
     }
-    eprintln!("GEO-2c: {n} panels placed in {:.1} s", t.elapsed().as_secs_f64());
-    // Some 20 by 8 panels in a 2000 x 800 screen, at a scale finer than the default draws.
-    let middle = (side / 2) as f64 * 1500.0;
-    let view = |cx: f64| View { angle: 0.0, scale: 0.065, cx, cy: middle, width: 2000, height: 800 };
-    let time = |what: &str, v: View| {
-        let (before, t) = (crate::component_geometry::fine_builds(), std::time::Instant::now());
-        let d = render::draw(&s.model, 100000, v);
-        eprintln!(
-            "GEO-2c {what}: {:.2} s, {} built finer, {} primitives",
-            t.elapsed().as_secs_f64(),
-            crate::component_geometry::fine_builds() - before,
-            d.prims.len()
-        );
-    };
-    eprintln!("GEO-2c: the fineness asked {:?}", Fineness::for_view(0.065));
-    crate::component_geometry::without_fineness(|| time("the same view as before GEO-2c (every curve at the default)", view(middle)));
-    time("first zoomed draw", view(middle));
-    time("drawn again", view(middle));
-    time("panned half a screen", view(middle + 1000.0 / 0.065));
+    (s, side)
+}
+
+/// GEO-2c and GEO-2g's cost in a plan: `GEO_PANELS` facade panels (10,000 unless it says), a plan zoomed in on a few hundred
+/// drawn first, again, panned by half a screen, and with one panel in view edited; and the plan zoomed to fit them all, first
+/// and again. On 8 workers and on as many as the machine has; each plan drawn once (no test twins). `cargo test --release -p
+/// bimcraft-core zoomed_plan_bench -- --ignored --nocapture`.
+#[test]
+#[ignore]
+fn zoomed_plan_bench() {
+    let n: usize = std::env::var("GEO_PANELS").ok().and_then(|v| v.parse().ok()).unwrap_or(10_000);
+    let all = std::thread::available_parallelism().map_or(1, usize::from);
+    let cg = crate::component_geometry::builds;
+    render::without_twins(|| {
+        for threads in [8, all] {
+            crate::component_geometry::with_threads(threads, || {
+                let (mut s, side) = facade(n);
+                let middle = (side / 2) as f64 * 1500.0;
+                // Some 20 by 8 panels in a 2000 x 800 screen, at a scale finer than the default draws.
+                let view = |cx: f64| View { angle: 0.0, scale: 0.065, cx, cy: middle, width: 2000, height: 800 };
+                let time = |what: &str, s: &Session, v: View| {
+                    let (before, t) = (cg(), std::time::Instant::now());
+                    let d = render::draw(&s.model, 100000, v);
+                    eprintln!(
+                        "GEO-2g {threads} workers, {what}: {:.1} ms, {} built, {} primitives",
+                        t.elapsed().as_secs_f64() * 1000.0,
+                        cg() - before,
+                        d.prims.len()
+                    );
+                };
+                time("first zoomed draw", &s, view(middle));
+                time("drawn again", &s, view(middle));
+                time("panned half a screen", &s, view(middle + 1000.0 / 0.065));
+                // One panel in view, edited: a new model, the families as they were.
+                let id = s
+                    .model
+                    .elements
+                    .iter()
+                    .find_map(|(id, e)| match e {
+                        crate::model::Element::Component(c) if c.at.0 >= middle + 1000.0 / 0.065 && c.at.1 >= middle => Some(*id),
+                        _ => None,
+                    })
+                    .unwrap_or_else(|| panic!("a panel in view"));
+                if let Some(crate::model::Element::Component(c)) = std::sync::Arc::make_mut(&mut s.model).elements.get_mut(id) {
+                    c.params.insert("W".into(), json!(1234.5));
+                }
+                time("one panel in view edited", &s, view(middle + 1000.0 / 0.065));
+                // Fitted as another model of the same panels is: what fitting builds isn't this one's.
+                let fit = render::plan_fit(&facade(n).0.model, 100000, 2000, 1200, false);
+                let (fresh, _) = facade(n);
+                time("first draw zoomed to fit", &fresh, fit);
+                time("zoomed to fit drawn again", &fresh, fit);
+                let (shared, own) = crate::component_geometry::kept_finer();
+                eprintln!("GEO-2g {threads} workers: {shared} finer builds kept as their default ones, {own} of their own");
+                let (bytes, _) = crate::component_geometry::kept_bytes();
+                eprintln!(
+                    "GEO-2g {threads} workers: kept {:.1} MB at the default, {:.1} MB finer",
+                    bytes[0] as f64 / 1e6,
+                    bytes[1] as f64 / 1e6
+                );
+            });
+        }
+    });
 }

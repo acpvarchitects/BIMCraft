@@ -2141,9 +2141,37 @@ decides with each component's default build, its box placed (built already for i
 heights, and so whether the plan shows it, at the default. The family editor's plans are drawn the same way. What is built finer is kept across drawings, so a zoomed plan
 drawn again (a pan, a selection, an edit elsewhere) builds finer only what changed: by the allocation of the model's families
 (which any edit of a family replaces) and the component's key and fineness, no more than 4 such generations and 256 MB, the
-least lately used going first. A shape too fine to cut is kept as its default build, so it isn't tried again. Tests: `family_fineness_tests.rs`, among them a 20 m arc in plan
+least lately used going first (and since GEO-2g the default builds too, in a tier of their own). A shape too fine to cut is kept as its default build, so it isn't tried again. Tests: `family_fineness_tests.rs`, among them a 20 m arc in plan
 within a pixel, fitted and at 50 times. The 3D view, sections and elevations, which render through the 3D scene, follow in
 GEO-2c-2.
+
+## Plans of many components (GEO-2g)
+
+A plan of thousands of components, each its own size (a facade's panels), used to build every one of them at every drawing:
+their heights, which say whether the plan shows them, are their builds'. Now a plan's `Components` (`Components::for_view`)
+builds only what its window needs, keeps what it built, and builds the rest on several threads.
+
+- **Kept.** The default builds are kept across drawings in the same store as GEO-2c's finer ones (`component_geometry.rs`,
+  by the families' allocation, the component's key and the fineness), in a tier of their own with a budget of its own
+  (`DEFAULT_BUDGET`, 384 MB; 10,000 of GEO-2f's panels take some 240 MB), so a zoom in never pushes out what every drawing
+  needs. A redraw or a pan builds nothing it built before, an edit of a component builds that one again, an edit of a family
+  starts a new generation. Each build keeps its box and heights (`Built`), so neither is found from its triangles again; a
+  shape too fine to cut shares its default build. Each key's envelope is kept too. A test keeps its own store, on its thread.
+- **Culled.** The window is the view's screen and one more screen each way, however it is turned (`window_of`): a pan of up to
+  a screen, a pick, a hover, Tab and a snap near the edge find what is there before the next drawing replaces the moved one.
+  A component is drawn when its build's box meets the window; where nothing is built, its envelope
+  (`Family::conservative_bounds`, which now also boxes revolves and leaves voids out, since a void only takes away) decides
+  without building it when it misses. Only components' forms are culled: walls, rooms, annotation and a component's symbols are
+  drawn as before, and a tag that needs a component's geometry builds it. Exports, prints and sheets pass their own view, so
+  they cull to their own window or crop (`plan_cache_tests.rs` holds each to the unculled drawing, pixel for pixel).
+- **Heights without building.** One whose envelope lies wholly at or over the cut plane, or wholly at or under the bottom of the
+  view depth, isn't built: a floor plan never draws it. One only beyond the cut, under it and over the view depth, is.
+- **On several threads.** `Components::prepare` collects what the plan will build and isn't kept, builds it on the plan's own
+  workers (`plan_pool`, apart from the 3D view's, as many), each at the fineness it asks for, and puts it in the model's
+  order, so one thread or eight draw the same plan. A build that fails is no geometry either way; one that panics panics
+  the drawing the same way.
+
+`zoomed_plan_bench` in `family_fineness_tests.rs` times it.
 
 ## Where the code lives
 
