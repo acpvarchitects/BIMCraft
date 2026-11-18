@@ -260,8 +260,12 @@ fn a_voids_hole_is_tagged_by_the_void_and_its_own_face() {
     want.extend((21..=24).map(|l| FormFace::Cut { by: guid(200), face: Box::new(side(l)) }));
     assert_eq!(got, want);
     for (t, k) in tagged(&p) {
-        if *k == (FormFace::Cut { by: guid(200), face: Box::new(side(21)) }) {
-            assert!(t.iter().all(|q| q[1] == 400.0 && (400.0..=600.0).contains(&q[0])), "{t:?}");
+        // Each side of the square void on its own line: 21 bottom, 22 right, 23 top, 24 left.
+        for (l, on) in [(21, [1, 400]), (22, [0, 600]), (23, [1, 600]), (24, [0, 400])] {
+            if *k == (FormFace::Cut { by: guid(200), face: Box::new(side(l)) }) {
+                let (axis, at) = (on[0] as usize, f64::from(on[1]));
+                assert!(t.iter().all(|q| q[axis] == at && (400.0..=600.0).contains(&q[1 - axis])), "side {l}: {t:?}");
+            }
         }
     }
 }
@@ -473,5 +477,32 @@ fn a_nested_instances_piece_keeps_its_own_keys_and_the_hosts_voids_leave_it_alon
         if *k == side(41) {
             assert!(t.iter().all(|q| q[1].abs() < 1e-9), "{t:?}");
         }
+    }
+}
+
+/// GEO-2c and GEO-2b together: a build at a view's fineness has more chords, and the same faces. Every chord of an arc, a
+/// circle and a revolve's turn is its line's, however many there are.
+#[test]
+fn a_finer_build_names_the_same_faces() {
+    use crate::family::Fineness;
+    let mut rounded = rect(1, -500.0, -300.0, 300.0, 300.0);
+    rounded.truncate(3);
+    rounded.push(json!({"guid": gstr(4), "start": [-500, 300], "end": [-500, -300], "turn": 180}));
+    let mut turned = rect(11, 200.0, 0.0, 500.0, 800.0);
+    turned.push(json!({"guid": gstr(15), "start": [0, 0], "end": [0, 100], "axis": true}));
+    let f = family(json!([
+        {"guid": gstr(100), "sketch": rounded, "from": 0, "to": 100},
+        {"guid": gstr(200), "sketch": [{"guid": gstr(9), "centre": [2000, 0], "radius": "W"}], "from": 0, "to": 900},
+        {"guid": gstr(300), "sketch": turned, "from": 0, "to": 270},
+        {"guid": gstr(400), "sketch": [{"guid": gstr(31), "centre": [2000, 0], "radius": 50}], "from": -10, "to": 910, "void": true}
+    ]));
+    let values = f.values("A", &BTreeMap::new()).unwrap();
+    let coarse = f.pieces(&values).unwrap();
+    let fine = f.pieces_fine(&values, Fineness::for_view(10.0)).unwrap();
+    assert_eq!(coarse.len(), fine.len());
+    for (c, n) in coarse.iter().zip(&fine) {
+        assert!(n.tris.len() > c.tris.len(), "finer: {} triangles to {}", n.tris.len(), c.tris.len());
+        assert_eq!(n.faces.len(), n.tris.len());
+        assert_eq!(keys(c), keys(n));
     }
 }
