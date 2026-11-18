@@ -24,6 +24,7 @@ pub mod constraints;
 pub mod cutting;
 pub mod forms;
 pub mod handles;
+pub mod kernel;
 pub mod nested;
 mod options;
 mod origin;
@@ -2940,10 +2941,20 @@ impl Family {
         // Each solid cut by what cuts it ([`Family::cutters`]: the voids listed before it, as always, and what FE-16 adds) that
         // is built and reaches it. A cut solid is no longer one round surface, and its outline seen from above is as it was.
         // ponytail: a notch or a hole doesn't show in plan; trace it if it must.
+        // Through the mesh kernel (GEO-1), spending `cuts`.
+        use kernel::FormKernel;
+        let k = kernel::MeshKernel;
+        // Each as the kernel's solid once, the piece being cut moved in and out of one: no triangles copied a cut.
+        let solid_of = |tris: Vec<[P3; 3]>| kernel::MeshSolid { mesh: kernel::Mesh { tris, caps: 0 }, plan: None };
+        let voids: HashMap<usize, kernel::MeshSolid> = voids.into_iter().map(|(i, t)| (i, solid_of(t))).collect();
+        let solids: HashMap<usize, kernel::MeshSolid> = solids.into_iter().map(|(i, t)| (i, solid_of(t))).collect();
         for (piece, &form) in out.iter_mut().zip(&of) {
             for by in self.cutters(form) {
                 let Some(cutter) = voids.get(&by).or_else(|| solids.get(&by)) else { continue };
-                let tris = csg::subtract(&piece.tris, cutter, cuts).map_err(|e| format!("form {}: {e}", by + 1))?;
+                let body = solid_of(std::mem::take(&mut piece.tris));
+                let cut = k.cut(&body, cutter, cuts).map(|s| s.mesh.tris);
+                piece.tris = body.mesh.tris;
+                let tris = cut.map_err(|e| format!("form {}: {}", by + 1, e.0))?;
                 if tris != piece.tris {
                     let (bottom, top) = heights(&tris);
                     *piece = Piece {
@@ -2988,7 +2999,7 @@ impl Family {
             mesh(&form.mesh, material)?
         } else if form.kind() != forms::FormKind::Extrusion && form.kind() != forms::FormKind::Revolve {
             let frame = self.frame(&form.host).map_err(|e| format!("its host: {e}"))?;
-            let (tris, plan) = forms::build(form, &frame, &mut num)?.unwrap_or_default();
+            let (tris, plan) = forms::build(form, &frame, &mut num, &kernel::MeshKernel)?.unwrap_or_default();
             let (bottom, top) = heights(&tris);
             // Seen from above: a sweep on a level plane, the band it covers; else the hull of what it builds.
             let (outline, holes) =
@@ -2996,6 +3007,13 @@ impl Family {
             Piece { caps: tris.len(), tris, outline, holes, bottom, top, material, round: false, vis: None, nested: Vec::new() }
         } else {
             let regions = form.loops(&mut num)?;
+            use kernel::FormKernel;
+            let k = kernel::MeshKernel;
+            // The curves drawn, exact beside the chorded regions (GEO-1), for a kernel that reads them: read where they can
+            // be, else none, so they change nothing the regions build.
+            let curves = if kernel::MeshKernel::EXACT { kernel::curves(form.boundary(), &mut num).unwrap_or_default() } else { Vec::new() };
+            let loops = kernel::Loops { regions, curves };
+            let regions = &loops.regions;
             let (from, to) = (num(&form.from)?, num(&form.to)?);
             if to <= from {
                 let unit = if form.revolves() { " degrees" } else { "" };
@@ -3008,7 +3026,9 @@ impl Family {
                         return Err(format!("turns more than all the way round: from {from} to {to} degrees, 360 at most"));
                     }
                     let axis = [P2(num(&p[0])?, num(&p[1])?), P2(num(&q[0])?, num(&q[1])?)];
-                    let (tris, outline) = revolve(&regions, axis, (from, to), &frame)?;
+                    let made = k.revolve(&loops, axis, &frame, from, to)?;
+                    let outline = k.silhouette(&made).map(|(o, _)| o).unwrap_or_default();
+                    let tris = made.mesh.tris;
                     let (bottom, top) = heights(&tris);
                     Piece {
                         caps: tris.len(),
@@ -3024,7 +3044,8 @@ impl Family {
                     }
                 }
                 None => {
-                    let (tris, caps) = sweep(&regions, from, to, &frame)?;
+                    let made = k.extrude(&loops, &frame, from, to)?;
+                    let (tris, caps) = (made.mesh.tris, made.mesh.caps);
                     let (bottom, top) = heights(&tris);
                     // Seen from above: on a level plane, the profile where it lies (one loop); else the hull of what it sweeps.
                     let outline = match regions.as_slice() {
@@ -3378,7 +3399,7 @@ pub(crate) fn sweep(regions: &[crate::geom::Region], from: f64, to: f64, frame: 
 /// `axis` (in that plane) from `from` to `to` degrees, right-handed from the axis' first point toward its second: its
 /// triangles, every one turned out, a full turn's sides only and a part-turn's with its two ends capped; and its outline
 /// seen from above.
-fn revolve(
+pub(crate) fn revolve(
     regions: &[crate::geom::Region],
     [p0, p1]: [P2; 2],
     (from, to): (f64, f64),
