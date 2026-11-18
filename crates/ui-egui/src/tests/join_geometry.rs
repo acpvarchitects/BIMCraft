@@ -433,3 +433,44 @@ fn join_and_cut_say_a_curtain_wall_cant_be_joined_or_cut_and_pick_nothing() {
     assert_eq!(h.state().tool, Tool::CutGeometry { uncut: false, wall: None });
     assert!(h.state().status.error && h.state().status.text.contains("is a curtain wall"), "{:?}", h.state().status);
 }
+
+/// CROSSING's wall (200 thick: y 1900 to 2100) with CURTAIN's curtain wall just off its north face, at y 2160, and the floor.
+const CURTAIN_OVER: &str = r#"type {"category": "wall", "name": "CW", "curtain": {"columns": {"segments": [2000]}, "rows": {"segments": [1000]}}}
+wall {"points": [[0, 2160], [6000, 2160]], "height": 3000, "type": "CW"}
+wall {"points": [[0, 2000], [6000, 2000]], "height": 3000}
+floor {"boundary": [[0, 0], [6000, 0], [6000, 4000], [0, 4000]], "offset": 300}"#;
+
+#[test]
+fn join_and_cut_pick_the_ordinary_wall_under_a_curtain_wall_and_refuse_only_a_curtain_wall_alone() {
+    // On the curtain wall's line: it is the nearest there, the ordinary wall's face 60 mm off, within the pick's reach.
+    const WALL: P2 = P2(1000.0, 2160.0);
+    let mut h = app(CURTAIN_OVER);
+    let (cw, plain, f) = (ids(&h, "wall")[0], ids(&h, "wall")[1], ids(&h, "floor")[0]);
+    assert!(h.state().session.model.curtain_refusal(cw).is_some() && h.state().session.model.curtain_refusal(plain).is_none());
+    // Join Geometry: the ordinary wall under the curtain wall is the first, not a refusal.
+    h.state_mut().set_tool(Tool::JoinGeometry { mode: JoinMode::Join, first: None });
+    h.run();
+    click(&mut h, WALL);
+    assert_eq!(h.state().tool, Tool::JoinGeometry { mode: JoinMode::Join, first: Some(plain) }, "{:?}", h.state().status);
+    assert!(!h.state().status.error, "{:?}", h.state().status);
+    click(&mut h, FLOOR);
+    assert_eq!(joins(&h), [(plain, f)], "{:?}", h.state().status);
+    // And as the second: the floor first, then the ordinary wall, not the curtain wall over it.
+    // (Unjoin takes a curtain wall too, so it is given the ordinary wall where it is alone.)
+    h.state_mut().set_tool(Tool::JoinGeometry { mode: JoinMode::Unjoin, first: None });
+    h.run();
+    click(&mut h, FLOOR);
+    click(&mut h, P2(1000.0, 2000.0));
+    assert_eq!(joins(&h), [], "{:?}", h.state().status);
+    h.state_mut().set_tool(Tool::JoinGeometry { mode: JoinMode::Join, first: None });
+    h.run();
+    click(&mut h, FLOOR);
+    click(&mut h, WALL);
+    assert_eq!(joins(&h), [(f, plain)], "{:?}", h.state().status);
+    // Cut Geometry: the ordinary wall too.
+    h.state_mut().set_tool(Tool::CutGeometry { uncut: false, wall: None });
+    h.run();
+    click(&mut h, WALL);
+    assert_eq!(h.state().tool, Tool::CutGeometry { uncut: false, wall: Some(plain) }, "{:?}", h.state().status);
+    assert!(!h.state().status.error, "{:?}", h.state().status);
+}

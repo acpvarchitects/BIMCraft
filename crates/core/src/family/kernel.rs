@@ -179,6 +179,13 @@ pub struct MeshSolid {
     pub plan: Option<forms::Plan>,
 }
 
+/// Its triangles, as GEO-2e's drill reads a void's.
+impl AsRef<[[P3; 3]]> for MeshSolid {
+    fn as_ref(&self) -> &[[P3; 3]] {
+        &self.mesh.tris
+    }
+}
+
 /// Today's code behind the trait: see the module's notes.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct MeshKernel;

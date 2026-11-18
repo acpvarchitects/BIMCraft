@@ -348,3 +348,29 @@ fn cut_geometry_refuses_a_curtain_wall_and_a_file_with_such_a_cut_opens_without_
     assert!(m.wall(cw).unwrap().void_cuts.is_empty(), "the cut is left out");
     assert_eq!(left_out, vec![format!("/elements/{cw}/void_cuts/0")]);
 }
+
+#[test]
+fn a_cut_kept_after_its_wall_became_a_curtain_one_is_warned_of_and_uncut_takes_it_off() {
+    let mut s = Session::new();
+    run(
+        &mut s,
+        "type",
+        json!({"category": "wall", "name": "CW", "curtain": {"columns": {"segments": [2000]}, "rows": {"segments": [1000]}}}),
+    );
+    let w = wall(&mut s);
+    cutter_family(&mut s, "Cutter", true);
+    let c = place(&mut s, "Cutter", [3000.0, 0.0]);
+    // Cut while the wall is a plain one: no warning.
+    cut(&mut s, w, c).unwrap();
+    assert!(!s.model.warnings().iter().any(|x| x.contains("Cut Geometry")), "{:?}", s.model.warnings());
+    // Its type made a curtain one: the tie is kept, cutting nothing, and `warnings` says so.
+    run(&mut s, "modify", json!({"id": w, "type": "CW", "location": "exterior-finish"}));
+    assert_eq!(s.model.wall(w).unwrap().void_cuts.len(), 1);
+    let said: Vec<String> = s.model.warnings().into_iter().filter(|x| x.contains("Cut Geometry")).collect();
+    assert_eq!(said.len(), 1, "{said:?}");
+    assert!(said[0].contains("is a curtain wall") && said[0].contains("`uncut_geometry`"), "{said:?}");
+    // Uncut Geometry takes it off, and the warning goes with it.
+    run(&mut s, "uncut_geometry", json!({"target": w, "cutter": c}));
+    assert!(s.model.wall(w).unwrap().void_cuts.is_empty());
+    assert!(!s.model.warnings().iter().any(|x| x.contains("Cut Geometry")), "{:?}", s.model.warnings());
+}

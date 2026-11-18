@@ -92,6 +92,8 @@ mod family_constraint_tests;
 #[cfg(test)]
 mod family_cutting_tests;
 #[cfg(test)]
+mod family_drill_tests;
+#[cfg(test)]
 mod family_face_tests;
 #[cfg(test)]
 mod family_kernel_tests;
@@ -142,6 +144,8 @@ mod flip_tests;
 mod font;
 #[cfg(test)]
 mod formula_visibility_tests;
+#[cfg(test)]
+mod geo_bench;
 pub mod geom;
 #[cfg(test)]
 mod georef_tests;

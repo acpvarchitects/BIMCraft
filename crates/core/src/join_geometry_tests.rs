@@ -382,3 +382,24 @@ fn a_file_with_a_join_of_a_curtain_wall_opens_without_it_and_says_so() {
     assert!(m.elements.get(f).unwrap().joined_by().is_empty(), "the join is left out");
     assert_eq!(left_out, vec![format!("/elements/{f}/joined_by/0")]);
 }
+
+#[test]
+fn the_ifc_leaves_out_a_join_kept_after_its_wall_became_a_curtain_one() {
+    // Either way round: the wall cutting the floor, and the floor cutting the wall.
+    for wall_cuts in [true, false] {
+        let (mut s, w, f) = crossing();
+        run(
+            &mut s,
+            "type",
+            json!({"category": "wall", "name": "CW", "curtain": {"columns": {"segments": [2000]}, "rows": {"segments": [1000]}}}),
+        );
+        let (a, b) = if wall_cuts { (w, f) } else { (f, w) };
+        join(&mut s, a, b).unwrap();
+        let rels = |s: &mut Session| ifc(s).lines().filter(|l| l.contains("=IFCRELCONNECTSELEMENTS(")).count();
+        assert_eq!(rels(&mut s), 1);
+        // The wall's type made a curtain one: the join is kept, cutting nothing in 3D or a section, and goes out of the IFC.
+        run(&mut s, "modify", json!({"id": w, "type": "CW", "location": "exterior-finish"}));
+        assert_eq!(joined(&s, b), vec![a]);
+        assert_eq!(rels(&mut s), 0, "wall cuts: {wall_cuts}");
+    }
+}
