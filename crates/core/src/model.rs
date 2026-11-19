@@ -5496,7 +5496,8 @@ impl Model {
         // stair's edge, its subcategories and plan display, the building code and its electrical methods) needs nothing of a
         // file of 20, which holds none. A family form's `paint` (FE-16c-1) came with 21 too, written only where a form has some:
         // a build of 21 from before it leaves it out as a field it doesn't know and opens the family unpainted, so it needs no
-        // step, and a file of 20 or before holds none.
+        // step, and a file of 20 or before holds none. So too a component's `face_paint` (FE-16c-2): an older build of 21 leaves
+        // it out, lists it, and opens the component unpainted.
         if self.types.stair.is_empty() {
             self.types.stair = stair_types();
         }

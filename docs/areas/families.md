@@ -1498,9 +1498,8 @@ per entry of `Piece::keys` (an empty name, unpainted; an empty list, nothing pai
 instance's pieces keep their own family's paint), a cut's `{"cut": G, …}` faces and a drilled hole's alike. Paint is surface
 only: the 3D view's `Solid::Mesh` takes a colour and a texture per triangle (`skins`, from `view3d::piece_skins`), so the
 processor's picture, the card's mesh and glTF show it, and a project's paint of a whole component lies over it. Plans,
-sections (their cut patterns and edges), IFC and schedules keep the form's material. No view draws a family form's surface
-pattern face by face in projection yet (a plan draws one for a floor's, a ceiling's or a toposolid's top only), so the
-painted material's surface pattern in an elevation waits for FE-16c-2.
+sections (their cut patterns and edges), IFC and schedules keep the form's material. A painted face's surface pattern in
+projection, in plans and in elevations, is FE-16c-2's (below).
 
 Whether a form still has a face is read from the family alone, with no build (`Family::has_face`): a side's line, and the
 path line it goes along, is still a line of the form; an edge's place is still in its lines; a cut's form still cuts it (a
@@ -1521,8 +1520,72 @@ patch's `paint` gives the list whole. `Model::component_face` names the face of 
 nearest triangle facing that way), what a click in a 3D view finds. The family document has Paint (PT) and Remove Paint on
 its Geometry panel, beside Cut and Join (`editor/paint.rs`): {3D} opens, the Options Bar picks the material, and a click on a form's face paints
 it (`FamilyScene::guids` gives the staged part's GUIDs back as the family's), one step of the document's history. Project-side
-paint of a component's single faces is FE-16c-2; picking and snapping on faces is GEO-2b-2. Tests: `family_paint_tests.rs`,
+paint of a component's single faces is FE-16c-2 (below); picking and snapping on faces is GEO-2b-2. Tests: `family_paint_tests.rs`,
 `tests/family_paint.rs`.
+
+## Painted faces of a placed component (FE-16c-2)
+
+A component's single faces may be painted in the project (`paint.rs`): `Component::face_paint`, a list of `{form, nested?,
+face, material}` (`FacePaint`, unknown keys refused, written only where a component has some). `form` is the form's GUID,
+`nested` the GUIDs of the nested instances from the component's family down to the family the form is of (none, the family's
+own form), `face` its GEO-2b key and `material` a material of the library, which a file holds by its GUID (`lib_refs_mut`,
+`rename_material_in_families`, `material_user`). Each built piece knows its form's GUID and its whole nested path, shared or not
+(`Piece::form`, `Piece::path`; `Piece::nested` is still the shared part of it), and `Model::component_face` names all three of
+the face under a point. `params["Paint"]` is as it was: `all` for a whole component, named faces for a system element.
+
+- **The command.** `paint {id | ids, form, nested?, face, material}` paints one face of each (the form by GUID, or the id of
+  one of the family's own forms), again on the same face replaces it, `material: null` takes it off and `face: null` with it
+  all that form's; a face the form hasn't (`Family::has_face`), a void, a missing form or nested instance, or a key it doesn't
+  take is refused. `Model::check` refuses a face listed twice, an empty or unknown material, a void and more than
+  `MAX_FACE_PAINT` (`MAX_PAINT`) entries (`paint::check_faces`).
+- **Shared nested instances.** A shared nested instance is an element of its own ([below](#shared-nested-instances-in-a-project)),
+  so its faces are painted on it: `paint {id: <the nested element>, form, face, …}`, `nested` then from it down. What it paints
+  is held by its host, the component, under the whole path (the element itself is never written to a file), so it is there
+  after the file is read again. The host's own path through a shared instance is refused, naming the element to paint.
+  `Model::face_owner` gives the element a click's face is to be painted on, and the rest of the path below it.
+- **Which paint shows.** In the 3D view (`view3d::component_skins`, the processor's picture, the card's mesh) and glTF, a face
+  the project paints wins over the whole component's `all`, which wins over the family's paint (FE-16c-1), which wins over the
+  form's material. `view3d::painted` leaves components to it.
+- **What paint follows.** It is a field of the element, so copies, arrays, model groups placed from a type and Insert from File
+  carry it; a mirror keeps it (its keys are GUIDs). Whether a face is still there is read from the family alone, as FE-16c-1's
+  is (`paint::face_alive`): a type change within the family keeps it (a face no type builds paints nothing); another family, or
+  a reload or an edit that takes the form, its line or its cutter away, leaves a face it no longer has, and the engine takes
+  that paint off in the same command's step (`Session::drop_dead_face_paint`), so one undo brings both back, and the command's
+  reply says what went: `paint_dropped: [{id, form, nested?, face}]`. The desktop doesn't show a command's reply (Load into
+  Project says nothing of it), so `paint_dropped` is for scripts and agents. A nested instance whose family a family type
+  parameter swaps keeps paint keyed by the family it places; on another family it paints nothing.
+- **A file.** `Model::read` leaves out, and lists in `left_out` by its place in the file's list (`/elements/100004/face_paint/1`),
+  an entry it can't read (a face key or a field of a newer build's: `paint::unread_face_paint` makes it an entry naming nothing
+  first), whose material the file doesn't hold, or whose form, nested instance or face the family hasn't
+  (`Model::drop_dead_face_paint_read`, a model group type's members too). FORMAT stays 21 (`Model::migrate` notes it): a build of
+  21 from before it leaves `face_paint` out as a field it doesn't know, lists it, and opens the component unpainted.
+- **The desktop.** In a project's 3D view, Paint (PT) on a component paints the face clicked, on its shared nested element
+  where the face is one's (`orbit.rs`, `paint_component_face`); Remove Paint takes that face's paint off, and where the face has
+  none of its own, the whole component's `all`, as it did. IFC writes no paint, as before.
+- **Surface patterns in projection.** Cut patterns stay the form's material's, and an unpainted face shows none, as before. A
+  painted face (its own paint, `all` or the family's) shows its material's surface pattern where it faces the view within a
+  degree:
+  - *Plans*, at Fine detail, as a floor's top shows its own (`render::painted_tops`): a face facing up between the cut and the
+    view depth, the fill pattern (or the material's built-in surface hatch) over it, less what a higher piece of the
+    component, or a higher face of its own piece, covers. Its lattice starts at the family's zero and turns and mirrors with
+    the component, as the face does. The faces that face up, and what of each a plan sees with every piece drawn, are found
+    from a build's triangles once and kept with it in the component geometry store (`Built::up_faces`, beside the outlines
+    `plan_pieces` reads), and so are a model pattern's lines over them in the family's axes (`Built::pattern_lines`, a few
+    patterns a build), so a redraw or a pan only places them (`zoomed_plan_bench`'s painted cases). A piece the view's
+    Visibility Settings leave out, a drafting pattern or a tilted component is worked out at each drawing instead.
+  - *Sections and elevations*, over the hidden-line picture of what lies past the cut (`render::painted_fronts`): a face
+    facing the viewer, its material's surface fill pattern, laid on the model's lattice in the view's plane, inked only on the
+    pixels whose triangle (`Image::hit`) is one of that face's, so a nearer element hides it. Each shown triangle is matched to
+    its component's build by where its middle is, to read its face's paint; nothing is stored on the scene's triangles. A
+    material's built-in surface hatch (no fill pattern) shows in plans only.
+  - *Known limit*: a face sloped more than a degree from the view's (a roof-like top, a chamfer) shows no pattern in a plan or an
+    elevation; a 3D view's surfaces show the material's texture, not its pattern.
+
+Tests: `component_paint_tests.rs` (the command, the file, a newer field, entries left out by place, copies, mirrors and groups,
+type and family changes, a reload's drop and its undo, a void's split, the check, the priority in 3D and glTF, a click's face,
+shared and unshared nested instances), `component_paint_plan_tests.rs` (a painted top's pattern at Fine and under a higher
+piece, a side's none and a section's cut unchanged, an elevation's pattern hidden by a nearer component), `tests/component_paint.rs`
+(the window: Paint and Remove Paint in a project's 3D view).
 
 ## Family options
 
@@ -2287,7 +2350,7 @@ planes, components hosted on them or on faces (Place on Face), and where a compo
 - `family/fineness.rs`: how near a build chords its curves, `Fineness`, which a plan sets from its scale (GEO-2c).
 - `family/forms.rs`: Blend, Sweep and Swept Blend: their kinds, paths, vertex mapping and triangles.
 - `family/faces.rs`: face tags (GEO-2b): `FormFace`, the key table a piece's triangles index, and the lines ring edges lie along.
-- `family/paint.rs`: painted faces of a form (FE-16c-1): what a build paints, which faces a form builds, dead paint dropped, the `paint` edit, and the face under a point.
+- `family/paint.rs`: painted faces of a form (FE-16c-1): what a build paints, which faces a form builds, dead paint dropped, the `paint` edit, and the face under a point and the element it is painted on (FE-16c-2). A placed component's own face paint (FE-16c-2) is in the project's `paint.rs`.
 - `family/kernel.rs`: what the forms are built through (GEO-1: the design note `docs/brep-plan.md`, #74): the `FormKernel`
   trait (extrude, revolve, sweep, loft, cut and fuse spending a `Budget`, bounds, silhouette, tessellate, edges, faces) over BIMCraft's own types (`Loops` and
   `Path`, which keep the arcs and circles drawn exact beside the chorded regions; `Sections`, a blend's and a swept blend's

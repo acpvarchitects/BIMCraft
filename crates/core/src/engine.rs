@@ -498,10 +498,36 @@ impl Session {
             })
             .collect();
         let mut out = Vec::new();
-        if dead.is_empty() {
+        // A model group type's components too, where a family changed, so its groups stay as their type has them.
+        let typed: Vec<(String, usize, Vec<usize>)> = if self.model.families.same_allocation(&before.families) {
+            Vec::new()
+        } else {
+            self.model
+                .model_groups
+                .iter()
+                .flat_map(|(name, t)| {
+                    t.members.iter().enumerate().filter_map(move |(i, x)| match &x.element {
+                        Element::Component(c) if !c.face_paint.is_empty() => Some((name.clone(), i, c)),
+                        _ => None,
+                    })
+                })
+                .map(|(name, i, c)| (name, i, self.model.dead_face_paint(c)))
+                .filter(|(_, _, d)| !d.is_empty())
+                .collect()
+        };
+        if dead.is_empty() && typed.is_empty() {
             return out;
         }
         let m = self.model_mut();
+        for (name, i, gone) in typed {
+            if let Some(Element::Component(c)) = m.model_groups.get_mut(&name).and_then(|t| t.members.get_mut(i)).map(|x| &mut x.element) {
+                for k in gone.into_iter().rev() {
+                    if k < c.face_paint.len() {
+                        c.face_paint.remove(k);
+                    }
+                }
+            }
+        }
         for (id, gone) in dead {
             let Some(Element::Component(c)) = m.elements.get_mut(id) else { continue };
             for i in gone.into_iter().rev() {
