@@ -157,6 +157,106 @@ pub(crate) struct Built {
     pub(crate) heights: (f64, f64),
     /// What its curves recorded as it was built: which finenesses would build it otherwise (cp's review of #88).
     pub(crate) needs: crate::family::fineness::Needs,
+    /// FE-16c-2: its faces that face up, found from its triangles the first time a plan asks for a painted one's pattern, then
+    /// kept with it, so a redraw or a pan finds them again in none of its triangles ([`Built::up_faces`]).
+    up: std::sync::OnceLock<Arc<Vec<UpFace>>>,
+}
+
+/// FE-16c-2: one face of a built piece that faces up within a degree, as a plan sees it: the piece it is of (its place in
+/// the build), its key, its family's paint of it (FE-16c-1; empty, none), its height, and what it covers in plan, as its
+/// triangles (convex, for cutting what stands over it out) and as the rings round them (for its pattern's lines).
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct UpFace {
+    pub(crate) piece: usize,
+    pub(crate) face: crate::family::FormFace,
+    pub(crate) paint: String,
+    pub(crate) z: f64,
+    pub(crate) tris: Vec<Vec<P2>>,
+    pub(crate) rings: Vec<Vec<P2>>,
+}
+
+/// How near straight up a face's normal is to be for a plan to draw its pattern: within a degree.
+pub(crate) fn facing(n: [f64; 3], toward: [f64; 3]) -> bool {
+    let len = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
+    len > 1e-12 && (n[0] * toward[0] + n[1] * toward[1] + n[2] * toward[2]) / len >= 1f64.to_radians().cos()
+}
+
+/// The faces of `pieces` that face up within a degree ([`UpFace`]), each piece's by its key; a piece with no keys, its
+/// triangles one face, `all`.
+pub(crate) fn up_faces(pieces: &[Piece]) -> Vec<UpFace> {
+    use crate::view3d::{cross, sub};
+    let mut out: Vec<UpFace> = Vec::new();
+    for (i, p) in pieces.iter().enumerate() {
+        let tagged = p.faces.len() == p.tris.len();
+        let mut by: BTreeMap<u32, usize> = BTreeMap::new();
+        for (j, t) in p.tris.iter().enumerate() {
+            if !facing(cross(sub(t[1], t[0]), sub(t[2], t[0])), [0.0, 0.0, 1.0]) {
+                continue;
+            }
+            let k = if tagged { p.faces[j] } else { u32::MAX };
+            let at = *by.entry(k).or_insert_with(|| {
+                let face = if tagged {
+                    p.keys.get(k as usize).cloned().unwrap_or(crate::family::FormFace::All)
+                } else {
+                    crate::family::FormFace::All
+                };
+                let paint = if tagged { p.paint.get(k as usize).cloned().unwrap_or_default() } else { String::new() };
+                out.push(UpFace { piece: i, face, paint, z: f64::NEG_INFINITY, tris: Vec::new(), rings: Vec::new() });
+                out.len() - 1
+            });
+            let u = &mut out[at];
+            u.z = u.z.max(t[0][2]).max(t[1][2]).max(t[2][2]);
+            let mut ring: Vec<P2> = t.iter().map(|q| P2(q[0], q[1])).collect();
+            if crate::geom::area(&ring) < 0.0 {
+                ring.reverse();
+            }
+            u.tris.push(ring);
+        }
+    }
+    for u in &mut out {
+        u.rings = boundary(&u.tris);
+    }
+    out
+}
+
+/// The rings round triangles `tris` (each counter-clockwise), which share their edges' ends exactly: each edge no other
+/// triangle has the other way round, joined end to end. The triangles themselves where they don't join up into rings.
+fn boundary(tris: &[Vec<P2>]) -> Vec<Vec<P2>> {
+    let key = |p: P2| (p.0.to_bits(), p.1.to_bits());
+    let mut edges: HashMap<((u64, u64), (u64, u64)), (P2, P2)> = HashMap::new();
+    for t in tris {
+        for e in 0..t.len() {
+            let (a, b) = (t[e], t[(e + 1) % t.len()]);
+            if edges.remove(&(key(b), key(a))).is_none() {
+                edges.insert((key(a), key(b)), (a, b));
+            }
+        }
+    }
+    let mut next: HashMap<(u64, u64), Vec<(P2, P2)>> = HashMap::new();
+    for (a, b) in edges.into_values() {
+        next.entry(key(a)).or_default().push((a, b));
+    }
+    let mut rings = Vec::new();
+    while let Some(start) = next.keys().next().copied() {
+        let mut ring = Vec::new();
+        let mut at = start;
+        loop {
+            let Some((a, b)) = next.get_mut(&at).and_then(Vec::pop) else { return tris.to_vec() };
+            if next.get(&at).is_some_and(Vec::is_empty) {
+                next.remove(&at);
+            }
+            ring.push(a);
+            at = key(b);
+            if at == start {
+                break;
+            }
+            if ring.len() > 4 * tris.len() + 4 {
+                return tris.to_vec();
+            }
+        }
+        rings.push(ring);
+    }
+    rings
 }
 
 impl Built {
@@ -169,7 +269,12 @@ impl Built {
             }
         }
         let heights = pieces.iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), p| (lo.min(p.bottom), hi.max(p.top)));
-        Self { bounds: (lo[0] <= hi[0]).then_some([lo, hi]), heights, pieces, needs }
+        Self { bounds: (lo[0] <= hi[0]).then_some([lo, hi]), heights, pieces, needs, up: std::sync::OnceLock::new() }
+    }
+
+    /// Its faces that face up ([`up_faces`]), found once and kept with it.
+    pub(crate) fn up_faces(&self) -> Arc<Vec<UpFace>> {
+        Arc::clone(self.up.get_or_init(|| Arc::new(up_faces(&self.pieces))))
     }
 }
 
@@ -803,6 +908,31 @@ impl<'a> Components<'a> {
             );
         }
         pieces
+    }
+
+    /// FE-16c-2: its faces that face up where it is placed ([`UpFace`]), each piece's as [`Components::plan_pieces`] numbers
+    /// them: upright, its build's, found once a build and kept with it, placed; tilted, found from its pieces placed.
+    pub(crate) fn plan_up_faces(&mut self, c: &'a Component) -> Vec<UpFace> {
+        let placed = self.model.component_placement(c);
+        if !placed.upright {
+            return up_faces(&self.pieces(c));
+        }
+        let flat = |q: &P2| {
+            let p = placed.place([q.0, q.1, 0.0]);
+            P2(p[0], p[1])
+        };
+        let base = placed.origin[2];
+        let ring = |r: &Vec<P2>| r.iter().map(flat).collect::<Vec<P2>>();
+        self.shown(c)
+            .up_faces()
+            .iter()
+            .map(|u| UpFace {
+                z: base + u.z,
+                tris: u.tris.iter().map(ring).collect(),
+                rings: u.rings.iter().map(ring).collect(),
+                ..u.clone()
+            })
+            .collect()
     }
 
     pub(crate) fn pieces(&mut self, c: &'a Component) -> Vec<Piece> {

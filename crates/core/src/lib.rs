@@ -33,6 +33,8 @@ pub mod codes;
 mod commands;
 mod component_geometry;
 #[cfg(test)]
+mod component_paint_plan_tests;
+#[cfg(test)]
 mod component_paint_tests;
 pub mod conduit;
 mod constraints;

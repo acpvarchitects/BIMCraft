@@ -333,6 +333,22 @@ fn facade(n: usize) -> (Session, usize) {
     (s, side)
 }
 
+/// FE-16c-2: facade `s`'s panels, every `every`th, painted on their top (the end of their first form) a material whose surface
+/// is a model pattern of tiles 200 mm square, as one command paints them.
+fn painted_facade(s: &mut Session, every: usize) {
+    s.execute(
+        "fill_pattern",
+        &json!({"name": "Tiles", "target": "model", "lines": [{"angle": 0, "spacing": 200}, {"angle": 90, "spacing": 200}]}),
+    )
+    .unwrap_or_else(|e| panic!("{e}"));
+    s.execute("material", &json!({"name": "Tile", "color": [200, 200, 200], "surface": "Tiles"})).unwrap_or_else(|e| panic!("{e}"));
+    let form = s.model.families["Panel"].forms[0].guid;
+    let ids: Vec<u64> = s.model.elements.iter().filter(|(_, e)| e.category() == "component").map(|(id, _)| *id).step_by(every).collect();
+    for some in ids.chunks(5000) {
+        s.execute("paint", &json!({"ids": some, "form": form, "face": "end", "material": "Tile"})).unwrap_or_else(|e| panic!("{e}"));
+    }
+}
+
 /// GEO-2c and GEO-2g's cost in a plan: `GEO_PANELS` facade panels (10,000 unless it says), a plan zoomed in on a few hundred
 /// drawn first, again, panned by half a screen, and with one panel in view edited; and the plan zoomed to fit them all, first
 /// and again. On 8 workers and on as many as the machine has; each plan drawn once (no test twins). `cargo test --release -p
@@ -391,6 +407,31 @@ fn zoomed_plan_bench() {
                         bytes[0] as f64 / 1e6,
                         bytes[1] as f64 / 1e6
                     );
+                    // FE-16c-2: the same zoomed plan at Fine detail with every tenth panel's top painted a material of a
+                    // surface pattern, and with every panel's: each painted top's pattern drawn over it.
+                    for (what, every) in [("10% painted", 10), ("every panel painted", 1)] {
+                        let (mut s, _) = facade(n);
+                        painted_facade(&mut s, every);
+                        let edit = |s: &mut Session| {
+                            let id = s
+                                .model
+                                .elements
+                                .iter()
+                                .find_map(|(id, e)| match e {
+                                    crate::model::Element::Component(c) if c.at.0 >= middle + 1000.0 / 0.065 && c.at.1 >= middle => {
+                                        Some(*id)
+                                    }
+                                    _ => None,
+                                })
+                                .unwrap_or_else(|| panic!("a panel in view"));
+                            s.execute("modify", &json!({"id": id, "params": {"W": 1234.5}})).unwrap_or_else(|e| panic!("{e}"));
+                        };
+                        time(&format!("{what}, first zoomed draw"), &s, view(middle));
+                        time(&format!("{what}, drawn again"), &s, view(middle));
+                        time(&format!("{what}, panned half a screen"), &s, view(middle + 1000.0 / 0.065));
+                        edit(&mut s);
+                        time(&format!("{what}, one panel in view edited"), &s, view(middle + 1000.0 / 0.065));
+                    }
                 });
             }
         })

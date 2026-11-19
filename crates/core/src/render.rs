@@ -3623,10 +3623,20 @@ fn draw_plan_among<'m>(
         if forms {
             let (bottom, top) = components.heights(c);
             if bottom < range.cut && top > range.depth {
-                pieces = components.plan_pieces(c);
                 // Its forms the plan's Visibility Settings leave out (F8) aren't drawn, nor hide what is under them.
-                pieces.retain(|p| plan_draws(p, d.detail, range.cut));
+                let mut at = Vec::new();
+                for p in components.plan_pieces(c) {
+                    at.push(plan_draws(&p, d.detail, range.cut).then_some(pieces.len()));
+                    if at.last().is_some_and(Option::is_some) {
+                        pieces.push(p);
+                    }
+                }
                 component(&mut d, m, &pieces);
+                // FE-16c-2: its painted tops' surface patterns, at Fine detail, as a floor's top shows its own.
+                if d.detail == Detail::Fine && crate::paint::painted_at_all(m, c) {
+                    let up = components.plan_up_faces(c);
+                    painted_tops(&mut d, m, c, (&pieces, &at), &up, (range.cut, range.depth));
+                }
             }
         }
         nested_picks(&mut d, m, (id, c), &pieces, c.level == level);
@@ -4189,6 +4199,60 @@ fn component(d: &mut Drawing, m: &Model, pieces: &[crate::family::Piece]) {
             }
             if at < len {
                 d.line(&[a + u * at, b], BY_CATEGORY, INK, false);
+            }
+        }
+    }
+}
+
+/// FE-16c-2: over component `c`'s faces that face up (`up`, numbered by its pieces as the plan has them: `at`, each one's
+/// place among `pieces`, the ones it draws), the surface pattern of the material each is painted (its own paint in the
+/// project, else the whole component's, else its family's), as a floor's top shows its own: only between the plan's cut and
+/// its depth, and not where a higher piece stands over it. An unpainted face, or a view's own pattern for it, shows none.
+fn painted_tops(
+    d: &mut Drawing,
+    m: &Model,
+    c: &crate::model::Component,
+    (pieces, at): (&[crate::family::Piece], &[Option<usize>]),
+    up: &[crate::component_geometry::UpFace],
+    (cut, depth): (f64, f64),
+) {
+    if pattern_style(d, false).is_some_and(|s| s.foreground.is_some()) {
+        return;
+    }
+    let all = c.params.get(crate::paint::KEY).and_then(|p| p.get("all")).and_then(serde_json::Value::as_str);
+    for u in up {
+        let Some(Some(i)) = at.get(u.piece).copied() else { continue };
+        let Some(p) = pieces.get(i) else { continue };
+        if u.z > cut + TOL || u.z < depth - TOL {
+            continue;
+        }
+        let own = c.face_paint.iter().find(|q| q.form == p.form && q.nested == p.path && q.face == u.face).map(|q| q.material.as_str());
+        let name = own.or(all).or_else(|| (!u.paint.is_empty()).then_some(u.paint.as_str()));
+        let Some(x) = name.and_then(|n| m.materials.get(n)) else { continue };
+        let pattern = x.surface_pattern.as_ref().and_then(|n| m.fill_patterns.get(n));
+        if pattern.is_none() && x.surface == Pattern::None {
+            continue;
+        }
+        // What stands over it: the other pieces higher than it, and its own piece's faces higher up.
+        let over: Vec<&[P2]> = pieces
+            .iter()
+            .enumerate()
+            .filter(|(j, q)| *j != i && q.top > u.z + 1e-6)
+            .map(|(_, q)| q.outline.as_slice())
+            .chain(up.iter().filter(|v| v.piece == u.piece && v.z > u.z + 1e-6).flat_map(|v| v.tris.iter().map(Vec::as_slice)))
+            .filter(|ring| u.rings.iter().any(|r| boxes_meet(r, ring)))
+            .collect();
+        let shown =
+            if over.is_empty() { u.rings.clone() } else { over.iter().fold(u.tris.clone(), |left, ring| walls::minus(&left, ring)) };
+        if shown.is_empty() {
+            continue;
+        }
+        match pattern {
+            Some(pat) => fill_pattern(d, pat, &shown, &shown, FAINT, (P2(0.0, 0.0), 0.0)),
+            None => {
+                for ring in &shown {
+                    surface(d, ring, x.surface, FAINT, (P2(0.0, 0.0), 0.0));
+                }
             }
         }
     }

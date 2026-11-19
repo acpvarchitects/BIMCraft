@@ -266,3 +266,10 @@ pub(crate) fn say_dropped(mut v: Value, dropped: Vec<(crate::model::Id, FacePain
     }
     v
 }
+
+/// Whether anything of component `c` is painted: a face of it, all of it, or a face its family paints (FE-16c-1).
+pub fn painted_at_all(m: &Model, c: &crate::model::Component) -> bool {
+    !c.face_paint.is_empty()
+        || c.params.get(KEY).and_then(|p| p.get("all")).is_some()
+        || m.families.get(&c.family).is_some_and(crate::family::Family::painted)
+}
