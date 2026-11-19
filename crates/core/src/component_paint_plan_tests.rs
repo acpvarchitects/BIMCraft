@@ -122,3 +122,54 @@ fn a_painted_front_face_shows_its_pattern_in_an_elevation_only_where_nothing_nea
     paint(&mut s, id, json!({"side": gstr(3)}), json!("Tile"));
     assert!(darkest(&s, section, 300.0, 100.0) > 700, "a face turned away shows no pattern");
 }
+
+/// ec's review of FE-16c-2: what a plan finds and keeps of a build for its painted tops (the faces that face up, a pattern's
+/// lines over them) is charged to the store's budget, so a budget the builds alone fit in, but not with those, lets some
+/// go; and the bytes the store counts are those its shapes sum to.
+#[test]
+fn what_a_plan_keeps_of_a_build_for_its_painted_tops_is_charged_to_the_stores_budget() {
+    use crate::component_geometry::{kept_bytes, kept_shapes, with_budgets};
+    let mut s = Session::new();
+    run(&mut s, "fill_pattern", json!({"name": "Fine", "target": "model", "lines": [{"angle": 0, "spacing": 1}]}));
+    run(&mut s, "material", json!({"name": "Fine", "color": [200, 200, 200], "surface": "Fine"}));
+    let sketch = json!([{"start": [0, 0], "end": ["W", 0]}, {"start": ["W", 0], "end": ["W", 300]},
+                        {"start": ["W", 300], "end": [0, 300]}, {"start": [0, 300], "end": [0, 0]}]);
+    run(
+        &mut s,
+        "family",
+        json!({"name": "Tile", "category": "generic", "parameters": [{"name": "W", "value": 300, "instance": true}],
+               "types": {"T": {}}, "forms": [{"guid": gstr(BOX), "sketch": sketch, "from": 0, "to": 100}]}),
+    );
+    // Twenty, each a shape of its own.
+    let mut ids = Vec::new();
+    for i in 0..20u32 {
+        let at = [f64::from(i % 5) * 400.0, f64::from(i / 5) * 400.0];
+        let w = 300.0 + f64::from(i) * 0.5;
+        ids.push(run(&mut s, "component", json!({"family": "Tile", "type": "T", "at": at, "params": {"W": w}}))["id"].as_u64().unwrap());
+    }
+    let view = crate::render::View { angle: 0.0, scale: 1.0, cx: 900.0, cy: 700.0, width: 2400, height: 2000 };
+    let draw = |s: &Session| {
+        crate::render::draw(&s.model, 100000, view);
+    };
+    // The builds alone, with room to spare: each found once, all kept.
+    let roomy = with_budgets([1 << 30, 1 << 30], || {
+        draw(&s);
+        kept_bytes()
+    });
+    assert_eq!(roomy.0, roomy.1);
+    let budget = roomy.0[0] * 3 / 2;
+    // Painted, a line a millimetre apart over each top: what the plan keeps for them doesn't fit beside the builds.
+    let form = s.model.families["Tile"].forms[0].guid;
+    run(&mut s, "paint", json!({"ids": ids, "form": form, "face": "end", "material": "Fine"}));
+    let (bare, painted) = with_budgets([budget, budget], || {
+        draw(&s);
+        let bare = kept_shapes();
+        draw(&s);
+        draw(&s);
+        (bare, (kept_shapes(), kept_bytes()))
+    });
+    let (kept, (counted, summed)) = painted;
+    assert_eq!(counted, summed, "the bytes counted are what the shapes sum to");
+    assert!(counted[0] <= budget, "within the budget: {counted:?} of {budget}");
+    assert!(kept < 20 && bare <= 20, "some builds went to make room for their tops' lines: {kept} kept");
+}

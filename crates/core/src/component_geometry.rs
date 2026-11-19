@@ -163,6 +163,9 @@ pub(crate) struct Built {
     /// FE-16c-2: the lines of each model fill pattern a plan has drawn over its faces that face up, each face's in its family's
     /// axes, kept by the pattern ([`Built::pattern_lines`]).
     lines: Mutex<Vec<(crate::fills::FillPattern, Arc<PatternLines>)>>,
+    /// About how many bytes `up` and `lines` take as they are filled, which the store charges its shape with beside what its
+    /// pieces take ([`Store::charge_grown`]; ec's review of FE-16c-2).
+    extra: std::sync::atomic::AtomicUsize,
 }
 
 /// FE-16c-2: a fill pattern's lines over each of a build's faces that face up, in its family's axes.
@@ -332,7 +335,21 @@ impl Built {
             needs,
             up: std::sync::OnceLock::new(),
             lines: Mutex::new(Vec::new()),
+            extra: std::sync::atomic::AtomicUsize::new(0),
         }
+    }
+
+    /// About how many bytes its faces that face up and its patterns' lines take, kept beside its pieces.
+    pub(crate) fn extra(&self) -> usize {
+        self.extra.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    /// `more` bytes kept beside its pieces, and `less` let go: said to the store, which charges its shape with them.
+    fn grew(&self, more: usize, less: usize) {
+        use std::sync::atomic::Ordering::Relaxed;
+        self.extra.fetch_add(more, Relaxed);
+        let _ = self.extra.fetch_update(Relaxed, Relaxed, |x| Some(x.saturating_sub(less)));
+        mark_grown();
     }
 
     /// The lines model fill pattern `p` draws over what a plan sees of each of its faces that face up ([`UpFace::shown`]), in
@@ -353,17 +370,47 @@ impl Built {
         }
         let out = Arc::new(out);
         // A few patterns a build: the oldest goes past them.
-        if kept.len() >= 4 {
-            kept.remove(0);
-        }
+        let less = if kept.len() >= 4 { lines_bytes(&kept.remove(0)) } else { 0 };
         kept.push((p.clone(), Arc::clone(&out)));
+        let more = kept.last().map_or(0, lines_bytes);
+        drop(kept);
+        self.grew(more, less);
         Some(out)
     }
 
     /// Its faces that face up ([`up_faces`]), found once and kept with it.
     pub(crate) fn up_faces(&self) -> Arc<Vec<UpFace>> {
-        Arc::clone(self.up.get_or_init(|| Arc::new(up_faces(&self.pieces))))
+        if let Some(up) = self.up.get() {
+            return Arc::clone(up);
+        }
+        let up = Arc::new(up_faces(&self.pieces));
+        // The first to find them keeps them, and charges them.
+        if self.up.set(Arc::clone(&up)).is_ok() {
+            self.grew(up_bytes(&up), 0);
+            return up;
+        }
+        self.up.get().map_or(up, Arc::clone)
     }
+}
+
+/// About how many bytes rings `r` take: the list's room and each ring's.
+fn rings_bytes(r: &[Vec<P2>]) -> usize {
+    std::mem::size_of_val(r) + r.iter().map(|q| q.capacity() * std::mem::size_of::<P2>()).sum::<usize>()
+}
+
+/// About how many bytes faces `up` take: the list's room and what each holds.
+fn up_bytes(up: &[UpFace]) -> usize {
+    std::mem::size_of::<Vec<UpFace>>()
+        + std::mem::size_of_val(up)
+        + up.iter().map(|u| rings_bytes(&u.tris) + rings_bytes(&u.rings) + rings_bytes(&u.shown) + u.paint.capacity()).sum::<usize>()
+}
+
+/// About how many bytes a pattern and its lines over a build's faces take.
+fn lines_bytes((p, lines): &(crate::fills::FillPattern, Arc<PatternLines>)) -> usize {
+    std::mem::size_of::<crate::fills::FillPattern>()
+        + std::mem::size_of_val(p.lines.as_slice())
+        + std::mem::size_of_val(lines.as_slice())
+        + lines.iter().map(|l| l.capacity() * std::mem::size_of::<[P2; 2]>()).sum::<usize>()
 }
 
 /// About how many bytes `pieces` take: each piece, the room its lists hold (used or not), and what is in them.
@@ -422,6 +469,8 @@ pub(crate) struct Components<'a> {
     corners: BTreeMap<Key, Vec<Vec<[f64; 3]>>>,
     /// Each key's model lines in its family's axes (ec's review of #88: found once a key, not once a question).
     lines: HashMap<Arc<Key>, Arc<Vec<index::Line>>>,
+    /// Charges the store, once the drawing is done, with what it kept beside the builds.
+    _settle: Settle,
 }
 
 /// GEO-2g: the part of the plan `view` builds and draws components in: its screen and one more screen each way, however it is
@@ -440,6 +489,16 @@ fn meets([a, b]: [P2; 2], [lo, hi]: [P2; 2]) -> bool {
     !(a.0 > hi.0 || b.0 < lo.0 || a.1 > hi.1 || b.1 < lo.1)
 }
 
+/// What a drawing's [`Components`] found and kept beside the builds (FE-16c-2), charged to the store as it goes, which then
+/// keeps its budget.
+struct Settle;
+
+impl Drop for Settle {
+    fn drop(&mut self) {
+        settle_grown();
+    }
+}
+
 impl<'a> Components<'a> {
     pub(crate) fn new(model: &'a Model) -> Self {
         Self {
@@ -455,6 +514,7 @@ impl<'a> Components<'a> {
             envelopes: HashMap::new(),
             corners: BTreeMap::new(),
             lines: HashMap::new(),
+            _settle: Settle,
         }
     }
 
@@ -1384,9 +1444,11 @@ impl Kept {
                 count_unshare(1);
                 let Some(shape) = self.shapes.get_mut(&(Arc::clone(key), *fineness)) else { continue };
                 if Arc::ptr_eq(&shape.built, built) {
-                    let full = estimate(&shape.built.pieces);
+                    let extra = shape.built.extra();
+                    let full = estimate(&shape.built.pieces) + extra;
                     added += full.saturating_sub(shape.bytes);
                     shape.bytes = shape.bytes.max(full);
+                    shape.extra = extra;
                 }
             }
         }
@@ -1420,6 +1482,8 @@ struct Shape {
     built: Arc<Built>,
     bytes: usize,
     used: u64,
+    /// What of `bytes` is its build's [`Built::extra`], as last charged.
+    extra: usize,
 }
 
 /// A default build gone from the store, with its key.
@@ -1499,6 +1563,33 @@ impl Store {
         }
         self.generations.push(Kept::new(model.families.identity(), now));
         self.generations.len() - 1
+    }
+
+    /// Each shape charged what its build has come to keep beside its pieces since it was last ([`Built::extra`]): a finer
+    /// build its default one shares, as it is, takes no more than its place.
+    fn charge_grown(&mut self) {
+        let bytes = &mut self.bytes;
+        for g in &mut self.generations {
+            let shared: Vec<(Arc<Key>, Fineness)> = g
+                .shapes
+                .iter()
+                .filter(|(k, s)| {
+                    k.1 != Fineness::DEFAULT
+                        && g.shapes.get(&(Arc::clone(&k.0), Fineness::DEFAULT)).is_some_and(|d| Arc::ptr_eq(&d.built, &s.built))
+                })
+                .map(|(k, _)| k.clone())
+                .collect();
+            for (k, shape) in g.shapes.iter_mut() {
+                let now = shape.built.extra();
+                if now == shape.extra || shared.contains(k) {
+                    continue;
+                }
+                let t = &mut bytes[tier(k.1)];
+                *t = t.saturating_sub(shape.extra) + now;
+                shape.bytes = shape.bytes.saturating_sub(shape.extra) + now;
+                shape.extra = now;
+            }
+        }
     }
 
     /// Over a tier's budget: its least lately used shapes go, of every generation, until a quarter of it is free.
@@ -1583,9 +1674,10 @@ fn keep(model: &Model, shapes: &[Keeping]) {
             // A finer build that is its default one, shared, takes no more than its place.
             let shared = key.1 != Fineness::DEFAULT
                 && s.generations[i].shapes.get(&(Arc::clone(&key.0), Fineness::DEFAULT)).is_some_and(|d| Arc::ptr_eq(&d.built, built));
-            let bytes = if shared { std::mem::size_of::<Shape>() } else { estimate(&built.pieces) };
+            let extra = if shared { 0 } else { built.extra() };
+            let bytes = if shared { std::mem::size_of::<Shape>() } else { estimate(&built.pieces) + extra };
             let g = &mut s.generations[i];
-            match g.shapes.insert(key.clone(), Shape { built: Arc::clone(built), bytes, used: now }) {
+            match g.shapes.insert(key.clone(), Shape { built: Arc::clone(built), bytes, used: now, extra }) {
                 Some(was) => {
                     s.bytes[tier(key.1)] -= was.bytes;
                     if key.1 == Fineness::DEFAULT && !Arc::ptr_eq(&was.built, built) {
@@ -1597,8 +1689,50 @@ fn keep(model: &Model, shapes: &[Keeping]) {
             }
             s.bytes[tier(key.1)] += bytes;
         }
+        if take_grown() {
+            s.charge_grown();
+        }
         s.evict();
     });
+}
+
+/// FE-16c-2: what builds have come to keep beside their pieces since the store last charged it, charged, and the store kept
+/// within its budget: once a drawing, as its [`Components`] goes, and as builds are kept. Nothing where nothing grew.
+fn settle_grown() {
+    if take_grown() {
+        with_store(|s| {
+            s.charge_grown();
+            s.evict();
+        });
+    }
+}
+
+#[cfg(not(test))]
+static GROWN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+#[cfg(test)]
+thread_local! {
+    static GROWN: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// That a build has come to keep more, or less, beside its pieces.
+fn mark_grown() {
+    #[cfg(not(test))]
+    GROWN.store(true, std::sync::atomic::Ordering::Relaxed);
+    #[cfg(test)]
+    GROWN.with(|g| g.set(true));
+}
+
+/// Whether a build has, since this was last asked.
+fn take_grown() -> bool {
+    #[cfg(not(test))]
+    {
+        GROWN.swap(false, std::sync::atomic::Ordering::Relaxed)
+    }
+    #[cfg(test)]
+    {
+        GROWN.with(|g| g.replace(false))
+    }
 }
 
 /// GEO-2g-2: the index of `model`'s components, brought up to it: kept with its families' generation, so a drawing after
@@ -1734,7 +1868,7 @@ pub(crate) fn kept_finer_honest() -> bool {
         s.generations.iter().all(|g| {
             g.shapes.iter().filter(|(k, _)| k.1 != Fineness::DEFAULT).all(|((key, _), shape)| {
                 let shared = g.shapes.get(&(Arc::clone(key), Fineness::DEFAULT)).is_some_and(|d| Arc::ptr_eq(&d.built, &shape.built));
-                shared || shape.bytes == estimate(&shape.built.pieces)
+                shared || shape.bytes == estimate(&shape.built.pieces) + shape.extra
             })
         })
     })
@@ -1803,6 +1937,12 @@ pub(crate) fn kept_finer() -> (usize, usize) {
         out
     })
     .unwrap_or_default()
+}
+
+/// How many shapes are kept, of every generation and tier.
+#[cfg(test)]
+pub(crate) fn kept_shapes() -> usize {
+    with_store(|s| s.generations.iter().map(|g| g.shapes.len()).sum()).unwrap_or_default()
 }
 
 /// The bytes kept, each tier's, as counted and as summed afresh.

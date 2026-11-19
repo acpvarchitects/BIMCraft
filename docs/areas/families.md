@@ -1571,7 +1571,9 @@ the face under a point. `params["Paint"]` is as it was: `all` for a whole compon
     the component, as the face does. The faces that face up, and what of each a plan sees with every piece drawn, are found
     from a build's triangles once and kept with it in the component geometry store (`Built::up_faces`, beside the outlines
     `plan_pieces` reads), and so are a model pattern's lines over them in the family's axes (`Built::pattern_lines`, a few
-    patterns a build), so a redraw or a pan only places them (`zoomed_plan_bench`'s painted cases). A piece the view's
+    patterns a build), so a redraw or a pan only places them (`zoomed_plan_bench`'s painted cases). What they take is charged
+    to the store's budget beside the pieces (`Built::extra`): each fill marks the store, which brings its shapes' bytes up to
+    it once a drawing (as its `Components` goes) and as builds are kept, then evicts as it does for builds. A piece the view's
     Visibility Settings leave out, a drafting pattern or a tilted component is worked out at each drawing instead.
   - *Sections and elevations*, over the hidden-line picture of what lies past the cut (`render::painted_fronts`): a face
     facing the viewer, its material's surface fill pattern, laid on the model's lattice in the view's plane, inked only on the
