@@ -200,20 +200,23 @@ impl UpFace {
             if q.tris.is_empty() {
                 return q.holes.iter().fold(vec![q.outline.clone()], |rings, h| crate::walls::minus(&rings, h));
             }
-            q.tris
+            let tris: Vec<Vec<P2>> = q
+                .tris
                 .iter()
                 .filter(|t| {
                     use crate::view3d::{cross, sub};
                     cross(sub(t[1], t[0]), sub(t[2], t[0]))[2] > 1e-9 && t.iter().any(|p| p[2] > z + 1e-6)
                 })
-                .map(|t| {
-                    let mut ring: Vec<P2> = t.iter().map(|p| P2(p[0], p[1])).collect();
-                    if crate::geom::area(&ring) < 0.0 {
-                        ring.reverse();
-                    }
-                    ring
-                })
-                .collect()
+                .map(|t| t.iter().map(|p| P2(p[0], p[1])).collect())
+                .collect();
+            // Joined into the rings round them (few, where they were many), outer ones less the holes in them.
+            let rings = boundary(&tris);
+            let (outer, holes): (Vec<Vec<P2>>, Vec<Vec<P2>>) = rings.into_iter().partition(|r| crate::geom::area(r) > 0.0);
+            holes.iter().fold(outer, |left, h| {
+                let mut h = h.clone();
+                h.reverse();
+                crate::walls::minus(&left, &h)
+            })
         };
         let over: Vec<Vec<P2>> = pieces
             .iter()
