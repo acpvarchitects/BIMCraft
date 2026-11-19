@@ -323,3 +323,26 @@ fn an_eviction_unshares_its_finer_builds_once_a_pass_by_key() {
     let (counted, summed) = cg::kept_bytes();
     assert_eq!(counted, summed);
 }
+
+/// A component's model lines are culled by their own heights, as the plan draws them (FE-15), not by its forms': a family
+/// whose box stands wholly above the cut plane and whose model line lies on the floor draws its line alone. Before GEO-2g-2
+/// the plan's filter left the component out by its forms' heights, so the plan drawn among its candidates missed the line
+/// the plan drawn among every element has (its twin check failed here).
+#[test]
+fn a_components_line_under_the_cut_is_drawn_though_its_forms_are_above_it() {
+    let mut s = Session::new();
+    run(
+        &mut s,
+        "family",
+        json!({"name": "High", "category": "generic", "types": {"T": {}},
+               "forms": [{"profile": [[0, 0], [200, 0], [200, 200], [0, 200]], "from": 2000, "to": 2500}],
+               "model_lines": [{"start": [0, 100, 0], "end": [3000, 100, 0]}]}),
+    );
+    let id = id_of(&run(&mut s, "component", json!({"family": "High", "at": [0, 0]})));
+    let view = at(1500.0, 0.0);
+    let d = render::draw(&s.model, LEVEL, view);
+    let owned: Vec<&render::Prim> = d.prims.iter().zip(&d.owners).filter(|(_, o)| **o == Some(id)).map(|(p, _)| p).collect();
+    assert_eq!(owned.len(), 1, "its line alone");
+    assert!(matches!(owned[0], render::Prim::Line { closed: false, .. }));
+    check(&s.model, LEVEL, view, "its box above the cut");
+}
