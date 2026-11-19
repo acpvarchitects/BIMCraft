@@ -1,8 +1,11 @@
 # Exact and fast family geometry: where we stand
 
 Status: recap for discussion, 2026-11-19. It gathers the B-rep and NURBS work on the fork so far: the goal, every test run,
-what is merged, what the numbers say and the options still open. It decides nothing. The design note it builds on is GEO-1
-([`docs/brep-plan.md` on `cp/geo1-design-note`](https://github.com/acpvarchitects/BIMCraft/blob/cp/geo1-design-note/docs/brep-plan.md));
+what is merged, what the numbers say and the options still open. It decides nothing. **It summarises the GEO-1 design note and
+does not replace it**: the note
+([`docs/brep-plan.md`, PR #74](https://github.com/acpvarchitects/BIMCraft/blob/cp/geo1-design-note/docs/brep-plan.md)) holds
+the design (the trait, the fill-ins on top of arris, the landing steps) and is the document to decide on. This recap adds what
+happened since: the benches, the merged steps and the options;
 the raw tables, logs and harness are on the orphan branch
 [`bench/kernels`](https://github.com/acpvarchitects/BIMCraft/tree/bench/kernels). Upstream thread: IPedrax/BIMCraft#499.
 
@@ -88,9 +91,8 @@ for the maintainers to decide, because it is a new dependency.
   recipe.
 - **Booleans are the gap.** With a void, booleans are 95 to 97% of arris's time. Making a through-void a hole of the profile
   makes it about 20× faster.
-- **We have no reference for what an established BIM tool takes for the same facade.** A run in Revit on the same two laptops
-  has been requested. Whether its timings can be published depends on Revit's licence terms; until the maintainers decide, they
-  stay internal.
+- **We have no reference for what an established BIM tool takes for the same facade.** Getting one is an open question for the
+  maintainers.
 
 ## 3. What is merged on the fork (`followups/family-editor`)
 
@@ -171,4 +173,4 @@ on one hostile input. Not worth a second run unless it has changed.
    with `IfcAdvancedBrep` coming later?
 3. Should mimalloc be proposed upstream now, independent of any kernel?
 4. arris now, solidcore later? Or ask solidcore's maintainer first and decide after?
-5. A Revit reference run: can it be published, and if not, how do we present the speed we have without it?
+5. How do we present the speed we have to people who judge it against established BIM tools?
