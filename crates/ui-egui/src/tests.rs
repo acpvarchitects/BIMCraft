@@ -7651,6 +7651,7 @@ mod chinese;
 mod classification;
 mod clouds;
 mod codes;
+mod component_paint;
 mod control;
 mod coordinates;
 mod cowork;
