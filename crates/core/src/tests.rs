@@ -3244,6 +3244,28 @@ fn hostile_params_never_panic_or_break_the_model() {
             ];
         }
     }
+    // FE-16c-2: a face of the second luminaire painted in the project, and what is thrown at it.
+    let mut face_paints: Vec<Value> = Vec::new();
+    if let Some(l) = ids[1] {
+        let form = match base.model.elements.get(l) {
+            Some(crate::model::Element::Component(c)) => base.model.families.get(&c.family).and_then(|f| f.forms.first()).map(|f| f.guid),
+            _ => None,
+        };
+        if let Some(form) = form {
+            let _ = base.execute("paint", &json!({"id": l, "form": form, "face": "start", "material": "Concrete"}));
+            face_paints = vec![
+                json!({"id": l, "form": form, "face": "end", "material": "Concrete"}),
+                json!({"id": l, "form": form, "face": {"cut": form, "face": {"cut": 1e300, "face": []}}, "material": null}),
+                json!({"id": l, "form": form, "face": null, "material": null, "nested": [form, form, form, form, form, form, form, form]}),
+                json!({"id": l, "form": form, "face": {"edge": u64::MAX}, "material": "Concrete", "nested": "x"}),
+                json!({"id": l, "form": f64::NAN, "face": "end", "material": "Nope"}),
+                json!({"id": l, "form": form, "face": "all", "material": ["Concrete"]}),
+                json!({"ids": [l, l, 100000], "form": form, "face": "start", "material": "Concrete"}),
+                json!({"id": l, "form": form, "nested": [null], "face": "end", "material": "Concrete"}),
+                json!({"id": l, "type": "Nope", "family": "Outlet"}),
+            ];
+        }
+    }
     // A panel schedule of that board, after the circuit, and what is thrown at it and at the demand factors.
     let mut schedules: Vec<Value> = vec![
         json!({"class": "lighting", "factor": 1e300}),
@@ -3296,6 +3318,7 @@ fn hostile_params_never_panic_or_break_the_model() {
         .chain(plots)
         .chain(marks)
         .chain(circuits)
+        .chain(face_paints)
         .chain(schedules)
         .collect();
     // A room with a floor and a ceiling of its own, last so that no id moves: one placed in the house and the starter room

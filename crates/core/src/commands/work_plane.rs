@@ -187,6 +187,7 @@ pub(super) fn component(s: &mut Session, p: &Value) -> R {
                 params,
                 host: Some(hosted),
                 panel: None,
+                face_paint: Vec::new(),
             }
         }
         Some(Given::Face(element, face)) => {
@@ -211,6 +212,7 @@ pub(super) fn component(s: &mut Session, p: &Value) -> R {
                 params,
                 host: Some(hosted),
                 panel: None,
+                face_paint: Vec::new(),
             }
         }
         given => {
@@ -234,6 +236,7 @@ pub(super) fn component(s: &mut Session, p: &Value) -> R {
                 params,
                 host: None,
                 panel: None,
+                face_paint: Vec::new(),
             };
             comp.offset = match offset {
                 Some(o) => o,

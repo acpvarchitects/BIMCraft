@@ -333,6 +333,78 @@ fn facade(n: usize) -> (Session, usize) {
     (s, side)
 }
 
+/// FE-16c-2 (cp's review of #91): the facade seen in an elevation looking north at the panels' fronts, unpainted and with every
+/// panel's front painted a material of a surface pattern: the section's picture drawn, then again, on 8 workers. `cargo test
+/// --release -p bimcraft-core elevation_paint_bench -- --ignored --nocapture`.
+#[test]
+#[ignore]
+fn elevation_paint_bench() {
+    let n: usize = std::env::var("GEO_PANELS").ok().and_then(|v| v.parse().ok()).unwrap_or(10_000);
+    render::without_twins(|| {
+        crate::component_geometry::with_threads(8, || {
+            for painted in [false, true] {
+                let (mut s, side) = facade(n);
+                if painted {
+                    s.execute("fill_pattern", &json!({"name": "Tiles", "target": "model", "lines": [{"angle": 0, "spacing": 200}, {"angle": 90, "spacing": 200}]}))
+                        .unwrap_or_else(|e| panic!("{e}"));
+                    s.execute("material", &json!({"name": "Tile", "color": [200, 200, 200], "surface": "Tiles"}))
+                        .unwrap_or_else(|e| panic!("{e}"));
+                    let form = s.model.families["Panel"].forms[0].guid;
+                    let ids: Vec<u64> = s.model.elements.iter().filter(|(_, e)| e.category() == "component").map(|(id, _)| *id).collect();
+                    // Each panel's front, along x at y = 0: its key, as a click on the first panel's names it.
+                    let first = ids
+                        .iter()
+                        .copied()
+                        .find(|id| matches!(s.model.elements.get(*id), Some(crate::model::Element::Component(c)) if c.at == P2(0.0, 0.0)))
+                        .unwrap_or_else(|| panic!("the first panel"));
+                    let face =
+                        s.model.component_face(first, [500.0, 0.0, 100.0], [0.0, -1.0, 0.0]).unwrap_or_else(|| panic!("its front")).face;
+                    for some in ids.chunks(5000) {
+                        s.execute("paint", &json!({"ids": some, "form": form, "face": face, "material": "Tile"}))
+                            .unwrap_or_else(|e| panic!("{e}"));
+                    }
+                }
+                let width = side as f64 * 1500.0;
+                let id = s
+                    .execute("section", &json!({"start": [-1000, -1000], "end": [width + 1000.0, -1000], "depth": 2000}))
+                    .unwrap_or_else(|e| panic!("{e}"))["id"]
+                    .as_u64()
+                    .unwrap_or_else(|| panic!("a section"));
+                let view = View { angle: 0.0, scale: 0.065, cx: width / 2.0 + 1000.0, cy: 500.0, width: 2000, height: 800 };
+                let work = render::SectionWork::new(&s.model);
+                for what in ["first", "again"] {
+                    let t = std::time::Instant::now();
+                    let picture = render::section_picture_with(&s.model, &work, id, view, &[]);
+                    let elapsed = t.elapsed().as_secs_f64() * 1000.0;
+                    // The pattern's ink: the pixels in its grey.
+                    let inked = picture.as_ref().map_or(0, |p| p.rgba.chunks(4).filter(|c| c[..3] == [120, 120, 120]).count());
+                    eprintln!(
+                        "FE-16c-2 elevation, {}, {what}: {elapsed:.1} ms, {inked} px in the pattern's grey{}",
+                        if painted { "every front painted" } else { "unpainted" },
+                        if picture.is_some() { "" } else { " (no picture)" }
+                    );
+                }
+            }
+        })
+    });
+}
+
+/// FE-16c-2: facade `s`'s panels, every `every`th, painted on their top (the end of their first form) a material whose surface
+/// is a model pattern of tiles 200 mm square, as one command paints them.
+fn painted_facade(s: &mut Session, every: usize) {
+    s.execute(
+        "fill_pattern",
+        &json!({"name": "Tiles", "target": "model", "lines": [{"angle": 0, "spacing": 200}, {"angle": 90, "spacing": 200}]}),
+    )
+    .unwrap_or_else(|e| panic!("{e}"));
+    s.execute("material", &json!({"name": "Tile", "color": [200, 200, 200], "surface": "Tiles"})).unwrap_or_else(|e| panic!("{e}"));
+    let form = s.model.families["Panel"].forms[0].guid;
+    let ids: Vec<u64> = s.model.elements.iter().filter(|(_, e)| e.category() == "component").map(|(id, _)| *id).step_by(every).collect();
+    for some in ids.chunks(5000) {
+        s.execute("paint", &json!({"ids": some, "form": form, "face": "end", "material": "Tile"})).unwrap_or_else(|e| panic!("{e}"));
+    }
+}
+
 /// GEO-2c and GEO-2g's cost in a plan: `GEO_PANELS` facade panels (10,000 unless it says), a plan zoomed in on a few hundred
 /// drawn first, again, panned by half a screen, and with one panel in view edited; and the plan zoomed to fit them all, first
 /// and again. On 8 workers and on as many as the machine has; each plan drawn once (no test twins). `cargo test --release -p
@@ -391,6 +463,31 @@ fn zoomed_plan_bench() {
                         bytes[0] as f64 / 1e6,
                         bytes[1] as f64 / 1e6
                     );
+                    // FE-16c-2: the same zoomed plan at Fine detail with every tenth panel's top painted a material of a
+                    // surface pattern, and with every panel's: each painted top's pattern drawn over it.
+                    for (what, every) in [("10% painted", 10), ("every panel painted", 1)] {
+                        let (mut s, _) = facade(n);
+                        painted_facade(&mut s, every);
+                        let edit = |s: &mut Session| {
+                            let id = s
+                                .model
+                                .elements
+                                .iter()
+                                .find_map(|(id, e)| match e {
+                                    crate::model::Element::Component(c) if c.at.0 >= middle + 1000.0 / 0.065 && c.at.1 >= middle => {
+                                        Some(*id)
+                                    }
+                                    _ => None,
+                                })
+                                .unwrap_or_else(|| panic!("a panel in view"));
+                            s.execute("modify", &json!({"id": id, "params": {"W": 1234.5}})).unwrap_or_else(|e| panic!("{e}"));
+                        };
+                        time(&format!("{what}, first zoomed draw"), &s, view(middle));
+                        time(&format!("{what}, drawn again"), &s, view(middle));
+                        time(&format!("{what}, panned half a screen"), &s, view(middle + 1000.0 / 0.065));
+                        edit(&mut s);
+                        time(&format!("{what}, one panel in view edited"), &s, view(middle + 1000.0 / 0.065));
+                    }
                 });
             }
         })

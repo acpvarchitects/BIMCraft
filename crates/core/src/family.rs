@@ -1339,6 +1339,11 @@ pub struct Piece {
     pub keys: Vec<FormFace>,
     /// FE-16c-1: the material each of `keys` is painted, in step with it (an empty name, unpainted); empty, nothing is.
     pub paint: Vec<String>,
+    /// FE-16c-2: the GUID of the form it is of (nil, of none: a door's generated equipment, an imported mesh's).
+    pub form: crate::ids::Guid,
+    /// FE-16c-2: the nested instances it is part of, by their GUIDs from the family's down to its own, shared or not (`nested`
+    /// is the shared ones' part of it); empty for the family's own forms. What a project's face paint names it by.
+    pub path: Vec<crate::ids::Guid>,
 }
 
 /// Where one form lies before any void cuts it: its box in the family's own axes (x along a
@@ -3061,6 +3066,8 @@ impl Family {
                         faces,
                         keys,
                         paint: Vec::new(),
+                        form: piece.form,
+                        path: std::mem::take(&mut piece.path),
                     };
                 }
             }
@@ -3280,6 +3287,8 @@ impl Family {
                 faces,
                 keys,
                 paint: Vec::new(),
+                form: crate::ids::Guid::default(),
+                path: Vec::new(),
             }
         } else {
             let (regions, edges) = form.loops_tagged(&mut num)?;
@@ -3320,6 +3329,8 @@ impl Family {
                         faces,
                         keys,
                         paint: Vec::new(),
+                        form: crate::ids::Guid::default(),
+                        path: Vec::new(),
                     }
                 }
                 None => {
@@ -3351,11 +3362,13 @@ impl Family {
                         faces,
                         keys,
                         paint: Vec::new(),
+                        form: crate::ids::Guid::default(),
+                        path: Vec::new(),
                     }
                 }
             }
         };
-        Ok(Some(Piece { vis: form.visibility, ..piece }))
+        Ok(Some(Piece { vis: form.visibility, form: form.guid, ..piece }))
     }
 
     /// Where each of its forms lies, sized by `values`, before any void cuts it: its place in
@@ -3873,6 +3886,8 @@ fn mesh(tris: &[[P3; 3]], material: String) -> Result<Piece, String> {
         faces: vec![0; tris.len()],
         keys: vec![FormFace::All],
         paint: Vec::new(),
+        form: crate::ids::Guid::default(),
+        path: Vec::new(),
     })
 }
 

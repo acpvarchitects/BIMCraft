@@ -2050,6 +2050,10 @@ pub struct Component {
     /// A distribution board's electrical data: its distribution system, its mains and slots and the board that supplies it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub panel: Option<crate::electrical::Panel>,
+    /// FE-16c-2: its single faces painted in the project, each by its form, the nested instances down to it and its face key
+    /// ([`crate::paint::FacePaint`]); over its `params`' `Paint` `all`, its family's paint and its forms' materials.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub face_paint: Vec<crate::paint::FacePaint>,
 }
 
 /// A stair from `level` up to `top_level` (or `height` mm), climbing from the middle of its first
@@ -4788,6 +4792,11 @@ impl Model {
         if let Some((id, e)) = self.elements.iter().find(|(_, e)| painted(e)) {
             return Some(format!("the paint of {} {id}", e.category()));
         }
+        // A face of a component painted it (FE-16c-2).
+        let on_a_face = |e: &Element| matches!(e, Element::Component(c) if c.face_paint.iter().any(|p| p.material == name));
+        if let Some((id, _)) = self.elements.iter().find(|(_, e)| on_a_face(e)) {
+            return Some(format!("the paint of a face of component {id}"));
+        }
         self.elements.iter().find(|(_, e)| self.component_materials(e).contains(&name)).map(|(id, _)| format!("component {id}"))
     }
 
@@ -4864,6 +4873,11 @@ impl Model {
             if let Some(serde_json::Value::Object(paint)) = e.params_mut().and_then(|p| p.get_mut(crate::paint::KEY)) {
                 for v in paint.values_mut().filter(|v| v.as_str() == Some(from)) {
                     *v = serde_json::Value::String(to.into());
+                }
+            }
+            if let Element::Component(c) = e {
+                for p in c.face_paint.iter_mut().filter(|p| p.material == from) {
+                    p.material = to.into();
                 }
             }
             if let Some(f) = e.family().and_then(|(f, _)| families.get(f))
@@ -5214,6 +5228,8 @@ impl Model {
                 Some(g) => Some(Guid::deserialize(g).ok()?),
                 None => None,
             };
+            // A component's face paint this version can't read is left out on its own, by `after_read` (FE-16c-2).
+            crate::paint::unread_face_paint(&mut v);
             if let Ok(e) = Element::deserialize(&v) {
                 return Some((id, guid, e, Vec::new()));
             }
@@ -5292,6 +5308,7 @@ impl Model {
         if let Value::Object(es) = &mut elements {
             for (id, e) in es.iter_mut() {
                 budget.check()?;
+                crate::paint::unread_face_paint(e);
                 let mut bare = e.clone();
                 let category = bare.as_object_mut().and_then(|o| {
                     o.remove("guid");
@@ -5327,6 +5344,7 @@ impl Model {
                 let Some(Value::Array(members)) = group.get_mut("members") else { continue };
                 for (i, member) in members.iter_mut().enumerate() {
                     let Some(e) = member.get_mut("element") else { continue };
+                    crate::paint::unread_face_paint(e);
                     let mut bare = e.clone();
                     let category = bare.as_object_mut().and_then(|o| o.remove("category"));
                     for p in lenient::element(category.as_ref().and_then(Value::as_str).unwrap_or(""), &bare) {
@@ -5429,6 +5447,9 @@ impl Model {
         for f in m.families.values_mut() {
             f.give_inner_guids();
         }
+        // A component's face paint naming a face its family hasn't, a material the file doesn't hold, or that this version
+        // couldn't read (FE-16c-2): left out, each by its place in the list as the file had it.
+        left_out.extend(m.drop_dead_face_paint_read());
         // A pin of an element this build left out (a newer one's kind) is dropped, and the rest of the file opens.
         m.pinned.retain(|g| m.elements.id(*g).is_some());
         // A join or a cut (T23) of a curtain wall, or of a wall in a curtain panel's place, which a build before they were
@@ -5475,7 +5496,8 @@ impl Model {
         // stair's edge, its subcategories and plan display, the building code and its electrical methods) needs nothing of a
         // file of 20, which holds none. A family form's `paint` (FE-16c-1) came with 21 too, written only where a form has some:
         // a build of 21 from before it leaves it out as a field it doesn't know and opens the family unpainted, so it needs no
-        // step, and a file of 20 or before holds none.
+        // step, and a file of 20 or before holds none. So too a component's `face_paint` (FE-16c-2): an older build of 21 leaves
+        // it out, lists it, and opens the component unpainted.
         if self.types.stair.is_empty() {
             self.types.stair = stair_types();
         }
@@ -10323,6 +10345,7 @@ impl Model {
                     format!("{who}: family `{}` doesn't exist (there are: {})", c.family, names.join(", "))
                 })?;
                 crate::electrical::check_panel(self, id, c)?;
+                crate::paint::check_faces(self, &who, c, f)?;
                 if f.category.hosted() {
                     return Err(format!(
                         "{who}: family `{}` is a door's or a window's: it stands in a wall, placed with `door` or `window`",

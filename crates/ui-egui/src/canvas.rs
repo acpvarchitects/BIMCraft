@@ -6026,6 +6026,7 @@ impl BimApp {
                         params: Default::default(),
                         host: None,
                         panel: None,
+                        face_paint: Vec::new(),
                     };
                     let e = Element::Component(c);
                     sketched(&e);

@@ -1696,7 +1696,14 @@ other_files(
         "{id | ids, face?, material} paints a face of the elements with a material of the library, as Revit's Paint does: its \
          colour and texture show in the 3D view over what their types are made of. `face`: a wall's `exterior` or `interior`, a \
          floor's, roof's or ceiling's `top` or `bottom`, and `all` for a column, a component, a door, a window, a stair, a ramp or \
-         a railing; without it, every face the elements have. `material` null takes the paint off",
+         a railing; without it, every face the elements have. `material` null takes the paint off. \
+         {id | ids, form, nested?, face, material} paints one face of a component (FE-16c-2): `form`, the form's GUID (or the \
+         id of one of its family's own), `nested`, the GUIDs of the nested instances down to it (none for the family's own \
+         forms), and `face`, its key as `family`'s `paint` names one (\"start\", \"end\", {\"side\": line}, {\"cut\": form, \"face\": …}, …); \
+         again on the same face replaces it, `material` null takes it off and `face` null with it all of that form's. A shared \
+         nested instance's faces are painted with its own element's id, `nested` then from it down. A face painted so shows \
+         over `all`, which shows over the family's own paint. A command that takes a painted face away (a reload, another \
+         family) takes its paint off in the same step and says so in its reply's `paint_dropped`: [{id, form, nested?, face}]",
         paint,
     ),
     edit(
@@ -9452,6 +9459,7 @@ fn import_mesh(s: &mut Session, p: &Value) -> R {
             params: BTreeMap::new(),
             host: None,
             panel: None,
+            face_paint: Vec::new(),
         }));
         families.push(name);
         components.push(id);
@@ -15726,6 +15734,9 @@ fn texture_param(c: &str, m: &mut Model, p: &Map<String, Value>, old: Option<Tex
 
 fn paint(s: &mut Session, p: &Value) -> R {
     let c = "paint";
+    if p.get("form").is_some() || p.get("nested").is_some() {
+        return paint_faces(s, p);
+    }
     let m = &s.model;
     let ids = ids_param(c, m, p)?;
     let face = string(c, p, "face")?;
@@ -15761,6 +15772,111 @@ fn paint(s: &mut Session, p: &Value) -> R {
             params.remove(paint::KEY);
         } else {
             params.insert(paint::KEY.into(), Value::Object(now));
+        }
+    }
+    Ok(json!({"painted": ids}))
+}
+
+/// FE-16c-2: `paint` given a `form`: one face of each component (or shared nested element) painted, its paint there taken off
+/// (`material` null), or all of that form's (`face` null too), held by the component as `face_paint`.
+fn paint_faces(s: &mut Session, p: &Value) -> R {
+    let c = "paint";
+    only(c, p, &["id", "ids", "form", "nested", "face", "material"])?;
+    let m = &s.model;
+    let ids = ids_param(c, m, p)?;
+    let form =
+        p.get("form").filter(|v| !v.is_null()).ok_or_else(|| bad(c, "`form` is required with `nested`: the form's GUID, or its id"))?;
+    let form = serde_json::from_value::<Guid>(form.clone())
+        .ok()
+        .filter(|g| !g.is_nil())
+        .ok_or_else(|| bad(c, format!("`form` is a form's GUID, or its id, not {}", short(form))))?;
+    let nested: Vec<Guid> = match p.get("nested") {
+        None | Some(Value::Null) => Vec::new(),
+        Some(Value::Array(a)) if a.len() <= crate::family::nested::MAX_NESTING + 1 => a
+            .iter()
+            .map(|g| {
+                serde_json::from_value::<Guid>(g.clone())
+                    .ok()
+                    .filter(|g| !g.is_nil() && g.pending().is_none())
+                    .ok_or_else(|| bad(c, format!("`nested` lists nested instances' GUIDs, not {}", short(g))))
+            })
+            .collect::<Result<_, _>>()?,
+        Some(v) => return Err(bad(c, format!("`nested` is a short list of nested instances' GUIDs, not {}", short(v)))),
+    };
+    let face = match p.get("face") {
+        None => return Err(bad(c, "`face` is required: the face's key (\"end\", {\"side\": line}, …), or null with `material`: null")),
+        Some(Value::Null) => None,
+        Some(k) => Some(serde_json::from_value::<crate::family::FormFace>(k.clone()).map_err(|e| bad(c, format!("`face`: {e}")))?),
+    };
+    let material = match p.get("material") {
+        None => return Err(bad(c, "`material` is required: a material's name, or null to take the paint off")),
+        Some(Value::Null) => None,
+        Some(Value::String(n)) => Some(n.trim().to_string()),
+        Some(v) => return Err(bad(c, format!("`material` is a material's name, or null, not {}", short(v)))),
+    };
+    if face.is_none() && material.is_some() {
+        return Err(bad(c, "`face` is required: the face to paint, or null with `material`: null to take all the form's paint off"));
+    }
+    if let Some(n) = material.as_ref().filter(|n| !m.materials.contains_key(*n)) {
+        return Err(bad(c, format!("the library has no `{n}`; add it with `material`")));
+    }
+    // Each element as the component that holds the paint, and the path from its family to the form.
+    let mut targets: Vec<(Id, Vec<Guid>, Guid)> = Vec::new();
+    for &id in &ids {
+        let (host, path) = match m.elements.get(id) {
+            Some(Element::Component(_)) => (id, nested.clone()),
+            Some(Element::Nested(n)) => {
+                let host = m.elements.id(n.host).ok_or_else(|| bad(c, format!("nested element {id}'s host is gone")))?;
+                (host, n.path.iter().chain(&nested).copied().collect())
+            }
+            Some(e) => {
+                return Err(bad(c, format!("{} {id} has no forms: `form` names a face of a component's", e.category())));
+            }
+            None => return Err(bad(c, format!("no element {id}"))),
+        };
+        let Some(Element::Component(comp)) = m.elements.get(host) else { return Err(bad(c, format!("no component {host}"))) };
+        let f = m.families.get(&comp.family).ok_or_else(|| bad(c, format!("family `{}` doesn't exist", comp.family)))?;
+        // A shared nested instance below the element is an element of its own: its faces are painted on it.
+        let held = path.len() - nested.len();
+        if f.shared_steps(&path) > held {
+            let (element, _) = m.face_owner(host, &path).unwrap_or((host, Vec::new()));
+            return Err(bad(
+                c,
+                format!("nested instance {} is shared: it is element {element} of its own, so paint it with `id`: {element}", path[held]),
+            ));
+        }
+        let g = f.family_at(&path).ok_or_else(|| {
+            let said: Vec<String> = nested.iter().map(Guid::to_string).collect();
+            bad(c, format!("family `{}` has no nested instances [{}] down to a form", comp.family, said.join(", ")))
+        })?;
+        let at = g.forms.iter().position(|x| x.guid == form || form.pending() == Some(x.id)).ok_or_else(|| {
+            let wanted = form.pending().map_or_else(|| form.to_string(), |i| i.to_string());
+            bad(c, format!("family `{}` has no form {wanted} there", comp.family))
+        })?;
+        // A form named by its id: the family's own, whose forms are parts with ids.
+        let form = g.forms[at].guid;
+        if g.forms[at].void {
+            return Err(bad(c, format!("form {form} is a void, never seen: it takes no paint")));
+        }
+        if let Some(k) = face.as_ref().filter(|k| material.is_some() && !g.has_face(at, k)) {
+            return Err(bad(
+                c,
+                format!("form {form} has no face {}: a side's line, or a cut's form, is no longer the form's", short(&json!(k))),
+            ));
+        }
+        targets.push((host, path, form));
+    }
+    let m = s.model_mut();
+    for (host, path, form) in targets {
+        let Some(Element::Component(comp)) = m.elements.get_mut(host) else { continue };
+        let here = |q: &crate::paint::FacePaint| q.form == form && q.nested == path;
+        match (&face, &material) {
+            (None, _) => comp.face_paint.retain(|q| !here(q)),
+            (Some(k), None) => comp.face_paint.retain(|q| !(here(q) && q.face == *k)),
+            (Some(k), Some(n)) => match comp.face_paint.iter_mut().find(|q| here(q) && q.face == *k) {
+                Some(q) => q.material = n.clone(),
+                None => comp.face_paint.push(crate::paint::FacePaint { form, nested: path, face: k.clone(), material: n.clone() }),
+            },
         }
     }
     Ok(json!({"painted": ids}))

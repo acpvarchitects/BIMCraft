@@ -412,6 +412,8 @@ impl Family {
                 faces: piece.faces,
                 keys: piece.keys,
                 paint: piece.paint,
+                form: piece.form,
+                path: std::iter::once(self.nested_instances[i].guid).chain(piece.path).collect(),
             });
         }
         Ok(out)

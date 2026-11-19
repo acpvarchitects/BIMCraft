@@ -1640,6 +1640,30 @@ impl BimApp {
         self.run("paint", json!({"id": id, "face": face, "material": material}));
     }
 
+    /// Paint (PT) on component `id`: the face `at` of it clicked takes the material in the Options Bar, painted on the shared
+    /// nested instance it is part of where it is one's (FE-16c-2); with `remove`, that face's paint comes off, or, where it has
+    /// none of its own, the whole component's, as Remove Paint took off before.
+    pub(crate) fn paint_component_face(&mut self, id: bimcraft_core::model::Id, at: bimcraft_core::paint::FaceAt, remove: bool) {
+        let model = Arc::clone(&self.session.model);
+        let Some((target, rest)) = model.face_owner(id, &at.nested) else { return };
+        let own = matches!(model.elements.get(id), Some(bimcraft_core::model::Element::Component(c))
+            if c.face_paint.iter().any(|p| p.form == at.form && p.nested == at.nested && p.face == at.face));
+        if remove && !own {
+            self.paint_face(id, Some("all"), true);
+            return;
+        }
+        let material = match (remove, self.painting()) {
+            (true, _) => serde_json::Value::Null,
+            (false, Some(n)) => json!(n),
+            (false, None) => return,
+        };
+        let mut params = json!({"id": target, "form": at.form, "face": at.face, "material": material});
+        if !rest.is_empty() {
+            params["nested"] = json!(rest);
+        }
+        self.run("paint", params);
+    }
+
     /// A drawing tool's click in the 3D view, its point `q` on work plane `plane`: the Wall tool's next point, its walls going
     /// on the plane's level with their base on the plane (`place`, as in a plan); a run's start, then its end, each as high
     /// as the face it was clicked on (a brace, from one face up to another); a column, a structural column, a footing or a
@@ -2696,6 +2720,11 @@ impl BimApp {
         let specify_click = click.filter(|_| specifying).and_then(dim_pick);
         // The face of what's clicked, as paint names the faces of an element.
         let face = click.and_then(|at| pick(&o.picker, at).map(|h| h.face).filter(|f| !f.is_empty()));
+        // A component's face under the click, as its family names it (FE-16c-2): what Paint paints of it.
+        let component_face = click.filter(|_| paint || unpaint).and_then(|at| {
+            let under = surface(&o.picker, &cam, at)?;
+            Some((under.id, model.component_face(under.id, under.at, under.normal)?))
+        });
         // Place on Face: the face under the click, of what hosts components, by its role.
         let on_face = drawing && placing_on_face;
         let face_target = click.filter(|_| on_face).map(|at| {
@@ -2714,7 +2743,10 @@ impl BimApp {
                 self.pick_up(found, click_modifiers(ui))
             }
             Some(Some(id)) if demolish => self.demolish(id),
-            Some(Some(id)) if paint || unpaint => self.paint_face(id, face, unpaint),
+            Some(Some(id)) if paint || unpaint => match component_face.filter(|(on, _)| *on == id) {
+                Some((_, at)) => self.paint_component_face(id, at, unpaint),
+                None => self.paint_face(id, face, unpaint),
+            },
             // Nothing under the cursor: nothing to take down, or to paint.
             Some(None) if demolish || paint || unpaint => {}
             Some(_) if on_face => match face_target.flatten() {
