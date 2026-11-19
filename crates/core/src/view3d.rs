@@ -310,6 +310,13 @@ fn piece_skins(m: &Model, piece: &crate::family::Piece, own: (Rgb, u32)) -> Skin
     Some(Arc::new(piece.faces.iter().map(|k| looks.get(*k as usize).copied().flatten().unwrap_or(own)).collect()))
 }
 
+impl Scene {
+    /// Triangle `i`'s corners, if it has one.
+    pub(crate) fn corners_of(&self, i: u32) -> Option<[P3; 3]> {
+        self.tris.get(i as usize).map(|t| t.p)
+    }
+}
+
 /// The colour and texture of each triangle of component `c`'s piece `piece` (FE-16c-2): a face the project paints in its
 /// material, else the whole component's `all`, else the family's paint ([`piece_skins`]'s), else `own`. None where nothing of
 /// it is painted. [`painted`] leaves components to this.
@@ -5191,6 +5198,43 @@ impl Image {
     fn index(&self, x: f64, y: f64) -> Option<usize> {
         let (w, h) = (f64::from(self.width), f64::from(self.height));
         (x >= 0.0 && y >= 0.0 && x < w && y < h).then(|| y as usize * self.width as usize + x as usize)
+    }
+
+    /// FE-16c-2: the triangles of `scene` (the scene it was drawn of) that it shows somewhere, each once, of the elements
+    /// `among`, with their elements.
+    pub(crate) fn shown_of(&self, scene: &Scene, among: &BTreeSet<Id>) -> BTreeMap<u32, Id> {
+        let mut out = BTreeMap::new();
+        let mut last = u32::MAX;
+        for &t in self.hit.iter() {
+            if t == last || out.contains_key(&t) {
+                last = t;
+                continue;
+            }
+            last = t;
+            if let Some(tri) = scene.tris.get(t as usize).filter(|tri| among.contains(&tri.owner)) {
+                out.insert(t, tri.owner);
+            }
+        }
+        out
+    }
+
+    /// FE-16c-2: the line from pixel `a` to pixel `b` inked in `color`, only on the pixels that show one of triangles `on`
+    /// frontmost, never lightening one.
+    pub(crate) fn ink(&mut self, a: (f64, f64), b: (f64, f64), on: &BTreeSet<u32>, Rgb(r, g, bl): Rgb) {
+        if ![a.0, a.1, b.0, b.1].iter().all(|v| v.is_finite() && v.abs() < 1e7) {
+            return;
+        }
+        for (x, y) in wire_pixels(P2(a.0, a.1), P2(b.0, b.1)) {
+            let Some(at) = self.index(x as f64, y as f64) else { continue };
+            if !self.hit.get(at).is_some_and(|t| on.contains(t)) {
+                continue;
+            }
+            if let Some(px) = self.rgba.get_mut(4 * at..4 * at + 3) {
+                for (c, ink) in px.iter_mut().zip([r, g, bl]) {
+                    *c = (*c).min(ink);
+                }
+            }
+        }
     }
 
     /// Whether it is `other` to the pixel: its colours, and what each pixel picks, its face, and whether it's covered.

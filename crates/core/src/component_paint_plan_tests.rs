@@ -87,3 +87,38 @@ fn a_painted_side_shows_no_pattern_in_plan_and_cut_patterns_stay_the_forms() {
     assert!(pattern_lines(&mut s, id, "fine").is_empty());
     assert!(cut(&s) == before, "the section's cut is as it was");
 }
+
+/// How dark section `id`'s picture is at model point `(x, z)` on the line it looks along from `start_x`: the darkest of the
+/// pixels within two of it up and down, as the sum of its channels.
+fn darkest(s: &Session, id: Id, x: f64, z: f64) -> u32 {
+    let view = crate::render::View { angle: 0.0, scale: 0.5, cx: 1500.0, cy: 150.0, width: 800, height: 400 };
+    let img = crate::render::section_picture(&s.model, id, view, &[]).unwrap();
+    let (px, py) = (400.0 + (x + 1000.0 - 1500.0) * 0.5, 200.0 - (z - 150.0) * 0.5);
+    (-2..=2)
+        .map(|k| {
+            let c = img.color(px, py + f64::from(k));
+            u32::from(c.0) + u32::from(c.1) + u32::from(c.2)
+        })
+        .min()
+        .unwrap_or(0)
+}
+
+#[test]
+fn a_painted_front_face_shows_its_pattern_in_an_elevation_only_where_nothing_nearer_hides_it() {
+    let (mut s, id) = tiled();
+    // A box of `Other`'s, 200 high, standing between the elevation and the right part of the box's front (x 600 to 1400).
+    run(&mut s, "component", json!({"family": "Other", "type": "X", "at": [600, -900]}));
+    // Looking north from y = -1000, its line from x = -1000.
+    let section = run(&mut s, "section", json!({"start": [-1000, -1000], "end": [2000, -1000]}))["id"].as_u64().unwrap();
+    let paper = darkest(&s, section, 300.0, 100.0);
+    assert!(paper > 700, "the front face is paper in hidden line: {paper}");
+    // Its front, side 1 (y = 0), painted Tile: its courses, every 100 up, show where nothing is nearer.
+    paint(&mut s, id, json!({"side": gstr(1)}), json!("Tile"));
+    assert!(darkest(&s, section, 300.0, 100.0) < 600, "a course at 100 on the front's left part");
+    assert!(darkest(&s, section, 300.0, 250.0) > 700, "between courses, paper");
+    assert!(darkest(&s, section, 800.0, 100.0) > 700, "none on Other's nearer face, which hides the front there");
+    // Painted on its back (side 3), which faces away, nothing shows.
+    paint(&mut s, id, json!({"side": gstr(1)}), Value::Null);
+    paint(&mut s, id, json!({"side": gstr(3)}), json!("Tile"));
+    assert!(darkest(&s, section, 300.0, 100.0) > 700, "a face turned away shows no pattern");
+}
