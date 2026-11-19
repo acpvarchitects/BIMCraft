@@ -1551,12 +1551,19 @@ the face under a point. `params["Paint"]` is as it was: `all` for a whole compon
   is (`paint::face_alive`): a type change within the family keeps it (a face no type builds paints nothing); another family, or
   a reload or an edit that takes the form, its line or its cutter away, leaves a face it no longer has, and the engine takes
   that paint off in the same command's step (`Session::drop_dead_face_paint`), so one undo brings both back, and the command's
-  reply says what went: `paint_dropped: [{id, form, nested?, face}]`. The desktop doesn't show a command's reply (Load into
+  reply says what went: `paint_dropped: [{id, form, nested?, face}]`, and a model group type's component as `{model_group,
+  member, form, nested?, face}` (the member by the id it has in the type), whether or not a group of it is placed.
+  `{"edge": i}` names a line without a GUID by its place in the form's sketch, so where a command leaves that form's lines
+  otherwise than they were (one put in or taken out, the order turned, or one moved: `Family::edge_print`, a GUID or a GUID-less
+  line's place), the paint keyed so, a project's (`paint::edges_moved`) and a family's (`Family::drop_moved_edges`), is dropped
+  in the same step, rather than kept on what may be another line. Lines get GUIDs as the library syncs a family, so this is
+  for the lines of nested definitions and files that hold none. The desktop doesn't show a command's reply (Load into
   Project says nothing of it), so `paint_dropped` is for scripts and agents. A nested instance whose family a family type
   parameter swaps keeps paint keyed by the family it places; on another family it paints nothing.
 - **A file.** `Model::read` leaves out, and lists in `left_out` by its place in the file's list (`/elements/100004/face_paint/1`),
   an entry it can't read (a face key or a field of a newer build's: `paint::unread_face_paint` makes it an entry naming nothing
-  first), whose material the file doesn't hold, or whose form, nested instance or face the family hasn't
+  first), whose material the file doesn't hold, whose form, nested instance or face the family hasn't, that repeats a face
+  before it, or that comes past `MAX_FACE_PAINT` (`Model::dead_face_paint_read`)
   (`Model::drop_dead_face_paint_read`, a model group type's members too). FORMAT stays 21 (`Model::migrate` notes it): a build of
   21 from before it leaves `face_paint` out as a field it doesn't know, lists it, and opens the component unpainted.
 - **The desktop.** In a project's 3D view, Paint (PT) on a component paints the face clicked, on its shared nested element
@@ -1567,11 +1574,12 @@ the face under a point. `params["Paint"]` is as it was: `all` for a whole compon
   degree:
   - *Plans*, at Fine detail, as a floor's top shows its own (`render::painted_tops`): a face facing up between the cut and the
     view depth, the fill pattern (or the material's built-in surface hatch) over it, less what a higher piece of the
-    component, or a higher face of its own piece, covers. Its lattice starts at the family's zero and turns and mirrors with
+    component (its triangles that face up and reach over the face, so a hole through it covers nothing; a plan's piece of no
+    triangles, its outline less its holes), or a higher face of its own piece, covers. Its lattice starts at the family's zero and turns and mirrors with
     the component, as the face does. The faces that face up, and what of each a plan sees with every piece drawn, are found
     from a build's triangles once and kept with it in the component geometry store (`Built::up_faces`, beside the outlines
     `plan_pieces` reads), and so are a model pattern's lines over them in the family's axes (`Built::pattern_lines`, a few
-    patterns a build), so a redraw or a pan only places them (`zoomed_plan_bench`'s painted cases). What they take is charged
+    patterns a build), found only for a component one of whose pieces meets the view, so a redraw or a pan only places them (`zoomed_plan_bench`'s painted cases). What they take is charged
     to the store's budget beside the pieces (`Built::extra`): each fill marks the store, which brings its shapes' bytes up to
     it once a drawing (as its `Components` goes) and as builds are kept, then evicts as it does for builds. A piece the view's
     Visibility Settings leave out, a drafting pattern or a tilted component is worked out at each drawing instead.

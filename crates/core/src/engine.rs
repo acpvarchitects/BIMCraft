@@ -482,7 +482,7 @@ impl Session {
 
     /// Each component's face paint that names a face its family no longer has, or a material the library hasn't, taken off
     /// (FE-16c-2): of the components the command changed, or of all that have some where it changed a family. What went.
-    fn drop_dead_face_paint(&mut self, before: &Model) -> Vec<(Id, crate::paint::FacePaint)> {
+    fn drop_dead_face_paint(&mut self, before: &Model) -> Vec<Value> {
         let painted = |e: &Element| matches!(e, Element::Component(c) if !c.face_paint.is_empty());
         let ids: Vec<Id> = match (self.model.families.same_allocation(&before.families), self.model.changed_since(before)) {
             (true, crate::ids::Changed::Ids(ids)) => {
@@ -493,7 +493,7 @@ impl Session {
         let dead: Vec<(Id, Vec<usize>)> = ids
             .into_iter()
             .filter_map(|id| match self.model.elements.get(id) {
-                Some(Element::Component(c)) => Some((id, self.model.dead_face_paint(c))).filter(|(_, d)| !d.is_empty()),
+                Some(Element::Component(c)) => Some((id, self.model.dead_face_paint_since(c, before))).filter(|(_, d)| !d.is_empty()),
                 _ => None,
             })
             .collect();
@@ -511,7 +511,7 @@ impl Session {
                         _ => None,
                     })
                 })
-                .map(|(name, i, c)| (name, i, self.model.dead_face_paint(c)))
+                .map(|(name, i, c)| (name, i, self.model.dead_face_paint_since(c, before)))
                 .filter(|(_, _, d)| !d.is_empty())
                 .collect()
         };
@@ -519,24 +519,29 @@ impl Session {
             return out;
         }
         let m = self.model_mut();
-        for (name, i, gone) in typed {
-            if let Some(Element::Component(c)) = m.model_groups.get_mut(&name).and_then(|t| t.members.get_mut(i)).map(|x| &mut x.element) {
-                for k in gone.into_iter().rev() {
-                    if k < c.face_paint.len() {
-                        c.face_paint.remove(k);
-                    }
-                }
-            }
-        }
         for (id, gone) in dead {
             let Some(Element::Component(c)) = m.elements.get_mut(id) else { continue };
+            let mut said = Vec::new();
             for i in gone.into_iter().rev() {
                 if i < c.face_paint.len() {
-                    out.push((id, c.face_paint.remove(i)));
+                    said.push(crate::paint::dropped_entry(json!({"id": id}), &c.face_paint.remove(i)));
                 }
             }
+            out.extend(said.into_iter().rev());
         }
-        out.reverse();
+        // A type's member, which may stand in no group placed, by its type and the id it has there (ec's review of #91).
+        for (name, i, gone) in typed {
+            let Some(member) = m.model_groups.get_mut(&name).and_then(|t| t.members.get_mut(i)) else { continue };
+            let whose = json!({"model_group": name, "member": member.id});
+            let Element::Component(c) = &mut member.element else { continue };
+            let mut said = Vec::new();
+            for k in gone.into_iter().rev() {
+                if k < c.face_paint.len() {
+                    said.push(crate::paint::dropped_entry(whose.clone(), &c.face_paint.remove(k)));
+                }
+            }
+            out.extend(said.into_iter().rev());
+        }
         out
     }
 
@@ -704,7 +709,12 @@ impl Session {
                         .collect();
                     for name in painted {
                         let mut f = self.model.families.get(&name).cloned().unwrap_or_default();
-                        if !f.drop_dead_paint().is_empty() {
+                        let mut gone = f.drop_dead_paint();
+                        // A GUID-less line's place another's now (ec's review of #91).
+                        if let Some(was) = before.families.get(&name) {
+                            gone.extend(f.drop_moved_edges(was));
+                        }
+                        if !gone.is_empty() {
                             self.model_mut().families.insert(name, f);
                         }
                     }

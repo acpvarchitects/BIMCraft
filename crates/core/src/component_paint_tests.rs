@@ -470,3 +470,92 @@ fn the_paint_reply_on_a_command_that_drops_nothing_says_nothing() {
     assert!(r.get("paint_dropped").is_none(), "{r}");
     assert_eq!(faces(&s.model, id).len(), 1);
 }
+
+/// ec's review of #91: a model group type's component losing a face's paint says so too, by its type and its member, though
+/// no group of it is placed.
+#[test]
+fn a_group_types_component_losing_paint_says_so_by_its_type_and_member() {
+    let (mut s, id) = project();
+    paint(&mut s, id, json!({"side": gstr(4)}), json!("Red"));
+    run(&mut s, "create_group", json!({"ids": [id], "name": "G"}));
+    // The group placed is deleted: its type stays.
+    let groups: Vec<Id> = s.model.elements.iter().filter(|(_, e)| e.category() == "modelgroup").map(|(i, _)| *i).collect();
+    run(&mut s, "delete", json!({"ids": groups}));
+    assert!(s.model.model_groups.contains_key("G"));
+    let triangle =
+        json!([line(1, [0.0, 0.0], [1000.0, 0.0]), line(2, [1000.0, 0.0], [1000.0, 500.0]), line(9, [1000.0, 500.0], [0.0, 0.0])]);
+    let definition = json!({"category": "generic", "parameters": [{"name": "W", "value": 1000}], "types": {"A": {}, "B": {"W": 1200}},
+                            "forms": [{"guid": gstr(BOX), "sketch": triangle, "from": 0, "to": 300, "material": "Concrete"}]});
+    let r = run(&mut s, "family", json!({"name": "Box", "definition": definition, "overwrite": "version"}));
+    let said = r["paint_dropped"].as_array().cloned().unwrap_or_default();
+    assert!(said.iter().any(|x| x["model_group"] == json!("G") && x["member"].is_u64() && x["face"] == json!({"side": gstr(4)})), "{r}");
+}
+
+/// A nested definition's sketch lines with no GUIDs, a handle 40 by 20 (its front first), placed at (100, 50) 800 up.
+fn handle_lines(order: &[usize]) -> Vec<Value> {
+    let all = [
+        json!({"start": [0, 0], "end": [40, 0]}),
+        json!({"start": [40, 0], "end": [40, 20]}),
+        json!({"start": [40, 20], "end": [0, 20]}),
+        json!({"start": [0, 20], "end": [0, 0]}),
+        // The front split in two: its first half and its second.
+        json!({"start": [0, 0], "end": [20, 0]}),
+        json!({"start": [20, 0], "end": [40, 0]}),
+    ];
+    order.iter().map(|i| all[*i].clone()).collect()
+}
+
+fn handle_def(order: &[usize], paint: Value) -> Value {
+    json!({"category": "generic", "types": {"Lever": {}},
+           "forms": [{"guid": gstr(HANDLE), "sketch": handle_lines(order), "from": 0, "to": 30, "paint": paint}]})
+}
+
+/// [`cabinet`]'s, its handle's lines without GUIDs.
+fn guidless_cabinet() -> (Session, Id) {
+    let mut s = Session::new();
+    run(&mut s, "material", json!({"name": "Red", "color": [220, 30, 30]}));
+    run(
+        &mut s,
+        "family",
+        json!({"name": "Cabinet", "category": "furniture", "types": {"Small": {}},
+               "forms": [{"guid": gstr(BOX), "sketch": rect(1, 0.0, 0.0, 600.0, 400.0), "from": 0, "to": 800}]}),
+    );
+    run(&mut s, "family", json!({"name": "Cabinet", "nest": {"definition": handle_def(&[0, 1, 2, 3], json!([])), "name": "Handle"}}));
+    run(
+        &mut s,
+        "family",
+        json!({"name": "Cabinet", "nested_instance": {"family": "Handle", "type": "Lever", "at": [100, 50], "offset": 800}}),
+    );
+    let id = run(&mut s, "component", json!({"family": "Cabinet", "type": "Small", "at": [0, 0]}))["id"].as_u64().unwrap();
+    (s, id)
+}
+
+/// ec's review of #91: `{"edge": i}` names a GUID-less line by its place, so a change that moves the lines about (one put in
+/// before it, or the order turned) leaves the key on another line: its paint, the project's and the family's, is dropped and
+/// said, not kept on the wrong face.
+#[test]
+fn edge_keyed_paint_goes_when_the_lines_without_guids_are_put_in_or_reordered() {
+    for (what, order) in [("a line put in", vec![4, 5, 1, 2, 3]), ("the order turned", vec![1, 2, 3, 0])] {
+        let (mut s, id) = guidless_cabinet();
+        let path = vec![instance(&s)];
+        let at = s.model.component_face(id, [120.0, 50.0, 815.0], [0.0, -1.0, 0.0]).unwrap();
+        assert_eq!(at.face, FormFace::Edge(0), "{what}: the handle's front, by its place");
+        run(&mut s, "paint", json!({"id": id, "form": gstr(HANDLE), "nested": [path[0]], "face": {"edge": 0}, "material": "Red"}));
+        // The family's own paint of it too, carried in the definition loaded again.
+        let r = run(
+            &mut s,
+            "family",
+            json!({"name": "Cabinet", "nest": {"definition": handle_def(&order, json!([{"face": {"edge": 0}, "material": "Red"}])), "name": "Handle", "overwrite": "version"}}),
+        );
+        assert!(faces(&s.model, id).is_empty(), "{what}: the project's paint went");
+        assert_eq!(r["paint_dropped"][0]["face"], json!({"edge": 0}), "{what}: {r}");
+        let nested = &s.model.families["Cabinet"].nested_family("Handle").unwrap().family;
+        assert!(nested.forms[0].paint.is_empty(), "{what}: the family's went: {:?}", nested.forms[0].paint);
+    }
+    // The same lines again, nothing moved: kept.
+    let (mut s, id) = guidless_cabinet();
+    let path = vec![instance(&s)];
+    run(&mut s, "paint", json!({"id": id, "form": gstr(HANDLE), "nested": [path[0]], "face": {"edge": 0}, "material": "Red"}));
+    run(&mut s, "family", json!({"name": "Cabinet", "form": {"guid": gstr(BOX), "to": 820}}));
+    assert_eq!(faces(&s.model, id).len(), 1, "an edit that moves no line keeps it");
+}

@@ -99,6 +99,52 @@ impl Family {
         }
     }
 
+    /// The lines of form `form` (by GUID) as an `{"edge": i}` counts them: each a line's GUID, or a line without one by
+    /// where it lies. None where it hasn't the form.
+    pub fn edge_print(&self, form: Guid) -> Option<Vec<String>> {
+        let f = self.forms.iter().find(|f| f.guid == form && !form.is_nil())?;
+        Some(
+            f.all_lines()
+                .map(|l| if l.guid.is_nil() { serde_json::to_string(l).unwrap_or_default() } else { l.guid.to_string() })
+                .collect(),
+        )
+    }
+
+    /// Its forms' paint, and its nested families', that names a GUID-less line by its place (`{"edge": i}`) in a form whose
+    /// lines it has otherwise than `before` had them ([`crate::paint::edges_moved`]'s rule), taken away (ec's review of #91);
+    /// what went, as JSON pointers from the family.
+    pub fn drop_moved_edges(&mut self, before: &Family) -> Vec<String> {
+        let moved: Vec<Vec<bool>> = self
+            .forms
+            .iter()
+            .map(|f| {
+                f.paint
+                    .iter()
+                    .map(|p| crate::paint::edge_owner(f.guid, &p.face).is_some_and(|g| self.edge_print(g) != before.edge_print(g)))
+                    .collect()
+            })
+            .collect();
+        let mut gone = Vec::new();
+        for (i, (form, moved)) in self.forms.iter_mut().zip(moved).enumerate() {
+            let mut k = 0;
+            form.paint.retain(|_| {
+                k += 1;
+                let go = moved.get(k - 1).copied().unwrap_or(false);
+                if go {
+                    gone.push(format!("/forms/{i}/paint/{}", k - 1));
+                }
+                !go
+            });
+        }
+        for (i, n) in self.nested.iter_mut().enumerate() {
+            if let Some(was) = before.nested_family(&n.name).filter(|_| n.family.painted()) {
+                let was = was.family.clone();
+                gone.extend(n.family.drop_moved_edges(&was).into_iter().map(|p| format!("/nested/{i}/family{p}")));
+            }
+        }
+        gone
+    }
+
     /// Whether any of its forms, or of the families it nests, is painted.
     pub fn painted(&self) -> bool {
         self.forms.iter().any(|f| !f.paint.is_empty()) || self.nested.iter().any(|n| n.family.painted())

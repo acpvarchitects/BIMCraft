@@ -144,7 +144,56 @@ pub(crate) fn check_faces(m: &Model, who: &str, c: &crate::model::Component, f: 
     Ok(())
 }
 
+/// The form whose sketch lines an `{"edge": i}` in face `key` of form `form` counts, if it has one: the form's own, or a
+/// cutter's, through `{"cut": G, …}` (ec's review of #91).
+pub fn edge_owner(form: Guid, key: &FormFace) -> Option<Guid> {
+    match key {
+        FormFace::Edge(_) => Some(form),
+        FormFace::Cut { by, face } => edge_owner(*by, face),
+        _ => None,
+    }
+}
+
+/// Whether face paint `p` of a component names a GUID-less line by its place (`{"edge": i}`) in a form whose lines family
+/// `now` has otherwise than `before` had them (one put in, taken out or the order turned, or one moved): the place may be
+/// another line's now, so the paint can't stand.
+pub fn edges_moved(now: &crate::family::Family, before: Option<&crate::family::Family>, p: &FacePaint) -> bool {
+    let Some(owner) = edge_owner(p.form, &p.face) else { return false };
+    let print = |f: &crate::family::Family| f.family_at(&p.nested).and_then(|g| g.edge_print(owner));
+    before.and_then(print) != print(now)
+}
+
 impl Model {
+    /// [`Model::dead_face_paint`], and the entries naming a line by a place it may no longer have ([`edges_moved`]) since
+    /// `before`: what a command takes off.
+    pub(crate) fn dead_face_paint_since(&self, c: &crate::model::Component, before: &Model) -> Vec<usize> {
+        let mut dead = self.dead_face_paint(c);
+        if let Some(now) = self.families.get(&c.family) {
+            let was = before.families.get(&c.family);
+            for (i, p) in c.face_paint.iter().enumerate() {
+                if !dead.contains(&i) && edges_moved(now, was, p) {
+                    dead.push(i);
+                }
+            }
+        }
+        dead.sort_unstable();
+        dead
+    }
+
+    /// [`Model::dead_face_paint`], and as a file is read, an entry repeating a face before it and those past
+    /// [`MAX_FACE_PAINT`] (ec's review of #91): what the read leaves out.
+    pub(crate) fn dead_face_paint_read(&self, c: &crate::model::Component) -> Vec<usize> {
+        let dead = self.dead_face_paint(c);
+        let mut seen = std::collections::BTreeSet::new();
+        let mut out = Vec::new();
+        for (i, p) in c.face_paint.iter().enumerate() {
+            if dead.contains(&i) || !seen.insert((p.form, &p.nested, &p.face)) || seen.len() > MAX_FACE_PAINT {
+                out.push(i);
+            }
+        }
+        out
+    }
+
     /// The places in component `c`'s face paint of the entries that name no face its family has ([`face_alive`]) or a
     /// material the library hasn't; all of them where its family is gone.
     pub(crate) fn dead_face_paint(&self, c: &crate::model::Component) -> Vec<usize> {
@@ -167,7 +216,7 @@ impl Model {
             .elements
             .iter()
             .filter_map(|(id, e)| match e {
-                Element::Component(c) if !c.face_paint.is_empty() => Some((*id, self.dead_face_paint(c))),
+                Element::Component(c) if !c.face_paint.is_empty() => Some((*id, self.dead_face_paint_read(c))),
                 _ => None,
             })
             .filter(|(_, d)| !d.is_empty())
@@ -184,7 +233,7 @@ impl Model {
                 if let Element::Component(c) = &member.element
                     && !c.face_paint.is_empty()
                 {
-                    let d = self.dead_face_paint(c);
+                    let d = self.dead_face_paint_read(c);
                     if !d.is_empty() {
                         groups.push((name.clone(), i, d));
                     }
@@ -248,23 +297,25 @@ pub fn piece_paint(c: &crate::model::Component, piece: &crate::family::Piece) ->
         .collect()
 }
 
-/// Reply `v` of a command, with the face paint the engine took off after it (`dropped`, by component) said as `paint_dropped`:
-/// `[{id, form, nested?, face}]`, so no paint goes unsaid.
-pub(crate) fn say_dropped(mut v: Value, dropped: Vec<(crate::model::Id, FacePaint)>) -> Value {
+/// Reply `v` of a command, with the face paint the engine took off after it said as `paint_dropped` (`dropped`, each
+/// [`dropped_entry`]), so no paint goes unsaid.
+pub(crate) fn say_dropped(mut v: Value, dropped: Vec<Value>) -> Value {
     if let (false, Some(o)) = (dropped.is_empty(), v.as_object_mut()) {
-        let said: Vec<Value> = dropped
-            .into_iter()
-            .map(|(id, p)| {
-                let mut one = serde_json::json!({"id": id, "form": p.form, "face": p.face});
-                if !p.nested.is_empty() {
-                    one["nested"] = serde_json::json!(p.nested);
-                }
-                one
-            })
-            .collect();
-        o.insert("paint_dropped".into(), Value::Array(said));
+        o.insert("paint_dropped".into(), Value::Array(dropped));
     }
     v
+}
+
+/// How a reply says face paint `p` was taken off: `{id, form, nested?, face}` of a component, `{model_group, member, form,
+/// nested?, face}` of a model group type's (its member by the id it has in the type), where `whose` says.
+pub(crate) fn dropped_entry(whose: Value, p: &FacePaint) -> Value {
+    let mut one = whose;
+    one["form"] = serde_json::json!(p.form);
+    if !p.nested.is_empty() {
+        one["nested"] = serde_json::json!(p.nested);
+    }
+    one["face"] = serde_json::json!(p.face);
+    one
 }
 
 /// Whether anything of component `c` is painted: a face of it, all of it, or a face its family paints (FE-16c-1).
