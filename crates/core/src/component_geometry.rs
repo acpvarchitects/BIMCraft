@@ -1420,6 +1420,12 @@ pub(crate) fn index_is_made_afresh(model: &Model) -> bool {
     index_of(model).is_some_and(|i| i.same_as_made(model))
 }
 
+/// How many entries of the index's cells this thread has looked at to take components out of them.
+#[cfg(test)]
+pub(crate) fn index_scanned() -> usize {
+    index::scanned()
+}
+
 /// How many entries of the index this thread has found, cells it has looked in and candidates it has looked at.
 #[cfg(test)]
 pub(crate) fn index_counts() -> (usize, usize, usize) {

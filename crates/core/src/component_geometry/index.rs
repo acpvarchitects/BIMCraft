@@ -46,14 +46,16 @@ pub(crate) struct Entry {
     /// Its level, and whether its family has plan symbols (annotation of that level, wherever it stands).
     level: Guid,
     symbols: bool,
-    /// The elements its place is found from: its level, its host, and what the host stands on.
-    deps: Vec<Id>,
+    /// The elements its place is found from, by GUID: its level, its host, and what the host stands on. By GUID, so one not in
+    /// the model now (a host gone, or not yet made) is waited on, and found when it comes (ec's review of #90).
+    deps: Vec<Guid>,
     hosted: bool,
     at: Where,
 }
 
-/// Each cell's components, with the first cell of each (its lowest x and y): the one a query finds it in.
-type Cells = HashMap<(i64, i64), Vec<(Id, i64, i64)>>;
+/// Each cell's components, with the first cell of each (its lowest x and y): the one a query finds it in. A map, so one is taken
+/// out of a crowded cell at once (ec's review of #90).
+type Cells = HashMap<(i64, i64), HashMap<Id, (i64, i64)>>;
 
 /// Where an entry is found.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -77,8 +79,10 @@ pub(crate) struct Index {
     always: BTreeSet<Id>,
     /// The components with plan symbols, by level.
     marked: HashMap<Guid, BTreeSet<Id>>,
-    /// What depends on each element's revision beside its own.
-    dependents: HashMap<Id, BTreeSet<Id>>,
+    /// What depends on each element beside itself, by the element's GUID.
+    dependents: HashMap<Guid, BTreeSet<Id>>,
+    /// The GUID of each element something depends on, as last found: what a gone one was.
+    known: HashMap<Id, Guid>,
     locals: HashMap<Arc<Key>, Local>,
 }
 
@@ -139,6 +143,7 @@ impl Index {
             always: BTreeSet::new(),
             marked: HashMap::new(),
             dependents: HashMap::new(),
+            known: HashMap::new(),
             locals: HashMap::new(),
         };
         for (id, e) in m.elements.iter() {
@@ -162,7 +167,13 @@ impl Index {
             // A host's faces are of its type: every hosted one is placed again.
             todo.extend(self.entries.iter().filter(|(_, e)| e.hosted).map(|(id, _)| *id));
         }
-        let deps: Vec<Id> = todo.iter().filter_map(|id| self.dependents.get(id)).flatten().copied().collect();
+        let deps: Vec<Id> = todo
+            .iter()
+            .filter_map(|id| m.elements.guid(*id).or_else(|| self.known.get(id).copied()))
+            .filter_map(|g| self.dependents.get(&g))
+            .flatten()
+            .copied()
+            .collect();
         todo.extend(deps);
         for id in todo {
             let old = self.take(id);
@@ -214,23 +225,25 @@ impl Index {
         };
         let symbols = m.families.get(&c.family).is_some_and(|f| !f.symbols.is_empty());
         // Its level and host, and what its host stands on (a wall's levels, a floor's): what its place is found from.
-        let mut deps = Vec::new();
+        let mut deps: Vec<Guid> = Vec::new();
         let mut refs = e.refs();
-        if let Some(h) = c.host
-            && let Some(host) = m.elements.get(h.host.guid())
-        {
-            refs.extend(host.refs());
-        }
-        for g in refs {
-            if let Some(d) = m.elements.id(g)
-                && d != id
-                && !deps.contains(&d)
-            {
-                deps.push(d);
+        if let Some(h) = c.host {
+            refs.push(h.host.guid());
+            if let Some(host) = m.elements.get(h.host.guid()) {
+                refs.extend(host.refs());
             }
         }
-        for d in &deps {
-            self.dependents.entry(*d).or_default().insert(id);
+        let own = m.elements.guid(id);
+        for g in refs {
+            if !g.is_nil() && Some(g) != own && !deps.contains(&g) {
+                deps.push(g);
+            }
+        }
+        for g in &deps {
+            self.dependents.entry(*g).or_default().insert(id);
+            if let Some(d) = m.elements.id(*g) {
+                self.known.insert(d, *g);
+            }
         }
         let reach = match (forms, lines) {
             (Some(f), Some(l)) => Some([std::array::from_fn(|k| f[0][k].min(l[0][k])), std::array::from_fn(|k| f[1][k].max(l[1][k]))]),
@@ -254,7 +267,7 @@ impl Index {
             Where::Cells([x0, y0, x1, y1]) => {
                 for x in x0..=x1 {
                     for y in y0..=y1 {
-                        self.cells.entry((x, y)).or_default().push((id, x0, y0));
+                        self.cells.entry((x, y)).or_default().insert(id, (x0, y0));
                     }
                 }
             }
@@ -280,7 +293,8 @@ impl Index {
                 for x in x0..=x1 {
                     for y in y0..=y1 {
                         if let Some(v) = self.cells.get_mut(&(x, y)) {
-                            v.retain(|(i, ..)| *i != id);
+                            count(&SCANNED);
+                            v.remove(&id);
                             if v.is_empty() {
                                 self.cells.remove(&(x, y));
                             }
@@ -353,8 +367,8 @@ impl Index {
         let r = [cell(a.0), cell(a.1), cell(b.0), cell(b.1)];
         let span = (r[2] - r[0] + 1).saturating_mul(r[3] - r[1] + 1);
         // Each found once: in the first cell of the window it is in.
-        let mut home = |(x, y): (i64, i64), list: &Vec<(Id, i64, i64)>| {
-            for &(id, x0, y0) in list {
+        let mut home = |(x, y): (i64, i64), list: &HashMap<Id, (i64, i64)>| {
+            for (&id, &(x0, y0)) in list {
                 if (x0.max(r[0]), y0.max(r[1])) == (x, y) {
                     look(id);
                 }
@@ -392,11 +406,18 @@ impl Index {
                 })
             });
         let sorted = |c: &Cells| {
-            let mut v: Vec<_> = c.iter().map(|(k, l)| (*k, l.iter().copied().collect::<BTreeSet<_>>())).collect();
+            let mut v: Vec<_> = c.iter().map(|(k, l)| (*k, l.iter().map(|(i, f)| (*i, *f)).collect::<BTreeSet<_>>())).collect();
             v.sort();
             v
         };
-        entries && sorted(&self.cells) == sorted(&fresh.cells) && self.big == fresh.big && self.always == fresh.always
+        let deps = self.entries.iter().all(|(id, e)| fresh.entries.get(id).is_some_and(|f| e.deps == f.deps));
+        entries
+            && deps
+            && sorted(&self.cells) == sorted(&fresh.cells)
+            && self.big == fresh.big
+            && self.always == fresh.always
+            && self.marked == fresh.marked
+            && self.dependents == fresh.dependents
     }
 }
 
@@ -405,6 +426,7 @@ thread_local! {
     static ENTRIES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
     static CELLS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
     static CANDIDATES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    static SCANNED: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
 #[cfg(not(test))]
@@ -415,6 +437,8 @@ static ENTRIES: Counter = Counter;
 static CELLS: Counter = Counter;
 #[cfg(not(test))]
 static CANDIDATES: Counter = Counter;
+#[cfg(not(test))]
+static SCANNED: Counter = Counter;
 
 #[cfg(test)]
 fn count(c: &'static std::thread::LocalKey<std::cell::Cell<usize>>) {
@@ -423,6 +447,12 @@ fn count(c: &'static std::thread::LocalKey<std::cell::Cell<usize>>) {
 
 #[cfg(not(test))]
 fn count(_: &Counter) {}
+
+/// How many entries of a cell this thread has looked at to take a component out of it, since it began.
+#[cfg(test)]
+pub(crate) fn scanned() -> usize {
+    SCANNED.with(std::cell::Cell::get)
+}
 
 /// How many entries this thread has found, cells it has looked in and candidates it has looked at, since it began.
 #[cfg(test)]

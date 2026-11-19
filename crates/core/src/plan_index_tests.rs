@@ -346,3 +346,81 @@ fn a_components_line_under_the_cut_is_drawn_though_its_forms_are_above_it() {
     assert!(matches!(owned[0], render::Prim::Line { closed: false, .. }));
     check(&s.model, LEVEL, view, "its box above the cut");
 }
+
+/// ec's review of #90: a component whose host is gone keeps waiting on the host's GUID, so a host that comes back (an edit of
+/// the model itself, a link's or a paste's element made after the component) places it again: its cells and box follow.
+#[test]
+fn a_host_gone_and_back_with_its_guid_places_its_component_again() {
+    let mut s = boxes();
+    let wall = id_of(&run(&mut s, "wall", json!({"points": [[0, 0], [6000, 0]]})));
+    run(&mut s, "component", json!({"family": "Box", "at": [2000, 0, 500], "host": {"face": {"element": wall, "face": "exterior"}}}));
+    check(&s.model, LEVEL, at(3_000.0, 0.0), "hosted");
+    let mut m: Model = (*s.model).clone();
+    let guid = m.elements.guid(wall).unwrap();
+    let Some(Element::Wall(mut w)) = m.elements.remove(wall) else { panic!("the wall") };
+    let gone = std::sync::Arc::new(m.clone());
+    check(&gone, LEVEL, at(3_000.0, 0.0), "its host gone");
+    // Back with its GUID, 30 m north.
+    w.start.1 += 30_000.0;
+    w.end.1 += 30_000.0;
+    m.elements.insert_as(wall, guid, Element::Wall(w)).unwrap();
+    let back = std::sync::Arc::new(m);
+    // Its index entry is the one made afresh (it was stale before), and the plan the one drawn among every component.
+    check(&back, LEVEL, at(3_000.0, 30_000.0), "its host back, moved");
+    check(&back, LEVEL, at(3_000.0, 0.0), "where its host was");
+}
+
+/// ec's review of #90: a component taken out of a crowded cell costs the same however many share it, so a level's change
+/// that puts many in one cell again isn't quadratic: 3,000 components in one cell, all put again, look at a few entries
+/// each, not at every one beside them.
+#[test]
+fn many_components_in_one_cell_are_put_again_in_linear_time() {
+    let mut s = boxes();
+    let first = id_of(&run(&mut s, "component", json!({"family": "Box", "at": [10, 10]})));
+    let mut m: Model = (*s.model).clone();
+    let Some(Element::Component(one)) = m.elements.get(first).cloned() else { panic!("a component") };
+    const N: u64 = 3_000;
+    for k in 0..N {
+        let mut c = one.clone();
+        c.at = crate::geom::P2(10.0 + (k % 50) as f64, 10.0 + (k / 50) as f64);
+        m.elements.insert(500_000 + k, Element::Component(c));
+    }
+    let crowded = std::sync::Arc::new(m.clone());
+    check(&crowded, LEVEL, at(0.0, 0.0), "crowded");
+    // Every one put again: the level they stand on raised.
+    if let Some(Element::Level(l)) = m.elements.get_mut(LEVEL) {
+        l.elevation += 100.0;
+    }
+    let raised = std::sync::Arc::new(m);
+    let before = cg::index_scanned();
+    check(&raised, LEVEL, at(0.0, 0.0), "its level raised");
+    let scanned = cg::index_scanned() - before;
+    assert!(scanned <= 4 * N as usize, "{scanned} entries looked at to take {N} out of one cell");
+}
+
+/// ec's review of #90: a component on a reference plane, the plane moved and tilted with the component itself unchanged:
+/// its index entry follows the plane, as one on a wall follows the wall.
+#[test]
+fn a_component_on_a_reference_plane_follows_the_plane() {
+    let mut s = Session::new();
+    run(
+        &mut s,
+        "family",
+        json!({"name": "Sign", "category": "generic", "types": {"A": {}}, "options": {"work_plane_based": true},
+               "forms": [{"profile": [[0, 0], [1000, 0], [1000, 1000], [0, 1000]], "to": 100}]}),
+    );
+    let plane = id_of(&run(&mut s, "reference_plane", json!({"name": "Ramp", "start": [0, 0, 0], "end": [10000, 0, 0], "up": [0, 1, 0]})));
+    let sign = id_of(&run(&mut s, "component", json!({"family": "Sign", "at": [2000, 2000], "host": {"plane": "Ramp"}})));
+    let view = at(2_500.0, 2_500.0);
+    let flat = check(&s.model, LEVEL, view, "on a flat plane");
+    assert!(flat.owners.contains(&Some(sign)));
+    // The plane alone moved 40 m east and tilted: the sign goes with it, its own element unchanged.
+    let mut m: Model = (*s.model).clone();
+    let Some(Element::RefPlane(p)) = m.elements.get_mut(plane) else { panic!("the plane") };
+    p.start[0] += 40_000.0;
+    p.end[0] += 40_000.0;
+    p.up = [0.0, 0.8, 0.6];
+    let moved = std::sync::Arc::new(m);
+    check(&moved, LEVEL, view, "its plane moved off");
+    check(&moved, LEVEL, at(42_500.0, 2_500.0), "where its plane went");
+}
