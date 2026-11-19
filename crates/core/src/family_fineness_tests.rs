@@ -333,6 +333,53 @@ fn facade(n: usize) -> (Session, usize) {
     (s, side)
 }
 
+/// FE-16c-2 (cp's review of #91): the facade seen in an elevation looking north at the panels' fronts, unpainted and with every
+/// panel's front painted a material of a surface pattern: the section's picture drawn, then again, on 8 workers. `cargo test
+/// --release -p bimcraft-core elevation_paint_bench -- --ignored --nocapture`.
+#[test]
+#[ignore]
+fn elevation_paint_bench() {
+    let n: usize = std::env::var("GEO_PANELS").ok().and_then(|v| v.parse().ok()).unwrap_or(10_000);
+    render::without_twins(|| {
+        crate::component_geometry::with_threads(8, || {
+            for painted in [false, true] {
+                let (mut s, side) = facade(n);
+                if painted {
+                    s.execute("fill_pattern", &json!({"name": "Tiles", "target": "model", "lines": [{"angle": 0, "spacing": 200}, {"angle": 90, "spacing": 200}]}))
+                        .unwrap_or_else(|e| panic!("{e}"));
+                    s.execute("material", &json!({"name": "Tile", "color": [200, 200, 200], "surface": "Tiles"}))
+                        .unwrap_or_else(|e| panic!("{e}"));
+                    let form = s.model.families["Panel"].forms[0].guid;
+                    let ids: Vec<u64> = s.model.elements.iter().filter(|(_, e)| e.category() == "component").map(|(id, _)| *id).collect();
+                    // Each panel's front: the L's first line, along x at y = 0.
+                    for some in ids.chunks(5000) {
+                        s.execute("paint", &json!({"ids": some, "form": form, "face": {"edge": 0}, "material": "Tile"}))
+                            .unwrap_or_else(|e| panic!("{e}"));
+                    }
+                }
+                let width = side as f64 * 1500.0;
+                let id = s
+                    .execute("section", &json!({"start": [-1000, -1000], "end": [width + 1000.0, -1000], "depth": 2000}))
+                    .unwrap_or_else(|e| panic!("{e}"))["id"]
+                    .as_u64()
+                    .unwrap_or_else(|| panic!("a section"));
+                let view = View { angle: 0.0, scale: 0.065, cx: width / 2.0 + 1000.0, cy: 500.0, width: 2000, height: 800 };
+                let work = render::SectionWork::new(&s.model);
+                for what in ["first", "again"] {
+                    let t = std::time::Instant::now();
+                    let picture = render::section_picture_with(&s.model, &work, id, view, &[]);
+                    eprintln!(
+                        "FE-16c-2 elevation, {}, {what}: {:.1} ms{}",
+                        if painted { "every front painted" } else { "unpainted" },
+                        t.elapsed().as_secs_f64() * 1000.0,
+                        if picture.is_some() { "" } else { " (no picture)" }
+                    );
+                }
+            }
+        })
+    });
+}
+
 /// FE-16c-2: facade `s`'s panels, every `every`th, painted on their top (the end of their first form) a material whose surface
 /// is a model pattern of tiles 200 mm square, as one command paints them.
 fn painted_facade(s: &mut Session, every: usize) {
