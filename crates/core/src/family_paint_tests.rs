@@ -389,16 +389,16 @@ fn a_point_on_a_components_surface_names_its_face() {
     let (mut s, id) = project(json!([]));
     run(&mut s, "component", json!({"family": "Box", "type": "A", "at": [5000, 0], "angle": 90}));
     let turned = s.model.elements.iter().filter(|(_, e)| e.category() == "component").map(|(i, _)| *i).max().unwrap();
-    assert_eq!(s.model.component_face(id, [200.0, 250.0, 300.0], [0.0, 0.0, -1.0]), Some(FormFace::End));
-    assert_eq!(s.model.component_face(id, [200.0, 250.0, 0.0], [0.0, 0.0, 1.0]), Some(FormFace::Start));
-    assert_eq!(s.model.component_face(id, [1000.0, 250.0, 150.0], [1.0, 0.0, 0.0]), Some(side(2)));
+    assert_eq!(s.model.component_face(id, [200.0, 250.0, 300.0], [0.0, 0.0, -1.0]).map(|f| f.face), Some(FormFace::End));
+    assert_eq!(s.model.component_face(id, [200.0, 250.0, 0.0], [0.0, 0.0, 1.0]).map(|f| f.face), Some(FormFace::Start));
+    assert_eq!(s.model.component_face(id, [1000.0, 250.0, 150.0], [1.0, 0.0, 0.0]).map(|f| f.face), Some(side(2)));
     // The void's side, line 21, at y = 200 inside the box.
     let cut = FormFace::Cut { by: guid(VOID), face: Box::new(side(21)) };
-    assert_eq!(s.model.component_face(id, [500.0, 200.0, 150.0], [0.0, 1.0, 0.0]), Some(cut));
+    assert_eq!(s.model.component_face(id, [500.0, 200.0, 150.0], [0.0, 1.0, 0.0]).map(|f| f.face), Some(cut));
     // Turned a quarter: its right side (x = 1000 in its axes) faces +y.
-    assert_eq!(s.model.component_face(turned, [4750.0, 1000.0, 150.0], [0.0, -1.0, 0.0]), Some(side(2)));
-    assert_eq!(s.model.component_face(id, [200.0, 250.0, 900.0], [0.0, 0.0, 1.0]), None, "off it");
-    assert_eq!(s.model.component_face(id, [f64::NAN, 0.0, 0.0], [0.0, 0.0, 1.0]), None);
+    assert_eq!(s.model.component_face(turned, [4750.0, 1000.0, 150.0], [0.0, -1.0, 0.0]).map(|f| f.face), Some(side(2)));
+    assert_eq!(s.model.component_face(id, [200.0, 250.0, 900.0], [0.0, 0.0, 1.0]).map(|f| f.face), None, "off it");
+    assert_eq!(s.model.component_face(id, [f64::NAN, 0.0, 0.0], [0.0, 0.0, 1.0]).map(|f| f.face), None);
 }
 
 /// cp's review of #89: whether a face is still there is read from the family, never from a type's build. A void that reaches
@@ -424,7 +424,7 @@ fn a_face_only_some_instances_have_is_painted_from_one_and_kept_by_unrelated_edi
     let f = &s.model.families["Box"];
     assert!(pieces_of(f, "A").iter().all(|p| !p.keys.contains(&cut)), "the type's build has no pocket");
     // The instance has it: a click on the pocket's side (line 21, y = 200) names it, and the command paints it.
-    let at = s.model.component_face(id, [500.0, 200.0, 200.0], [0.0, 1.0, 0.0]);
+    let at = s.model.component_face(id, [500.0, 200.0, 200.0], [0.0, 1.0, 0.0]).map(|f| f.face);
     assert_eq!(at, Some(cut.clone()));
     let face = serde_json::to_value(&cut).unwrap();
     run(&mut s, "family", json!({"name": "Box", "paint": {"form": gstr(BOX), "face": face, "material": "Red"}}));

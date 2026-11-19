@@ -32,6 +32,8 @@ mod cloud_tests;
 pub mod codes;
 mod commands;
 mod component_geometry;
+#[cfg(test)]
+mod component_paint_tests;
 pub mod conduit;
 mod constraints;
 pub mod coordinates;

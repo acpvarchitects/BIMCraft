@@ -175,15 +175,15 @@ impl Family {
 
 impl crate::model::Model {
     /// The face of component `id`'s form a point `at` on its surface lies on, seen along `normal` (either way): the key of its
-    /// nearest triangle that faces that way ([`FormFace`]), what Paint clicks name. None where `id` is no component or no
-    /// triangle of it is within a millimetre.
-    pub fn component_face(&self, id: crate::model::Id, at: [f64; 3], normal: [f64; 3]) -> Option<FormFace> {
+    /// nearest triangle that faces that way ([`FormFace`]), with its form's GUID and the nested instances down to it
+    /// (FE-16c-2), what Paint clicks name. None where `id` is no component or no triangle of it is within a millimetre.
+    pub fn component_face(&self, id: crate::model::Id, at: [f64; 3], normal: [f64; 3]) -> Option<crate::paint::FaceAt> {
         use crate::view3d::{cross, dot, sub};
         let Some(crate::model::Element::Component(c)) = self.elements.get(id) else { return None };
         if !at.iter().chain(&normal).all(|v| v.is_finite()) {
             return None;
         }
-        let mut best: Option<(f64, FormFace)> = None;
+        let mut best: Option<(f64, crate::paint::FaceAt)> = None;
         for piece in self.component_pieces(c) {
             for (t, k) in piece.tris.iter().zip(&piece.faces) {
                 let n = cross(sub(t[1], t[0]), sub(t[2], t[0]));
@@ -209,10 +209,27 @@ impl crate::model::Model {
                 }
                 let Some(key) = piece.keys.get(*k as usize) else { continue };
                 if best.as_ref().is_none_or(|(d, _)| off < *d) {
-                    best = Some((off, key.clone()));
+                    best = Some((off, crate::paint::FaceAt { form: piece.form, nested: piece.path.clone(), face: key.clone() }));
                 }
             }
         }
         best.map(|(_, k)| k)
+    }
+}
+
+impl crate::model::Model {
+    /// The element whose faces a click names, for component `id`'s face reached through the nested instances `nested` (FE-16c-2):
+    /// the deepest shared nested instance on the path ([`crate::nested_elements`]), an element of its own, with the rest of the
+    /// path below it; else the component, with the whole path. None where `id` is no component.
+    pub fn face_owner(&self, id: crate::model::Id, nested: &[Guid]) -> Option<(crate::model::Id, Vec<Guid>)> {
+        let crate::model::Element::Component(c) = self.elements.get(id)? else { return None };
+        let f = self.families.get(&c.family)?;
+        let k = f.shared_steps(nested);
+        if k == 0 {
+            return Some((id, nested.to_vec()));
+        }
+        let host = self.elements.guid(id)?;
+        let element = self.elements.id(crate::nested_elements::guid_of(host, &nested[..k]))?;
+        Some((element, nested[k..].to_vec()))
     }
 }

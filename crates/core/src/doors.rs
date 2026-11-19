@@ -51,6 +51,8 @@ pub(crate) fn pieces(operation: Operation, width: f64, height: f64, face: f64, m
                 vis: None,
                 nested: Vec::new(),
                 paint: Vec::new(),
+                form: crate::ids::Guid::default(),
+                path: Vec::new(),
             })
         })
         .collect()

@@ -788,6 +788,8 @@ impl<'a> Components<'a> {
                 faces: Vec::new(),
                 keys: Vec::new(),
                 paint: Vec::new(),
+                form: pc.form,
+                path: pc.path.clone(),
             })
             .collect();
         #[cfg(test)]

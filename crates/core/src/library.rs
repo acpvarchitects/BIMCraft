@@ -1576,6 +1576,9 @@ impl crate::model::Element {
             }
             Element::Component(c) => {
                 family_and_type(&mut c.family, &mut c.type_name, f);
+                for p in &mut c.face_paint {
+                    f(&Kind::Material, &mut p.material);
+                }
                 if let Some(d) = c.panel.as_mut().and_then(|p| p.distribution.as_mut()) {
                     f(&Kind::DistributionSystem, d);
                 }

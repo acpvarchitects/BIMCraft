@@ -480,6 +480,40 @@ impl Session {
         }
     }
 
+    /// Each component's face paint that names a face its family no longer has, or a material the library hasn't, taken off
+    /// (FE-16c-2): of the components the command changed, or of all that have some where it changed a family. What went.
+    fn drop_dead_face_paint(&mut self, before: &Model) -> Vec<(Id, crate::paint::FacePaint)> {
+        let painted = |e: &Element| matches!(e, Element::Component(c) if !c.face_paint.is_empty());
+        let ids: Vec<Id> = match (self.model.families.same_allocation(&before.families), self.model.changed_since(before)) {
+            (true, crate::ids::Changed::Ids(ids)) => {
+                ids.into_iter().filter(|id| self.model.elements.get(*id).is_some_and(painted)).collect()
+            }
+            _ => self.model.elements.iter().filter(|(_, e)| painted(e)).map(|(id, _)| *id).collect(),
+        };
+        let dead: Vec<(Id, Vec<usize>)> = ids
+            .into_iter()
+            .filter_map(|id| match self.model.elements.get(id) {
+                Some(Element::Component(c)) => Some((id, self.model.dead_face_paint(c))).filter(|(_, d)| !d.is_empty()),
+                _ => None,
+            })
+            .collect();
+        let mut out = Vec::new();
+        if dead.is_empty() {
+            return out;
+        }
+        let m = self.model_mut();
+        for (id, gone) in dead {
+            let Some(Element::Component(c)) = m.elements.get_mut(id) else { continue };
+            for i in gone.into_iter().rev() {
+                if i < c.face_paint.len() {
+                    out.push((id, c.face_paint.remove(i)));
+                }
+            }
+        }
+        out.reverse();
+        out
+    }
+
     /// [`Session::execute`] of a command found, as any session runs it.
     fn perform(&mut self, cmd: &'static Command, params: &Value) -> Result<Value, String> {
         // A library entry's GUID, wherever a command takes a name, is that name.
@@ -649,6 +683,9 @@ impl Session {
                         }
                     }
                 }
+                // A component's paint of a face its family no longer has (the form, its line or its cutter gone, or the
+                // component now of another family) goes in the same step, and the reply says so (FE-16c-2).
+                let dropped = if cmd.undoable { self.drop_dead_face_paint(&before) } else { Vec::new() };
                 // Each component's shared nested instances as the elements they are now (T6b).
                 if let Some(c) = self.model.nested_changes() {
                     self.model_mut().apply_nested(c);
@@ -677,7 +714,7 @@ impl Session {
                         }
                         checked
                     })
-                    .map(|()| crate::curtain::warn_of_lost(v, &lost))
+                    .map(|()| crate::paint::say_dropped(crate::curtain::warn_of_lost(v, &lost), dropped))
             });
         match result {
             Err(e) => {

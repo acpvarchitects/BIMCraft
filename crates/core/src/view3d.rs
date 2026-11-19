@@ -310,6 +310,24 @@ fn piece_skins(m: &Model, piece: &crate::family::Piece, own: (Rgb, u32)) -> Skin
     Some(Arc::new(piece.faces.iter().map(|k| looks.get(*k as usize).copied().flatten().unwrap_or(own)).collect()))
 }
 
+/// The colour and texture of each triangle of component `c`'s piece `piece` (FE-16c-2): a face the project paints in its
+/// material, else the whole component's `all`, else the family's paint ([`piece_skins`]'s), else `own`. None where nothing of
+/// it is painted. [`painted`] leaves components to this.
+fn component_skins(m: &Model, c: &crate::model::Component, piece: &crate::family::Piece, own: (Rgb, u32)) -> Skins {
+    let look = |name: &str| m.materials.get(name).map(|x| (Rgb(x.color[0], x.color[1], x.color[2]), skin(m, name)));
+    if piece.faces.len() != piece.tris.len() {
+        // Untagged: only the whole component's paint names it.
+        let all = c.params.get(paint::KEY).and_then(|p| p.get("all")).and_then(serde_json::Value::as_str).and_then(look)?;
+        return Some(Arc::new(vec![all; piece.tris.len()]));
+    }
+    let names = crate::paint::piece_paint(c, piece);
+    let looks: Vec<Option<(Rgb, u32)>> = names.iter().map(|n| n.as_deref().and_then(look)).collect();
+    if looks.iter().all(Option::is_none) {
+        return None;
+    }
+    Some(Arc::new(piece.faces.iter().map(|k| looks.get(*k as usize).copied().flatten().unwrap_or(own)).collect()))
+}
+
 /// Retained geometry with per-snapshot appearance. Copying prepared work shares
 /// triangle/outline storage; applying paint happens only when making a scene.
 #[derive(Clone)]
@@ -1839,7 +1857,7 @@ fn solids_in_with(
                 for piece in components.solids(c) {
                     let color = m.materials.get(&piece.material).map_or(COMPONENT, |x| Rgb(x.color[0], x.color[1], x.color[2]));
                     let tex = skin(m, &piece.material);
-                    let skins = piece_skins(m, &piece, (color, tex));
+                    let skins = component_skins(m, c, &piece, (color, tex));
                     out.push(Solid::Mesh {
                         owner: id,
                         color,
@@ -2335,8 +2353,13 @@ pub(crate) fn layered_with(m: &Model, s: Solid) -> Vec<(Solid, Option<usize>)> {
 /// texture, in place of what its type is made of.
 fn painted(m: &Model, tris: &mut [Tri], faces: &[&'static str]) {
     let owners: BTreeSet<Id> = tris.iter().map(|t| t.owner).collect();
-    let paints: HashMap<Id, &serde_json::Map<String, serde_json::Value>> =
-        owners.into_iter().filter_map(|id| Some((id, m.elements.get(id)?.params()?.get(paint::KEY)?.as_object()?))).collect();
+    // A component's paint, of its faces and of all of it, is its pieces' (`component_skins`).
+    let paints: HashMap<Id, &serde_json::Map<String, serde_json::Value>> = owners
+        .into_iter()
+        .filter_map(|id| {
+            Some((id, m.elements.get(id).filter(|e| !matches!(e, Element::Component(_)))?.params()?.get(paint::KEY)?.as_object()?))
+        })
+        .collect();
     if paints.is_empty() {
         return;
     }

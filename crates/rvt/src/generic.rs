@@ -481,6 +481,7 @@ fn boxes(
                 adaptive: None,
                 host: None,
                 panel: None,
+                face_paint: Vec::new(),
             })
         })();
         match made {

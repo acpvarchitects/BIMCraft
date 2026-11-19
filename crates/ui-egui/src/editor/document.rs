@@ -2955,7 +2955,7 @@ impl BimApp {
                 let face = ed.orbit.surface_at(&input, &cam, p, fresh.then_some(&*scene)).and_then(|under| {
                     let staged = ed.scene3d.as_ref()?;
                     let bimcraft_core::family::views::Part::Form(i) = *staged.part.get(&under.id)? else { return None };
-                    let key = staged.model.component_face(under.id, under.at, under.normal)?;
+                    let key = staged.model.component_face(under.id, under.at, under.normal)?.face;
                     Some((i, super::paint::key_back(key, staged.guids.get(&under.id)?)))
                 });
                 let names: Vec<String> = self.session.model.materials.keys().cloned().collect();

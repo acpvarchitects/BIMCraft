@@ -3582,6 +3582,7 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
                 params: BTreeMap::new(),
                 host: None,
                 panel: None,
+                face_paint: Vec::new(),
             };
             let cid = m.insert(Element::Component(c));
             from.insert(cid, who(id));
