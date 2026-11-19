@@ -219,6 +219,8 @@ pub mod phasing;
 pub mod places;
 #[cfg(test)]
 mod plan_cache_tests;
+#[cfg(test)]
+mod plan_index_tests;
 pub mod plumbing;
 pub mod printset;
 pub mod progress;

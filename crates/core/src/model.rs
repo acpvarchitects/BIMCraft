@@ -4908,7 +4908,10 @@ impl Model {
     /// What component `c`'s shape in its own axes is built from: its family, type, mirroring, and of its own values those its
     /// family evaluates, with its adaptive placement. Paint, phase, design-option and project parameters' values live in
     /// `params` too, but no form reads them ([`crate::family::Family::values`] reads its own parameters by name), so copies
-    /// differing only in them, as an IFC's copies of one shape do, are built once.
+    /// differing only in them, as an IFC's copies of one shape do, are built once. It must hold every input of
+    /// [`crate::family::Family::values`] and of a build: GEO-2g-2's index keeps a component's key while its element's revision
+    /// is unchanged, so an input read from elsewhere in the model (a global or project parameter, should a form ever read
+    /// one) would leave its key, and the shape kept by it, stale without a word.
     pub(crate) fn shape_key(&self, c: &Component) -> crate::component_geometry::Key {
         let params = self.families.get(&c.family).map(|family| {
             c.params.iter().filter(|(name, _)| family.parameters.iter().any(|p| p.name == **name)).collect::<BTreeMap<_, _>>()

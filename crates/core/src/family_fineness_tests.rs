@@ -343,55 +343,57 @@ fn zoomed_plan_bench() {
     let n: usize = std::env::var("GEO_PANELS").ok().and_then(|v| v.parse().ok()).unwrap_or(10_000);
     let all = std::thread::available_parallelism().map_or(1, usize::from);
     let cg = crate::component_geometry::builds;
+    // Room for both models' default builds (each some 300 MB), so drawing the second again builds nothing the first pushed out.
+    let budgets = [768 << 20, 256 << 20];
     render::without_twins(|| {
-        for threads in [8, all] {
-            crate::component_geometry::with_threads(threads, || {
-                let (mut s, side) = facade(n);
-                let middle = (side / 2) as f64 * 1500.0;
-                // Some 20 by 8 panels in a 2000 x 800 screen, at a scale finer than the default draws.
-                let view = |cx: f64| View { angle: 0.0, scale: 0.065, cx, cy: middle, width: 2000, height: 800 };
-                let time = |what: &str, s: &Session, v: View| {
-                    let (before, t) = (cg(), std::time::Instant::now());
-                    let d = render::draw(&s.model, 100000, v);
+        crate::component_geometry::with_budgets(budgets, || {
+            for threads in [8, all] {
+                crate::component_geometry::with_threads(threads, || {
+                    let (mut s, side) = facade(n);
+                    let middle = (side / 2) as f64 * 1500.0;
+                    // Some 20 by 8 panels in a 2000 x 800 screen, at a scale finer than the default draws.
+                    let view = |cx: f64| View { angle: 0.0, scale: 0.065, cx, cy: middle, width: 2000, height: 800 };
+                    let time = |what: &str, s: &Session, v: View| {
+                        let (before, t) = (cg(), std::time::Instant::now());
+                        let d = render::draw(&s.model, 100000, v);
+                        eprintln!(
+                            "GEO-2g {threads} workers, {what}: {:.1} ms, {} built, {} primitives",
+                            t.elapsed().as_secs_f64() * 1000.0,
+                            cg() - before,
+                            d.prims.len()
+                        );
+                    };
+                    time("first zoomed draw", &s, view(middle));
+                    time("drawn again", &s, view(middle));
+                    time("panned half a screen", &s, view(middle + 1000.0 / 0.065));
+                    // One panel in view, edited as a command edits it: a new model, the families as they were.
+                    let id = s
+                        .model
+                        .elements
+                        .iter()
+                        .find_map(|(id, e)| match e {
+                            crate::model::Element::Component(c) if c.at.0 >= middle + 1000.0 / 0.065 && c.at.1 >= middle => Some(*id),
+                            _ => None,
+                        })
+                        .unwrap_or_else(|| panic!("a panel in view"));
+                    s.execute("modify", &json!({"id": id, "params": {"W": 1234.5}})).unwrap_or_else(|e| panic!("{e}"));
+                    time("one panel in view edited", &s, view(middle + 1000.0 / 0.065));
+                    // Fitted as another model of the same panels is: what fitting builds isn't this one's.
+                    let fit = render::plan_fit(&facade(n).0.model, 100000, 2000, 1200, false);
+                    let (fresh, _) = facade(n);
+                    time("first draw zoomed to fit", &fresh, fit);
+                    time("zoomed to fit drawn again", &fresh, fit);
+                    let (shared, own) = crate::component_geometry::kept_finer();
+                    eprintln!("GEO-2g {threads} workers: {shared} finer builds kept as their default ones, {own} of their own");
+                    let (bytes, _) = crate::component_geometry::kept_bytes();
                     eprintln!(
-                        "GEO-2g {threads} workers, {what}: {:.1} ms, {} built, {} primitives",
-                        t.elapsed().as_secs_f64() * 1000.0,
-                        cg() - before,
-                        d.prims.len()
+                        "GEO-2g {threads} workers: kept {:.1} MB at the default, {:.1} MB finer",
+                        bytes[0] as f64 / 1e6,
+                        bytes[1] as f64 / 1e6
                     );
-                };
-                time("first zoomed draw", &s, view(middle));
-                time("drawn again", &s, view(middle));
-                time("panned half a screen", &s, view(middle + 1000.0 / 0.065));
-                // One panel in view, edited: a new model, the families as they were.
-                let id = s
-                    .model
-                    .elements
-                    .iter()
-                    .find_map(|(id, e)| match e {
-                        crate::model::Element::Component(c) if c.at.0 >= middle + 1000.0 / 0.065 && c.at.1 >= middle => Some(*id),
-                        _ => None,
-                    })
-                    .unwrap_or_else(|| panic!("a panel in view"));
-                if let Some(crate::model::Element::Component(c)) = std::sync::Arc::make_mut(&mut s.model).elements.get_mut(id) {
-                    c.params.insert("W".into(), json!(1234.5));
-                }
-                time("one panel in view edited", &s, view(middle + 1000.0 / 0.065));
-                // Fitted as another model of the same panels is: what fitting builds isn't this one's.
-                let fit = render::plan_fit(&facade(n).0.model, 100000, 2000, 1200, false);
-                let (fresh, _) = facade(n);
-                time("first draw zoomed to fit", &fresh, fit);
-                time("zoomed to fit drawn again", &fresh, fit);
-                let (shared, own) = crate::component_geometry::kept_finer();
-                eprintln!("GEO-2g {threads} workers: {shared} finer builds kept as their default ones, {own} of their own");
-                let (bytes, _) = crate::component_geometry::kept_bytes();
-                eprintln!(
-                    "GEO-2g {threads} workers: kept {:.1} MB at the default, {:.1} MB finer",
-                    bytes[0] as f64 / 1e6,
-                    bytes[1] as f64 / 1e6
-                );
-            });
-        }
+                });
+            }
+        })
     });
 }
 

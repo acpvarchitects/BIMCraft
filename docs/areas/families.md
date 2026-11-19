@@ -2251,7 +2251,23 @@ builds only what its window needs, keeps what it built, and builds the rest on s
   order, so one thread or eight draw the same plan. A build that fails is no geometry either way; where builds panic, the
   first of them in the model's order panics the drawing, as on one thread.
 
-`zoomed_plan_bench` in `family_fineness_tests.rs` times it.
+- **Indexed (GEO-2g-2).** What a plan reads of each component before building any is kept across drawings
+  (`component_geometry/index.rs`, with the families' generation): its key, its envelope and the box of its model lines,
+  placed, each with the element revision it was found for (`ids/revisions.rs`), and a uniform grid of 4,096 mm cells over
+  those boxes in plan, of every component on every level (one over more than 256 cells is looked at by every query, one
+  whose envelope isn't known is a candidate everywhere, and one with plan symbols is a candidate of its level's plans). A
+  floor plan asks the grid for what is near its window and filters by its view range, so a pan looks at the cells near the
+  window and at what is in them, and no component has its key made again. After an edit only what changed since
+  (`RevisionSnapshot::changed_since`) is found again, and what depends on it: a component's level and host, and what its
+  host stands on (a host wall's levels); a change of the types places every hosted one again (a host's faces are of its
+  type), and an edit of a family is a new generation, so its index is made again. Undo, redo, a group moved, a link
+  reloaded and a level raised all come through the revisions: `plan_index_tests.rs` holds the indexed plan to the plan
+  drawn among every component and to one drawn afresh, through each. A component's model lines are asked apart from its
+  forms (`Components::lines_in_window`): one whose lines alone reach the window draws them and isn't built. A family's
+  plan's own pass over its components is windowed too. The default builds an eviction takes out unshare their finer
+  builds once a pass, each key's finer builds looked up by key (`Kept::finer`).
+
+`zoomed_plan_bench` in `family_fineness_tests.rs` times it, with room for both of its models' default builds.
 
 ## Where the code lives
 

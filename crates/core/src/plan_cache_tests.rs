@@ -353,7 +353,8 @@ fn a_panels_envelope_is_known_and_holds_all_it_builds() {
 }
 
 /// ec's review of #88: a family whose solid is a small box at its origin and whose model line runs 30 m from it, viewed at the
-/// line's far end: the line is drawn, culled as unculled, though the box is far off the window.
+/// line's far end: the line is drawn, on its screen culled as unculled, though the box is far off the window (and, culled,
+/// isn't drawn: `plan_index_tests.rs`).
 #[test]
 fn a_model_line_far_from_its_familys_solid_is_drawn_where_it_reaches_into_the_window() {
     let mut s = Session::new();
@@ -371,7 +372,8 @@ fn a_model_line_far_from_its_familys_solid_is_drawn_where_it_reaches_into_the_wi
         let culled = render::draw(&s.model, LEVEL, view);
         let whole = cg::without_culling(|| render::draw(&s.model, LEVEL, view));
         assert!(whole.owners.contains(&Some(id)), "unculled, its line is drawn");
-        assert!(same(&culled, &whole), "culled, the same: {} against {} primitives", culled.prims.len(), whole.prims.len());
+        assert!(culled.owners.contains(&Some(id)), "culled, its line is drawn");
+        assert_eq!(on_screen(&culled), on_screen(&whole), "culled, the same on its screen");
     }
 }
 
