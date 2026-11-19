@@ -351,9 +351,16 @@ fn elevation_paint_bench() {
                         .unwrap_or_else(|e| panic!("{e}"));
                     let form = s.model.families["Panel"].forms[0].guid;
                     let ids: Vec<u64> = s.model.elements.iter().filter(|(_, e)| e.category() == "component").map(|(id, _)| *id).collect();
-                    // Each panel's front: the L's first line, along x at y = 0.
+                    // Each panel's front, along x at y = 0: its key, as a click on the first panel's names it.
+                    let first = ids
+                        .iter()
+                        .copied()
+                        .find(|id| matches!(s.model.elements.get(*id), Some(crate::model::Element::Component(c)) if c.at == P2(0.0, 0.0)))
+                        .unwrap_or_else(|| panic!("the first panel"));
+                    let face =
+                        s.model.component_face(first, [500.0, 0.0, 100.0], [0.0, -1.0, 0.0]).unwrap_or_else(|| panic!("its front")).face;
                     for some in ids.chunks(5000) {
-                        s.execute("paint", &json!({"ids": some, "form": form, "face": {"edge": 0}, "material": "Tile"}))
+                        s.execute("paint", &json!({"ids": some, "form": form, "face": face, "material": "Tile"}))
                             .unwrap_or_else(|e| panic!("{e}"));
                     }
                 }
@@ -368,10 +375,12 @@ fn elevation_paint_bench() {
                 for what in ["first", "again"] {
                     let t = std::time::Instant::now();
                     let picture = render::section_picture_with(&s.model, &work, id, view, &[]);
+                    let elapsed = t.elapsed().as_secs_f64() * 1000.0;
+                    // The pattern's ink: the pixels in its grey.
+                    let inked = picture.as_ref().map_or(0, |p| p.rgba.chunks(4).filter(|c| c[..3] == [120, 120, 120]).count());
                     eprintln!(
-                        "FE-16c-2 elevation, {}, {what}: {:.1} ms{}",
+                        "FE-16c-2 elevation, {}, {what}: {elapsed:.1} ms, {inked} px in the pattern's grey{}",
                         if painted { "every front painted" } else { "unpainted" },
-                        t.elapsed().as_secs_f64() * 1000.0,
                         if picture.is_some() { "" } else { " (no picture)" }
                     );
                 }

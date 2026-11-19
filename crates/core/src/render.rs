@@ -2440,7 +2440,9 @@ pub(crate) fn section_picture_in(m: &Model, w: &SectionWork, id: impl Key, view:
     let mut picture = scene.cut_in(&cam, &clip, tints, &look);
     // Its twin, which tests hold it to: the picture of the whole scene.
     #[cfg(test)]
-    if let Err(e) = picture.same_as(&Scene::new(m).cut_in(&cam, &clip, tints, &look)) {
+    if twins()
+        && let Err(e) = picture.same_as(&Scene::new(m).cut_in(&cam, &clip, tints, &look))
+    {
         panic!("a section's picture from what can show in it isn't the whole scene's: {e}");
     }
     painted_fronts(m, &scene, &cam, &mut picture);
