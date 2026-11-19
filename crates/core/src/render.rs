@@ -4309,6 +4309,8 @@ fn painted_tops(
     };
     // Every piece drawn: what each face shows was found with its build.
     let whole = at.iter().all(Option::is_some);
+    // The family's zero, and how far its x is turned, where the lattice starts.
+    let anchor = placed.map_or((P2(0.0, 0.0), 0.0), |pl| (P2(pl.origin[0], pl.origin[1]), pl.axes[0][1].atan2(pl.axes[0][0]).to_degrees()));
     for (n, u) in up.iter().enumerate() {
         let Some(Some(i)) = at.get(u.piece).copied() else { continue };
         let Some(p) = pieces.get(i) else { continue };
@@ -4373,16 +4375,13 @@ fn painted_tops(
             if seen.is_empty() {
                 continue;
             }
-            draw_surface(d, x.surface, pattern, &seen, (P2(0.0, 0.0), 0.0));
+            draw_surface(d, x.surface, pattern, &seen, anchor);
             continue;
         };
         if local.is_empty() {
             continue;
         }
         let shown: Vec<Vec<P2>> = local.iter().map(|r| r.iter().map(|q| flat(*q)).collect()).collect();
-        // The family's zero, and how far its x is turned, where the lattice starts.
-        let anchor =
-            placed.map_or((P2(0.0, 0.0), 0.0), |pl| (P2(pl.origin[0], pl.origin[1]), pl.axes[0][1].atan2(pl.axes[0][0]).to_degrees()));
         draw_surface(d, x.surface, pattern, &shown, anchor);
     }
 }

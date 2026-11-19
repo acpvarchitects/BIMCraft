@@ -193,12 +193,34 @@ impl UpFace {
     pub(crate) fn seen(&self, pieces: &[&Piece], at: &[Option<usize>], up: &[UpFace]) -> Vec<Vec<P2>> {
         let mine = at.get(self.piece).copied().flatten();
         let meets = |ring: &[P2]| self.rings.iter().any(|r| boxes_meet(r, ring));
-        let over: Vec<&[P2]> = pieces
+        // What a higher piece covers seen from above: its triangles that face up and reach over this face (so a hole through
+        // it covers nothing); a piece of no triangles (a plan's), its outline less its holes (ec's review of #91).
+        let z = self.z;
+        let covers = |q: &Piece| -> Vec<Vec<P2>> {
+            if q.tris.is_empty() {
+                return q.holes.iter().fold(vec![q.outline.clone()], |rings, h| crate::walls::minus(&rings, h));
+            }
+            q.tris
+                .iter()
+                .filter(|t| {
+                    use crate::view3d::{cross, sub};
+                    cross(sub(t[1], t[0]), sub(t[2], t[0]))[2] > 1e-9 && t.iter().any(|p| p[2] > z + 1e-6)
+                })
+                .map(|t| {
+                    let mut ring: Vec<P2> = t.iter().map(|p| P2(p[0], p[1])).collect();
+                    if crate::geom::area(&ring) < 0.0 {
+                        ring.reverse();
+                    }
+                    ring
+                })
+                .collect()
+        };
+        let over: Vec<Vec<P2>> = pieces
             .iter()
             .enumerate()
-            .filter(|(j, q)| Some(*j) != mine && q.top > self.z + 1e-6)
-            .map(|(_, q)| q.outline.as_slice())
-            .chain(up.iter().filter(|v| v.piece == self.piece && v.z > self.z + 1e-6).flat_map(|v| v.tris.iter().map(Vec::as_slice)))
+            .filter(|(j, q)| Some(*j) != mine && q.top > z + 1e-6)
+            .flat_map(|(_, q)| covers(q))
+            .chain(up.iter().filter(|v| v.piece == self.piece && v.z > z + 1e-6).flat_map(|v| v.tris.iter().cloned()))
             .filter(|ring| meets(ring))
             .collect();
         if over.is_empty() {
@@ -1571,7 +1593,7 @@ impl Store {
     fn charge_grown(&mut self) {
         let bytes = &mut self.bytes;
         for g in &mut self.generations {
-            let shared: Vec<(Arc<Key>, Fineness)> = g
+            let shared: std::collections::HashSet<(Arc<Key>, Fineness)> = g
                 .shapes
                 .iter()
                 .filter(|(k, s)| {

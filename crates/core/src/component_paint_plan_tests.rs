@@ -243,3 +243,107 @@ fn of_two_pieces_whose_fronts_coincide_the_frontmost_ones_paint_shows() {
     run(&mut s, "paint", json!({"id": id, "form": gstr(850), "face": {"side": gstr(851)}, "material": "Plain"}));
     assert!(darkest_at(&s, section, 0.5, 300.0, 100.0) < 600, "the first piece's front, painted Tile, shows its courses");
 }
+
+/// ec's review of #91: a higher piece with a hole hides only what lies under it, not what the hole shows. A box's top painted,
+/// under a frame (outer 200..800 by 100..400, its hole 300..700 by 120..380) up to 600: the courses run through the hole.
+#[test]
+fn a_higher_piece_with_a_hole_lets_the_painted_top_show_through_it() {
+    let (mut s, id) = project();
+    run(&mut s, "fill_pattern", json!({"name": "Tiles", "target": "model", "lines": [{"angle": 0, "spacing": 100}]}));
+    run(&mut s, "material", json!({"name": "Tile", "color": [200, 200, 200], "surface": "Tiles"}));
+    let mut sketch = rect(901, 200.0, 100.0, 800.0, 400.0);
+    sketch.extend(rect(911, 300.0, 120.0, 700.0, 380.0));
+    let frame = json!({"guid": gstr(900), "sketch": sketch, "from": 0, "to": 600});
+    run(&mut s, "family", json!({"name": "Box", "forms": [boxed(), frame]}));
+    paint(&mut s, id, json!("end"), json!("Tile"));
+    let lines = pattern_lines(&mut s, id, "fine");
+    let through = |y: f64| lines.iter().any(|[a, b]| (a.1 - y).abs() < 0.5 && a.0.min(b.0) < 500.0 && a.0.max(b.0) > 500.0);
+    assert!(through(200.0) && through(300.0), "the courses at 200 and 300 cross the hole: {lines:?}");
+    // Not under the frame's own band, 100..120 and 380..400 across, nor 200..300 along.
+    for [a, b] in &lines {
+        let (lo, hi) = (a.0.min(b.0), a.0.max(b.0));
+        if a.1 > 120.5 && a.1 < 379.5 {
+            assert!(!(lo < 250.0 && hi > 250.0) && !(lo < 750.0 && hi > 750.0), "over the frame's sides: {a:?} {b:?}");
+        }
+    }
+}
+
+/// ec's review of #91: a view that leaves a piece out still lays the pattern from the family's zero, turned with the
+/// component. The box turned 30 degrees at (2000, 1000), with a second form the view's Fine detail doesn't draw.
+#[test]
+fn a_plan_leaving_a_piece_out_lays_the_pattern_from_the_family_turned_with_it() {
+    let mut s = Session::new();
+    run(&mut s, "fill_pattern", json!({"name": "Tiles", "target": "model", "lines": [{"angle": 0, "spacing": 100}]}));
+    run(&mut s, "material", json!({"name": "Tile", "color": [200, 200, 200], "surface": "Tiles"}));
+    let hidden = json!({"guid": gstr(930), "sketch": rect(931, 2000.0, 0.0, 2100.0, 100.0), "from": 0, "to": 100,
+                        "visibility": {"fine": false}});
+    run(&mut s, "family", json!({"name": "Box", "category": "generic", "types": {"A": {}}, "forms": [boxed(), hidden]}));
+    let id = run(&mut s, "component", json!({"family": "Box", "type": "A", "at": [2000, 1000], "angle": 30}))["id"].as_u64().unwrap();
+    paint(&mut s, id, json!("end"), json!("Tile"));
+    run(&mut s, "detail", json!({"view": 100000, "detail": "fine"}));
+    let view = crate::render::View { angle: 0.0, scale: 0.4, cx: 2300.0, cy: 1300.0, width: 800, height: 600 };
+    let d = crate::render::draw(&s.model, 100000, view);
+    let (sin, cos) = 30f64.to_radians().sin_cos();
+    let mut seen = 0;
+    for ((p, part), owner) in d.prims.iter().zip(&d.parts).zip(&d.owners) {
+        let (crate::render::Prim::Line { pts, .. }, crate::render::Part::Pattern, Some(o)) = (p, part, owner) else { continue };
+        if *o != id || pts.len() != 2 {
+            continue;
+        }
+        let (a, b) = (view.mm(pts[0]), view.mm(pts[1]));
+        let along = ((b.0 - a.0) * cos + (b.1 - a.1) * sin) / (b.0 - a.0).hypot(b.1 - a.1);
+        assert!(along.abs() > 0.999, "a course runs along the turned x: {a:?} {b:?}");
+        // Across, from the component's place: whole spacings.
+        let across = -(a.0 - 2000.0) * sin + (a.1 - 1000.0) * cos;
+        assert!((across / 100.0 - (across / 100.0).round()).abs() < 0.05, "on the family's lattice: {across}");
+        seen += 1;
+    }
+    assert!(seen >= 3, "its courses are drawn: {seen}");
+}
+
+/// ec's review of #91: a file's face paint that repeats a face, or goes past the most a component may hold, is left out as
+/// it is read, by its place in the file, as other entries a file can't stand by are.
+#[test]
+fn a_files_repeated_face_and_paint_past_the_cap_are_left_out_by_place() {
+    let cap = crate::paint::MAX_FACE_PAINT;
+    let mut s = Session::new();
+    run(&mut s, "material", json!({"name": "Red", "color": [220, 30, 30]}));
+    // Two prisms of 600 sides each: more faces than a component may paint.
+    let n = 600;
+    let prism = |guid: u32, x: f64| {
+        let corner = |i: usize| {
+            let t = std::f64::consts::TAU * i as f64 / n as f64;
+            [x + 2000.0 * t.cos(), 2000.0 * t.sin()]
+        };
+        let sketch: Vec<Value> = (0..n).map(|i| json!({"start": corner(i), "end": corner((i + 1) % n)})).collect();
+        json!({"guid": gstr(guid), "sketch": sketch, "from": 0, "to": 100})
+    };
+    run(
+        &mut s,
+        "family",
+        json!({"name": "Many", "category": "generic", "types": {"A": {}}, "forms": [prism(BOX, 0.0), prism(BOX + 1, 5000.0)]}),
+    );
+    let id = run(&mut s, "component", json!({"family": "Many", "type": "A", "at": [0, 0]}))["id"].as_u64().unwrap();
+    run(&mut s, "paint", json!({"id": id, "form": gstr(BOX), "face": {"edge": 0}, "material": "Red"}));
+    let mut file: Value = serde_json::from_str(&s.model.to_json().unwrap()).unwrap();
+    let list = file["elements"][id.to_string()]["face_paint"].as_array_mut().unwrap();
+    let first = list[0].clone();
+    // The first form's edge 0 again, then its edges 1 to 599 and the second form's 0 to 599: 1,200 faces, past the cap.
+    list.push(first.clone());
+    for (form, from) in [(BOX, 1), (BOX + 1, 0)] {
+        for i in from..n {
+            let mut e = first.clone();
+            e["form"] = json!(gstr(form));
+            e["face"] = json!({"edge": i});
+            list.push(e);
+        }
+    }
+    let total = list.len();
+    let (back, left_out) = crate::model::Model::read(&file.to_string()).unwrap();
+    let kept = &crate::component_paint_tests::component(&back, id).face_paint;
+    assert_eq!(kept.len(), cap);
+    let mut want = vec![format!("/elements/{id}/face_paint/1")];
+    want.extend((cap + 1..total).map(|i| format!("/elements/{id}/face_paint/{i}")));
+    assert_eq!(left_out, want);
+    back.check().unwrap();
+}
