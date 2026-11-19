@@ -348,7 +348,8 @@ impl Built {
     fn grew(&self, more: usize, less: usize) {
         use std::sync::atomic::Ordering::Relaxed;
         self.extra.fetch_add(more, Relaxed);
-        let _ = self.extra.fetch_update(Relaxed, Relaxed, |x| Some(x.saturating_sub(less)));
+        // What goes was added when it came, so this never takes it below zero.
+        self.extra.fetch_sub(less, Relaxed);
         mark_grown();
     }
 

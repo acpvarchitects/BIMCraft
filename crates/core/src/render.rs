@@ -3732,7 +3732,12 @@ fn draw_plan_among<'m>(
                 }
                 component(&mut d, m, &pieces);
                 // FE-16c-2: its painted tops' surface patterns, at Fine detail, as a floor's top shows its own.
-                if d.detail == Detail::Fine && crate::paint::painted_at_all(m, c) {
+                // Only one the view shows: what it keeps of its build for them is found where it is first seen.
+                let seen = || {
+                    let [lo, hi] = d.view.shown();
+                    pieces.iter().any(|p| bounds(&p.outline).is_some_and(|(a, b)| a.0 <= hi.0 && b.0 >= lo.0 && a.1 <= hi.1 && b.1 >= lo.1))
+                };
+                if d.detail == Detail::Fine && crate::paint::painted_at_all(m, c) && seen() {
                     let tops = components.plan_up_faces(c);
                     painted_tops(&mut d, m, c, (&pieces, &at), &tops, (range.cut, range.depth));
                 }
