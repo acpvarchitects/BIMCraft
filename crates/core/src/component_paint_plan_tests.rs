@@ -173,3 +173,73 @@ fn what_a_plan_keeps_of_a_build_for_its_painted_tops_is_charged_to_the_stores_bu
     assert!(counted[0] <= budget, "within the budget: {counted:?} of {budget}");
     assert!(kept < 20 && bare <= 20, "some builds went to make room for their tops' lines: {kept} kept");
 }
+
+/// How dark the picture of section `id` (its line from x = -1000) is at model point `(x, z)`, drawn at `scale` px a mm centred
+/// there: the darkest of the pixels within two of it up and down, as the sum of its channels.
+fn darkest_at(s: &Session, id: Id, scale: f64, x: f64, z: f64) -> u32 {
+    let view = crate::render::View { angle: 0.0, scale, cx: x + 1000.0, cy: z, width: 400, height: 400 };
+    let img = crate::render::section_picture(&s.model, id, view, &[]).unwrap();
+    (-2..=2)
+        .map(|k| {
+            let c = img.color(200.0, 200.0 + f64::from(k));
+            u32::from(c.0) + u32::from(c.1) + u32::from(c.2)
+        })
+        .min()
+        .unwrap_or(0)
+}
+
+/// A project with the `Tiles` pattern's material, family `name` of `forms`, a component of it at the origin and a section
+/// looking north at it from y = -1000.
+fn faced(name: &str, forms: Value) -> (Session, Id, Id) {
+    let mut s = Session::new();
+    run(&mut s, "fill_pattern", json!({"name": "Tiles", "target": "model", "lines": [{"angle": 0, "spacing": 100}]}));
+    run(&mut s, "material", json!({"name": "Tile", "color": [200, 200, 200], "surface": "Tiles"}));
+    run(&mut s, "family", json!({"name": name, "category": "generic", "types": {"T": {}}, "forms": forms}));
+    let id = run(&mut s, "component", json!({"family": name, "type": "T", "at": [0, 0]}))["id"].as_u64().unwrap();
+    let section = run(&mut s, "section", json!({"start": [-1000, -1000], "end": [3000, -1000]}))["id"].as_u64().unwrap();
+    (s, id, section)
+}
+
+/// cp's review of #91: the face a picture shows is the triangle's own, not one found again by where its middle is. A part
+/// revolve's cap, a disc bounded by a circle, painted: its courses show in an elevation at a zoom finer than the default.
+#[test]
+fn a_painted_cap_of_a_part_revolve_shows_its_pattern_in_an_elevation_close_up() {
+    let ring = json!([{"centre": [400, 300], "radius": 100}, {"start": [0, 0], "end": [0, 100], "axis": true}]);
+    let (mut s, id, section) = faced(
+        "Ring",
+        json!([{"guid": gstr(800), "sketch": ring, "host": {"plane": "9e3c0a10-1f0b-4d8c-8a5e-0000000000a2"}, "from": 0, "to": 90}]),
+    );
+    // The cap the elevation sees, in the family's xz plane at y = 0.
+    let face = s.model.component_face(id, [400.0, 0.0, 330.0], [0.0, -1.0, 0.0]).expect("the cap at y = 0").face;
+    assert!(darkest_at(&s, section, 4.0, 400.0, 300.0) > 700, "paper before");
+    run(&mut s, "paint", json!({"id": id, "form": gstr(800), "face": face, "material": "Tile"}));
+    assert!(darkest_at(&s, section, 4.0, 400.0, 300.0) < 600, "its course at 300, close up");
+    assert!(darkest_at(&s, section, 4.0, 400.0, 250.0) > 700, "between courses");
+}
+
+/// A painted side with a round void through it: the side's triangles round the hole show its pattern, close up.
+#[test]
+fn a_painted_side_round_a_round_void_shows_its_pattern_in_an_elevation_close_up() {
+    let void = json!({"guid": gstr(820), "sketch": [{"centre": [500, 150], "radius": 60}], "host": {"plane": "9e3c0a10-1f0b-4d8c-8a5e-0000000000a2"},
+                      "from": -100, "to": 600, "void": true});
+    let (mut s, id, section) = faced("Holed", json!([boxed(), void]));
+    paint(&mut s, id, json!({"side": gstr(1)}), json!("Tile"));
+    // Beside the hole, on the course at 200, and just over the hole's top on the course at 300 (the box is 300 high: under it).
+    assert!(darkest_at(&s, section, 4.0, 580.0, 200.0) < 600, "a course beside the hole");
+    assert!(darkest_at(&s, section, 4.0, 500.0, 230.0) > 700, "between courses over the hole");
+    assert!(darkest_at(&s, section, 4.0, 200.0, 100.0) < 600, "a course away from it");
+}
+
+/// Two pieces whose fronts lie on each other, painted apart: the first's a material of a pattern, the second's one of none.
+/// The picture's frontmost triangle (the first piece's, drawn first) says which face it is, and so which paint; found again
+/// by where its middle is, it could be either.
+#[test]
+fn of_two_pieces_whose_fronts_coincide_the_frontmost_ones_paint_shows() {
+    let a = json!({"guid": gstr(840), "sketch": rect(841, 0.0, 0.0, 1000.0, 500.0), "from": 0, "to": 300});
+    let b = json!({"guid": gstr(850), "sketch": rect(851, 0.0, 0.0, 1000.0, 200.0), "from": 0, "to": 300});
+    let (mut s, id, section) = faced("Pair", json!([a, b]));
+    run(&mut s, "material", json!({"name": "Plain", "color": [90, 90, 200]}));
+    run(&mut s, "paint", json!({"id": id, "form": gstr(840), "face": {"side": gstr(841)}, "material": "Tile"}));
+    run(&mut s, "paint", json!({"id": id, "form": gstr(850), "face": {"side": gstr(851)}, "material": "Plain"}));
+    assert!(darkest_at(&s, section, 0.5, 300.0, 100.0) < 600, "the first piece's front, painted Tile, shows its courses");
+}

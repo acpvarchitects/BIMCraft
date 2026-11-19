@@ -152,6 +152,10 @@ struct Tri {
     /// What part of its element it is, where the element has parts a view shows apart (a stair's: [`StairPart::tag`]);
     /// 0, the whole.
     part: u8,
+    /// FE-16c-2: where it is of a component's face painted (its own paint in the project, the whole component's, or its
+    /// family's), one more than where that material is in the library; 0, unpainted. What a section's picture reads of the
+    /// frontmost triangle to draw the face's surface pattern. It lies in what was the struct's padding: a triangle is no bigger.
+    paint: u32,
 }
 
 /// The bits of a skin that hold the texture.
@@ -239,8 +243,8 @@ impl Frame {
             at(a.0, c.1, z.1),
         ];
         for [i, j, k, l] in [[0, 1, 2, 3], [4, 5, 6, 7], [0, 1, 5, 4], [1, 2, 6, 5], [2, 3, 7, 6], [3, 0, 4, 7]] {
-            out.push(Tri { p: [v[i], v[j], v[k]], owner, color, tex, curve: None, face: None, vis: 0, part: 0 });
-            out.push(Tri { p: [v[i], v[k], v[l]], owner, color, tex, curve: None, face: None, vis: 0, part: 0 });
+            out.push(Tri { p: [v[i], v[j], v[k]], owner, color, tex, curve: None, face: None, vis: 0, part: 0, paint: 0 });
+            out.push(Tri { p: [v[i], v[k], v[l]], owner, color, tex, curve: None, face: None, vis: 0, part: 0, paint: 0 });
         }
     }
 }
@@ -293,8 +297,9 @@ pub(crate) enum Solid {
     },
 }
 
-/// What each triangle of a [`Solid::Mesh`] is shaded in where they aren't all its own colour: a family form's paint.
-pub(crate) type Skins = Option<Arc<Vec<(Rgb, u32)>>>;
+/// What each triangle of a [`Solid::Mesh`] is shaded in where they aren't all its own colour: a family form's paint, or a
+/// project's of a component's faces; and, third, the material a component's face is painted ([`Tri::paint`]; 0, none).
+pub(crate) type Skins = Option<Arc<Vec<(Rgb, u32, u32)>>>;
 
 /// The colour and texture of each triangle of family piece `piece`, where its form paints some of its faces (FE-16c-1): a
 /// painted face's in its material's, the rest in `own`. None where none is painted.
@@ -307,7 +312,8 @@ fn piece_skins(m: &Model, piece: &crate::family::Piece, own: (Rgb, u32)) -> Skin
     if looks.iter().all(Option::is_none) {
         return None;
     }
-    Some(Arc::new(piece.faces.iter().map(|k| looks.get(*k as usize).copied().flatten().unwrap_or(own)).collect()))
+    let (r, t) = own;
+    Some(Arc::new(piece.faces.iter().map(|k| looks.get(*k as usize).copied().flatten().map_or((r, t, 0), |(c, x)| (c, x, 0))).collect()))
 }
 
 impl Scene {
@@ -315,24 +321,36 @@ impl Scene {
     pub(crate) fn corners_of(&self, i: u32) -> Option<[P3; 3]> {
         self.tris.get(i as usize).map(|t| t.p)
     }
+
+    /// The material triangle `i` is painted, as a component's face ([`Tri::paint`]): one more than its place in the library;
+    /// 0, none.
+    pub(crate) fn paint_of(&self, i: u32) -> u32 {
+        self.tris.get(i as usize).map_or(0, |t| t.paint)
+    }
 }
 
-/// The colour and texture of each triangle of component `c`'s piece `piece` (FE-16c-2): a face the project paints in its
-/// material, else the whole component's `all`, else the family's paint ([`piece_skins`]'s), else `own`. None where nothing of
-/// it is painted. [`painted`] leaves components to this.
+/// One more than where material `name` is in the library; 0 where it isn't.
+fn ordinal(m: &Model, name: &str) -> u32 {
+    m.materials.keys().position(|k| k == name).map_or(0, |i| u32::try_from(i + 1).unwrap_or(0))
+}
+
+/// The colour and texture of each triangle of component `c`'s piece `piece` (FE-16c-2), and the material it is painted: a
+/// face the project paints in its material, else the whole component's `all`, else the family's paint, else `own` (and 0).
+/// None where nothing of it is painted. [`painted`] leaves components to this.
 fn component_skins(m: &Model, c: &crate::model::Component, piece: &crate::family::Piece, own: (Rgb, u32)) -> Skins {
-    let look = |name: &str| m.materials.get(name).map(|x| (Rgb(x.color[0], x.color[1], x.color[2]), skin(m, name)));
+    let look = |name: &str| m.materials.get(name).map(|x| (Rgb(x.color[0], x.color[1], x.color[2]), skin(m, name), ordinal(m, name)));
     if piece.faces.len() != piece.tris.len() {
         // Untagged: only the whole component's paint names it.
         let all = c.params.get(paint::KEY).and_then(|p| p.get("all")).and_then(serde_json::Value::as_str).and_then(look)?;
         return Some(Arc::new(vec![all; piece.tris.len()]));
     }
     let names = crate::paint::piece_paint(c, piece);
-    let looks: Vec<Option<(Rgb, u32)>> = names.iter().map(|n| n.as_deref().and_then(look)).collect();
+    let looks: Vec<Option<(Rgb, u32, u32)>> = names.iter().map(|n| n.as_deref().and_then(look)).collect();
     if looks.iter().all(Option::is_none) {
         return None;
     }
-    Some(Arc::new(piece.faces.iter().map(|k| looks.get(*k as usize).copied().flatten().unwrap_or(own)).collect()))
+    let (r, t) = own;
+    Some(Arc::new(piece.faces.iter().map(|k| looks.get(*k as usize).copied().flatten().unwrap_or((r, t, 0))).collect()))
 }
 
 /// Retained geometry with per-snapshot appearance. Copying prepared work shares
@@ -642,6 +660,7 @@ impl Solid {
                         face: None,
                         vis: 0,
                         part,
+                        paint: 0,
                     });
                     out.push(Tri {
                         p: [at(pt(a), bottom), at(pt(c), bottom), at(pt(b), bottom)],
@@ -652,6 +671,7 @@ impl Solid {
                         face: None,
                         vis: 0,
                         part,
+                        paint: 0,
                     });
                 }
                 let curve = curve.filter(|(_, r)| *r >= 0.0);
@@ -664,8 +684,8 @@ impl Solid {
                     let curve = curve
                         .filter(|(c, _)| (b - a).unit().cross((a - *c).unit()).abs() > 0.5)
                         .map(|(c, r)| (owner, usize::from(((a + b) * 0.5).dist(c) > r)));
-                    out.push(Tri { p: [a0, b0, b1], owner, color, tex, curve, face: None, vis: 0, part });
-                    out.push(Tri { p: [a0, b1, a1], owner, color, tex, curve, face: None, vis: 0, part });
+                    out.push(Tri { p: [a0, b0, b1], owner, color, tex, curve, face: None, vis: 0, part, paint: 0 });
+                    out.push(Tri { p: [a0, b1, a1], owner, color, tex, curve, face: None, vis: 0, part, paint: 0 });
                 }
             }
             // Each surface, and each flat face, keyed by its first triangle's place in `out`, which no other form's shares.
@@ -678,7 +698,7 @@ impl Solid {
                     facets(tris)
                 };
                 for (i, ((p, s), f)) in tris.iter().zip(surfaces).zip(faces).enumerate() {
-                    let (color, tex) = skins.as_ref().and_then(|k| k.get(i)).copied().unwrap_or((*color, *tex));
+                    let (color, tex, paint) = skins.as_ref().and_then(|k| k.get(i)).copied().unwrap_or((*color, *tex, 0));
                     out.push(Tri {
                         p: *p,
                         owner: *owner,
@@ -688,6 +708,7 @@ impl Solid {
                         face: f.map(|f| (first + f) as u32),
                         vis: *vis,
                         part: 0,
+                        paint,
                     });
                 }
             }
@@ -2027,12 +2048,12 @@ fn prism(out: &mut Vec<Tri>, owner: Id, (color, tex): (Rgb, u32), face: &[P3], r
     let up = |p: P3| [p[0], p[1], p[2] + rise];
     let pt = |i: usize| face.get(i).copied().unwrap_or_default();
     for [a, b, c] in geom::triangulate(&plan(face)) {
-        out.push(Tri { p: [up(pt(a)), up(pt(b)), up(pt(c))], owner, color, tex, curve: None, face: None, vis: 0, part: 0 });
-        out.push(Tri { p: [pt(a), pt(c), pt(b)], owner, color, tex, curve: None, face: None, vis: 0, part: 0 });
+        out.push(Tri { p: [up(pt(a)), up(pt(b)), up(pt(c))], owner, color, tex, curve: None, face: None, vis: 0, part: 0, paint: 0 });
+        out.push(Tri { p: [pt(a), pt(c), pt(b)], owner, color, tex, curve: None, face: None, vis: 0, part: 0, paint: 0 });
     }
     for (a, b) in face.iter().zip(face.iter().cycle().skip(1)) {
-        out.push(Tri { p: [*a, *b, up(*b)], owner, color, tex, curve: None, face: None, vis: 0, part: 0 });
-        out.push(Tri { p: [*a, up(*b), up(*a)], owner, color, tex, curve: None, face: None, vis: 0, part: 0 });
+        out.push(Tri { p: [*a, *b, up(*b)], owner, color, tex, curve: None, face: None, vis: 0, part: 0, paint: 0 });
+        out.push(Tri { p: [*a, up(*b), up(*a)], owner, color, tex, curve: None, face: None, vis: 0, part: 0, paint: 0 });
     }
 }
 
@@ -5620,9 +5641,15 @@ impl Scene {
 mod tests {
     use super::*;
 
+    /// FE-16c-2: a triangle's painted material lies in what was its padding, so a scene of millions takes no more.
+    #[test]
+    fn a_triangle_is_no_bigger_for_its_paint() {
+        assert_eq!(std::mem::size_of::<Tri>(), 128);
+    }
+
     #[test]
     fn a_grounds_texture_lies_in_plan_so_one_paving_runs_over_its_folds() {
-        let tri = |p: [P3; 3]| Tri { p, owner: 100000, color: Rgb(0, 0, 0), tex: 0, curve: None, face: None, vis: 0, part: 0 };
+        let tri = |p: [P3; 3]| Tri { p, owner: 100000, color: Rgb(0, 0, 0), tex: 0, curve: None, face: None, vis: 0, part: 0, paint: 0 };
         let flat = tri([[0.0, 0.0, 0.0], [1000.0, 0.0, 0.0], [0.0, 1000.0, 0.0]]);
         // 30° up: still a ground, so the same plan's axes, and one paving over both.
         let graded = tri([[0.0, 0.0, 0.0], [1000.0, 0.0, 0.0], [0.0, 1000.0, 577.0]]);
@@ -5803,7 +5830,7 @@ mod tests {
 
     #[test]
     fn coplanar_triangles_share_a_plane_and_degenerate_ones_each_their_own() {
-        let tri = |p: [P3; 3]| Tri { p, owner: 1, color: EDGE, tex: 0, curve: None, face: None, vis: 0, part: 0 };
+        let tri = |p: [P3; 3]| Tri { p, owner: 1, color: EDGE, tex: 0, curve: None, face: None, vis: 0, part: 0, paint: 0 };
         // A face's triangles a micron off its plane, as a file rounds them, are one plane;
         // triangles with no area are each their own, and many of them stay quick.
         let mut tris: Vec<Tri> = (0..200)
@@ -6087,7 +6114,7 @@ mod tests {
         assert!((2 * n..4 * n).all(|i| normal(i).iter().all(|v| v[2].abs() < 1e-9)));
         assert!((4 * n..5 * n).all(|i| normal(i)[0][2] > 0.4 && normal(i)[1][2] > 0.4 && normal(i)[2][2] > 1.0 - 1e-9));
         // Triangles with corners that aren't numbers, or no area, have none, and don't crash it.
-        let odd = |p: [P3; 3]| Tri { p, owner: 1, color: EDGE, tex: 0, curve: Some((1, 0)), face: None, vis: 0, part: 0 };
+        let odd = |p: [P3; 3]| Tri { p, owner: 1, color: EDGE, tex: 0, curve: Some((1, 0)), face: None, vis: 0, part: 0, paint: 0 };
         let odd = [
             odd([[f64::NAN; 3]; 3]),
             odd([[f64::INFINITY; 3]; 3]),

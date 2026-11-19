@@ -1577,9 +1577,11 @@ the face under a point. `params["Paint"]` is as it was: `all` for a whole compon
     Visibility Settings leave out, a drafting pattern or a tilted component is worked out at each drawing instead.
   - *Sections and elevations*, over the hidden-line picture of what lies past the cut (`render::painted_fronts`): a face
     facing the viewer, its material's surface fill pattern, laid on the model's lattice in the view's plane, inked only on the
-    pixels whose triangle (`Image::hit`) is one of that face's, so a nearer element hides it. Each shown triangle is matched to
-    its component's build by where its middle is, to read its face's paint; nothing is stored on the scene's triangles. A
-    material's built-in surface hatch (no fill pattern) shows in plans only.
+    pixels whose triangle (`Image::hit`) is one of that face's, so a nearer element hides it. Each triangle of a component
+    carries the material its face is painted (`Tri::paint`, one more than the material's place in the library; 0, none), set
+    with its colour from the same per-face skins (`view3d::component_skins`), so the frontmost triangle says it itself, and
+    copies, cuts and the scene's updates keep it with the triangle. It lies in what was `Tri`'s padding (a triangle is still
+    128 bytes), and the card's mesh doesn't read it. A material's built-in surface hatch (no fill pattern) shows in plans only.
   - *Known limit*: a face sloped more than a degree from the view's (a roof-like top, a chamfer) shows no pattern in a plan or an
     elevation; a 3D view's surfaces show the material's texture, not its pattern.
 

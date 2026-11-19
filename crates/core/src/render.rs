@@ -2308,19 +2308,12 @@ pub fn section_image(m: &Model, scene: &Scene, id: impl Key, view: View, tints: 
     Some(picture)
 }
 
-/// A painted component's built triangles, by where their middles are, each with the material it is painted (none, its own).
-#[derive(Default)]
-struct Looks {
-    by_cell: std::collections::HashMap<[i64; 3], Option<String>>,
-    all: Vec<([f64; 3], Option<String>)>,
-}
-
 /// FE-16c-2: over a section's or an elevation's picture `img` of `scene` through `cam`, each component face that faces the
 /// camera within a degree and is painted (its own paint in the project, else the whole component's, else its family's) a
 /// material of a surface fill pattern: that pattern, inked only on the pixels where the picture shows the face frontmost.
 /// Its lattice is the model's, in the view's plane. Nothing where no component is painted.
 fn painted_fronts(m: &Model, scene: &Scene, cam: &Camera, img: &mut Image) {
-    use std::collections::{BTreeMap, HashMap};
+    use std::collections::BTreeMap;
     let painted: std::collections::BTreeSet<Id> = m
         .elements
         .iter()
@@ -2331,47 +2324,21 @@ fn painted_fronts(m: &Model, scene: &Scene, cam: &Camera, img: &mut Image) {
         return;
     }
     let (back, right, up) = cam.axes();
-    // Each painted component's built triangles, by where their middles are, with the material each is painted.
-    let middle = |t: &[[f64; 3]; 3]| [0, 1, 2].map(|k| (t[0][k] + t[1][k] + t[2][k]) / 3.0);
-    let cell = |p: [f64; 3]| p.map(|v| (v * 16.0).round() as i64);
-    let mut paints: HashMap<Id, Looks> = HashMap::new();
-    let mut groups: BTreeMap<(Id, String), std::collections::BTreeSet<u32>> = BTreeMap::new();
+    // Each shown triangle of a painted face facing the camera, by its element and its material, read from the triangle itself.
+    let mut groups: BTreeMap<(Id, u32), std::collections::BTreeSet<u32>> = BTreeMap::new();
     for (t, owner) in img.shown_of(scene, &painted) {
-        let Some(corners) = scene.corners_of(t) else { continue };
+        let paint = scene.paint_of(t);
+        let Some(corners) = scene.corners_of(t).filter(|_| paint != 0) else { continue };
         if !crate::component_geometry::facing(view3d::cross(view3d::sub(corners[1], corners[0]), view3d::sub(corners[2], corners[0])), back)
         {
             continue;
         }
-        let looks = paints.entry(owner).or_insert_with(|| {
-            let mut out = Looks::default();
-            if let Some(Element::Component(c)) = m.elements.get(owner) {
-                for piece in m.component_pieces(c) {
-                    let names = crate::paint::piece_paint(c, &piece);
-                    if names.is_empty() || piece.faces.len() != piece.tris.len() {
-                        continue;
-                    }
-                    for (tri, k) in piece.tris.iter().zip(&piece.faces) {
-                        let name = names.get(*k as usize).cloned().flatten();
-                        out.by_cell.insert(cell(middle(tri)), name.clone());
-                        out.all.push((middle(tri), name));
-                    }
-                }
-            }
-            out
-        });
-        // By where its middle is; else (a hair across a cell's edge) the nearest within half a millimetre.
-        let at = middle(&corners);
-        let found = looks.by_cell.get(&cell(at)).cloned().or_else(|| {
-            let d = |q: &[f64; 3]| (0..3).map(|k| (q[k] - at[k]).powi(2)).sum::<f64>();
-            looks.all.iter().filter(|(q, _)| d(q) < 0.25).min_by(|a, b| d(&a.0).total_cmp(&d(&b.0))).map(|(_, n)| n.clone())
-        });
-        if let Some(Some(name)) = found {
-            groups.entry((owner, name)).or_default().insert(t);
-        }
+        groups.entry((owner, paint)).or_default().insert(t);
     }
     let flat = |p: [f64; 3]| P2(view3d::dot(p, right), view3d::dot(p, up));
-    for ((_, name), on) in groups {
-        let Some(pattern) = m.materials.get(&name).and_then(|x| x.surface_pattern.as_ref()).and_then(|n| m.fill_patterns.get(n)) else {
+    for ((_, paint), on) in groups {
+        let material = m.materials.values().nth((paint as usize).saturating_sub(1));
+        let Some(pattern) = material.and_then(|x| x.surface_pattern.as_ref()).and_then(|n| m.fill_patterns.get(n)) else {
             continue;
         };
         if pattern.is_solid() {
