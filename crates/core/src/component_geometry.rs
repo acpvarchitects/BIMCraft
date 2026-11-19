@@ -160,7 +160,13 @@ pub(crate) struct Built {
     /// FE-16c-2: its faces that face up, found from its triangles the first time a plan asks for a painted one's pattern, then
     /// kept with it, so a redraw or a pan finds them again in none of its triangles ([`Built::up_faces`]).
     up: std::sync::OnceLock<Arc<Vec<UpFace>>>,
+    /// FE-16c-2: the lines of each model fill pattern a plan has drawn over its faces that face up, each face's in its family's
+    /// axes, kept by the pattern ([`Built::pattern_lines`]).
+    lines: Mutex<Vec<(crate::fills::FillPattern, Arc<PatternLines>)>>,
 }
+
+/// FE-16c-2: a fill pattern's lines over each of a build's faces that face up, in its family's axes.
+pub(crate) type PatternLines = Vec<Vec<[P2; 2]>>;
 
 /// FE-16c-2: one face of a built piece that faces up within a degree, as a plan sees it: the piece it is of (its place in
 /// the build), its key, its family's paint of it (FE-16c-1; empty, none), its height, and what it covers in plan, as its
@@ -173,6 +179,48 @@ pub(crate) struct UpFace {
     pub(crate) z: f64,
     pub(crate) tris: Vec<Vec<P2>>,
     pub(crate) rings: Vec<Vec<P2>>,
+    /// What of it a plan sees where every piece of its build is drawn: less what a higher piece, or a higher face of its own
+    /// piece, covers.
+    pub(crate) shown: Vec<Vec<P2>>,
+}
+
+impl UpFace {
+    /// What of it a plan sees under `pieces` (the ones it draws, each piece of its build's place among them in `at`): less the
+    /// outlines of the other pieces higher than it, and its own piece's faces among `up` higher than it.
+    pub(crate) fn seen(&self, pieces: &[&Piece], at: &[Option<usize>], up: &[UpFace]) -> Vec<Vec<P2>> {
+        let mine = at.get(self.piece).copied().flatten();
+        let meets = |ring: &[P2]| self.rings.iter().any(|r| boxes_meet(r, ring));
+        let over: Vec<&[P2]> = pieces
+            .iter()
+            .enumerate()
+            .filter(|(j, q)| Some(*j) != mine && q.top > self.z + 1e-6)
+            .map(|(_, q)| q.outline.as_slice())
+            .chain(up.iter().filter(|v| v.piece == self.piece && v.z > self.z + 1e-6).flat_map(|v| v.tris.iter().map(Vec::as_slice)))
+            .filter(|ring| meets(ring))
+            .collect();
+        if over.is_empty() {
+            return self.rings.clone();
+        }
+        over.iter().fold(self.tris.clone(), |left, ring| crate::walls::minus(&left, ring))
+    }
+}
+
+/// Whether the boxes round two sets of points overlap.
+fn boxes_meet(a: &[P2], b: &[P2]) -> bool {
+    let bounds = |pts: &[P2]| {
+        pts.iter().fold((P2(f64::INFINITY, f64::INFINITY), P2(f64::NEG_INFINITY, f64::NEG_INFINITY)), |(lo, hi), q| {
+            (P2(lo.0.min(q.0), lo.1.min(q.1)), P2(hi.0.max(q.0), hi.1.max(q.1)))
+        })
+    };
+    let ((alo, ahi), (blo, bhi)) = (bounds(a), bounds(b));
+    alo.0 <= bhi.0 && blo.0 <= ahi.0 && alo.1 <= bhi.1 && blo.1 <= ahi.1
+}
+
+/// FE-16c-2: a component's faces that face up, as a plan draws its painted ones' patterns: its build's, in its family's axes,
+/// and where it is placed (upright), or found from its pieces placed (tilted).
+pub(crate) enum Tops {
+    Local(Arc<Built>, crate::hosting::Placement),
+    Placed(Vec<UpFace>),
 }
 
 /// How near straight up a face's normal is to be for a plan to draw its pattern: within a degree.
@@ -201,7 +249,7 @@ pub(crate) fn up_faces(pieces: &[Piece]) -> Vec<UpFace> {
                     crate::family::FormFace::All
                 };
                 let paint = if tagged { p.paint.get(k as usize).cloned().unwrap_or_default() } else { String::new() };
-                out.push(UpFace { piece: i, face, paint, z: f64::NEG_INFINITY, tris: Vec::new(), rings: Vec::new() });
+                out.push(UpFace { piece: i, face, paint, z: f64::NEG_INFINITY, tris: Vec::new(), rings: Vec::new(), shown: Vec::new() });
                 out.len() - 1
             });
             let u = &mut out[at];
@@ -216,14 +264,22 @@ pub(crate) fn up_faces(pieces: &[Piece]) -> Vec<UpFace> {
     for u in &mut out {
         u.rings = boundary(&u.tris);
     }
+    // What a plan sees of each with every piece drawn.
+    let all: Vec<&Piece> = pieces.iter().collect();
+    let at: Vec<Option<usize>> = (0..pieces.len()).map(Some).collect();
+    let shown: Vec<Vec<Vec<P2>>> = out.iter().map(|u| u.seen(&all, &at, &out)).collect();
+    for (u, shown) in out.iter_mut().zip(shown) {
+        u.shown = shown;
+    }
     out
 }
 
 /// The rings round triangles `tris` (each counter-clockwise), which share their edges' ends exactly: each edge no other
 /// triangle has the other way round, joined end to end. The triangles themselves where they don't join up into rings.
 fn boundary(tris: &[Vec<P2>]) -> Vec<Vec<P2>> {
-    let key = |p: P2| (p.0.to_bits(), p.1.to_bits());
-    let mut edges: HashMap<((u64, u64), (u64, u64)), (P2, P2)> = HashMap::new();
+    type Corner = (u64, u64);
+    let key = |p: P2| -> Corner { (p.0.to_bits(), p.1.to_bits()) };
+    let mut edges: HashMap<(Corner, Corner), (P2, P2)> = HashMap::new();
     for t in tris {
         for e in 0..t.len() {
             let (a, b) = (t[e], t[(e + 1) % t.len()]);
@@ -232,7 +288,7 @@ fn boundary(tris: &[Vec<P2>]) -> Vec<Vec<P2>> {
             }
         }
     }
-    let mut next: HashMap<(u64, u64), Vec<(P2, P2)>> = HashMap::new();
+    let mut next: HashMap<Corner, Vec<(P2, P2)>> = HashMap::new();
     for (a, b) in edges.into_values() {
         next.entry(key(a)).or_default().push((a, b));
     }
@@ -269,7 +325,39 @@ impl Built {
             }
         }
         let heights = pieces.iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), p| (lo.min(p.bottom), hi.max(p.top)));
-        Self { bounds: (lo[0] <= hi[0]).then_some([lo, hi]), heights, pieces, needs, up: std::sync::OnceLock::new() }
+        Self {
+            bounds: (lo[0] <= hi[0]).then_some([lo, hi]),
+            heights,
+            pieces,
+            needs,
+            up: std::sync::OnceLock::new(),
+            lines: Mutex::new(Vec::new()),
+        }
+    }
+
+    /// The lines model fill pattern `p` draws over what a plan sees of each of its faces that face up ([`UpFace::shown`]), in
+    /// its family's axes from their zero, found once a pattern and kept with it. None where the pattern has more lines than a
+    /// view can hold.
+    pub(crate) fn pattern_lines(&self, p: &crate::fills::FillPattern) -> Option<Arc<PatternLines>> {
+        let mut kept = self.lines.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some((_, lines)) = kept.iter().find(|(q, _)| q == p) {
+            return Some(Arc::clone(lines));
+        }
+        let mut out = Vec::new();
+        for u in self.up_faces().iter() {
+            let [mut lo, mut hi] = [P2(f64::INFINITY, f64::INFINITY), P2(f64::NEG_INFINITY, f64::NEG_INFINITY)];
+            for q in u.shown.iter().flatten() {
+                (lo, hi) = (P2(lo.0.min(q.0), lo.1.min(q.1)), P2(hi.0.max(q.0), hi.1.max(q.1)));
+            }
+            out.push(crate::fills::strokes(p, &u.shown, 1.0, (lo, hi), 50_000)?);
+        }
+        let out = Arc::new(out);
+        // A few patterns a build: the oldest goes past them.
+        if kept.len() >= 4 {
+            kept.remove(0);
+        }
+        kept.push((p.clone(), Arc::clone(&out)));
+        Some(out)
     }
 
     /// Its faces that face up ([`up_faces`]), found once and kept with it.
@@ -910,29 +998,15 @@ impl<'a> Components<'a> {
         pieces
     }
 
-    /// FE-16c-2: its faces that face up where it is placed ([`UpFace`]), each piece's as [`Components::plan_pieces`] numbers
-    /// them: upright, its build's, found once a build and kept with it, placed; tilted, found from its pieces placed.
-    pub(crate) fn plan_up_faces(&mut self, c: &'a Component) -> Vec<UpFace> {
+    /// FE-16c-2: its faces that face up ([`UpFace`]), each piece's as [`Components::plan_pieces`] numbers them: upright, its
+    /// build's in its family's axes, found once a build and kept with it, with the placement that puts them in the model;
+    /// tilted, found from its pieces placed.
+    pub(crate) fn plan_up_faces(&mut self, c: &'a Component) -> Tops {
         let placed = self.model.component_placement(c);
         if !placed.upright {
-            return up_faces(&self.pieces(c));
+            return Tops::Placed(up_faces(&self.pieces(c)));
         }
-        let flat = |q: &P2| {
-            let p = placed.place([q.0, q.1, 0.0]);
-            P2(p[0], p[1])
-        };
-        let base = placed.origin[2];
-        let ring = |r: &Vec<P2>| r.iter().map(flat).collect::<Vec<P2>>();
-        self.shown(c)
-            .up_faces()
-            .iter()
-            .map(|u| UpFace {
-                z: base + u.z,
-                tris: u.tris.iter().map(ring).collect(),
-                rings: u.rings.iter().map(ring).collect(),
-                ..u.clone()
-            })
-            .collect()
+        Tops::Local(self.shown(c), placed)
     }
 
     pub(crate) fn pieces(&mut self, c: &'a Component) -> Vec<Piece> {

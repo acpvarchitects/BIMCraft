@@ -2303,7 +2303,101 @@ pub fn section_camera(m: &Model, id: impl Key, view: View) -> Option<(Camera, Cl
 /// picture its cut, levels and grids ([`section`]) go over.
 pub fn section_image(m: &Model, scene: &Scene, id: impl Key, view: View, tints: &[(Id, Rgb)]) -> Option<Image> {
     let (cam, clip) = section_camera(m, id, view)?;
-    Some(scene.cut_in(&cam, &clip, tints, &Look::of(m, id)))
+    let mut picture = scene.cut_in(&cam, &clip, tints, &Look::of(m, id));
+    painted_fronts(m, scene, &cam, &mut picture);
+    Some(picture)
+}
+
+/// A painted component's built triangles, by where their middles are, each with the material it is painted (none, its own).
+#[derive(Default)]
+struct Looks {
+    by_cell: std::collections::HashMap<[i64; 3], Option<String>>,
+    all: Vec<([f64; 3], Option<String>)>,
+}
+
+/// FE-16c-2: over a section's or an elevation's picture `img` of `scene` through `cam`, each component face that faces the
+/// camera within a degree and is painted (its own paint in the project, else the whole component's, else its family's) a
+/// material of a surface fill pattern: that pattern, inked only on the pixels where the picture shows the face frontmost.
+/// Its lattice is the model's, in the view's plane. Nothing where no component is painted.
+fn painted_fronts(m: &Model, scene: &Scene, cam: &Camera, img: &mut Image) {
+    use std::collections::{BTreeMap, HashMap};
+    let painted: std::collections::BTreeSet<Id> = m
+        .elements
+        .iter()
+        .filter(|(_, e)| matches!(e, Element::Component(c) if crate::paint::painted_at_all(m, c)))
+        .map(|(id, _)| *id)
+        .collect();
+    if painted.is_empty() {
+        return;
+    }
+    let (back, right, up) = cam.axes();
+    // Each painted component's built triangles, by where their middles are, with the material each is painted.
+    let middle = |t: &[[f64; 3]; 3]| [0, 1, 2].map(|k| (t[0][k] + t[1][k] + t[2][k]) / 3.0);
+    let cell = |p: [f64; 3]| p.map(|v| (v * 16.0).round() as i64);
+    let mut paints: HashMap<Id, Looks> = HashMap::new();
+    let mut groups: BTreeMap<(Id, String), std::collections::BTreeSet<u32>> = BTreeMap::new();
+    for (t, owner) in img.shown_of(scene, &painted) {
+        let Some(corners) = scene.corners_of(t) else { continue };
+        if !crate::component_geometry::facing(view3d::cross(view3d::sub(corners[1], corners[0]), view3d::sub(corners[2], corners[0])), back)
+        {
+            continue;
+        }
+        let looks = paints.entry(owner).or_insert_with(|| {
+            let mut out = Looks::default();
+            if let Some(Element::Component(c)) = m.elements.get(owner) {
+                for piece in m.component_pieces(c) {
+                    let names = crate::paint::piece_paint(c, &piece);
+                    if names.is_empty() || piece.faces.len() != piece.tris.len() {
+                        continue;
+                    }
+                    for (tri, k) in piece.tris.iter().zip(&piece.faces) {
+                        let name = names.get(*k as usize).cloned().flatten();
+                        out.by_cell.insert(cell(middle(tri)), name.clone());
+                        out.all.push((middle(tri), name));
+                    }
+                }
+            }
+            out
+        });
+        // By where its middle is; else (a hair across a cell's edge) the nearest within half a millimetre.
+        let at = middle(&corners);
+        let found = looks.by_cell.get(&cell(at)).cloned().or_else(|| {
+            let d = |q: &[f64; 3]| (0..3).map(|k| (q[k] - at[k]).powi(2)).sum::<f64>();
+            looks.all.iter().filter(|(q, _)| d(q) < 0.25).min_by(|a, b| d(&a.0).total_cmp(&d(&b.0))).map(|(_, n)| n.clone())
+        });
+        if let Some(Some(name)) = found {
+            groups.entry((owner, name)).or_default().insert(t);
+        }
+    }
+    let flat = |p: [f64; 3]| P2(view3d::dot(p, right), view3d::dot(p, up));
+    for ((_, name), on) in groups {
+        let Some(pattern) = m.materials.get(&name).and_then(|x| x.surface_pattern.as_ref()).and_then(|n| m.fill_patterns.get(n)) else {
+            continue;
+        };
+        if pattern.is_solid() {
+            continue;
+        }
+        let k = match pattern.target {
+            crate::fills::Target::Drafting => sheet::DENSITY / cam.scale,
+            crate::fills::Target::Model => 1.0,
+        };
+        if pattern.lines.iter().map(|l| l.spacing).fold(f64::INFINITY, f64::min) * k * cam.scale < 1.0 {
+            continue;
+        }
+        for &t in &on {
+            let Some(corners) = scene.corners_of(t) else { continue };
+            let ring: Vec<P2> = corners.iter().map(|p| flat(*p)).collect();
+            let Some((lo, hi)) = bounds(&ring) else { continue };
+            let Some(strokes) = crate::fills::strokes_placed(pattern, &[ring], k, (lo, hi), 50_000, (P2(0.0, 0.0), 0.0)) else { continue };
+            let at = |q: P2| {
+                let (x, y, _) = cam.project(view3d::add(view3d::mul(right, q.0), view3d::mul(up, q.1)));
+                (x, y)
+            };
+            for [a, b] in strokes {
+                img.ink(at(a), at(b), &on, FAINT);
+            }
+        }
+    }
 }
 
 /// What section or elevation `id` sees past its line through `view`, in hidden line, as [`section_image`] draws it from
@@ -2364,7 +2458,10 @@ pub fn section_picture_cancellable(
     let (cam, clip) = section_camera(m, id, view)?;
     let look = Look::of(m, id);
     let scene = Scene::section_cancellable(m, (&work.solids, &work.ranges, &work.placed, &work.boxes), &cam, &clip, &look, cancelled)?;
-    let image = scene.picture_cancellable(&cam, Some(&clip), tints, &look, cancelled);
+    let mut image = scene.picture_cancellable(&cam, Some(&clip), tints, &look, cancelled);
+    if !cancelled() {
+        painted_fronts(m, &scene, &cam, &mut image);
+    }
     (!cancelled()).then_some(image)
 }
 
@@ -2372,12 +2469,14 @@ pub fn section_picture_cancellable(
 pub(crate) fn section_picture_in(m: &Model, w: &SectionWork, id: impl Key, view: View, tints: &[(Id, Rgb)]) -> Option<Image> {
     let (cam, clip) = section_camera(m, id, view)?;
     let look = Look::of(m, id);
-    let picture = Scene::section(m, (&w.solids, &w.ranges, &w.placed, &w.boxes), &cam, &clip, &look).cut_in(&cam, &clip, tints, &look);
+    let scene = Scene::section(m, (&w.solids, &w.ranges, &w.placed, &w.boxes), &cam, &clip, &look);
+    let mut picture = scene.cut_in(&cam, &clip, tints, &look);
     // Its twin, which tests hold it to: the picture of the whole scene.
     #[cfg(test)]
     if let Err(e) = picture.same_as(&Scene::new(m).cut_in(&cam, &clip, tints, &look)) {
         panic!("a section's picture from what can show in it isn't the whole scene's: {e}");
     }
+    painted_fronts(m, &scene, &cam, &mut picture);
     Some(picture)
 }
 
@@ -3634,8 +3733,8 @@ fn draw_plan_among<'m>(
                 component(&mut d, m, &pieces);
                 // FE-16c-2: its painted tops' surface patterns, at Fine detail, as a floor's top shows its own.
                 if d.detail == Detail::Fine && crate::paint::painted_at_all(m, c) {
-                    let up = components.plan_up_faces(c);
-                    painted_tops(&mut d, m, c, (&pieces, &at), &up, (range.cut, range.depth));
+                    let tops = components.plan_up_faces(c);
+                    painted_tops(&mut d, m, c, (&pieces, &at), &tops, (range.cut, range.depth));
                 }
             }
         }
@@ -4204,26 +4303,43 @@ fn component(d: &mut Drawing, m: &Model, pieces: &[crate::family::Piece]) {
     }
 }
 
-/// FE-16c-2: over component `c`'s faces that face up (`up`, numbered by its pieces as the plan has them: `at`, each one's
-/// place among `pieces`, the ones it draws), the surface pattern of the material each is painted (its own paint in the
-/// project, else the whole component's, else its family's), as a floor's top shows its own: only between the plan's cut and
-/// its depth, and not where a higher piece stands over it. An unpainted face, or a view's own pattern for it, shows none.
+/// FE-16c-2: over component `c`'s faces that face up (`tops`, numbered by its build's pieces: `at`, each one's place among
+/// `pieces`, the ones the plan draws), the surface pattern of the material each is painted (its own paint in the project, else
+/// the whole component's, else its family's), as a floor's top shows its own: only between the plan's cut and its depth, and
+/// not where a higher piece stands over it. Its lattice starts at the family's zero and turns with the component. An
+/// unpainted face, or a view's own pattern for it, shows none.
 fn painted_tops(
     d: &mut Drawing,
     m: &Model,
     c: &crate::model::Component,
     (pieces, at): (&[crate::family::Piece], &[Option<usize>]),
-    up: &[crate::component_geometry::UpFace],
+    tops: &crate::component_geometry::Tops,
     (cut, depth): (f64, f64),
 ) {
+    use crate::component_geometry::Tops;
     if pattern_style(d, false).is_some_and(|s| s.foreground.is_some()) {
         return;
     }
     let all = c.params.get(crate::paint::KEY).and_then(|p| p.get("all")).and_then(serde_json::Value::as_str);
-    for u in up {
+    let (up, placed, built) = match tops {
+        Tops::Local(b, placed) => (b.up_faces(), Some(*placed), Some(b)),
+        Tops::Placed(up) => (std::sync::Arc::new(up.clone()), None, None),
+    };
+    let base = placed.map_or(0.0, |p| p.origin[2]);
+    let flat = |q: P2| match placed {
+        Some(pl) => {
+            let p = pl.place([q.0, q.1, 0.0]);
+            P2(p[0], p[1])
+        }
+        None => q,
+    };
+    // Every piece drawn: what each face shows was found with its build.
+    let whole = at.iter().all(Option::is_some);
+    for (n, u) in up.iter().enumerate() {
         let Some(Some(i)) = at.get(u.piece).copied() else { continue };
         let Some(p) = pieces.get(i) else { continue };
-        if u.z > cut + TOL || u.z < depth - TOL {
+        let z = base + u.z;
+        if z > cut + TOL || z < depth - TOL {
             continue;
         }
         let own = c.face_paint.iter().find(|q| q.form == p.form && q.nested == p.path && q.face == u.face).map(|q| q.material.as_str());
@@ -4233,26 +4349,83 @@ fn painted_tops(
         if pattern.is_none() && x.surface == Pattern::None {
             continue;
         }
-        // What stands over it: the other pieces higher than it, and its own piece's faces higher up.
-        let over: Vec<&[P2]> = pieces
-            .iter()
-            .enumerate()
-            .filter(|(j, q)| *j != i && q.top > u.z + 1e-6)
-            .map(|(_, q)| q.outline.as_slice())
-            .chain(up.iter().filter(|v| v.piece == u.piece && v.z > u.z + 1e-6).flat_map(|v| v.tris.iter().map(Vec::as_slice)))
-            .filter(|ring| u.rings.iter().any(|r| boxes_meet(r, ring)))
-            .collect();
-        let shown =
-            if over.is_empty() { u.rings.clone() } else { over.iter().fold(u.tris.clone(), |left, ring| walls::minus(&left, ring)) };
-        if shown.is_empty() {
+        // A model pattern over a face of a build drawn whole: its lines, kept with the build, placed.
+        if let (Some(pat), Some(b), true) = (pattern, built, whole)
+            && pat.target == crate::fills::Target::Model
+            && !pat.is_solid()
+        {
+            let closest = pat.lines.iter().map(|l| l.spacing).fold(f64::INFINITY, f64::min);
+            if closest * d.view.scale < 1.0 {
+                continue;
+            }
+            // Only what the view shows, as a pattern drawn afresh clips its lines to it.
+            let [lo, hi] = d.view.shown();
+            let outside = |pts: &mut dyn Iterator<Item = P2>| {
+                let (a, b) = pts.fold((P2(f64::INFINITY, f64::INFINITY), P2(f64::NEG_INFINITY, f64::NEG_INFINITY)), |(a, b), q| {
+                    (P2(a.0.min(q.0), a.1.min(q.1)), P2(b.0.max(q.0), b.1.max(q.1)))
+                });
+                a.0 > hi.0 || b.0 < lo.0 || a.1 > hi.1 || b.1 < lo.1
+            };
+            if outside(&mut u.rings.iter().flatten().map(|q| flat(*q))) {
+                continue;
+            }
+            let Some(lines) = b.pattern_lines(pat) else { continue };
+            let part = std::mem::replace(&mut d.part, Part::Pattern);
+            for [a, q] in lines.get(n).into_iter().flatten() {
+                let (a, q) = (flat(*a), flat(*q));
+                if !outside(&mut [a, q].into_iter()) {
+                    d.line(&[a, q], Pen::FINE, FAINT, false);
+                }
+            }
+            d.part = part;
             continue;
         }
-        match pattern {
-            Some(pat) => fill_pattern(d, pat, &shown, &shown, FAINT, (P2(0.0, 0.0), 0.0)),
-            None => {
-                for ring in &shown {
-                    surface(d, ring, x.surface, FAINT, (P2(0.0, 0.0), 0.0));
-                }
+        let local = if whole {
+            u.shown.clone()
+        } else {
+            let drawn: Vec<&crate::family::Piece> = pieces.iter().collect();
+            // The pieces drawn are placed, the build's faces not: compare them placed.
+            let placed_up: Vec<crate::component_geometry::UpFace> = up
+                .iter()
+                .map(|v| crate::component_geometry::UpFace {
+                    z: base + v.z,
+                    tris: v.tris.iter().map(|r| r.iter().map(|q| flat(*q)).collect()).collect(),
+                    rings: v.rings.iter().map(|r| r.iter().map(|q| flat(*q)).collect()).collect(),
+                    ..v.clone()
+                })
+                .collect();
+            let mine = &placed_up[n];
+            let seen = mine.seen(&drawn, at, &placed_up);
+            if seen.is_empty() {
+                continue;
+            }
+            draw_surface(d, x.surface, pattern, &seen, (P2(0.0, 0.0), 0.0));
+            continue;
+        };
+        if local.is_empty() {
+            continue;
+        }
+        let shown: Vec<Vec<P2>> = local.iter().map(|r| r.iter().map(|q| flat(*q)).collect()).collect();
+        // The family's zero, and how far its x is turned, where the lattice starts.
+        let anchor =
+            placed.map_or((P2(0.0, 0.0), 0.0), |pl| (P2(pl.origin[0], pl.origin[1]), pl.axes[0][1].atan2(pl.axes[0][0]).to_degrees()));
+        draw_surface(d, x.surface, pattern, &shown, anchor);
+    }
+}
+
+/// A painted face's surface over `shown` (rings in plan): fill pattern `pattern`, else built-in hatch `surface`, from `anchor`.
+fn draw_surface(
+    d: &mut Drawing,
+    surface_hatch: Pattern,
+    pattern: Option<&crate::fills::FillPattern>,
+    shown: &[Vec<P2>],
+    anchor: (P2, f64),
+) {
+    match pattern {
+        Some(pat) => fill_pattern(d, pat, shown, shown, FAINT, anchor),
+        None => {
+            for ring in shown {
+                surface(d, ring, surface_hatch, FAINT, anchor);
             }
         }
     }
