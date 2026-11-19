@@ -537,7 +537,7 @@ fn guidless_cabinet() -> (Session, Id) {
 fn edge_keyed_paint_goes_when_the_lines_without_guids_are_put_in_or_reordered() {
     for (what, order) in [("a line put in", vec![4, 5, 1, 2, 3]), ("the order turned", vec![1, 2, 3, 0])] {
         let (mut s, id) = guidless_cabinet();
-        let path = vec![instance(&s)];
+        let path = [instance(&s)];
         let at = s.model.component_face(id, [120.0, 50.0, 815.0], [0.0, -1.0, 0.0]).unwrap();
         assert_eq!(at.face, FormFace::Edge(0), "{what}: the handle's front, by its place");
         run(&mut s, "paint", json!({"id": id, "form": gstr(HANDLE), "nested": [path[0]], "face": {"edge": 0}, "material": "Red"}));
@@ -554,7 +554,7 @@ fn edge_keyed_paint_goes_when_the_lines_without_guids_are_put_in_or_reordered() 
     }
     // The same lines again, nothing moved: kept.
     let (mut s, id) = guidless_cabinet();
-    let path = vec![instance(&s)];
+    let path = [instance(&s)];
     run(&mut s, "paint", json!({"id": id, "form": gstr(HANDLE), "nested": [path[0]], "face": {"edge": 0}, "material": "Red"}));
     run(&mut s, "family", json!({"name": "Cabinet", "form": {"guid": gstr(BOX), "to": 820}}));
     assert_eq!(faces(&s.model, id).len(), 1, "an edit that moves no line keeps it");
