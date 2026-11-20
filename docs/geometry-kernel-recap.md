@@ -57,8 +57,8 @@ tessellation.
 
 What the bench says about each kernel:
 - **arris** is the candidate;
-- **solidcore** is the strongest on geometry (free-form booleans in 17 to 52 ms, fillets, mitred sweeps), but it can't mesh
-  a surface, has no STEP writer and accepts degenerate input silently;
+- **solidcore** is the strongest on geometry (free-form booleans in 17 to 52 ms, fillets, mitred sweeps), but its released
+  crate can't mesh a surface, has no STEP writer and accepts degenerate input silently (its `main` meshes: see 4.3);
 - **OCCT** is useful only as a test oracle;
 - **truck** and **Fornjot** are out.
 
@@ -150,25 +150,19 @@ these, booleans included, is much smaller than a general one.
 - For: exact, fast, made to measure, and no dependency.
 - Against: weeks of work, and every boolean edge case becomes ours to own.
 
-### 4.3 Help solidcore mesh
+### 4.3 solidcore from `main`
 
-solidcore is the strongest kernel on geometry, but it cannot mesh a surface. We would write the missing part ourselves:
+The released crate (1.0.1) can't mesh, but solidcore's `main` already has the display stack: `solidcore-tess` and `convert`,
+and an exact hidden-line module (`hlr`). harijsvucens measured them on IPedrax/BIMCraft#499 (Windows, 8 threads, a box with a
+cylinder void per panel, so a different mix from ours: compare ratios):
+- 10,000 panels: booleans in 20.5 s, near-linear scaling, 1.25 GB; built **and meshed** in 24.7 s;
+- a one-panel edit: about 8 ms in the kernel plus 3 ms to mesh, with every triangle tagged by its face;
+- exact plans (`hlr`): 1,000 panels in about 3 s; 10,000 are refused by its internal budgets, quickly and without hanging.
 
-| Part | Difficulty | Rough time |
-|---|---|---|
-| Planar faces (BIMCraft's constrained Delaunay in `triangulation.rs`) | low | days |
-| Cylinders, cones, spheres, tori | medium | about a week |
-| Trimmed NURBS faces, refined to a chord | **high** | 2 to 3 weeks |
-| Watertight seams between faces | medium | within the above |
-| Validation of degenerate input, on our side | low | 2 to 3 days |
-| STEP / IFC writing with exact curves | medium | about a week |
-
-That is 4 to 6 weeks of agent work, plus review. Two risks:
-- solidcore stays slower than arris on the facade (7 to 13 s and 5 GB against 0.8 s), and the part we would write doesn't
-  change that;
-- if the maintainer doesn't take the work, we maintain a fork.
-
-The cheap first step is to ask its maintainer whether a tessellator is planned, since its README says "not ported yet".
+What's missing: a loft (Revit's Blend), sweeps along cornered paths, published crates for the new parts, and a validity gate,
+since some degenerate input still comes back as an empty or zero-volume "valid" solid. So the work of writing a tessellator
+for it is no longer ours to do. The next step is to run solidcore's `main` through our same suite and panel on the same two
+laptops, next to arris, and keep whichever does better behind `brep`.
 
 ### 4.4 monstertruck
 
@@ -189,5 +183,5 @@ on one hostile input. Not worth a second run unless it has changed.
 2. The parametric definition gives IFC4 exact curves for extrusions and revolutions with no kernel. Is that enough for the first upstream step,
    with `IfcAdvancedBrep` coming later?
 3. Should mimalloc be proposed upstream now, independent of any kernel?
-4. arris now, solidcore later? Or ask solidcore's maintainer first and decide after?
+4. arris or solidcore? Decide after both run the same suite and panel on the same laptops (4.3).
 5. How do we present the speed we have to people who judge it against established BIM tools?
