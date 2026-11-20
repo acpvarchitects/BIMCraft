@@ -1119,7 +1119,7 @@ impl BimApp {
                         (
                             [(CutTool::Cut, msg!("Cut Geometry")), (CutTool::Uncut, msg!("Uncut Geometry"))].as_slice(),
                             (Icon::CutGeometry, "Cut"),
-                            msg!("Cut Geometry (CU): pick a form, then the form or void that cuts it; Uncut Geometry takes a cut back"),
+                            msg!("Cut Geometry (GU): pick a form, then the form or void that cuts it; Uncut Geometry takes a cut back"),
                         ),
                         (
                             [
@@ -2218,7 +2218,7 @@ impl BimApp {
     }
 
     /// What Find lists on a family tab, by name in `shortcuts::ACTIONS`: what the family document does itself (Delete, Align and
-    /// Aligned Dimension in a plan or an elevation, Temporary Hide/Isolate, Zoom to Fit in {3D}, its {3D} view) and what is the
+    /// Aligned Dimension in a plan or an elevation, Temporary Hide/Isolate, Zoom to Fit in the view shown, its {3D} view) and what is the
     /// window's (Properties, Project Browser, Keyboard Shortcuts). The project's tools are left out: from a family tab they
     /// would change the project out of sight.
     pub(crate) fn family_find_actions(&self) -> Vec<&'static str> {
@@ -2235,9 +2235,7 @@ impl BimApp {
             "Reset Temporary Hide/Isolate",
             "3D View",
         ]);
-        if matches!(self.sheet, crate::Sheet::Family(_, None)) {
-            out.push("Zoom to Fit");
-        }
+        out.push("Zoom to Fit");
         // FE-23a: Selection Box, from any of its views.
         if ed.adaptive.is_none() {
             out.push("Section Box");

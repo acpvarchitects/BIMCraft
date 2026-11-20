@@ -158,7 +158,7 @@ fn ctrl_v_heard_only_as_its_key_let_go_pastes_once_in_both_modes() {
 }
 
 #[test]
-fn in_the_project_copy_does_nothing_and_starts_no_shortcut() {
+fn in_the_project_copy_and_cut_are_the_clipboard_and_start_no_shortcut() {
     for ctrl in [false, true] {
         let mut h = app(BOX);
         h.state_mut().shortcuts_need_ctrl = ctrl;
@@ -176,13 +176,14 @@ fn in_the_project_copy_does_nothing_and_starts_no_shortcut() {
         }
         h.run();
         assert_eq!(h.state().tool, Tool::Modify, "ctrl {ctrl}: no Copy tool");
-        assert_eq!(ids(&h, "wall"), walls, "nothing copied or cut");
+        // Copied to the project's clipboard (`clipboard_events`), the wall left where it was.
+        assert!(h.state().copied.is_some(), "ctrl {ctrl}: the wall copied");
+        assert_eq!(ids(&h, "wall"), walls, "ctrl {ctrl}: nothing cut by Copy");
         assert_eq!(h.state().selection, vec![walls[0]]);
         frame(&mut h, [held(), Event::Cut]);
-        frame(&mut h, [held(), Event::Paste("the user's text".into())]);
-        frame(&mut h, [up(Key::V), let_go()]);
+        frame(&mut h, [up(Key::X), let_go()]);
         h.run();
-        assert_eq!(ids(&h, "wall"), walls, "ctrl {ctrl}: Cut and Paste do nothing either");
+        assert_eq!(ids(&h, "wall"), walls[1..], "ctrl {ctrl}: Cut takes the wall out");
         assert!(!h.state().typed.contains(&['C', 'X', 'V'][..]), "{:?}", h.state().typed);
     }
 }

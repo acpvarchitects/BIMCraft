@@ -27,14 +27,15 @@ jobs:
     runs-on: ${{ matrix.runner }}
     # Windows builds and tests the slowest: about 55 minutes before its desktop tests start. Linux and macOS take 55 to 62
     # minutes with no build cache (a new Rust, or a branch before main has saved one), which 60 left no room for. On the fork,
-    # Windows and macOS runs of 1h40 and 1h30 were cut off with no test failing, so both have 120.
+    # Windows and macOS runs of 1h40 and 1h30 were cut off with no test failing, so both have 120. Linux too: main's own
+    # Linux run takes about 80 minutes, and with the family follow-ups' tests two runs were cut off at 90 with none failing.
     timeout-minutes: ${{ matrix.timeout }}
     strategy:
       fail-fast: false
       matrix:
         include:
           # The oldest Ubuntu runner, as the release workflow's Linux job.
-          - { name: Linux, runner: ubuntu-22.04, timeout: 90 }
+          - { name: Linux, runner: ubuntu-22.04, timeout: 120 }
           # Windows and macOS compile slowly (Windows 32 minutes, macOS 35, Linux 13) and took 74 to 92 and 64 to 86 minutes in all on
           # main. Their crates are built without debug info and the timings are kept (below), so a slow run shows what is left to cut.
           # They also leave out the three tests that run longest, which only Linux runs: the hostile sweep and the two random-edit

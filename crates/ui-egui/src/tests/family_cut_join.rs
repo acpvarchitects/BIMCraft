@@ -1,6 +1,6 @@
-//! FE-16b: Cut Geometry (CU), Uncut Geometry, Join Geometry (JO), Unjoin Geometry and Switch Join Order in a family's views.
+//! FE-16b: Cut Geometry (GU), Uncut Geometry, Join Geometry (JO), Unjoin Geometry and Switch Join Order in a family's views.
 //! Two picks each: the form to cut or join, then the form that cuts it (a void, which no view draws, by its row in the forms
-//! list). CU and JO keep their project meaning on a project's tab; the other three have no key. Each pair is one step of the
+//! list). GU and JO keep their project meaning on a project's tab; the other three have no key. Each pair is one step of the
 //! history; Esc lets go; a refusal of the core is said in the status bar.
 use super::family_drag_move::{family, status};
 use super::family_modify_3d::{click3, in_3d};
@@ -69,7 +69,7 @@ fn mode(h: &Harness<BimApp>) -> Option<crate::editor::cutting::CutTool> {
 fn cu_cuts_a_solid_by_a_solid_and_a_void_listed_after_it_still_cuts_it_one_step() {
     let mut h = plan();
     assert_eq!(family(&h).cutters(0), vec![2], "the void listed after A cuts it by the order");
-    shortcut(&mut h, "CU");
+    shortcut(&mut h, "GU");
     assert_eq!(mode(&h), Some(crate::editor::cutting::CutTool::Cut));
     assert!(prompt(&h).contains("form to cut"), "{}", prompt(&h));
     click_family(&mut h, ON_A);
@@ -93,7 +93,7 @@ fn cu_cuts_a_solid_by_a_solid_and_a_void_listed_after_it_still_cuts_it_one_step(
 #[test]
 fn uncut_takes_a_solid_and_a_void_back_and_cut_gives_the_void_its_cut_again() {
     let mut h = plan();
-    shortcut(&mut h, "CU");
+    shortcut(&mut h, "GU");
     click_family(&mut h, ON_A);
     click_family(&mut h, ON_B);
     run(&mut h, "Uncut Geometry");
@@ -109,7 +109,7 @@ fn uncut_takes_a_solid_and_a_void_back_and_cut_gives_the_void_its_cut_again() {
     assert_eq!(family(&h).forms[0].uncut_by, vec![guid(V)], "{}", status(&h));
     assert!(family(&h).cutters(0).is_empty());
     assert_eq!(steps(&h), 3);
-    shortcut(&mut h, "CU");
+    shortcut(&mut h, "GU");
     click_family(&mut h, ON_A);
     row(&mut h, 3, "Extrusion (void)");
     assert!(family(&h).forms[0].uncut_by.is_empty(), "{}", status(&h));
@@ -145,7 +145,7 @@ fn jo_joins_unjoin_takes_it_back_and_switch_join_order_turns_it_round() {
 #[test]
 fn esc_lets_the_first_form_go_then_puts_the_tool_down_and_changes_nothing() {
     let mut h = plan();
-    shortcut(&mut h, "CU");
+    shortcut(&mut h, "GU");
     click_family(&mut h, ON_A);
     assert!(editor(&h).views.cutting.and_then(|c| c.first).is_some());
     key(&mut h, Key::Escape);
@@ -200,7 +200,7 @@ fn a_form_with_no_guid_is_given_one_only_when_the_pair_works_so_a_pair_is_one_st
     assert_eq!(steps(&h), before);
     assert!(editor(&h).draft_family().unwrap().forms[0].guid.is_nil(), "left as it was");
     // A pair that works: the GUID and the cut, one step.
-    shortcut(&mut h, "CU");
+    shortcut(&mut h, "GU");
     click_family(&mut h, ON_A);
     assert_eq!(steps(&h), before);
     click_family(&mut h, ON_B);
@@ -213,7 +213,7 @@ fn a_form_with_no_guid_is_given_one_only_when_the_pair_works_so_a_pair_is_one_st
 #[test]
 fn a_pair_undone_and_redone_comes_and_goes_and_an_undo_with_the_first_form_held_goes_on() {
     let mut h = plan();
-    shortcut(&mut h, "CU");
+    shortcut(&mut h, "GU");
     click_family(&mut h, ON_A);
     click_family(&mut h, ON_B);
     h.state_mut().family_undo();
@@ -225,7 +225,7 @@ fn a_pair_undone_and_redone_comes_and_goes_and_an_undo_with_the_first_form_held_
     h.state_mut().family_undo();
     h.run();
     // The first form held through an undo: the form is still there, the pair goes on.
-    shortcut(&mut h, "CU");
+    shortcut(&mut h, "GU");
     click_family(&mut h, ON_A);
     h.state_mut().family_undo();
     h.run();
@@ -237,7 +237,7 @@ fn a_pair_undone_and_redone_comes_and_goes_and_an_undo_with_the_first_form_held_
 #[test]
 fn the_first_form_gone_before_the_second_pick_is_said_and_nothing_is_cut() {
     let mut h = plan();
-    shortcut(&mut h, "CU");
+    shortcut(&mut h, "GU");
     click_family(&mut h, ON_A);
     h.state_mut().active_family_mut().unwrap().remove_form(0);
     h.run();
@@ -252,7 +252,7 @@ fn the_first_form_gone_before_the_second_pick_is_said_and_nothing_is_cut() {
 fn a_solid_listed_before_its_target_cuts_it_through_cut_by_beside_the_void_that_cuts_it() {
     // A (listed first) cuts B (listed second): the cutter before the target, and the void after both cuts B too.
     let mut h = plan();
-    shortcut(&mut h, "CU");
+    shortcut(&mut h, "GU");
     click_family(&mut h, ON_B);
     click_family(&mut h, ON_A);
     let f = family(&h);
@@ -275,7 +275,7 @@ fn a_solid_listed_before_its_target_cuts_it_through_cut_by_beside_the_void_that_
 fn the_tools_work_in_an_elevation_and_in_3d() {
     let mut h = plan();
     view(&mut h, Some(Which::Elevation(Side::Front)));
-    shortcut(&mut h, "CU");
+    shortcut(&mut h, "GU");
     click_family(&mut h, [300.0, 300.0, 150.0]);
     click_family(&mut h, [-800.0, 300.0, 150.0]);
     assert_eq!(family(&h).forms[0].cut_by, vec![guid(B)], "{}", status(&h));
@@ -314,23 +314,23 @@ fn the_geometry_panels_buttons_drop_down_the_tools() {
 }
 
 #[test]
-fn keys_cu_and_jo_are_the_familys_in_the_family_editor_and_the_projects_in_the_project() {
+fn keys_gu_and_jo_are_the_familys_in_the_family_editor_and_the_projects_in_the_project() {
     use crate::editor::keys::{FAMILY_KEYLESS, FAMILY_SHORTCUTS, in_family};
-    assert!(FAMILY_SHORTCUTS.contains(&("CU", "Cut Geometry")) && FAMILY_SHORTCUTS.contains(&("JO", "Join Geometry")));
+    assert!(FAMILY_SHORTCUTS.contains(&("GU", "Cut Geometry")) && FAMILY_SHORTCUTS.contains(&("JO", "Join Geometry")));
     for action in ["Uncut Geometry", "Unjoin Geometry", "Switch Join Order"] {
         assert!(FAMILY_KEYLESS.contains(&action) && in_family(action), "{action}");
         assert!(FAMILY_SHORTCUTS.iter().all(|(_, a)| *a != action), "{action} has no key");
     }
     // The project's tab: the project's tools.
     let mut h = app("");
-    shortcut(&mut h, "CU");
+    shortcut(&mut h, "GU");
     assert!(matches!(h.state().tool, Tool::CutGeometry { uncut: false, .. }), "{:?}", h.state().tool);
     shortcut(&mut h, "JO");
     assert!(matches!(h.state().tool, Tool::JoinGeometry { .. }), "{:?}", h.state().tool);
     // A family's tab: the family's, and the project's tool untouched.
     let mut h = plan();
     let before = h.state().tool.clone();
-    shortcut(&mut h, "CU");
+    shortcut(&mut h, "GU");
     assert_eq!(mode(&h), Some(crate::editor::cutting::CutTool::Cut));
     shortcut(&mut h, "JO");
     assert_eq!(mode(&h), Some(crate::editor::cutting::CutTool::Join));
@@ -341,7 +341,7 @@ fn keys_cu_and_jo_are_the_familys_in_the_family_editor_and_the_projects_in_the_p
 fn an_adaptive_family_and_a_sketch_refuse_the_tools_saying_why() {
     let mut h = plan();
     editor_sketch(&mut h);
-    shortcut(&mut h, "CU");
+    shortcut(&mut h, "GU");
     assert!(mode(&h).is_none() && status(&h).contains("sketch"), "{}", status(&h));
 }
 

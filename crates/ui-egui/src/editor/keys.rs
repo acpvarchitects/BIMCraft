@@ -78,7 +78,7 @@ pub(crate) const FAMILY_SHORTCUTS: &[(&str, &str)] = &[
     ("ME", "Measure"),
     ("CS", "Create Similar"),
     // FE-16b: Cut Geometry and Join Geometry as the project's; Uncut, Unjoin and Switch Join Order have no key ([`FAMILY_KEYLESS`]).
-    ("CU", "Cut Geometry"),
+    ("GU", "Cut Geometry"),
     ("JO", "Join Geometry"),
     // FE-16c-1: Paint, as the project's; Remove Paint has no key, as in the project.
     ("PT", "Paint"),
