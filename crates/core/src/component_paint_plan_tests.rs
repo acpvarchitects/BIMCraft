@@ -268,6 +268,36 @@ fn a_higher_piece_with_a_hole_lets_the_painted_top_show_through_it() {
     }
 }
 
+/// An island in a higher piece's hole hides what lies under it: the frame above, its sketch also with a post (450..550 by
+/// 200..300) standing in its hole, the one piece up to 600. The hole is taken from the frame's outer ring only, not from
+/// the post's, so a course across the post (at 250, the tiles here 50 apart) stops at it, and courses elsewhere in the hole
+/// still show.
+#[test]
+fn an_island_in_a_higher_pieces_hole_hides_the_painted_top_under_it() {
+    let (mut s, id) = project();
+    run(&mut s, "fill_pattern", json!({"name": "Tiles", "target": "model", "lines": [{"angle": 0, "spacing": 50}]}));
+    run(&mut s, "material", json!({"name": "Tile", "color": [200, 200, 200], "surface": "Tiles"}));
+    let mut sketch = rect(901, 200.0, 100.0, 800.0, 400.0);
+    sketch.extend(rect(911, 300.0, 120.0, 700.0, 380.0));
+    sketch.extend(rect(921, 450.0, 200.0, 550.0, 300.0));
+    let frame = json!({"guid": gstr(900), "sketch": sketch, "from": 0, "to": 600});
+    run(&mut s, "family", json!({"name": "Box", "forms": [boxed(), frame]}));
+    paint(&mut s, id, json!("end"), json!("Tile"));
+    let lines = pattern_lines(&mut s, id, "fine");
+    // Whether a course at `y` is drawn over `x`.
+    let shows = |y: f64, x: f64| lines.iter().any(|[a, b]| (a.1 - y).abs() < 0.5 && a.0.min(b.0) < x && a.0.max(b.0) > x);
+    for x in [460.0, 500.0, 540.0] {
+        assert!(!shows(250.0, x), "under the post at {x}: {lines:?}");
+    }
+    // Beside it in the hole, the course at 250 shows on both sides, and the ones at 150 and 350 across the hole.
+    for x in [320.0, 420.0, 580.0, 680.0] {
+        assert!(shows(250.0, x), "the course at 250 beside the post at {x}: {lines:?}");
+    }
+    for (y, x) in [(150.0, 320.0), (150.0, 500.0), (150.0, 680.0), (350.0, 320.0), (350.0, 500.0), (350.0, 680.0)] {
+        assert!(shows(y, x), "the course at {y} in the hole at {x}: {lines:?}");
+    }
+}
+
 /// ec's review of #91: a view that leaves a piece out still lays the pattern from the family's zero, turned with the
 /// component. The box turned 30 degrees at (2000, 1000), with a second form the view's Fine detail doesn't draw.
 #[test]

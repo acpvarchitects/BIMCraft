@@ -209,14 +209,30 @@ impl UpFace {
                 })
                 .map(|t| t.iter().map(|p| P2(p[0], p[1])).collect())
                 .collect();
-            // Joined into the rings round them (few, where they were many), outer ones less the holes in them.
+            // Joined into the rings round them (few, where they were many), outer ones less the holes in them: each hole taken
+            // from the smallest outer ring round it only, so an island standing in a hole (itself an outer ring) still covers.
             let rings = boundary(&tris);
             let (outer, holes): (Vec<Vec<P2>>, Vec<Vec<P2>>) = rings.into_iter().partition(|r| crate::geom::area(r) > 0.0);
-            holes.iter().fold(outer, |left, h| {
+            let mut left: Vec<Vec<Vec<P2>>> = outer.iter().map(|r| vec![r.clone()]).collect();
+            for h in &holes {
                 let mut h = h.clone();
                 h.reverse();
-                crate::walls::minus(&left, &h)
-            })
+                // Round it: holding most of its corners (a corner may touch the ring it is a hole in).
+                let round = |r: &[P2]| 2 * h.iter().filter(|p| crate::geom::contains(r, **p)).count() > h.len();
+                let around = outer
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, r)| round(r))
+                    .min_by(|(_, a), (_, b)| crate::geom::area(a).total_cmp(&crate::geom::area(b)))
+                    .map(|(i, _)| i);
+                // None found round it (it shouldn't be), it is taken from them all, as before.
+                for (i, parts) in left.iter_mut().enumerate() {
+                    if around.is_none_or(|k| k == i) {
+                        *parts = crate::walls::minus(parts, &h);
+                    }
+                }
+            }
+            left.into_iter().flatten().collect()
         };
         let over: Vec<Vec<P2>> = pieces
             .iter()
