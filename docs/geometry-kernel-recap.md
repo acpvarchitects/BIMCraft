@@ -110,21 +110,38 @@ None of these adds a dependency. arris is not in the product yet.
 
 ## 4. Options
 
-### 4.1 Recommended: three levels, each where it pays
+### 4.1 Recommended: two representations of each form, each used where it pays
 
-| Level | What it does | Speed | Curves |
-|---|---|---|---|
-| 1. Mesh | Everything you see and move: {3D}, pan, edit | 0.04 s, never waits | Look curved at any zoom (the chord follows the zoom) |
-| 2. Exact recipe | Plans and sections drawn with true arcs from the sketch. IFC4 written as `IfcExtrudedAreaSolid` / `IfcRevolvedAreaSolid` with `IfcCircle` and `IfcTrimmedCurve`, and voids as `IfcBooleanResult` where the result needn't be computed | Almost free: nothing is computed | Exact |
-| 3. Exact kernel (arris, behind a `brep` feature) | Only where an exact *computed* result is needed: booleans between curved forms, exact volumes and areas, STEP, `IfcAdvancedBrep` | 1.5 s for 10,000 unique panels on a laptop, on worker threads, cached per recipe | Exact |
+Every family form keeps two representations: its **mesh** and its **parametric definition** (the profile, the operation and
+its parameters, as the user built it). Which one is read depends on the task.
 
-The user never waits on level 3. The view shows level 1 at once, and the exact result replaces it when it is ready, the way
-sections are already computed on a worker (`section_worker.rs`).
+**1. Display and interaction ({3D}, navigation, editing): the mesh.**
+The tessellation is adaptive: the chord tolerance follows the view's scale, so curved surfaces look continuous at any zoom.
+This is the current path, and nobody waits on it.
+- Done for plans (#84).
+- To do for {3D}, sections and elevations, which still use a fixed tessellation (GEO-2c-2).
 
-What is still to do for this:
-- **level 2:** exact arcs in plans and sections, and IFC4 from the recipe;
-- **level 3:** `ArrisKernel` behind `brep`, with the kernel test suite, the cache by recipe and lazy meshing;
-- **both:** the GEO-1 fill-ins on top of arris (mitred sweeps, swept blends, merging coplanar faces after a fuse).
+**2. Plans, sections and IFC export: the parametric definition.**
+- Plans and sections draw true arcs and circles taken from the definition, not the mesh's polylines.
+- IFC4 writes the form as a procedural solid: `IfcExtrudedAreaSolid` or `IfcRevolvedAreaSolid`, with profiles on
+  `IfcCircle` and `IfcTrimmedCurve`, and a void as an `IfcBooleanResult`. The geometry stays exact, and the importing
+  application rebuilds it.
+- Nothing is computed: the definition is only written out.
+- Status: to do. Today, plans of curved forms are drawn from the outline of the mesh, and IFC is written as triangulated face
+  sets.
+
+**3. Exact computation: the B-rep kernel (arris, behind a `brep` feature).**
+It runs only where a result has to be computed:
+- booleans between curved surfaces, such as a cylinder cutting another cylinder;
+- exact volumes and areas for quantities;
+- STEP, or `IfcAdvancedBrep` with NURBS surfaces.
+
+It runs on worker threads, never blocking the user, as sections already do (`section_worker.rs`). Each solid is computed once
+per combination of parameters and kept in a cache, and while it is being computed the view shows the mesh. Measured cost: 1.5 s
+for 10,000 unique panels on a laptop. Status: to do (`ArrisKernel`, the kernel test suite, the cache, lazy meshing, and the
+GEO-1 fill-ins: mitred sweeps, swept blends, merging coplanar faces after a fuse).
+
+**Result:** interaction at the mesh's speed, and B-rep precision where precision counts: drawings, export and quantities.
 
 ### 4.2 Our own exact kernel, limited to BIM forms
 
@@ -167,9 +184,9 @@ on one hostile input. Not worth a second run unless it has changed.
 
 ## 5. Questions for the discussion
 
-1. Is the three-level split the right answer to "fast *and* curved"? Or should {3D} also show exact geometry (level 3) by
-   default, at the cost of a delay after big edits?
-2. Level 2 gives IFC4 exact curves for extrusions and revolutions with no kernel. Is that enough for the first upstream step,
+1. Is "mesh for interaction, parametric definition for drawings and IFC, B-rep only where a result must be computed" the right
+   answer to "fast *and* curved"? Or should {3D} also show the B-rep by default, at the cost of a delay after big edits?
+2. The parametric definition gives IFC4 exact curves for extrusions and revolutions with no kernel. Is that enough for the first upstream step,
    with `IfcAdvancedBrep` coming later?
 3. Should mimalloc be proposed upstream now, independent of any kernel?
 4. arris now, solidcore later? Or ask solidcore's maintainer first and decide after?
