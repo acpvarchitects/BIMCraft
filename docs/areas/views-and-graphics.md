@@ -935,7 +935,8 @@ out). Since the look hides and paints by id, every view agrees with no rule of i
 to or tagged: in Show Parts a wall's faces aren't snapped to, and its tag isn't drawn.
 
 How a part is drawn. The 3D scene holds every drawable part's solid beside its host's (`view3d::part_solids`: the prisms of
-`Model::part_prisms`, in the part's material's colour and texture as a layer's are; a component's part, its family's forms),
+`Model::part_prisms`, in the part's material's colour and texture as a layer's are; a piece `divide_parts` made, which is no
+prism, its solid's triangles (`Model::part_solid`), cut by a section as a prism is; a component's part, its family's forms),
 whatever any view shows, and the look picks: so `Scene::update` makes a part again when its host, what its host joins or holds,
 the part or a part divided from it changes (a part points at its host and its parent, which the update follows both ways), a
 type's change being a whole scene as ever. A part's planes are numbered apart from every other element's
@@ -970,7 +971,12 @@ sheet prints it; a plan, a section or an elevation, not a ceiling plan). A secti
 shows, as a survey's key does: those with a pixel of its picture (the view fitted to 2400 by 1600, `PICTURE`) in front of all else,
 and a section's cut by its line; a part hidden behind another, or seen edge on, is in no row.
 
-What is approximate, or left for later: a plan doesn't hide what a seen part covers; a part that is all of a layered host
+A plan cuts a piece's triangles at its cut plane (`view3d::slice_level`, the loops a level plane cuts a closed mesh in, as
+`view3d::slice` does for an upright one), and sees a piece wholly under the cut as its outline half a millimetre under its top
+(over its underside, in a ceiling plan).
+
+What is approximate, or left for later: a plan doesn't hide what a seen part covers; a piece seen in a plan is its outline
+just under its top, not all it shows from above (a piece whose top steps or slopes shows less); a part that is all of a layered host
 is poché, not its layers; a part can't be hidden or overridden on its own in a view yet, only by a view filter or by
 excluding it; parts aren't snapped to or dimensioned;
 `Model::part_prisms` looks through every element for a wall's doors and windows, once a part, which a project of very many
