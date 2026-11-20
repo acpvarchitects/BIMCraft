@@ -61,6 +61,7 @@ mod orbit;
 mod panelsched;
 mod paper;
 mod parameters;
+mod parts;
 mod phasing;
 mod plugins;
 mod popup;
@@ -5379,6 +5380,7 @@ impl BimApp {
                 self.set_tool(Tool::Unpaint);
             }
         });
+        self.parts_panels(ui);
         self.mode_panel(ui);
     }
 
