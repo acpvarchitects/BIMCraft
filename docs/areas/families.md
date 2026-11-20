@@ -1790,7 +1790,7 @@ new is in a file.
 ### Cut Geometry in the project
 
 A component that stands on a level, not on a face, cuts a wall only when Cut Geometry names it (T23), as a Revit
-project's unattached void families do: `cut_geometry {target, cutter}` (CU), the wall and the component by id or GUID, adds
+project's unattached void families do: `cut_geometry {target, cutter}` (GU), the wall and the component by id or GUID, adds
 the component's GUID to the wall's `void_cuts`, and `uncut_geometry` takes it off. It is refused unless the cutter's family
 is set to Cut with Voids When Loaded, has a void that cuts a host (`cuts` `both` or `host`; a `forms` void never cuts a
 project's element), and those voids, placed where the component stands, take more than a cubic centimetre of the wall (their
@@ -1805,7 +1805,7 @@ the voids miss the wall, is kept by undo, redo and the file (`void_cuts` is writ
 copies. `Model::check` refuses a `void_cuts` that names anything but a component, or one twice. Join and Unjoin Geometry
 between project elements are not here.
 
-In the desktop, Modify > Geometry's Cut button drops down Cut Geometry (CU) and Uncut Geometry (`Tool::CutGeometry`; one
+In the desktop, Modify > Geometry's Cut button drops down Cut Geometry (GU) and Uncut Geometry (`Tool::CutGeometry`; one
 button, so the panel doesn't widen the ribbon into folding): in a plan, pick the wall,
 then the component, by its voids' outline or the cross where it stands (`project_geometry::cutters` and `pick`, drawn over
 the plan while the tool waits, so a family that is only a void, which a plan draws nothing of, is picked too; for Uncut, the
@@ -2219,12 +2219,17 @@ core's in `family_pin_tests.rs`.
 
 Revit's zoom commands work in each of the document's views, plans, the ceiling plan, elevations and {3D} (an adaptive family's
 modelling view or the preview), on the view shown and never on the project's (`editor/zoom.rs`, over the window's own
-`zoom.rs`): Zoom to Fit (ZF, ZE, ZX, ZA) fits the view shown afresh; Zoom Out (2x) (ZO, ZV) halves it about its middle; Zoom In
-Region (ZR, ZZ) arms a drag over the view, drawn over it so the view's own drag neither turns, pans nor selects, and the view fits
-the rectangle let go; while it is armed the status bar asks for the rectangle, and Escape or another view shown gives it up; Previous Pan/Zoom (ZP, ZC) steps back through a short history each view keeps, a step
-left by each of those commands and none by the wheel or the middle button. Previous in {3D} gives up a fit still being worked out (`Orbit::cancel_fit`), so the fit never comes back over the camera it restored. The view control bar has the three beside Zoom to
-Fit. Their names are in `shortcuts::ACTIONS` and `FAMILY_ONLY` (the project has no such commands yet). Tests:
-`tests/family_zoom.rs`.
+`zoom.rs`). Zoom to Fit (ZF, ZE, ZX, ZA, and Find) fits the view shown afresh: before, it left a plan or an elevation as it was.
+Zoom Out (2x) (ZO, ZV) halves it about its middle. Zoom In Region (ZR, ZZ) arms a drag over the view, drawn over it so the
+view's own drag neither turns, pans nor selects, and the view fits the rectangle let go (a drag under 4 points either way is a
+click, and leaves it armed); while it is armed the status bar asks for the rectangle, the wheel and the middle button (and Alt
+with the primary button, which then draws no rectangle) still zoom, pan and turn the view (handed to its own navigation from
+the region's widget, about what the picture shows), and Escape, another view shown, another tool picked or the tab left gives
+it up (and a drag of the middle button with it). Previous Pan/Zoom (ZP, ZC) steps back through a short history each view
+keeps, a step left by each of those commands that changes the view (Zoom to Fit on a view fitted already leaves none) and none
+by the wheel or the middle button. Previous in {3D} gives up a fit still being worked out (`Orbit::cancel_fit`), so the fit
+never comes back over the camera it restored. The view control bar has the three beside Zoom to Fit. Their names are in
+`shortcuts::ACTIONS` and `FAMILY_ONLY` (the project has no such commands yet). Tests: `tests/family_zoom.rs`.
 
 What a fit shows (UI-1): the document's plan, elevation and {3D} are drawn in the view's pane below the tabs that float over its
 top (`family_central`, from where the tabs were last drawn, on a whole pixel; the canvas above; the window's `view_rect` is that
@@ -2405,4 +2410,4 @@ In `crates/ui-egui`, the Family Editor:
 - `editor/selection.rs`: the selection's commands (FE-20): Filter, Select Previous, Select by ID, IDs of Selection, Select All
   Instances, Select Elements by Face and Drag Elements on Selection.
 - `editor/paint.rs`: Paint (PT) and Remove Paint on a form's faces in {3D} (FE-16c-1; tests `tests/family_paint.rs`).
-- `editor/cutting.rs`: Cut Geometry (CU), Uncut Geometry, Join Geometry (JO), Unjoin Geometry and Switch Join Order in a family document (FE-16b; tests `tests/family_cut_join.rs`): two picks, the form cut or joined, then the one that cuts it (a form clicked in a view, a void by its row in the forms list), each pair one step of the history. `editor/pin.rs`: Pin and Unpin, and what a pin refuses (FE-17). `editor/measure.rs`: Measure and Create Similar (FE-17).
+- `editor/cutting.rs`: Cut Geometry (GU), Uncut Geometry, Join Geometry (JO), Unjoin Geometry and Switch Join Order in a family document (FE-16b; tests `tests/family_cut_join.rs`): two picks, the form cut or joined, then the one that cuts it (a form clicked in a view, a void by its row in the forms list), each pair one step of the history. `editor/pin.rs`: Pin and Unpin, and what a pin refuses (FE-17). `editor/measure.rs`: Measure and Create Similar (FE-17).

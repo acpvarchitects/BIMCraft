@@ -1,8 +1,9 @@
-//! FE-3: Revit's zoom commands in the family document's views, its plans, ceiling plan, elevations and {3D}. Zoom to Fit (ZF,
-//! ZE, ZX, ZA) fits the view shown; Zoom Out (2x) (ZO, ZV) halves it about its middle; Zoom In Region (ZR, ZZ) fits the
-//! rectangle dragged, and Escape gives it up; Previous Pan/Zoom (ZP, ZC) steps back through the cameras the commands left in
-//! that view, the wheel's ticks not among them. The view control bar has them beside Zoom to Fit. None of them touches the
-//! project's views, and a key typed on the project's tab never touches the family's.
+//! FE-3: Revit's zoom commands in the family document's views, its plans, ceiling plan, elevations and {3D}, from the view
+//! control bar and by their keys (FE-13). Zoom to Fit (ZF, ZE, ZX, ZA) fits the view shown; Zoom Out (2x) (ZO, ZV) halves it
+//! about its middle; Zoom In Region (ZR, ZZ) fits the rectangle dragged, and Escape gives it up; Previous Pan/Zoom (ZP, ZC)
+//! steps back through the cameras the commands left in that view, the wheel's ticks not among them. The view control bar has
+//! them beside Zoom to Fit. None of them touches the project's views, and the project's own zoom and keys never touch the
+//! family's.
 use super::family_views::{editor, view};
 use super::*;
 use bimcraft_core::family::views::{Side, Which};
@@ -84,9 +85,30 @@ fn rectangle(h: &Harness<BimApp>) -> (Pos2, Pos2) {
     (c + vec2(-160.0, -90.0), c + vec2(90.0, 50.0))
 }
 
-/// Zoom In Region, dragged from `a` to `b`.
-fn region(h: &mut Harness<BimApp>, keys: &str, a: Pos2, b: Pos2) {
-    shortcut(h, keys);
+/// The view control bar's button `label` clicked, and the pointer taken off it, so its tip doesn't stay.
+fn bar(h: &mut Harness<BimApp>, label: &str) {
+    press(h, label);
+    h.hover_at(pos2(2.0, 2.0));
+    h.run();
+}
+
+const FIT: &str = "Zoom to Fit";
+const REGION: &str = "Zoom In Region";
+const OUT: &str = "Zoom Out (2x)";
+const PREVIOUS: &str = "Previous Pan/Zoom";
+
+/// A zoom command, by the bar's button `how` names, or by its two-letter key.
+fn zoom(h: &mut Harness<BimApp>, how: &str) {
+    if how.len() == 2 {
+        shortcut(h, how);
+    } else {
+        bar(h, how);
+    }
+}
+
+/// Zoom In Region, by `how` (the bar's button or a key), dragged from `a` to `b`.
+fn region(h: &mut Harness<BimApp>, how: &str, a: Pos2, b: Pos2) {
+    zoom(h, how);
     drag_screen(h, a, b, PointerButton::Primary);
     h.run();
 }
@@ -103,6 +125,10 @@ fn wheel(h: &mut Harness<BimApp>) {
     h.run();
 }
 
+fn editor_mut<'a>(h: &'a mut Harness<'_, BimApp>) -> &'a mut crate::editor::FamilyEditor {
+    h.state_mut().active_family_mut().expect("a family open")
+}
+
 /// Frames for {3D} to fit itself on its worker.
 fn settle(h: &mut Harness<BimApp>) {
     for _ in 0..20 {
@@ -117,13 +143,14 @@ fn zoom_out_halves_each_view_about_its_middle() {
     for which in VIEWS {
         view(&mut h, which);
         settle(&mut h);
-        for keys in ["ZO", "ZV"] {
+        // Each halves the view as it is then.
+        for how in [OUT, "ZO", "ZV"] {
             let before = look(&h);
-            shortcut(&mut h, keys);
+            zoom(&mut h, how);
             let c = middle(&h);
             let after = look(&h);
             for (p, q) in before.into_iter().zip(after) {
-                near(q, c + (p - c) * 0.5, 1.5, &format!("{keys} in {which:?}"));
+                near(q, c + (p - c) * 0.5, 1.5, &format!("{how} in {which:?}"));
             }
         }
     }
@@ -133,27 +160,27 @@ fn zoom_out_halves_each_view_about_its_middle() {
 fn zoom_in_region_fits_the_rectangle_dragged_in_each_view() {
     let mut h = open();
     for which in VIEWS {
-        for keys in ["ZR", "ZZ"] {
+        for how in [REGION, "ZR", "ZZ"] {
             view(&mut h, which);
-            shortcut(&mut h, "ZF");
+            bar(&mut h, FIT);
             settle(&mut h);
             let before = look(&h);
             let (a, b) = rectangle(&h);
             let azimuth = editor(&h).orbit.camera.map(|c| c.azimuth);
-            region(&mut h, keys, a, b);
+            region(&mut h, how, a, b);
             // The rectangle's middle comes to the view's, and the rectangle fills it as far as it can without being cut.
             let pane = h.state().view_rect;
             let m = a + (b - a) / 2.0;
             let f = (pane.width() / (b.x - a.x)).min(pane.height() / (b.y - a.y));
             let after = look(&h);
             for (p, q) in before.into_iter().zip(after) {
-                near(q, pane.center() + (p - m) * f, 2.0 + 0.01 * (p - m).length() * f, &format!("{keys} in {which:?}"));
+                near(q, pane.center() + (p - m) * f, 2.0 + 0.01 * (p - m).length() * f, &format!("{how} in {which:?}"));
             }
-            assert_eq!(editor(&h).orbit.camera.map(|c| c.azimuth), azimuth, "{keys}: the drag doesn't turn {which:?}");
+            assert_eq!(editor(&h).orbit.camera.map(|c| c.azimuth), azimuth, "{how}: the drag doesn't turn {which:?}");
             // Once fitted, the region is done: another drag is the view's own.
             let again = look(&h);
             drag_screen(&mut h, a, b, PointerButton::Middle);
-            assert_ne!(look(&h), again, "{keys}: the middle button pans {which:?} again");
+            assert_ne!(look(&h), again, "{how}: the middle button pans {which:?} again");
         }
     }
 }
@@ -165,7 +192,7 @@ fn escape_gives_up_the_region_and_nothing_else() {
     super::family_views::select_form(&mut h, 1);
     assert!(editor(&h).selected_form().is_some());
     let before = look(&h);
-    shortcut(&mut h, "ZR");
+    bar(&mut h, REGION);
     key(&mut h, Key::Escape);
     assert!(editor(&h).selected_form().is_some(), "the form stays selected: Escape gave up the region alone");
     let (a, b) = rectangle(&h);
@@ -178,41 +205,42 @@ fn previous_steps_back_through_the_zooms_of_the_view_shown_and_not_the_wheels() 
     let mut h = open();
     for which in VIEWS {
         view(&mut h, which);
-        shortcut(&mut h, "ZF");
+        bar(&mut h, FIT);
         settle(&mut h);
         let fitted = look(&h);
-        shortcut(&mut h, "ZO");
+        bar(&mut h, OUT);
         let out = look(&h);
         let (a, b) = rectangle(&h);
-        region(&mut h, "ZR", a, b);
+        region(&mut h, REGION, a, b);
         let zoomed = look(&h);
         assert_ne!(zoomed, out);
         wheel(&mut h);
         assert_ne!(look(&h), zoomed, "the wheel zooms {which:?}");
+        // The bar's button, then each of its keys.
+        bar(&mut h, PREVIOUS);
+        same(look(&h), out, &format!("Previous in {which:?}: before the region"));
         shortcut(&mut h, "ZP");
-        same(look(&h), out, &format!("ZP in {which:?}: before the region"));
-        shortcut(&mut h, "ZC");
-        same(look(&h), fitted, &format!("ZC in {which:?}: before Zoom Out"));
+        same(look(&h), fitted, &format!("ZP in {which:?}: before Zoom Out"));
         // Fit, the first command of all here, is where it stops.
         for _ in 0..3 {
-            shortcut(&mut h, "ZP");
+            bar(&mut h, PREVIOUS);
         }
         let first = look(&h);
-        shortcut(&mut h, "ZP");
-        same(look(&h), first, &format!("ZP in {which:?} with nothing before"));
+        shortcut(&mut h, "ZC");
+        same(look(&h), first, &format!("ZC in {which:?} with nothing before"));
     }
     // Each view keeps its own: Zoom Out in the plan is no step of the elevation's.
     view(&mut h, Some(Which::Elevation(Side::Front)));
     let elevation = look(&h);
     view(&mut h, Some(Which::Plan));
     let plan = look(&h);
-    shortcut(&mut h, "ZO");
+    bar(&mut h, OUT);
     view(&mut h, Some(Which::Elevation(Side::Front)));
-    shortcut(&mut h, "ZP");
-    same(look(&h), elevation, "ZP in the elevation after Zoom Out in the plan");
+    bar(&mut h, PREVIOUS);
+    same(look(&h), elevation, "Previous in the elevation after Zoom Out in the plan");
     view(&mut h, Some(Which::Plan));
-    shortcut(&mut h, "ZP");
-    same(look(&h), plan, "ZP in the plan");
+    bar(&mut h, PREVIOUS);
+    same(look(&h), plan, "Previous in the plan");
 }
 
 #[test]
@@ -220,16 +248,17 @@ fn zoom_to_fit_fits_the_view_shown() {
     let mut h = open();
     for which in VIEWS {
         view(&mut h, which);
-        shortcut(&mut h, "ZF");
+        bar(&mut h, FIT);
         settle(&mut h);
         let fitted = look(&h);
-        for keys in ["ZF", "ZE", "ZX", "ZA"] {
+        // The bar's button, and its keys.
+        for how in [FIT, "ZF", "ZE", "ZX", "ZA"] {
             // Zoomed by the wheel, which a plan's own fit used to leave as it was.
             wheel(&mut h);
             assert_ne!(look(&h), fitted, "the wheel zooms {which:?}");
-            shortcut(&mut h, keys);
+            zoom(&mut h, how);
             settle(&mut h);
-            same(look(&h), fitted, &format!("{keys} in {which:?}"));
+            same(look(&h), fitted, &format!("{how} in {which:?}"));
         }
     }
 }
@@ -239,18 +268,18 @@ fn the_view_control_bar_has_them_beside_zoom_to_fit() {
     let mut h = open();
     view(&mut h, Some(Which::Plan));
     let fitted = look(&h);
-    press(&mut h, "Zoom Out (2x)");
+    bar(&mut h, OUT);
     let c = middle(&h);
-    near(look(&h)[1], c + (fitted[1] - c) * 0.5, 1.5, "Zoom Out (2x)");
+    near(look(&h)[1], c + (fitted[1] - c) * 0.5, 1.5, OUT);
     let out = look(&h);
-    press(&mut h, "Zoom In Region");
+    bar(&mut h, REGION);
     let (a, b) = rectangle(&h);
     drag_screen(&mut h, a, b, PointerButton::Primary);
     assert!((look(&h)[1] - look(&h)[0]).length() > (out[1] - out[0]).length() * 2.0, "Zoom In Region zoomed in");
-    press(&mut h, "Previous Pan/Zoom");
-    same(look(&h), out, "Previous Pan/Zoom");
+    bar(&mut h, PREVIOUS);
+    same(look(&h), out, PREVIOUS);
     // In a row, after Zoom to Fit, in the bar at the view's bottom left.
-    let bar: Vec<_> = ["Zoom to Fit", "Zoom In Region", "Zoom Out (2x)", "Previous Pan/Zoom"].map(|l| h.get_by_label(l).rect()).into();
+    let bar: Vec<_> = [FIT, REGION, OUT, PREVIOUS].map(|l| h.get_by_label(l).rect()).into();
     for w in bar.windows(2) {
         assert!(w[1].left() >= w[0].right() - 0.5 && (w[1].center().y - w[0].center().y).abs() < 1.0, "{bar:?}");
     }
@@ -263,45 +292,64 @@ fn an_adaptive_familys_modelling_view_zooms_too() {
     h.run();
     let cam = |h: &Harness<BimApp>| editor(h).modeller.camera.expect("the modelling view drawn");
     let before = cam(&h);
-    shortcut(&mut h, "ZO");
+    bar(&mut h, OUT);
     let out = cam(&h);
-    assert!((out.scale / before.scale - 0.5).abs() < 1e-6, "ZO halves it: {} then {}", before.scale, out.scale);
+    assert!((out.scale / before.scale - 0.5).abs() < 1e-6, "Zoom Out halves it: {} then {}", before.scale, out.scale);
     let c = middle(&h);
     region(&mut h, "ZR", c + vec2(-100.0, -60.0), c + vec2(60.0, 40.0));
     let zoomed = cam(&h);
-    assert!(zoomed.scale > out.scale * 3.0, "ZR fits the rectangle: {} then {}", out.scale, zoomed.scale);
+    assert!(zoomed.scale > out.scale * 3.0, "the region fits the rectangle: {} then {}", out.scale, zoomed.scale);
     assert_eq!((zoomed.azimuth, zoomed.elevation), (out.azimuth, out.elevation), "the drag doesn't turn it");
-    shortcut(&mut h, "ZP");
-    assert_eq!(cam(&h), out, "ZP");
-    shortcut(&mut h, "ZP");
-    assert_eq!(cam(&h), before, "ZP again");
+    // The wheel still zooms it while a region is armed.
+    bar(&mut h, REGION);
+    let armed = cam(&h);
+    h.hover_at(c);
+    h.event(Event::MouseWheel {
+        unit: MouseWheelUnit::Point,
+        delta: vec2(0.0, 120.0),
+        phase: TouchPhase::Move,
+        modifiers: Modifiers::NONE,
+    });
+    h.run();
+    assert!(cam(&h).scale > armed.scale, "the wheel zooms in while armed: {} then {}", armed.scale, cam(&h).scale);
+    key(&mut h, Key::Escape);
+    editor_mut(&mut h).modeller.camera = Some(zoomed);
+    bar(&mut h, PREVIOUS);
+    assert_eq!(cam(&h), out, "Previous");
+    bar(&mut h, PREVIOUS);
+    assert_eq!(cam(&h), before, "Previous again");
 }
 
 #[test]
-fn a_family_zoom_never_touches_the_projects_views_nor_a_projects_key_the_familys() {
+fn a_family_zoom_never_touches_the_projects_views_nor_the_projects_zoom_the_familys() {
     let mut h = open();
     let untouched = project(&h);
     for which in VIEWS {
         view(&mut h, which);
-        for keys in ["ZO", "ZV", "ZF", "ZP", "ZC"] {
-            shortcut(&mut h, keys);
-            assert_eq!(project(&h), untouched, "{keys} in the family's {which:?}");
+        for how in [OUT, FIT, PREVIOUS, "ZO", "ZV", "ZF", "ZP", "ZC"] {
+            zoom(&mut h, how);
+            assert_eq!(project(&h), untouched, "{how} in the family's {which:?}");
         }
-        let (a, b) = rectangle(&h);
-        region(&mut h, "ZR", a, b);
-        assert_eq!(project(&h), untouched, "ZR in the family's {which:?}");
+        for how in [REGION, "ZR"] {
+            let (a, b) = rectangle(&h);
+            region(&mut h, how, a, b);
+            assert_eq!(project(&h), untouched, "{how} in the family's {which:?}");
+        }
     }
-    // On the project's tab, the keys leave the family's plan as it was, and arm nothing there.
+    // On the project's tab, its own zoom and the family's keys leave the family's plan as it was, and arm nothing there.
     view(&mut h, Some(Which::Plan));
     let family = look(&h);
     press(&mut h, "Level 1");
     assert!(h.state().active_family().is_none(), "the project's tab");
-    for keys in ["ZO", "ZV", "ZR", "ZZ", "ZP", "ZC"] {
+    for label in ["Zoom Out", "Zoom to Fit"] {
+        bar(&mut h, label);
+    }
+    for keys in ["ZF", "ZO", "ZV", "ZR", "ZZ", "ZP", "ZC"] {
         h.state_mut().typed.clear();
         shortcut(&mut h, keys);
     }
     press(&mut h, "Box - Floor Plan: Ref. Level");
-    same(look(&h), family, "the family's plan after the project's keys");
+    same(look(&h), family, "the family's plan after the project's zoom and keys");
     let (a, b) = rectangle(&h);
     drag_screen(&mut h, a, b, PointerButton::Primary);
     same(look(&h), family, "no region was armed from the project's tab");
@@ -320,7 +368,7 @@ fn the_status_bar_asks_for_the_rectangle_while_the_region_is_armed() {
     for which in VIEWS {
         view(&mut h, which);
         assert!(!prompted(&h), "{which:?}: not armed");
-        shortcut(&mut h, "ZR");
+        bar(&mut h, REGION);
         assert!(prompted(&h), "{which:?}: armed, the status bar says so");
         key(&mut h, Key::Escape);
         assert!(!prompted(&h), "{which:?}: Escape, and it no longer does");
@@ -328,7 +376,7 @@ fn the_status_bar_asks_for_the_rectangle_while_the_region_is_armed() {
     // Done by its drag, the same.
     view(&mut h, Some(Which::Plan));
     let (a, b) = rectangle(&h);
-    region(&mut h, "ZR", a, b);
+    region(&mut h, REGION, a, b);
     assert!(!prompted(&h), "fitted");
 }
 
@@ -336,7 +384,7 @@ fn the_status_bar_asks_for_the_rectangle_while_the_region_is_armed() {
 fn another_view_shown_gives_the_region_up() {
     let mut h = open();
     view(&mut h, Some(Which::Plan));
-    shortcut(&mut h, "ZR");
+    bar(&mut h, REGION);
     assert!(prompted(&h));
     view(&mut h, Some(Which::Elevation(Side::Front)));
     assert!(!prompted(&h), "the elevation shown: no region");
@@ -351,7 +399,7 @@ fn another_view_shown_gives_the_region_up() {
     drag_screen(&mut h, a, b, PointerButton::Primary);
     same(look(&h), plan, "a drag in the plan zooms nothing");
     // {3D} too.
-    shortcut(&mut h, "ZR");
+    bar(&mut h, REGION);
     view(&mut h, None);
     settle(&mut h);
     assert!(!prompted(&h), "{{3D}} shown: no region");
@@ -362,7 +410,7 @@ fn previous_while_a_fit_of_3d_is_still_to_come_keeps_the_camera_it_went_back_to(
     let mut h = open();
     view(&mut h, None);
     settle(&mut h);
-    shortcut(&mut h, "ZO");
+    bar(&mut h, OUT);
     settle(&mut h);
     let out = editor(&h).orbit.camera.expect("{3D} drawn");
     // Zoom to Fit asks for a fit, which comes back frames later; Previous before it does.
@@ -375,18 +423,204 @@ fn previous_while_a_fit_of_3d_is_still_to_come_keeps_the_camera_it_went_back_to(
     assert_eq!(editor(&h).orbit.camera, Some(out), "Previous wins over the fit it went back from");
 }
 
-/// The new buttons in the view control bar and a region being dragged in the plan, saved where
-/// `BIMCRAFT_FE3_DUMP` says (only then).
+#[test]
+fn the_wheel_and_the_middle_button_still_zoom_and_pan_while_the_region_is_armed() {
+    let mut h = open();
+    for which in VIEWS {
+        view(&mut h, which);
+        bar(&mut h, FIT);
+        settle(&mut h);
+        bar(&mut h, REGION);
+        let before = look(&h);
+        wheel(&mut h);
+        let wheeled = look(&h);
+        assert_ne!(wheeled, before, "the wheel zooms {which:?} while the region is armed");
+        assert!(prompted(&h), "{which:?}: the wheel leaves the region armed");
+        let c = middle(&h);
+        drag_screen(&mut h, c, c + vec2(60.0, 40.0), PointerButton::Middle);
+        let panned = look(&h);
+        assert_ne!(panned, wheeled, "the middle button pans {which:?} while the region is armed");
+        assert!(prompted(&h), "{which:?}: the middle button leaves the region armed");
+        // The primary button is still the region's.
+        let (a, b) = rectangle(&h);
+        drag_screen(&mut h, a, b, PointerButton::Primary);
+        h.run();
+        assert!(!prompted(&h), "{which:?}: the rectangle dragged");
+        assert!((look(&h)[1] - look(&h)[0]).length() > (panned[1] - panned[0]).length() * 1.5, "{which:?}: zoomed in");
+    }
+}
+
+#[test]
+fn a_drag_thin_either_way_is_a_click_and_leaves_the_region_armed() {
+    let mut h = open();
+    view(&mut h, Some(Which::Plan));
+    let before = look(&h);
+    bar(&mut h, REGION);
+    let c = middle(&h);
+    for (a, b) in [(c, c + vec2(6.0, 0.0)), (c, c + vec2(120.0, 2.0)), (c, c + vec2(2.0, 120.0))] {
+        drag_screen(&mut h, a, b, PointerButton::Primary);
+        h.run();
+        same(look(&h), before, &format!("{a:?} to {b:?} zooms nothing"));
+        assert!(prompted(&h), "{a:?} to {b:?}: still armed");
+    }
+}
+
+#[test]
+fn another_tool_or_the_projects_tab_gives_the_region_up() {
+    let mut h = open();
+    view(&mut h, Some(Which::Plan));
+    // Reference Plane, Aligned Dimension and Align, by their keys; and Escape put each down again.
+    for keys in ["RP", "DI", "AL"] {
+        bar(&mut h, REGION);
+        assert!(prompted(&h));
+        h.state_mut().typed.clear();
+        shortcut(&mut h, keys);
+        assert!(!prompted(&h), "{keys}: no region");
+        let ed = editor(&h);
+        assert!(ed.views.drawing.is_some() || ed.views.dimensioning.is_some() || ed.views.aligning.is_some(), "{keys}: its tool in hand");
+        key(&mut h, Key::Escape);
+        key(&mut h, Key::Escape);
+    }
+    // A form's sketch, from the ribbon.
+    bar(&mut h, REGION);
+    press(&mut h, "Extrusion");
+    assert!(editor(&h).sketch.is_some(), "sketching");
+    assert!(!prompted(&h), "sketching: no region");
+    press(&mut h, "Cancel Edit Mode");
+    assert!(editor(&h).sketch.is_none());
+    // The project's tab, and back: given up, not set aside.
+    let plan = look(&h);
+    bar(&mut h, REGION);
+    press(&mut h, "Level 1");
+    press(&mut h, "Box - Floor Plan: Ref. Level");
+    assert!(!prompted(&h), "back from the project's tab: no region");
+    let (a, b) = rectangle(&h);
+    drag_screen(&mut h, a, b, PointerButton::Primary);
+    same(look(&h), plan, "a drag back in the plan zooms nothing");
+}
+
+#[test]
+fn zoom_to_fit_on_a_fitted_view_leaves_no_step() {
+    let mut h = open();
+    for which in VIEWS {
+        view(&mut h, which);
+        bar(&mut h, FIT);
+        settle(&mut h);
+        bar(&mut h, OUT);
+        settle(&mut h);
+        let out = look(&h);
+        for _ in 0..2 {
+            bar(&mut h, FIT);
+            settle(&mut h);
+        }
+        bar(&mut h, PREVIOUS);
+        settle(&mut h);
+        same(look(&h), out, &format!("Previous after Fit twice in {which:?}: back to Zoom Out's"));
+    }
+    // Nor does a region about the middle at the closest the plan comes.
+    view(&mut h, Some(Which::Plan));
+    let c = middle(&h);
+    let (a, b) = (c - vec2(80.0, 50.0), c + vec2(80.0, 50.0));
+    for _ in 0..6 {
+        region(&mut h, REGION, a, b);
+    }
+    let closest = look(&h);
+    region(&mut h, REGION, a, b);
+    same(look(&h), closest, "the closest it comes");
+    bar(&mut h, PREVIOUS);
+    assert!((look(&h)[1] - look(&h)[0]).length() < (closest[1] - closest[0]).length() * 0.99, "Previous steps back out");
+}
+
+#[test]
+fn alt_and_the_primary_button_navigate_3d_while_the_region_is_armed_and_draw_no_rectangle() {
+    let mut h = open();
+    view(&mut h, None);
+    settle(&mut h);
+    bar(&mut h, REGION);
+    let before = editor(&h).orbit.camera.expect("{3D} drawn");
+    let c = middle(&h);
+    let (a, b) = (c - vec2(120.0, 80.0), c + vec2(60.0, 40.0));
+    h.event(Event::ModifiersChanged(Modifiers::ALT));
+    h.hover_at(a);
+    h.run();
+    h.event(Event::PointerButton { pos: a, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::ALT });
+    h.run();
+    for t in [0.25, 0.5, 0.75, 1.0] {
+        h.event(Event::PointerMoved(a + (b - a) * t));
+        h.run();
+    }
+    h.event(Event::PointerButton { pos: b, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::ALT });
+    h.run();
+    h.event(Event::ModifiersChanged(Modifiers::NONE));
+    settle(&mut h);
+    let after = editor(&h).orbit.camera.expect("{3D} drawn");
+    assert_ne!(after.target, before.target, "Alt and the primary button pan {{3D}}");
+    assert_eq!(after.scale, before.scale, "no rectangle fitted");
+    assert!(prompted(&h), "the region is still armed");
+}
+
+#[test]
+fn a_wheel_while_armed_keeps_its_zoom_when_3d_is_resized() {
+    let mut h = open();
+    view(&mut h, None);
+    bar(&mut h, FIT);
+    settle(&mut h);
+    bar(&mut h, REGION);
+    wheel(&mut h);
+    settle(&mut h);
+    let wheeled = editor(&h).orbit.camera.expect("{3D} drawn").scale;
+    key(&mut h, Key::Escape);
+    h.set_size(vec2(1500.0, 1000.0));
+    settle(&mut h);
+    let now = editor(&h).orbit.camera.expect("{3D} drawn").scale;
+    assert!((now / wheeled - 1.0).abs() < 1e-6, "the wheel's zoom kept: {wheeled} then {now}");
+}
+
+#[test]
+fn the_region_given_up_mid_drag_of_the_middle_button_lets_the_hand_go() {
+    let mut h = open();
+    view(&mut h, None);
+    settle(&mut h);
+    bar(&mut h, REGION);
+    let c = middle(&h);
+    h.hover_at(c);
+    h.run();
+    h.event(Event::PointerButton { pos: c, button: PointerButton::Middle, pressed: true, modifiers: Modifiers::NONE });
+    h.run();
+    for t in [10.0, 20.0, 30.0] {
+        h.event(Event::PointerMoved(c + vec2(t, t)));
+        h.run();
+    }
+    assert!(editor(&h).orbit.turning(), "the middle button pans");
+    key(&mut h, Key::Escape);
+    h.event(Event::PointerButton { pos: c + vec2(30.0, 30.0), button: PointerButton::Middle, pressed: false, modifiers: Modifiers::NONE });
+    h.run();
+    assert!(!prompted(&h), "given up");
+    assert!(!editor(&h).orbit.turning(), "the hand let go");
+}
+
+/// The view control bar with the new buttons, light and dark, and a region being dragged in the plan and once it is fitted,
+/// saved where `BIMCRAFT_FE3_DUMP` says (only then).
 #[test]
 fn family_zoom_screenshots() {
     let Ok(folder) = std::env::var("BIMCRAFT_FE3_DUMP") else { return };
     std::fs::create_dir_all(&folder).unwrap();
-    let mut h = open();
-    // {3D}'s are `gpu::zoom_out_and_a_region_change_the_box_in_the_3d_picture`'s.
-    for (name, which) in [("plan", Some(Which::Plan))] {
-        view(&mut h, which);
+    let save = |h: &mut Harness<BimApp>, name: &str| {
+        h.render().unwrap().save(std::path::Path::new(&folder).join(format!("fe3u-{name}.png"))).unwrap();
+    };
+    for (shade, theme) in [("light", egui::ThemePreference::Light), ("dark", egui::ThemePreference::Dark)] {
+        let mut h = open();
+        h.ctx.set_theme(theme);
+        view(&mut h, Some(Which::Plan));
         settle(&mut h);
-        shortcut(&mut h, "ZR");
+        // The bar with the pointer over Zoom Out (2x), its tip shown.
+        let at = h.get_by_label(OUT).rect().center();
+        h.hover_at(at);
+        for _ in 0..6 {
+            h.run();
+        }
+        save(&mut h, &format!("bar-{shade}"));
+        bar(&mut h, REGION);
         let (a, b) = rectangle(&h);
         h.hover_at(a);
         h.run();
@@ -396,19 +630,12 @@ fn family_zoom_screenshots() {
             h.hover_at(a + (b - a) * t);
             h.run();
         }
-        h.render().unwrap().save(std::path::Path::new(&folder).join(format!("fe3-{name}-region.png"))).unwrap();
+        save(&mut h, &format!("region-armed-{shade}"));
         h.event(Event::PointerButton { pos: b, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE });
         h.run();
         settle(&mut h);
-        h.render().unwrap().save(std::path::Path::new(&folder).join(format!("fe3-{name}-zoomed.png"))).unwrap();
+        save(&mut h, &format!("region-after-{shade}"));
     }
-    // The bar with the pointer over Zoom Out (2x), its tip shown.
-    let at = h.get_by_label("Zoom Out (2x)").rect().center();
-    h.hover_at(at);
-    for _ in 0..6 {
-        h.run();
-    }
-    h.render().unwrap().save(std::path::Path::new(&folder).join("fe3-bar.png")).unwrap();
 }
 
 /// The view control bar's zoom icons beside Zoom In, Zoom Out and Undo, at 18 points as the bar paints them, once at one pixel a
@@ -428,7 +655,7 @@ fn zoom_icons_screenshot() {
             }
         });
         h.run();
-        h.render().unwrap().save(std::path::Path::new(&folder).join(format!("fe3-icons-x{ppp}.png"))).unwrap();
+        h.render().unwrap().save(std::path::Path::new(&folder).join(format!("fe3u-icons-x{ppp}.png"))).unwrap();
     }
 }
 
@@ -474,13 +701,12 @@ mod gpu {
         let save = |name: &str, picture: &image::RgbaImage| {
             if let Some(folder) = &folder {
                 std::fs::create_dir_all(folder).unwrap();
-                picture.save(std::path::Path::new(folder).join(format!("fe3-3d-{name}.png"))).unwrap();
+                picture.save(std::path::Path::new(folder).join(format!("fe3u-3d-{name}.png"))).unwrap();
             }
         };
         let (picture, fitted) = boxed(&mut h);
         save("1-fitted", &picture);
-        shortcut(&mut h, "ZO");
-        h.hover_at(pos2(2.0, 2.0));
+        bar(&mut h, OUT);
         settle(&mut h);
         let (picture, out) = boxed(&mut h);
         save("2-zoom-out", &picture);
@@ -491,7 +717,7 @@ mod gpu {
             .into_iter()
             .fold((pos2(f32::MAX, f32::MAX), pos2(f32::MIN, f32::MIN)), |(lo, hi), p| (lo.min(p), hi.max(p)));
         let (a, b) = (a - vec2(30.0, 30.0), b + vec2(30.0, 30.0));
-        shortcut(&mut h, "ZR");
+        bar(&mut h, REGION);
         h.hover_at(a);
         h.run();
         h.event(Event::PointerButton { pos: a, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::NONE });

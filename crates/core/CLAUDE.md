@@ -64,6 +64,7 @@ changes. A copy is a new element: a new id and a new GUID. IFC writes the GUID a
 | Masses and what they make | [masses](../../docs/areas/massing.md) |
 | Families, forms, materials, textures, paint, favorites | [families](../../docs/areas/families.md) |
 | Beams, columns, footings, pipes, conduits, fixtures | [structure and MEP](../../docs/areas/structure-and-mep.md), [disciplines](../../docs/disciplines.md) |
+| Concrete, formwork and steel of a member, bar marks, the steel list, the cut plan | [quantities](../../docs/areas/quantities.md) |
 | IFC export or import | [looking at the result](../../docs/areas/looking-at-results.md): the IfcOpenShell checks; [grid exchange](../../docs/areas/ifc-exchange.md) |
 | Coordinates: base and survey points, locations, shared coordinates | [coordinates](../../docs/areas/coordinates.md) |
 | Autosave and recovery | [autosave](../../docs/autosave.md) |
@@ -103,6 +104,10 @@ The core caches what it works out from the model and keeps the whole computation
 - `ids/revisions.rs`: runtime revision columns. `bounds.rs`: byte-budgeted conservative primitive bounds. `family/bounds.rs`:
   conservative form envelopes without triangulation.
 - `view3d/update.rs`: a scene brought up to date by what an edit changed. `view3d/fragments.rs`: bounded primitive fragment reuse.
+- `component_geometry/index.rs`: plans' index of components. `nested_elements.rs`: shared nested instances as elements
+  ([families](../../docs/areas/families.md#shared-nested-instances-in-a-project)).
+
+Also mapped here, for the root's word budget: `project_geometry.rs`, Cut Geometry's picks; `render/joins.rs`, section joins.
 - `oracle_tests.rs`: random edits checked against the full computation: of walls and what is in them (`edit`), of 2D (`edit_2d`) and
   of the other kinds (`edit_more`: 3D dimensions and cameras, shapes, roofs, schedules, bars, symbols).
   `crosscheck.rs`: a project described for Revit, and Revit's numbers compared with ours ([schedules](../../docs/areas/schedules.md)).

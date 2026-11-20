@@ -175,7 +175,7 @@ fn the_prompt_names_what_the_plan_shows_and_a_first_pick_is_this_plans() {
 
 #[test]
 fn a_first_pick_that_is_gone_is_let_go_of_for_join_and_for_cut() {
-    for letters in ["JO", "CU"] {
+    for letters in ["JO", "GU"] {
         let mut h = app(CROSSING);
         let w = ids(&h, "wall")[0];
         shortcut(&mut h, letters);

@@ -130,7 +130,10 @@ terms, and goes with it. `render::detail_line` draws it in its style's pen with 
 pattern's dashes in pixels at the view's paper (`LinePattern::dash`); a repeat under two pixels draws solid. A primitive's dash is
 any list of on and off lengths (`Prim::Line::dash`), which SVG, PDF, the PNG and the canvas all take. The desktop has Annotate >
 Detail Line (DL; a line a click, as walls are, chained until Enter or the first point again; the Options Bar's Line Style and
-Chain; the Draw panel's other shapes, below) and Manage > Line Styles (`linestyles.rs`: styles and patterns on two tabs of one
+Chain; the Draw panel's other shapes, below). While a wall or a detail line chains, Backspace and Ctrl+Z take back its last point
+and the segment built to it (`BimApp::undo_chain_point`), so a point cannot outlive its wall or line; a shape still being clicked (an
+arc, a spline, a polyline or a revision cloud's line) has made nothing yet, so it loses the point alone. Manage > Line Styles
+(`linestyles.rs`: styles and patterns on two tabs of one
 draft, applied as one undo step). Patterns > New Pattern or Edit opens the separate Line Pattern Creator
 (`linestyles/creator.rs`), with a live straight/curved preview and segment controls, add, reorder and delete. Save Pattern
 updates the library draft; Cancel Pattern discards just the creator, and the parent Cancel discards the whole draft.
@@ -736,6 +739,47 @@ them without knowing: `Look::with` makes a linked id halftone, and picking never
 `view_model` does, cached by the project's `Arc`. The schedules, `Model::check`, IFC and every command that edits work on the project itself.
 To do: shared coordinates, a link's graphics overrides and visibility per view, hosting on a linked wall, unloading.
 
+## Grid types
+
+A grid (`Grid`, the `grid` command) is a named axis for dimensions and snaps, and it draws in a grid type (`grids.rs`,
+`Model::grid_types`, a library entry `Kind::GridType`, the `grid_type` command), as a dimension draws in a dimension type. A
+grid names its type (`type`) as a file names any type; a new grid takes the project's default type, `Grid - ISO 128`.
+`Model::type_names("grid")` and `Model::default_type("grid")` are what fills a Type Selector and enables Edit Type, and a
+grid's type is checked like a dimension's (`Model::check`).
+
+| Field | Meaning | Default |
+|---|---|---|
+| `line_pattern` | A line pattern of the project by name (`lines.rs`), its lengths mm on paper; none, a solid line | `Grid - ISO Dash Dot` for the ISO type |
+| `line_pen` | The pen the line and its bubble are drawn in | 4 (0.18 mm on paper) |
+| `color` | The line's and its name's colour | `[60, 100, 150]` |
+| `font`, `text_size` | The name's font (the system's, IBM Plex or our lettering, as a text type's) and capitals, mm on paper | Arial, 2.5 mm |
+| `bold`, `italic`, `underline`, `width_factor` | Its lettering | off, 1.0 |
+
+A pattern is in mm on paper, so its chain scales with the view's scale and reads the same on every sheet, as a detail
+line's does; the renderer turns it into pixels with `sheet::DENSITY * d.paper` and raises every segment to at least 2 px,
+so the dot of a chain stays visible in egui's kept canvas. The bubble's radius follows its name (`max(2.2 mm, 0.6 ·
+text_size + half the laid-out name)`), and its name is laid out by `text::layout` in the type's text and centred in it.
+A view's Visibility/Graphics is applied after the type, so it still overrides the dash, the colour and the weight, and
+hides the category; the type is only the default.
+
+A project starts with six types (`grids::types`), one reading of each standard rather than an exhaustive one — lengths in
+the standards are fixed in line-weight groups, and bubble sizes may be an office standard of their own:
+
+| Type | Pattern | Pen (mm on paper) | Text | Source |
+|---|---|---|---|---|
+| `Grid - ISO 128` | 12.7 / 3.2 / dot / 3.2 | 4 (0.18) | 2.5 mm | ISO 128-2 chain line; ISO 128-23; EN ISO 7519 |
+| `Grid - DIN 1356` | 20 / 4 / dot / 4 | 7 (0.25) | 2.5 mm | DIN 1356-1; DIN 15-1 (Strichpunktlinie) |
+| `Grid - ASME Y14.2` | 20 / 3 / 5 / 3 | 9 (0.30) | 3.5 mm | ASME Y14.2 centre line |
+| `Grid - Architectural` | 15 / 2 / 2 / 2 / 2 / 2 | 4 (0.18) | 2.5 mm | office practice, not a standard |
+| `Grid - Continuous` | solid | 4 (0.18) | 2.5 mm | coordination and zone grids (NCS practice) |
+| `Grid - Compact` | 6 / 1.5 / dot / 1.5 | 4 (0.18) | 2.0 mm | templates for dense plans, not a standard |
+
+The set is open: any type may be changed, duplicated or made on any pattern of the project, and put on any grid. The
+Project Browser's Families lists the project's grid types under Grids, where a right click deletes one nothing uses. A type a
+grid uses can't be deleted; `purge` leaves grid types alone, as it leaves text and dimension types. `insert` brings a grid
+type, and the line pattern it names, from another project, and format 21 holds them: a file of 20 or before opens with each
+grid in `Grid - ISO 128` (or the first type there is) and the starter set put back (`Model::typed_grids`).
+
 ## Dimensions
 
 Sections/elevations use `drawing_plane::reference` for aligned/linear dimensions: levels, grids perpendicular to the
@@ -854,6 +898,19 @@ title box: the first view goes in the middle of the border. A frame not drawn ca
 sheet when nothing is selected. No title block of the project's may be called `none` (`TitleBlock::check`), and none is no library
 entry, so renaming and Purge Unused pass it by. A file of 17 holds no `none`, so its sheets keep the built-in title box; FORMAT 18,
 shared with the title blocks, keeps a build that reads up to 17 from printing the frame again on a sheet with none.
+
+**Starters and papers.** A title block lists the papers it is for (`sizes`, `A3`, `ANSI D`, kept once in capitals; under Size in the
+editor as Papers). A sheet that names no title block is drawn with the first of the project's, by name, that lists its paper
+(`Model::title_block_of`), else with the built-in box; `none` and a name still mean what they did, and a sheet's `elements` say which
+one by size as `title_block_by_size`, its Properties as `NAME (by paper size)`. `title_block {starter: …}` (the dialog's New from
+starter) starts one from a ready-made stamp, `title_starters.rs`: ISO 7200, ASME Y14.1 and NBR 16752, each for small papers (A4 and A3,
+ANSI A and B) and large (A2 to A0, ANSI C to E), 6 in all, named in the command's listing. They are original layouts: a ruled grid of
+cells, each a small label over a field, built from the data fields those standards ask for (project, client, title, organization,
+sheet number, scale, date, revision, created and approved by, page) and not from any CAD vendor's title blocks. Every field is
+automatic (Manage > Project Information fills them) but Checked by and Approved by, each sheet's own, and the labels come in the
+project's language (`Language::word`, the project catalogs). Their numbers are unchecked against the standards' texts. Loading one
+changes how the sheets of its papers are drawn, so `sizes: []` leaves it for the sheets that name it; two blocks that list one paper
+are told in the reply's `notes`, and the one named first wins.
 
 `title_block` makes, edits, renames and deletes them (one a sheet is drawn with can't go), starting a new one as the built-in box drawn
 as one; with `path` it reads a DXF (or a DWG, through the session's reader) drawn at full size on paper in its model space: lines, arcs,

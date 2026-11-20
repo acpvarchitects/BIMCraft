@@ -1,4 +1,4 @@
-//! FE-16b: Cut Geometry (CU), Uncut Geometry, Join Geometry (JO), Unjoin Geometry and Switch Join Order in a family document
+//! FE-16b: Cut Geometry (GU), Uncut Geometry, Join Geometry (JO), Unjoin Geometry and Switch Join Order in a family document
 //! that isn't adaptive, as Revit's family editor has them, on the core's cutting (`Family::cut`, `uncut`, `join`, `unjoin`,
 //! `switch_join_order`: what cuts what among a family's forms beyond the list's order).
 //!

@@ -47,7 +47,7 @@ fn cut_geometry_takes_the_wall_then_the_cutter_and_uncut_takes_it_back() {
 fn cu_starts_cut_geometry_and_esc_lets_go_of_the_wall_then_the_tool() {
     let mut h = app(CUTTER);
     let before = h.state().session.model.elements.clone();
-    shortcut(&mut h, "CU");
+    shortcut(&mut h, "GU");
     assert!(matches!(h.state().tool, Tool::CutGeometry { uncut: false, wall: None }));
     click(&mut h, P2(1000.0, 0.0));
     assert!(matches!(h.state().tool, Tool::CutGeometry { wall: Some(_), .. }));
@@ -63,7 +63,7 @@ fn a_cut_the_core_refuses_says_why_and_leaves_the_wall() {
     // The family's flag off: Cut is refused with the core's reason.
     let script = CUTTER.replace("\"cut_with_voids_when_loaded\": true", "\"cut_with_voids_when_loaded\": false");
     let mut h = app(&script);
-    shortcut(&mut h, "CU");
+    shortcut(&mut h, "GU");
     click(&mut h, P2(1000.0, 0.0));
     click(&mut h, EDGE);
     assert_eq!(cuts(&h), 0);
@@ -77,7 +77,7 @@ fn a_cut_the_core_refuses_says_why_and_leaves_the_wall() {
     // A cutter whose voids miss the wall: offered, refused in the window's words.
     let away = CUTTER.replace(r#""at": [3000, 0]"#, r#""at": [3000, 3000]"#);
     let mut h = app(&away);
-    shortcut(&mut h, "CU");
+    shortcut(&mut h, "GU");
     click(&mut h, P2(1000.0, 0.0));
     click(&mut h, P2(3200.0, 2700.0));
     assert_eq!(cuts(&h), 0);
@@ -95,7 +95,7 @@ fn a_void_only_family_is_picked_by_its_outline_and_uncut_finds_a_sleeping_tie() 
     let script = CUTTER.replace(r#", {"profile": [[-50, -650], [50, -650], [50, -550], [-50, -550]], "from": 0, "to": 50}"#, "");
     assert!(!script.contains("-650"));
     let mut h = app(&script);
-    shortcut(&mut h, "CU");
+    shortcut(&mut h, "GU");
     click(&mut h, P2(1000.0, 0.0));
     click(&mut h, EDGE);
     assert_eq!(cuts(&h), 1, "{:?}", h.state().status);
@@ -154,7 +154,7 @@ fn cut_geometry_screenshots() {
     let off = CUTTER.replace("\"cut_with_voids_when_loaded\": true", "\"cut_with_voids_when_loaded\": false");
     let mut h = app(&off);
     h.set_size(egui::vec2(1920.0, 1000.0));
-    shortcut(&mut h, "CU");
+    shortcut(&mut h, "GU");
     click(&mut h, P2(1000.0, 0.0));
     click(&mut h, EDGE);
     save(&mut h, "refused");

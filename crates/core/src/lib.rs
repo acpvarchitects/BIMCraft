@@ -26,6 +26,9 @@ mod circuit_tests;
 pub mod classification;
 #[cfg(test)]
 mod classification_tests;
+pub mod clipboard;
+#[cfg(test)]
+mod clipboard_tests;
 pub mod cloud;
 #[cfg(test)]
 mod cloud_tests;
@@ -162,6 +165,7 @@ pub mod glue;
 #[cfg(test)]
 mod glue_tests;
 pub mod graphics;
+pub mod grids;
 pub mod groups;
 pub mod handles;
 #[cfg(test)]
@@ -238,6 +242,9 @@ mod pset_tests;
 pub mod publish;
 #[cfg(test)]
 mod publish_tests;
+pub mod quantities;
+#[cfg(test)]
+mod quantities_tests;
 #[cfg(test)]
 mod raised_wall_room_tests;
 #[cfg(test)]
@@ -298,6 +305,7 @@ pub mod symbol_set;
 pub mod text;
 pub mod texture;
 mod timber;
+pub mod title_starters;
 pub mod titleblock;
 #[cfg(test)]
 mod titleblock_tests;
@@ -308,8 +316,12 @@ pub mod underlay;
 mod underlay_tests;
 pub mod units;
 #[cfg(test)]
+mod units_tests;
+#[cfg(test)]
 mod vertical_tools_tests;
 pub mod view3d;
+#[cfg(test)]
+mod wall_mitre_tests;
 #[cfg(test)]
 mod wall_top_offset_tests;
 pub mod walls;
@@ -351,6 +363,9 @@ mod panel_tests;
 mod plan_view_tests;
 #[cfg(test)]
 mod purge_tests;
+pub mod steel;
+#[cfg(test)]
+mod steel_tests;
 #[cfg(test)]
 mod structure_tests;
 pub mod survey;

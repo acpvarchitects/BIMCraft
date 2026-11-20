@@ -7,12 +7,21 @@ msgstr "Project-Id-Version: BIMCraft\nLanguage: it\nMIME-Version: 1.0\nContent-T
 msgid "AS INDICATED"
 msgstr ""
 
+#: crates/core/src/title_starters.rs:76
+msgid "Address"
+msgstr ""
+
 #: crates/core/src/fixtures.rs:410
 msgid "Air Terminal"
 msgstr "Bocchetta aria"
 
+#: crates/core/src/title_starters.rs:45
+#: crates/core/src/title_starters.rs:126
+msgid "Approved by"
+msgstr ""
+
 #: crates/core/src/schedule.rs:205
-#: crates/core/src/schedule.rs:255
+#: crates/core/src/schedule.rs:259
 msgid "Area"
 msgstr "Superficie"
 
@@ -32,7 +41,7 @@ msgstr "Vasca da bagno"
 msgid "Bed"
 msgstr "Letto"
 
-#: crates/core/src/model.rs:4580
+#: crates/core/src/model.rs:4602
 msgid "Brick"
 msgstr "Mattone"
 
@@ -40,7 +49,7 @@ msgstr "Mattone"
 msgid "Brick 225 x 75"
 msgstr "Mattone 225 x 75"
 
-#: crates/core/src/commands.rs:6276
+#: crates/core/src/commands.rs:6523
 msgid "Camera"
 msgstr ""
 
@@ -48,7 +57,7 @@ msgstr ""
 msgid "Casement Window"
 msgstr "Finestra a battente"
 
-#: crates/core/src/schedule.rs:246
+#: crates/core/src/schedule.rs:250
 msgid "Category"
 msgstr ""
 
@@ -56,7 +65,7 @@ msgstr ""
 msgid "Ceiling Luminaire"
 msgstr "Plafoniera"
 
-#: crates/core/src/render.rs:4200
+#: crates/core/src/render.rs:4198
 msgid "Ceiling Plan"
 msgstr "Pianta controsoffitti"
 
@@ -64,11 +73,11 @@ msgstr "Pianta controsoffitti"
 msgid "Centre"
 msgstr "Asse"
 
-#: crates/core/src/lines.rs:210
+#: crates/core/src/lines.rs:216
 msgid "Centre Lines"
 msgstr "Linee d'asse"
 
-#: crates/core/src/model.rs:4588
+#: crates/core/src/model.rs:4610
 msgid "Ceramic tile"
 msgstr "Piastrella ceramica"
 
@@ -76,17 +85,29 @@ msgstr "Piastrella ceramica"
 msgid "Chair"
 msgstr "Sedia"
 
+#: crates/core/src/title_starters.rs:65
+#: crates/core/src/title_starters.rs:85
+#: crates/core/src/title_starters.rs:126
+msgid "Checked by"
+msgstr ""
+
 #: crates/core/src/panel_schedule.rs:268
 #: crates/core/src/panel_schedule.rs:276
 #: crates/core/src/panel_schedule.rs:380
 msgid "Classification"
 msgstr ""
 
+#: crates/core/src/title_starters.rs:35
+#: crates/core/src/title_starters.rs:57
+#: crates/core/src/title_starters.rs:75
+msgid "Client"
+msgstr ""
+
 #: crates/core/src/family.rs:3903
 msgid "Concrete"
 msgstr "Calcestruzzo"
 
-#: crates/core/src/model.rs:4582
+#: crates/core/src/model.rs:4604
 msgid "Concrete block"
 msgstr "Blocco in calcestruzzo"
 
@@ -95,24 +116,36 @@ msgstr "Blocco in calcestruzzo"
 msgid "Connected Load (VA)"
 msgstr ""
 
-#: crates/core/src/model.rs:4596
+#: crates/core/src/model.rs:4618
 msgid "Copper"
 msgstr "Rame"
 
-#: crates/core/src/commands.rs:2248
+#: crates/core/src/commands.rs:2337
 msgid "Copy"
 msgstr "Copia"
+
+#: crates/core/src/commands.rs:2344
+msgid "Copy to Clipboard"
+msgstr ""
 
 #: crates/core/src/schedule.rs:218
 msgid "Count"
 msgstr "Numero"
 
+#: crates/core/src/title_starters.rs:44
+msgid "Created by"
+msgstr ""
+
 #: crates/core/src/fills.rs:409
 msgid "Crosshatch"
 msgstr "Tratteggio incrociato"
 
-#: crates/core/src/render.rs:5450
-#: crates/core/src/render.rs:5795
+#: crates/core/src/commands.rs:2354
+msgid "Cut to Clipboard"
+msgstr ""
+
+#: crates/core/src/render.rs:5448
+#: crates/core/src/render.rs:5793
 msgid "DN"
 msgstr "GIÙ"
 
@@ -128,12 +161,18 @@ msgstr "Tratto punto"
 msgid "Data Outlet"
 msgstr "Presa dati"
 
+#: crates/core/src/title_starters.rs:42
+#: crates/core/src/title_starters.rs:60
+#: crates/core/src/title_starters.rs:82
+msgid "Date"
+msgstr ""
+
 #: crates/core/src/panel_schedule.rs:273
 #: crates/core/src/panel_schedule.rs:380
 msgid "Demand Factor"
 msgstr ""
 
-#: crates/core/src/commands.rs:14971
+#: crates/core/src/commands.rs:15478
 msgid "Dependent"
 msgstr "Dipendente"
 
@@ -186,19 +225,24 @@ msgstr "Punto"
 msgid "Double Door"
 msgstr "Porta a due battenti"
 
-#: crates/core/src/model.rs:3861
+#: crates/core/src/model.rs:3865
 msgid "Double Sliding"
 msgstr "Scorrevole doppia"
 
-#: crates/core/src/model.rs:3859
+#: crates/core/src/model.rs:3863
 msgid "Double Swing"
 msgstr "Doppio battente"
+
+#: crates/core/src/title_starters.rs:64
+#: crates/core/src/title_starters.rs:84
+msgid "Drawn by"
+msgstr ""
 
 #: crates/core/src/fixtures.rs:423
 msgid "Earthing Electrode"
 msgstr "Dispersore"
 
-#: crates/core/src/model.rs:2528
+#: crates/core/src/model.rs:2532
 msgid "East"
 msgstr "Est"
 
@@ -218,9 +262,9 @@ msgstr ""
 msgid "Electrical Power"
 msgstr ""
 
-#: crates/core/src/commands.rs:14716
-#: crates/core/src/commands.rs:14732
-#: crates/core/src/commands.rs:19806
+#: crates/core/src/commands.rs:15223
+#: crates/core/src/commands.rs:15239
+#: crates/core/src/commands.rs:20369
 msgid "Elevation"
 msgstr "Prospetto"
 
@@ -245,7 +289,7 @@ msgstr "Tessuto"
 msgid "Family"
 msgstr "Oggetto"
 
-#: crates/core/src/model.rs:3863
+#: crates/core/src/model.rs:3867
 msgid "Fixed"
 msgstr "Fisso"
 
@@ -261,9 +305,13 @@ msgstr "Piletta a pavimento"
 msgid "Floor Schedule"
 msgstr "Abaco solai"
 
-#: crates/core/src/model.rs:3862
+#: crates/core/src/model.rs:3866
 msgid "Folding"
 msgstr "Pieghevole"
+
+#: crates/core/src/schedule.rs:233
+msgid "Formwork Area"
+msgstr ""
 
 #: crates/core/src/family.rs:4128
 msgid "Frame Depth"
@@ -286,15 +334,64 @@ msgstr "Saracinesca"
 msgid "Glass"
 msgstr "Vetro"
 
-#: crates/core/src/schedule.rs:605
+#: crates/core/src/grids.rs:29
+#: crates/core/src/lines.rs:186
+msgid "Grid - ASME Chain"
+msgstr ""
+
+#: crates/core/src/grids.rs:20
+msgid "Grid - ASME Y14.2"
+msgstr ""
+
+#: crates/core/src/grids.rs:21
+msgid "Grid - Architectural"
+msgstr ""
+
+#: crates/core/src/grids.rs:30
+#: crates/core/src/lines.rs:187
+msgid "Grid - Architectural Chain"
+msgstr ""
+
+#: crates/core/src/grids.rs:23
+msgid "Grid - Compact"
+msgstr ""
+
+#: crates/core/src/grids.rs:31
+#: crates/core/src/lines.rs:188
+msgid "Grid - Compact Dash Dot"
+msgstr ""
+
+#: crates/core/src/grids.rs:22
+msgid "Grid - Continuous"
+msgstr ""
+
+#: crates/core/src/grids.rs:19
+msgid "Grid - DIN 1356"
+msgstr ""
+
+#: crates/core/src/grids.rs:28
+#: crates/core/src/lines.rs:185
+msgid "Grid - DIN Dash Dot"
+msgstr ""
+
+#: crates/core/src/grids.rs:17
+msgid "Grid - ISO 128"
+msgstr ""
+
+#: crates/core/src/grids.rs:27
+#: crates/core/src/lines.rs:184
+msgid "Grid - ISO Dash Dot"
+msgstr ""
+
+#: crates/core/src/schedule.rs:656
 msgid "Gross Floor Area"
 msgstr "Superficie lorda"
 
-#: crates/core/src/model.rs:4587
+#: crates/core/src/model.rs:4609
 msgid "Gypsum board"
 msgstr "Cartongesso"
 
-#: crates/core/src/lines.rs:205
+#: crates/core/src/lines.rs:211
 msgid "Hairline"
 msgstr "Linea sottilissima"
 
@@ -310,13 +407,17 @@ msgstr "Altezza"
 msgid "Hidden"
 msgstr "Nascosta"
 
-#: crates/core/src/lines.rs:197
+#: crates/core/src/lines.rs:203
 msgid "Hidden Lines"
 msgstr "Linee nascoste"
 
 #: crates/core/src/fills.rs:410
 msgid "Horizontal"
 msgstr "Orizzontale"
+
+#: crates/core/src/schedule.rs:470
+msgid "Host Mark"
+msgstr ""
 
 #: crates/core/src/fixtures.rs:433
 msgid "Inspection Box"
@@ -350,8 +451,8 @@ msgstr "Larghezza gamba"
 msgid "Length"
 msgstr "Lunghezza"
 
-#: crates/core/src/commands.rs:9087
-#: crates/core/src/model.rs:4731
+#: crates/core/src/commands.rs:9492
+#: crates/core/src/model.rs:4753
 msgid "Level"
 msgstr "Piano"
 
@@ -383,7 +484,7 @@ msgstr "Tratto lungo"
 msgid "Mains"
 msgstr ""
 
-#: crates/core/src/model.rs:1912
+#: crates/core/src/model.rs:1916
 msgid "Mark"
 msgstr "ID"
 
@@ -391,15 +492,19 @@ msgstr "ID"
 msgid "Masking"
 msgstr "Mascheramento"
 
-#: crates/core/src/commands.rs:11828
+#: crates/core/src/commands.rs:12260
 msgid "Mass"
 msgstr "Volume"
 
-#: crates/core/src/schedule.rs:256
+#: crates/core/src/schedule.rs:260
 msgid "Material"
 msgstr ""
 
-#: crates/core/src/lines.rs:196
+#: crates/core/src/quantities.rs:355
+msgid "Materials Summary"
+msgstr ""
+
+#: crates/core/src/lines.rs:202
 msgid "Medium Lines"
 msgstr "Linee medie"
 
@@ -407,11 +512,12 @@ msgstr "Linee medie"
 msgid "Membrane"
 msgstr "Membrana"
 
-#: crates/core/src/commands.rs:4333
-#: crates/core/src/commands.rs:18344
+#: crates/core/src/commands.rs:4531
+#: crates/core/src/commands.rs:18904
 #: crates/core/src/curtain.rs:130
 #: crates/core/src/family.rs:4130
-#: crates/core/src/model.rs:6527
+#: crates/core/src/model.rs:6610
+#: crates/core/src/quantities.rs:112
 msgid "Metal"
 msgstr "Metallo"
 
@@ -419,11 +525,11 @@ msgstr "Metallo"
 msgid "Mounting Height"
 msgstr "Altezza di installazione"
 
-#: crates/core/src/render.rs:3977
+#: crates/core/src/render.rs:3975
 msgid "NOT ENCLOSED"
 msgstr "NON CHIUSA"
 
-#: crates/core/src/model.rs:1913
+#: crates/core/src/model.rs:1917
 msgid "Name"
 msgstr "Nome"
 
@@ -431,15 +537,15 @@ msgstr "Nome"
 msgid "New Construction"
 msgstr "Nuova costruzione"
 
-#: crates/core/src/schedule.rs:1386
+#: crates/core/src/schedule.rs:1442
 msgid "No"
 msgstr "No"
 
-#: crates/core/src/model.rs:2526
+#: crates/core/src/model.rs:2530
 msgid "North"
 msgstr "Nord"
 
-#: crates/core/src/schedule.rs:274
+#: crates/core/src/schedule.rs:282
 msgid "Number"
 msgstr "Numero"
 
@@ -451,11 +557,15 @@ msgstr "Scostamento"
 msgid "Operation"
 msgstr "Apertura"
 
+#: crates/core/src/title_starters.rs:36
+msgid "Organization"
+msgstr ""
+
 #: crates/core/src/fixtures.rs:357
 msgid "Outlet"
 msgstr "Presa"
 
-#: crates/core/src/lines.rs:211
+#: crates/core/src/lines.rs:217
 msgid "Overhead Lines"
 msgstr "Linee sopra il piano di taglio"
 
@@ -463,16 +573,26 @@ msgstr "Linee sopra il piano di taglio"
 msgid "PVC"
 msgstr "PVC"
 
+#: crates/core/src/title_starters.rs:46
+#: crates/core/src/title_starters.rs:69
+#: crates/core/src/title_starters.rs:86
+msgid "Page"
+msgstr ""
+
 #: crates/core/src/panel_schedule.rs:351
 msgid "Panel"
+msgstr ""
+
+#: crates/core/src/commands.rs:2362
+msgid "Paste"
 msgstr ""
 
 #: crates/core/src/fixtures.rs:489
 msgid "Patch Panel"
 msgstr "Pannello di permutazione"
 
-#: crates/core/src/schedule.rs:269
-#: crates/core/src/schedule.rs:278
+#: crates/core/src/schedule.rs:277
+#: crates/core/src/schedule.rs:286
 msgid "Perimeter"
 msgstr "Perimetro"
 
@@ -484,7 +604,7 @@ msgstr ""
 msgid "Phases"
 msgstr ""
 
-#: crates/core/src/schedule.rs:338
+#: crates/core/src/schedule.rs:350
 msgid "Plan Area"
 msgstr "Superficie in pianta"
 
@@ -505,15 +625,22 @@ msgstr "Porcellana"
 msgid "Profile"
 msgstr ""
 
-#: crates/core/src/commands.rs:4629
+#: crates/core/src/commands.rs:4833
+#: crates/core/src/title_starters.rs:35
+#: crates/core/src/title_starters.rs:55
+#: crates/core/src/title_starters.rs:75
 msgid "Project"
 msgstr "Progetto"
 
-#: crates/core/src/commands.rs:9826
+#: crates/core/src/title_starters.rs:56
+msgid "Project no."
+msgstr ""
+
+#: crates/core/src/commands.rs:10241
 msgid "Property Line"
 msgstr ""
 
-#: crates/core/src/render.rs:3977
+#: crates/core/src/render.rs:3975
 msgid "REDUNDANT"
 msgstr ""
 
@@ -521,27 +648,41 @@ msgstr ""
 msgid "Rack"
 msgstr "Armadio rack"
 
+#: crates/core/src/schedule.rs:235
+msgid "Rebar Ratio"
+msgstr ""
+
+#: crates/core/src/schedule.rs:234
+msgid "Rebar Weight"
+msgstr ""
+
 #: crates/core/src/fixtures.rs:334
 msgid "Recessed Luminaire"
 msgstr "Apparecchio da incasso"
 
-#: crates/core/src/schedule.rs:566
+#: crates/core/src/title_starters.rs:43
+#: crates/core/src/title_starters.rs:67
+#: crates/core/src/title_starters.rs:83
+msgid "Rev."
+msgstr ""
+
+#: crates/core/src/schedule.rs:617
 msgid "Riser Height"
 msgstr "Altezza alzata"
 
-#: crates/core/src/schedule.rs:565
+#: crates/core/src/schedule.rs:616
 msgid "Risers"
 msgstr "Alzate"
 
-#: crates/core/src/model.rs:3865
+#: crates/core/src/model.rs:3869
 msgid "Roller"
 msgstr ""
 
-#: crates/core/src/model.rs:4589
+#: crates/core/src/model.rs:4611
 msgid "Roof tiles"
 msgstr "Tegole"
 
-#: crates/core/src/commands.rs:12358
+#: crates/core/src/commands.rs:12790
 msgid "Room"
 msgstr "Zona"
 
@@ -569,7 +710,13 @@ msgstr "SCALA COME INDICATO"
 msgid "Sand"
 msgstr "Sabbia"
 
-#: crates/core/src/model.rs:4585
+#: crates/core/src/title_starters.rs:41
+#: crates/core/src/title_starters.rs:66
+#: crates/core/src/title_starters.rs:81
+msgid "Scale"
+msgstr ""
+
+#: crates/core/src/model.rs:4607
 msgid "Screed"
 msgstr "Massetto"
 
@@ -577,8 +724,8 @@ msgstr "Massetto"
 msgid "Seat Height"
 msgstr "Altezza seduta"
 
-#: crates/core/src/commands.rs:14650
-#: crates/core/src/commands.rs:19805
+#: crates/core/src/commands.rs:15157
+#: crates/core/src/commands.rs:20368
 msgid "Section"
 msgstr "Sezione"
 
@@ -586,24 +733,41 @@ msgstr "Sezione"
 msgid "Section Area"
 msgstr ""
 
-#: crates/core/src/model.rs:3864
+#: crates/core/src/model.rs:3868
 msgid "Sectional"
 msgstr ""
 
-#: crates/core/src/schedule.rs:233
+#: crates/core/src/schedule.rs:471
+msgid "Shape"
+msgstr ""
+
+#: crates/core/src/schedule.rs:237
 msgid "Shared East"
 msgstr ""
 
-#: crates/core/src/schedule.rs:235
+#: crates/core/src/schedule.rs:239
 msgid "Shared Elevation"
 msgstr ""
 
-#: crates/core/src/schedule.rs:234
+#: crates/core/src/schedule.rs:238
 msgid "Shared North"
+msgstr ""
+
+#: crates/core/src/title_starters.rs:40
+#: crates/core/src/title_starters.rs:80
+msgid "Sheet"
 msgstr ""
 
 #: crates/core/src/schedule.rs:134
 msgid "Sheet List"
+msgstr ""
+
+#: crates/core/src/title_starters.rs:68
+msgid "Sheet no."
+msgstr ""
+
+#: crates/core/src/title_starters.rs:60
+msgid "Sheet title"
 msgstr ""
 
 #: crates/core/src/phasing.rs:131
@@ -630,7 +794,7 @@ msgstr "Mostra precedente + nuovo"
 msgid "Shower"
 msgstr "Doccia"
 
-#: crates/core/src/schedule.rs:296
+#: crates/core/src/schedule.rs:304
 msgid "Sill"
 msgstr "Davanzale"
 
@@ -638,7 +802,7 @@ msgstr "Davanzale"
 msgid "Single Door"
 msgstr "Porta a un battente"
 
-#: crates/core/src/model.rs:3860
+#: crates/core/src/model.rs:3864
 msgid "Sliding"
 msgstr "Scorrevole"
 
@@ -650,7 +814,7 @@ msgstr "Porta scorrevole"
 msgid "Sliding Window"
 msgstr "Finestra scorrevole"
 
-#: crates/core/src/schedule.rs:337
+#: crates/core/src/schedule.rs:349
 msgid "Slope"
 msgstr "Pendenza"
 
@@ -671,7 +835,7 @@ msgstr "Nero pieno"
 msgid "Solid fill"
 msgstr "Riempimento pieno"
 
-#: crates/core/src/model.rs:2527
+#: crates/core/src/model.rs:2531
 msgid "South"
 msgstr "Sud"
 
@@ -683,7 +847,15 @@ msgstr ""
 msgid "Spare"
 msgstr ""
 
-#: crates/core/src/model.rs:3858
+#: crates/core/src/steel.rs:543
+msgid "Steel List"
+msgstr ""
+
+#: crates/core/src/steel.rs:530
+msgid "Steel Summary"
+msgstr ""
+
+#: crates/core/src/model.rs:3862
 msgid "Swing"
 msgstr "Battente"
 
@@ -703,7 +875,7 @@ msgstr "Raccordo a T"
 msgid "Thickness"
 msgstr "Spessore"
 
-#: crates/core/src/lines.rs:194
+#: crates/core/src/lines.rs:200
 msgid "Thin Lines"
 msgstr "Linee sottili"
 
@@ -719,7 +891,12 @@ msgstr "Piastrella 300"
 msgid "Timber"
 msgstr "Legno"
 
-#: crates/core/src/commands.rs:9868
+#: crates/core/src/title_starters.rs:36
+#: crates/core/src/title_starters.rs:76
+msgid "Title"
+msgstr ""
+
+#: crates/core/src/commands.rs:10283
 msgid "Toposolid"
 msgstr ""
 
@@ -727,7 +904,11 @@ msgstr ""
 msgid "Total"
 msgstr "Totale"
 
-#: crates/core/src/schedule.rs:567
+#: crates/core/src/steel.rs:524
+msgid "Total Length"
+msgstr ""
+
+#: crates/core/src/schedule.rs:618
 msgid "Tread"
 msgstr "Pedata"
 
@@ -736,16 +917,16 @@ msgstr "Pedata"
 msgid "Trip"
 msgstr ""
 
-#: crates/core/src/model.rs:1914
+#: crates/core/src/model.rs:1918
 msgid "Type"
 msgstr "Tipo"
 
-#: crates/core/src/render.rs:5450
-#: crates/core/src/render.rs:5795
+#: crates/core/src/render.rs:5448
+#: crates/core/src/render.rs:5793
 msgid "UP"
 msgstr "SU"
 
-#: crates/core/src/schedule.rs:280
+#: crates/core/src/schedule.rs:288
 msgid "Unbounded Height"
 msgstr ""
 
@@ -753,7 +934,7 @@ msgstr ""
 msgid "Unclassified"
 msgstr ""
 
-#: crates/core/src/commands.rs:15309
+#: crates/core/src/commands.rs:15816
 msgid "Unnamed"
 msgstr "Senza nome"
 
@@ -782,7 +963,7 @@ msgstr "Volume"
 msgid "WC"
 msgstr "WC"
 
-#: crates/core/src/commands.rs:431
+#: crates/core/src/commands.rs:443
 msgid "Wall"
 msgstr "Muro"
 
@@ -799,7 +980,7 @@ msgid "Washbasin"
 msgstr "Lavabo"
 
 #: crates/core/src/schedule.rs:226
-#: crates/core/src/schedule.rs:438
+#: crates/core/src/schedule.rs:466
 msgid "Weight"
 msgstr "Peso"
 
@@ -807,11 +988,11 @@ msgstr "Peso"
 msgid "Weight per Metre"
 msgstr ""
 
-#: crates/core/src/model.rs:2529
+#: crates/core/src/model.rs:2533
 msgid "West"
 msgstr "Ovest"
 
-#: crates/core/src/lines.rs:208
+#: crates/core/src/lines.rs:214
 msgid "Wide Lines"
 msgstr "Linee spesse"
 
@@ -827,19 +1008,19 @@ msgstr "Abaco finestre"
 msgid "Worktop"
 msgstr "Piano di lavoro cucina"
 
-#: crates/core/src/schedule.rs:1386
+#: crates/core/src/schedule.rs:1442
 msgid "Yes"
 msgstr "Sì"
 
-#: crates/core/src/loads.rs:79
+#: crates/core/src/loads.rs:83
 msgid "bath"
 msgstr ""
 
-#: crates/core/src/loads.rs:79
+#: crates/core/src/loads.rs:83
 msgid "bwc"
 msgstr ""
 
-#: crates/core/src/loads.rs:79
+#: crates/core/src/loads.rs:83
 msgid "wc"
 msgstr ""
 

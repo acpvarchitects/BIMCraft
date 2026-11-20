@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 
 use bimcraft_i18n::msg;
 
-use bimcraft_core::model::{Element, Id};
+use bimcraft_core::model::{Element, Id, Model};
 use bimcraft_core::units::Units;
 use egui::{Align, ComboBox, Context, Id as UiId, Layout, RichText, TextEdit, Ui, WidgetInfo, WidgetType};
 use serde_json::{Value, json};
@@ -284,7 +284,7 @@ impl ReinforceDialog {
     }
 
     /// The fields, filled as the parameters of a preset say.
-    fn load(&mut self, units: Units, params: &serde_json::Map<String, Value>) {
+    fn load(&mut self, m: &Model, params: &serde_json::Map<String, Value>) {
         self.values.clear();
         let p = Value::Object(params.clone());
         for g in self.form.groups() {
@@ -293,7 +293,7 @@ impl ReinforceDialog {
                     let text = match f.kind {
                         Kind::Count => format!("{}", v.round()),
                         Kind::Diameter | Kind::Number => format!("{v}"),
-                        Kind::Length => units.length(v),
+                        Kind::Length => m.field(v),
                     };
                     self.values.insert(f.path, text);
                 }
@@ -303,13 +303,13 @@ impl ReinforceDialog {
             Some(Value::Object(o)) => {
                 for (face, key) in [("top", "cover_top"), ("bottom", "cover_bottom"), ("sides", "cover_sides")] {
                     if let Some(v) = o.get(face).and_then(Value::as_f64) {
-                        self.values.insert(key, units.length(v));
+                        self.values.insert(key, m.field(v));
                     }
                 }
             }
             Some(v) => {
                 if let Some(x) = v.as_f64() {
-                    self.values.insert("cover", units.length(x));
+                    self.values.insert("cover", m.field(x));
                 }
             }
             None => {}
@@ -325,7 +325,7 @@ impl ReinforceDialog {
             }
         }
         if let Some(v) = p.get("clearance").and_then(Value::as_f64) {
-            self.values.insert("clearance", units.length(v));
+            self.values.insert("clearance", m.field(v));
         }
     }
 
@@ -389,7 +389,7 @@ impl ReinforceDialog {
 
 /// A label and its text field as one unit of a wrapping row: it goes to a new line when it would not fit the rest of this one (a
 /// nested layout does not wrap, and squeezes its field to nothing at the edge, as long Spanish or Portuguese labels showed).
-fn labelled(ui: &mut Ui, label: &str, text: &mut String, name: String, width: f32, hint: &str) {
+pub(crate) fn labelled(ui: &mut Ui, label: &str, text: &mut String, name: String, width: f32, hint: &str) {
     let font = egui::TextStyle::Body.resolve(ui.style());
     let wide = ui.painter().layout_no_wrap(label.to_string(), font, ui.visuals().text_color()).size().x;
     if ui.available_size_before_wrap().x < wide + width + 3.0 * ui.spacing().item_spacing.x + 12.0 {
@@ -402,7 +402,7 @@ fn labelled(ui: &mut Ui, label: &str, text: &mut String, name: String, width: f3
 }
 
 /// A text field named `name` for screen readers, `width` wide.
-fn edit(ui: &mut Ui, text: &mut String, name: String, width: f32, hint: &str) {
+pub(crate) fn edit(ui: &mut Ui, text: &mut String, name: String, width: f32, hint: &str) {
     let r = ui.add(TextEdit::singleline(text).desired_width(width).hint_text(hint));
     r.widget_info(|| WidgetInfo::labeled(WidgetType::TextEdit, true, name.clone()));
 }
@@ -566,7 +566,7 @@ impl BimApp {
         if let Some(n) = chosen
             && let Some(p) = self.session.model.reinforcement.get(&n).map(|p| p.params.clone())
         {
-            d.load(units, &p);
+            d.load(&self.session.model, &p);
             (d.preset, d.error) = (n, String::new());
         }
         if save {

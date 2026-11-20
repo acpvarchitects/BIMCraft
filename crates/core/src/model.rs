@@ -55,9 +55,6 @@ pub const DEFAULT_HEIGHT: f64 = 3000.0;
 pub const RISER: f64 = 180.0;
 pub const TREAD: f64 = 280.0;
 pub const STAIR_WIDTH: f64 = 1000.0;
-/// A ramp's steepest slope, percent (1 in 12), and its width, unless told otherwise.
-pub const RAMP_SLOPE: f64 = 100.0 / 12.0;
-pub const RAMP_WIDTH: f64 = 1200.0;
 /// How far a railing on a stair or a ramp runs in from its edge, mm.
 pub const RAILING_INSET: f64 = 50.0;
 /// Balusters one railing may have.
@@ -190,7 +187,9 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// `leader`, `shoulder` and `end`) and a level's `elevation_base` as spot elevations from the Project Base Point. A file of 19
 /// needs no step: its georeference is the active site, both points at the internal origin.
 /// 21 (the next release's, which every change since 0.12 shares): stairs have types (`types.stair`), a building code holds
-/// them to rules (the project's `building_code`, `stair_rules` and `building_codes`), and a stair is drawn along a `path`, as
+/// them to rules (the project's `codes`: the code it chose for each of five disciplines, the amendments over it, the rules it
+/// changed and its own codes; #386's `building_code`, `stair_rules` and `building_codes` are read into it, never written), and
+/// a stair is drawn along a `path`, as
 /// a `spiral` or by hand (`sketch`, `unsketched`), by a location `line` and `offset`, from a `base_offset` to a `top_offset`,
 /// `multistorey`, with its landings' edges moved (`edges`) and its landings turned 5 to 135 degrees, of a `length` and a
 /// `width` of their own, or made of `winders` and `balance`d. A dimension may measure to a stair's edge (`{"edge": n}`), and a
@@ -212,9 +211,9 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// And a project holds classification tables and what their parameters take codes from (`classification`, library entries
 /// of kind `classification`); a build that reads up to 20 would answer one with a serde error ("isn't a kind of library
 /// entry"), not "saved by a newer BIMCraft". A file of 20 needs no step for them: it holds no tables.
-/// And a building code names its `country` and the methods its electrical demand is worked out by (`electrical`: `demand`,
-/// `building_demand`), and a project its own (`electrical_methods`); a build that reads up to 20 would leave them out, and
-/// `demand` and `building_demand` would ask for a method again.
+/// And a project's `codes` hold the electrical demand's methods too, each utility's or country's an amendment or a code of the
+/// electrical discipline; a build that reads up to 20 would leave `codes` out as a field it doesn't know, and `demand` and
+/// `building_demand` would ask for a method again.
 /// And a PDF publishing entry may set or omit its Creator and Producer (`creator`, `producer`, written only then); a build
 /// that reads up to 20 would leave them out as fields it doesn't know, list them as left out and write its own.
 /// And a note's leader takes a kind (`leader_kind`: two segments or curved); a build that reads up to 20 would leave it out
@@ -246,6 +245,9 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// key its references don't have. And a solid form of a family may name the forms that cut it beyond the list's order
 /// (`cut_by`, `uncut_by` and `joined_by`, lists of form GUIDs; FE-16), which a build that reads up to 20 would refuse as keys a
 /// form doesn't have; a file of 20 holds none, and a family with none builds as it did.
+/// And a grid has a type (`type`), and a project holds grid types (`grid_types`, library entries of kind `grid-type`); a grid of
+/// 20 has none, and reading it as 21 gives it the type the standards name; a build that reads up to 20 would leave both out as
+/// fields it doesn't know and draw every grid in the one line it had, not say "saved by a newer BIMCraft".
 pub const FORMAT: u32 = 21;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
@@ -341,6 +343,8 @@ pub struct PlanRange {
 #[serde(deny_unknown_fields)]
 pub struct Grid {
     pub name: String,
+    #[serde(rename = "type", default)]
+    pub type_name: String,
     pub start: P2,
     pub end: P2,
 }
@@ -1906,10 +1910,10 @@ pub struct Tag {
 }
 
 impl Tag {
-    /// The field a tag of category `cat` shows unless it names one: a door's or window's mark, a room's name, else the type.
+    /// The field a tag of category `cat` shows unless it names one: a door's, window's or bar's mark, a room's name, else the type.
     pub fn usual(cat: &str) -> &'static str {
         match cat {
-            "door" | "window" => msg!("Mark"),
+            "door" | "window" | "rebar" => msg!("Mark"),
             "room" => msg!("Name"),
             _ => msg!("Type"),
         }
@@ -4286,6 +4290,10 @@ pub struct Model {
     /// How lengths and areas are shown and typed; the model itself is in millimetres.
     #[serde(default)]
     pub units: Units,
+    /// How many places after the point lengths show in those units (`Units::decimals` says which are allowed); none, the
+    /// fewest, which drawings have always shown. Inches and feet-inches show sixteenths and leave it out.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub decimals: Option<u8>,
     /// What its drawings say, and the names commands give.
     #[serde(default)]
     pub language: Language,
@@ -4347,18 +4355,17 @@ pub struct Model {
     /// What technical standard (NBR, ISO, ANSI, EU, JIS) drawing conventions follow.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub standard: Option<crate::standards::TechnicalStandard>,
-    /// The building code its stairs and railings are held to, by what `data/building-codes.json` calls it; none until one
-    /// is chosen ([`Model::building_code`]).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// Its building codes: the code it chose for each discipline, the amendments over it and the rules it changed, its
+    /// own codes, and its site's numbers (`codes.rs`, Manage > Building Codes).
+    #[serde(default, skip_serializing_if = "crate::codes::Codes::is_empty")]
+    pub codes: crate::shared::Shared<crate::codes::Codes>,
+    /// The building code as #386's files named it, its rules changed and its own codes: read, and taken into `codes`
+    /// by [`Model::migrate`]; never written.
+    #[serde(default, skip_serializing)]
     pub building_code: Option<String>,
-    /// Its own rules for stairs and railings, once it changed any of its code's ([`Model::stair_rules`]).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub stair_rules: Option<crate::codes::StairRules>,
-    /// The methods its electrical demand is worked out by, once it named any its code doesn't ([`Model::electrical_methods`]).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub electrical_methods: Option<crate::codes::Electrical>,
-    /// Building codes of the project's own, saved under names it gave them (`building_code {save}`), or read from a file.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing)]
+    pub stair_rules: Option<serde_json::Map<String, serde_json::Value>>,
+    #[serde(default, skip_serializing)]
     pub building_codes: Vec<crate::codes::BuildingCode>,
     /// The pens each model category draws in, cut and in projection (Manage > Object Styles), by category: only those it
     /// has set apart from what a project starts with ([`Model::object_style`]).
@@ -4385,6 +4392,9 @@ pub struct Model {
     /// Its spot coordinate types, by name: how the spot coordinates of each draw their leader and read their point.
     #[serde(default = "crate::spots::types")]
     pub spot_coordinate_types: BTreeMap<String, crate::spots::SpotCoordinateType>,
+    /// Its grid types, by name: how the grids of each draw and letter their names in their bubbles.
+    #[serde(default = "crate::grids::default_types")]
+    pub grid_types: BTreeMap<String, crate::grids::GridType>,
     /// Its detail group types, by name: the members each one placed holds.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub detail_groups: BTreeMap<String, crate::groups::GroupType>,
@@ -4447,6 +4457,9 @@ pub struct Model {
     /// What its elements point at, looked up the other way (`Model::lookup`): no part of the model, never in a file.
     #[serde(skip)]
     pub derived: crate::derived::Derived,
+    /// The building codes' sections in force, as the modules read them, kept until `codes` changes.
+    #[serde(skip)]
+    pub code_cache: crate::codes::Cache,
 }
 
 impl Model {
@@ -4456,15 +4469,42 @@ impl Model {
         self.standard.unwrap_or(crate::standards::TechnicalStandard::Iso)
     }
 
+    /// A length as the project shows it: in its units, to its decimals (`Units::length_to`).
+    pub fn length(&self, mm: f64) -> String {
+        self.units.length_to(mm, self.decimals)
+    }
+
+    /// [`Model::length`] with its unit, as the desktop labels one (`Units::with_unit_to`).
+    pub fn with_unit(&self, mm: f64) -> String {
+        self.units.with_unit_to(mm, self.decimals)
+    }
+
+    /// A length as a field to edit is filled, in the project's units and decimals (`Units::field_to`).
+    pub fn field(&self, mm: f64) -> String {
+        self.units.field_to(mm, self.decimals)
+    }
+
+    /// The places after the point its lengths show: what `decimals` asks, else the fewest its units allow; none for inches and
+    /// feet-inches, which show sixteenths.
+    pub fn decimals_shown(&self) -> Option<u8> {
+        let range = self.units.decimals()?;
+        Some(self.decimals.map_or(*range.start(), |d| d.clamp(*range.start(), *range.end())))
+    }
+
     /// Adapt the project to `std`: sets the technical standard and optionally updates line weights,
     /// object styles, and units to standard defaults.
     pub fn apply_standard(&mut self, std: crate::standards::TechnicalStandard, line_weights: bool, object_styles: bool, units: bool) {
         self.standard = Some(std);
         if units {
+            let was = self.units;
             if std == crate::standards::TechnicalStandard::Ansi && !self.units.imperial() {
                 self.units = Units::FeetInches;
             } else if std != crate::standards::TechnicalStandard::Ansi && self.units.imperial() {
                 self.units = std.default_units();
+            }
+            // The places of one unit are not another's.
+            if self.units != was {
+                self.decimals = None;
             }
         }
         if line_weights {
@@ -4475,27 +4515,6 @@ impl Model {
                 self.object_styles.insert(cat.to_string(), style);
             }
         }
-    }
-
-    /// The building code its stairs and railings are held to: the one it chose, else the generic one, as is one this
-    /// BIMCraft doesn't know.
-    pub fn building_code(&self) -> &crate::codes::BuildingCode {
-        self.building_code.as_deref().and_then(|c| self.code(c)).unwrap_or(crate::codes::generic())
-    }
-
-    /// A building code by what it is called: one of the project's own, else one BIMCraft has.
-    pub fn code(&self, name: &str) -> Option<&crate::codes::BuildingCode> {
-        self.building_codes.iter().find(|c| c.code == name).or_else(|| crate::codes::code(name))
-    }
-
-    /// The rules its stairs and railings are held to: its own, else its building code's.
-    pub fn stair_rules(&self) -> &crate::codes::StairRules {
-        self.stair_rules.as_ref().unwrap_or(&self.building_code().stairs)
-    }
-
-    /// The methods `demand` and `building_demand` take when not given one: its own, else its building code's.
-    pub fn electrical_methods(&self) -> &crate::codes::Electrical {
-        self.electrical_methods.as_ref().unwrap_or(&self.building_code().electrical)
     }
 
     /// What its pens draw on paper: its own line weights, or those a project in its units starts with.
@@ -4522,6 +4541,7 @@ impl Model {
             name: name.into(),
             uid: fresh_uid(),
             units: Units::default(),
+            decimals: None,
             language,
             room_area: RoomArea::default(),
             next_id: FIRST_ID,
@@ -4543,9 +4563,9 @@ impl Model {
             option_sets: BTreeMap::new(),
             line_weights: None,
             standard,
+            codes: Default::default(),
             building_code: None,
             stair_rules: None,
-            electrical_methods: None,
             building_codes: Vec::new(),
             object_styles: BTreeMap::new(),
             line_patterns: lines::patterns(language),
@@ -4555,6 +4575,7 @@ impl Model {
             text_types: crate::text::types(language),
             dimension_types: crate::dims::types(),
             spot_coordinate_types: crate::spots::types(),
+            grid_types: crate::grids::types(language),
             detail_groups: BTreeMap::new(),
             model_groups: BTreeMap::new(),
             title_blocks: BTreeMap::new(),
@@ -4574,6 +4595,7 @@ impl Model {
             library: crate::library::Library::default(),
             loaded: BTreeMap::new(),
             derived: Default::default(),
+            code_cache: Default::default(),
         };
         // A library to start from: each material its colour, its cut's pattern and its surface's, and the texture it has.
         for (name, color, cut, surface, texture) in [
@@ -5463,10 +5485,44 @@ impl Model {
         Ok((m, left_out))
     }
 
+    /// The building code as #386's files held it (its name, its stair rules changed, its own codes), taken into
+    /// [`Model::codes`]: the architectural code, the stairs' changes, and the own codes, each architectural.
+    fn codes_from_386(&mut self) {
+        if self.building_code.is_none() && self.stair_rules.is_none() && self.building_codes.is_empty() {
+            return;
+        }
+        let (code, rules, own) = (self.building_code.take(), self.stair_rules.take(), std::mem::take(&mut self.building_codes));
+        let codes = &mut *self.codes;
+        if let Some(code) = code {
+            codes.architectural.code = Some(if code == "nbr" { "nbr-9050".into() } else { code });
+        }
+        for c in own {
+            if !codes.own.iter().any(|o| o.code == c.code && o.discipline == c.discipline) {
+                codes.own.push(c);
+            }
+        }
+        if let Some(rules) = rules {
+            // What #386 kept was every rule; the project's changes are those its code says otherwise.
+            let base = crate::codes::layered(codes, crate::codes::Discipline::Architectural, "stairs").value;
+            let changed: serde_json::Map<String, serde_json::Value> = rules
+                .into_iter()
+                .filter(|(k, v)| base.get(k).is_none_or(|b| b != v && b.as_f64().zip(v.as_f64()).is_none_or(|(x, y)| x != y)))
+                .collect();
+            if !changed.is_empty() {
+                codes.architectural.changes.insert("stairs".into(), changed);
+            }
+        }
+    }
+
     /// Brought up to [`FORMAT`]. From before pens, see [`pens_from_pixels`]. From before GUIDs: each element was given one as it was read, what points at an element
     /// (its id, then) points at its GUID, and the ids move up to six digits, by as much as takes the first to [`FIRST_ID`]
     /// (`1` is `100000`, `7` is `100006`).
     pub fn migrate(&mut self) {
+        self.codes_from_386();
+        // A file from before #502 keeps a utility's or a country's changed method among the project's changes: into its layer.
+        if crate::codes::WHOLE.iter().any(|(d, k)| self.codes.choice(*d).changes.contains_key(*k)) {
+            self.codes.methods_into_layers();
+        }
         if self.format < 1 {
             self.resolve();
             if self.elements.keys().next().is_some_and(|&first| first < FIRST_ID) {
@@ -5509,6 +5565,10 @@ impl Model {
         {
             (self.line_styles, self.line_patterns) = (lines::styles(self.language), lines::patterns(self.language));
         }
+        // A file from before grid types leaves them out, so it holds the English starter set, whatever its language.
+        if self.language != Language::English && self.grid_types == crate::grids::default_types() {
+            self.grid_types = crate::grids::types(self.language);
+        }
         // 4 to 5 (scans, and the point clouds that place them) has no step: a file of 4 holds none of it, or holds it as 5 does.
         // 5 to 6 (detailing: lines, regions, groups, repeating details, line and fill styles) has none either: a file of 5 holds
         // none of it, so reading it as 6 changes nothing.
@@ -5520,6 +5580,9 @@ impl Model {
         // 9 to 10: a dimension may measure to a line's end (`point`) and run horizontal or vertical (`linear`), and has a
         // dimension type; one of 10 read by 9 would measure its points as lines. A dimension of 9 gets its kind's type.
         self.typed_dimensions();
+        // 20 to 21: a grid has a type, and a project has grid types. A grid of 20 gets the default type, and a project
+        // without grid types gets the starter set.
+        self.typed_grids();
         // 10 to 11 (Swedish, Czech and French as a project's language) has no step: a file of 10 holds none of them.
         // 11 to 12 (German and Dutch as a project's language, a wall that bounds no rooms, a family's connectors) has no step either: a
         // file of 11 holds none. The electrical settings (voltages, distribution systems, wire types) have none within 11 or 12: a file
@@ -5657,6 +5720,8 @@ impl Model {
         // 20 to 21: dimensions in sections and elevations. A file of 20 holds none, so nothing to do.
         // 20 to 21: Cut Geometry's `void_cuts` and Join Geometry's `joined_by`. 0.12's files of 20 hold neither, and a file of
         // 20 with `void_cuts` (the Family Editor's, before this step) reads them as written, so nothing to do.
+        // 20 to 21: the building codes. `codes_from_386` above takes a file's `building_code`, `stair_rules` and `building_codes` into
+        // `codes`; a file of 20 holds none of them, so nothing to do.
         self.format = FORMAT;
     }
 
@@ -5698,6 +5763,22 @@ impl Model {
                 if let Element::Dimension(d) = &mut member.element {
                     type_one(d);
                 }
+            }
+        }
+    }
+
+    /// Each grid from before grid types given the type the project starts one in, and a project without grid types the
+    /// starter set.
+    fn typed_grids(&mut self) {
+        if self.grid_types.is_empty() {
+            self.grid_types = crate::grids::types(self.language);
+        }
+        let wanted = crate::grids::default_type(&self.grid_types, self.language).cloned().unwrap_or_default();
+        for e in self.elements.values_mut() {
+            if let Element::Grid(g) = e
+                && g.type_name.is_empty()
+            {
+                g.type_name = wanted.clone();
             }
         }
     }
@@ -6290,6 +6371,7 @@ impl Model {
             "text" => names(&self.text_types),
             "dimension" => names(&self.dimension_types),
             "spotcoordinate" => names(&self.spot_coordinate_types),
+            "grid" => names(&self.grid_types),
             "wall" => names(&self.types.wall),
             "floor" => names(&self.types.floor),
             "door" => names(&self.types.door),
@@ -6321,6 +6403,7 @@ impl Model {
             "spotcoordinate" => {
                 return crate::spots::default_type(&self.spot_coordinate_types, crate::coordinates::Origin::Survey).map(String::as_str);
             }
+            "grid" => return crate::grids::default_type(&self.grid_types, self.language).map(String::as_str),
             "wall" | "floor" => "Generic - 200mm",
             "toposolid" => "Generic - 300mm",
             "door" => "Single 900 x 2100",
@@ -8282,7 +8365,7 @@ impl Model {
     pub fn dimension_labels(&self, d: &Dimension) -> Vec<String> {
         let t = self.dimension_type(d);
         let values = self.dimension_values(d);
-        let length = |x: f64| t.length(self.units, x);
+        let length = |x: f64| t.length(self.units, self.decimals, x);
         let shown: Vec<String> = match d.kind {
             DimKind::Aligned | DimKind::Linear => {
                 let sums = values.iter().scan(0.0, |sum, v| {
@@ -8901,28 +8984,29 @@ impl Model {
         if let Some(g) = self.pinned.iter().find(|g| self.elements.id(**g).is_none()) {
             return Err(format!("`pinned` names an element that is gone ({g})"));
         }
+        if let Some(d) = self.decimals {
+            match self.units.decimals() {
+                Some(r) if r.contains(&d) => {}
+                Some(r) => {
+                    return Err(format!(
+                        "`decimals` is {} to {} in {}, not {d}: run `units` with `decimals` null",
+                        r.start(),
+                        r.end(),
+                        self.units.name()
+                    ));
+                }
+                None => {
+                    return Err(format!(
+                        "inches and feet-inches show sixteenths and take no `decimals` (it is {d}): run `units` with `decimals` null"
+                    ));
+                }
+            }
+        }
         self.classification.check()?;
         if let Some(lw) = &self.line_weights {
             lw.check()?;
         }
-        if let Some(rules) = &self.stair_rules {
-            rules.check()?;
-        }
-        if let Some(e) = &self.electrical_methods {
-            e.check()?;
-        }
-        if self.building_code.as_ref().is_some_and(|c| c.chars().count() > 64) {
-            return Err("the building code's name is 64 characters at most".into());
-        }
-        if self.building_codes.len() > crate::codes::MAX_OWN {
-            return Err(format!("more than {} building codes of the project's own", crate::codes::MAX_OWN));
-        }
-        for (i, c) in self.building_codes.iter().enumerate() {
-            c.check()?;
-            if self.building_codes.iter().take(i).any(|o| o.code == c.code) {
-                return Err(format!("two building codes of the project's own are called `{}`", c.code));
-            }
-        }
+        self.codes.check()?;
         for (c, style) in &self.object_styles {
             crate::styles::known(c)?;
             style.check(c)?;
@@ -8973,6 +9057,9 @@ impl Model {
         }
         for (n, t) in &self.dimension_types {
             t.check(n)?;
+        }
+        for (n, t) in &self.grid_types {
+            t.check(n, &self.line_patterns)?;
         }
         for (n, t) in &self.title_blocks {
             t.check(n)?;
@@ -9643,6 +9730,13 @@ impl Model {
             Element::Grid(g) => {
                 text(&who, "name", &g.name)?;
                 line(&who, g.start, g.end)?;
+                if g.type_name.is_empty() {
+                    return Err(format!("{who}: it has no type; give it one of the project's grid types"));
+                }
+                if !self.grid_types.contains_key(&g.type_name) {
+                    let there: Vec<&str> = self.grid_types.keys().map(String::as_str).collect();
+                    return Err(format!("{who}: there's no grid type `{}` (there are: {})", g.type_name, there.join(", ")));
+                }
                 if !grid_names.insert(g.name.as_str()) {
                     return Err(format!("{who}: another grid is already named `{}`", g.name));
                 }
@@ -10758,12 +10852,12 @@ impl Model {
                         sh.size
                     ));
                 };
-                if let Some([_, hi]) = self.title_blocks.get(&sh.title_block).and_then(|tb| tb.drawing_area)
+                if let Some((tb_name, [_, hi])) = self.title_block_of(sh).and_then(|(n, tb)| tb.drawing_area.map(|a| (n, a)))
                     && (hi.0 > width || hi.1 > height)
                 {
                     return Err(format!(
                         "{who}: title block `{}` drawing area extends outside {width} × {height} mm paper on sheet {}",
-                        sh.title_block, sh.number
+                        tb_name, sh.number
                     ));
                 }
                 // The title block is drawn its standard's size in the bottom right corner, inside the border: paper
@@ -10902,6 +10996,7 @@ impl Model {
             name,
             uid,
             units,
+            decimals,
             language,
             room_area,
             next_id: _,
@@ -10922,10 +11017,10 @@ impl Model {
             option_sets,
             line_weights,
             standard,
-            building_code,
-            stair_rules,
-            electrical_methods,
-            building_codes,
+            codes,
+            building_code: _,
+            stair_rules: _,
+            building_codes: _,
             object_styles,
             line_patterns,
             line_styles,
@@ -10934,6 +11029,7 @@ impl Model {
             text_types,
             dimension_types,
             spot_coordinate_types,
+            grid_types,
             detail_groups,
             model_groups,
             title_blocks,
@@ -10954,11 +11050,13 @@ impl Model {
             library,
             loaded,
             derived: _,
+            code_cache: _,
         } = self;
         *format == o.format
             && *name == o.name
             && *uid == o.uid
             && *units == o.units
+            && *decimals == o.decimals
             && *language == o.language
             && *room_area == o.room_area
             && *types == o.types
@@ -10978,10 +11076,7 @@ impl Model {
             && *option_sets == o.option_sets
             && *line_weights == o.line_weights
             && *standard == o.standard
-            && *building_code == o.building_code
-            && *stair_rules == o.stair_rules
-            && *electrical_methods == o.electrical_methods
-            && *building_codes == o.building_codes
+            && *codes == o.codes
             && *object_styles == o.object_styles
             && *line_patterns == o.line_patterns
             && *line_styles == o.line_styles
@@ -10990,6 +11085,7 @@ impl Model {
             && *text_types == o.text_types
             && *dimension_types == o.dimension_types
             && *spot_coordinate_types == o.spot_coordinate_types
+            && *grid_types == o.grid_types
             && *detail_groups == o.detail_groups
             && *model_groups == o.model_groups
             && *title_blocks == o.title_blocks
