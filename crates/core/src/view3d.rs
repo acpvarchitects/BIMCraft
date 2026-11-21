@@ -521,9 +521,23 @@ impl Solid {
 /// (a frame cut across its face is a ring round its opening). None where no loop closes, which only an open mesh
 /// leaves: the caller then falls back on its hull.
 pub(crate) fn slice(tris: &[[P3; 3]], p: P2, u: P2, len: f64) -> Option<Vec<Vec<P2>>> {
-    // On the plane counts as in front of it, so a corner on it doesn't leave the loop through it twice.
     let side = |q: &P3| (P2(q[0], q[1]) - p).dot(u.perp());
     let at = |q: &P3| P2((P2(q[0], q[1]) - p).dot(u), q[2]);
+    let pieces = cut_through(tris, side, at)?;
+    let clipped = pieces.into_iter().map(|piece| geom::clip(&geom::clip(&piece, |q| q.0), |q| len - q.0));
+    Some(clipped.filter(|piece| piece.len() >= 3 && geom::area(piece).abs() > 1e-6).collect())
+}
+
+/// Where the level plane at height `z` cuts closed mesh `tris`, as rings in plan, each counter-clockwise: as [`slice`]
+/// does, for a plan's cut plane through what is no prism (a piece a part was divided into). None where no loop closes.
+pub(crate) fn slice_level(tris: &[[P3; 3]], z: f64) -> Option<Vec<Vec<P2>>> {
+    cut_through(tris, |q| q[2] - z, |q| P2(q[0], q[1]))
+}
+
+/// Where the plane of the points `side` puts at 0 cuts closed mesh `tris`, as rings of `at`'s coordinates in it, each
+/// counter-clockwise, those inside one taken out of it. None where no loop closes.
+fn cut_through(tris: &[[P3; 3]], side: impl Fn(&P3) -> f64, at: impl Fn(&P3) -> P2) -> Option<Vec<Vec<P2>>> {
+    // On the plane counts as in front of it, so a corner on it doesn't leave the loop through it twice.
     // Each point a crossing makes, by its place: a mesh whose edge is split on one side and not the other (as `csg` leaves
     // them) crosses the plane at the same place on both, so places, not edges, join the pieces into loops.
     const NEAR: f64 = 1e-3;
@@ -609,12 +623,7 @@ pub(crate) fn slice(tris: &[[P3; 3]], p: P2, u: P2, len: f64) -> Option<Vec<Vec<
     for (i, outer) in loops.iter().enumerate().filter(|(i, _)| depth[*i].is_multiple_of(2)) {
         let holes = loops.iter().enumerate().filter(|(j, h)| depth[*j] == depth[i] + 1 && geom::contains(outer, h[0]));
         let pieces = holes.fold(vec![outer.clone()], |pieces, (_, h)| walls::minus(&pieces, h));
-        for piece in pieces {
-            let piece = geom::clip(&geom::clip(&piece, |q| q.0), |q| len - q.0);
-            if piece.len() >= 3 && geom::area(&piece).abs() > 1e-6 {
-                out.push(piece);
-            }
-        }
+        out.extend(pieces.into_iter().filter(|piece| piece.len() >= 3 && geom::area(piece).abs() > 1e-6));
     }
     Some(out)
 }
@@ -1336,8 +1345,9 @@ fn solids_in_with(
 
 /// The solids of part `id`, `p`, of a building element (`parts.rs`), where it is one a view draws
 /// ([`crate::graphics::parts::drawable`]): the prisms its solid is made of ([`Model::part_prisms`]), in its material's
-/// colour and texture as a layer's are, which a section cuts as it cuts its host's; a component's part, its family's
-/// forms, each in its own material unless the part says another. They are the part's own, beside its host's: which of the
+/// colour and texture as a layer's are, which a section cuts as it cuts its host's; a piece a part was divided into, its
+/// solid's triangles ([`Model::part_solid`]), cut the same way; a component's part, its family's forms, each in its own
+/// material unless the part says another. They are the part's own, beside its host's: which of the
 /// two a view draws is its [`Look`]'s to say.
 fn part_solids(
     out: &mut Vec<Solid>,
@@ -1351,6 +1361,22 @@ fn part_solids(
     }
     let Some(host) = m.elements.get(p.host) else { return };
     let made_of = |name: &str| m.materials.get(name).map(|x| (Rgb(x.color[0], x.color[1], x.color[2]), skin(m, name)));
+    // A piece a part was divided into is no prism: its solid, the division's, is triangles, which a section cuts as it cuts
+    // the part it came from.
+    if p.piece.is_some() {
+        let base = match host {
+            Element::Wall(_) => WALL,
+            Element::Roof(_) => ROOF,
+            Element::Ceiling(_) => CEILING,
+            Element::Component(_) => COMPONENT,
+            _ => SLAB,
+        };
+        let (color, tex) = m.part_material(p).and_then(made_of).unwrap_or((base, 0));
+        if let Ok(tris) = m.part_solid(p) {
+            out.push(Solid::Mesh { owner: id, color, tex, tris, caps: 0, round: false, cut: true, vis: 0 });
+        }
+        return;
+    }
     match (m.part_prisms(p), host) {
         (Ok(Some(prisms)), _) => {
             let base = match host {

@@ -466,3 +466,71 @@ fn the_named_decays_colours_are_far_apart_and_far_from_not_set() {
         }
     }
 }
+
+/// The plaster divided by `divide_parts`: across at x = 1500, and its west piece across at 700 mm up. Its pieces, by key:
+/// the east (all its height), the west over 700 and the west under it.
+fn divided(s: &mut Session, plaster: Id) -> [Id; 3] {
+    let r = run(
+        s,
+        "divide_parts",
+        json!({"id": plaster, "cuts": [
+            {"cut": {"plane": {"point": [1500, 0, 0], "normal": [1, 0, 0]}}},
+            {"cut": {"plane": {"point": [0, 0, 700], "normal": [0, 0, 1]}}, "of": "0.back.0"},
+        ]}),
+    );
+    let piece = |key: &str| {
+        let found = r["pieces"].as_array().and_then(|ps| ps.iter().find(|p| p["key"] == key));
+        found.and_then(|p| p["id"].as_u64()).unwrap_or_else(|| panic!("no piece {key}: {r}"))
+    };
+    [piece("0.front.0"), piece("0.back.0/1.front.0"), piece("0.back.0/1.back.0")]
+}
+
+#[test]
+fn the_pieces_a_part_was_divided_into_are_drawn_and_picked_in_a_plan_a_section_an_elevation_and_the_3d_view() {
+    let (mut s, wall, [plaster, masonry]) = historic();
+    showing_parts(&mut s);
+    let [east, upper, lower] = divided(&mut s, plaster);
+    // The plan cuts the east piece and the west one over 700 mm, drawn as the plaster was, and sees the one under it.
+    let d = plan(&s);
+    assert!(owned(&d, plaster).is_empty() && owned(&d, wall).is_empty());
+    assert!(!owned(&d, east).is_empty() && !owned(&d, upper).is_empty() && !owned(&d, lower).is_empty());
+    assert_eq!(d.pick(at(&d, 3000.0, 230.0), 1.0), Some(east));
+    assert_eq!(d.pick(at(&d, 500.0, 230.0), 1.0), Some(upper));
+    assert_eq!(d.pick(at(&d, 2000.0, 0.0), 1.0), Some(masonry));
+    assert_eq!(pixel(&d, P2(3000.0, 230.0)), LIGHT_POCHE);
+    assert_eq!(pixel(&d, P2(500.0, 230.0)), LIGHT_POCHE);
+    assert!(d.parts.iter().zip(&d.owners).filter(|(_, o)| **o == Some(lower)).all(|(p, _)| *p == render::Part::Projection));
+    let dark = |c: Rgb| c.0 < 100 && c.1 < 100 && c.2 < 100;
+    assert!(dark(pixel(&d, P2(1500.0, 230.0))), "the line between the pieces: {:?}", pixel(&d, P2(1500.0, 230.0)));
+    // The 3D view: the pieces, each picked by its own id, and not the part they were divided from.
+    run(&mut s, "graphics", json!({"view": "{3D}", "parts_visibility": "parts"}));
+    let scene = Scene::new(&s.model);
+    let (w, h) = (480usize, 360usize);
+    let cam = scene.fit(60.0, 30.0, w as u32, h as u32);
+    let img = scene.render_in(&cam, &[], &Look::of_3d(&s.model));
+    let picked = |id: Id| (0..w * h).filter(|i| img.pick((i % w) as f64, (i / w) as f64) == Some(id)).count();
+    assert!(picked(east) > 1000 && picked(upper) > 300 && picked(lower) > 100, "{} {} {}", picked(east), picked(upper), picked(lower));
+    assert_eq!(picked(plaster), 0);
+    // A section across the east piece cuts it, as it cuts the plaster whole.
+    let section = run(&mut s, "section", json!({"start": [3000, 1500], "end": [3000, -1500]}))["id"].as_u64().unwrap();
+    run(&mut s, "scale", json!({"view": section, "scale": 10}));
+    run(&mut s, "graphics", json!({"view": section, "parts_visibility": "parts"}));
+    let d = render::section(&s.model, section, View { scale: 0.5, cx: 1500.0, cy: 1500.0, width: 800, height: 600, angle: 0.0 });
+    assert_eq!(d.pick(d.view.px(P2(1270.0, 1500.0)), 1.0), Some(east));
+    assert_eq!(pixel(&d, P2(1270.0, 1500.0)), LIGHT_POCHE);
+    // The elevation of the plaster's face sees the three pieces, and its theme's key counts them.
+    run(&mut s, "part", json!({"id": east, "decay_pathology": "crust"}));
+    run(&mut s, "part", json!({"id": upper, "decay_pathology": "detachment"}));
+    let elevation = run(&mut s, "elevation", json!({"facing": "north"}))["id"].as_u64().unwrap();
+    run(&mut s, "graphics", json!({"view": elevation, "parts_visibility": "parts"}));
+    let view = render::section_fit(&s.model, elevation, 800, 600);
+    let seen = render::section_picture(&s.model, elevation, view, &[]).unwrap();
+    for id in [east, upper, lower] {
+        assert!(seen.shows().contains(&id), "{id}: {:?}", seen.shows());
+    }
+    assert!(!seen.shows().contains(&plaster));
+    let r = theme(&mut s, json!({"view": elevation, "by": "Decay_Pathology"}));
+    let values: Vec<&serde_json::Value> = r["rows"].as_array().unwrap().iter().map(|row| &row["value"]).collect();
+    assert_eq!(values, [&json!("Crust"), &json!("Detachment"), &json!(null)], "{r}");
+    assert_eq!(r["parts"], json!(3), "{r}");
+}
