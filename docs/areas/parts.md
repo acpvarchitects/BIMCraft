@@ -1,7 +1,8 @@
 # Parts of elements and the heritage set
 
 Read when touching `crates/core/src/parts.rs`, `parts/solid.rs`, `parts/state.rs`, the `create_parts`, `part` and `parts`
-commands, or how a part goes to IFC and comes back (`ifc.rs`, `import/parts.rs`). Aimed at the recording and restoration of historic buildings (HBIM): a wall is its
+commands, how a part goes to IFC and comes back (`ifc.rs`, `import/parts.rs`), or the desktop's parts tools
+(`crates/ui-egui/src/parts.rs`). Aimed at the recording and restoration of historic buildings (HBIM): a wall is its
 plaster and its masonry, and each is described, dated, measured and treated on its own.
 
 ## What a part is
@@ -154,9 +155,29 @@ know, so it leaves it out and names it (`left_out`).
 A view draws an element whole, as its parts, or both: Revit's Parts Visibility (`graphics {view, parts_visibility: original |
 parts | both}`, Properties' Parts Visibility), Show Original unless it says. How a plan, a section, an elevation and the 3D
 view draw and pick a part, what stands for what, and what is left for later are in
-[views and graphics](views-and-graphics.md#parts-in-views).
+[views and graphics](views-and-graphics.md#parts-in-views). A view's Properties set it, and below it Color Parts By (the
+view's `theme`: none, one of the heritage set's names, Material, or a project parameter of parts) and, once the view colours
+its parts, Parts Legend (`theme.legend`); a template that sets a view's parts visibility sets these too, and greys them out.
+
+## In the desktop
+
+`crates/ui-egui/src/parts.rs`, each action a command, tested in `tests/parts.rs` (`BIMCRAFT_PARTS_DUMP=<folder>` writes
+screenshots of them in both profiles, light and dark):
+- **Create Parts**, the Modify tab's Create panel while walls, floors, roofs, ceilings or components are selected: `create_parts`
+  on them and, as Revit's, the view set to Show Parts (unless it shows them, or its template says what it shows), one undo
+  step; the parts made are then selected.
+- **Exclude Parts** and **Restore Parts**, the Part panel while parts are selected: `part {ids, excluded}`, each greyed out
+  while none of the selection is in or out.
+- **A part's Properties**: Identity Data (Original Category and Original Type, its Layer and what that does, Material, its own
+  or By Original, which is its layer's; Kind, IFC's kind; Object Type; Excluded), Dimensions (Thickness, Area, Volume, as
+  `parts` works them out; a divided part's are its pieces') and Heritage (the set by its names: a decay of the list's words,
+  or Other Decay for one in the project's own; Decay_Severity 1 to 5). Of several parts, what they share is shown and a value
+  set goes to all of them, through `part`; what the core refuses is said in the status bar and changes nothing.
+- **The Materials window** says a material's Density (kg/m³), Thermal Conductivity (W/(m·K)) and Specific Heat (J/(kg·K)),
+  each blank for not said (`material {density, conductivity, specific_heat}`).
 
 ## Next
 
-Divide Parts in the desktop (a sketch on the part's face), tags of parts, the desktop's tools (the material's weight and
-heat among them), and a slab whose outer layer's part is excluded read back where it was.
+Divide Parts in the desktop (a sketch on the part's face, a plane and a profile; HP-7b), tags of parts, the theme's own
+colours chosen in the desktop, its key placed clear of the window's view tabs, and a slab whose outer layer's part is excluded
+read back where it was.

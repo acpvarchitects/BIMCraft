@@ -848,14 +848,19 @@ pub(crate) struct MaterialsDialog {
     texture: Option<(String, Texture, [String; 5])>,
     /// The swatch drawn of the texture, and what it was drawn of.
     swatch: Option<(String, TextureHandle)>,
+    /// Its density, conductivity and specific heat as typed, for the material and the values they were made from.
+    physics: Option<(String, [Option<f64>; 3], [String; 3])>,
 }
 
 impl MaterialsDialog {
     pub(crate) fn new(m: &Model) -> MaterialsDialog {
         let picked = m.materials.keys().next().cloned().unwrap_or_default();
-        MaterialsDialog { name: picked.clone(), picked, color: None, clear: None, texture: None, swatch: None }
+        MaterialsDialog { name: picked.clone(), picked, color: None, clear: None, texture: None, swatch: None, physics: None }
     }
 }
+
+/// What [`bimcraft_core::model::Material::PHYSICS`] are, as the Materials window names them.
+const PHYSICS_LABELS: [&str; 3] = [msg!("Density"), msg!("Thermal Conductivity"), msg!("Specific Heat")];
 
 /// What a layer does, as the layer editor names it.
 const FUNCTIONS: [(Function, &str); 5] = [
@@ -1494,6 +1499,7 @@ impl BimApp {
                 self.ties(ui, &model, id);
             }
             self.component_parameters(ui, &model, &ids);
+            self.part_parameters(ui, &model, &ids);
             self.panel_parameters(ui, &model, &ids);
             self.circuit_parameters(ui, &model, &ids);
             self.project_parameters(ui, &model, &ids);
@@ -3072,6 +3078,29 @@ impl BimApp {
                                     }
                                     ui.end_row();
                                 }
+                            }
+                        }
+                        // What a part made of it weighs and how it takes heat, each blank for not said.
+                        let values = m.physics();
+                        if !d.physics.as_ref().is_some_and(|(n, old, _)| *n == d.picked && *old == values) {
+                            let typed = values.map(|v| v.map_or_else(String::new, |v| format!("{v}")));
+                            d.physics = Some((d.picked.clone(), values, typed));
+                        }
+                        if let Some((_, _, typed)) = &mut d.physics {
+                            let rows = bimcraft_core::model::Material::PHYSICS.iter().zip(PHYSICS_LABELS).zip(typed.iter_mut()).zip(values);
+                            for (((&(key, unit, _), label), typed), now) in rows {
+                                let l = ui.label(format!("{} ({unit})", t(label)));
+                                let r = ui.add(TextEdit::singleline(typed).desired_width(120.0)).labelled_by(l.id);
+                                if r.lost_focus() {
+                                    match (typed.trim(), number(typed)) {
+                                        ("", _) if now.is_some() => run = Some(json!({"name": d.picked, key: null})),
+                                        ("", _) => {}
+                                        (_, Some(v)) if Some(v) != now => run = Some(json!({"name": d.picked, key: v})),
+                                        (_, Some(_)) => {}
+                                        (_, None) => typed_wrong = Some(tf("`{}` is not a number", &[typed.trim()])),
+                                    }
+                                }
+                                ui.end_row();
                             }
                         }
                     });

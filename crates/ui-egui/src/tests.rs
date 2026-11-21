@@ -6354,6 +6354,7 @@ mod notes;
 mod objectstyles;
 mod origin;
 mod parameters;
+mod parts;
 mod parts_schedule;
 mod patterns;
 mod perspective;

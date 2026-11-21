@@ -642,6 +642,33 @@ impl BimApp {
                 }
             });
             ui.end_row();
+            // What the view colours its parts by, and whether it draws their key: set by the template that sets their visibility.
+            let theme = shown.theme.clone();
+            let label = ui.label(t("Color Parts By"));
+            let label = if let Some(n) = &note { label.on_hover_text(n) } else { label };
+            ui.add_enabled_ui(note.is_none(), |ui| {
+                let none = t("<None>").to_string();
+                let names = bimcraft_core::graphics::Theme::names(&model);
+                let options: Vec<String> = std::iter::once(none.clone()).chain(names.iter().map(|n| t(n).to_string())).collect();
+                let now = theme.as_ref().map_or_else(|| none.clone(), |th| t(&th.by).to_string());
+                if let Some(picked) = crate::properties::combo(ui, (0, "parts-theme"), label.id, &now, &options) {
+                    let by = names.iter().find(|n| t(n) == picked);
+                    set = Some(("graphics", json!({"view": view, "theme": by.map_or(Value::Null, |by| json!({"by": by}))})));
+                }
+            });
+            ui.end_row();
+            if let Some(th) = &theme {
+                let label = ui.label(t("Parts Legend"));
+                ui.add_enabled_ui(note.is_none(), |ui| {
+                    let mut on = th.legend;
+                    let r = ui.checkbox(&mut on, "");
+                    r.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, note.is_none(), on, t("Parts Legend")));
+                    if r.labelled_by(label.id).changed() {
+                        set = Some(("graphics", json!({"view": view, "theme": {"legend": on}})));
+                    }
+                });
+                ui.end_row();
+            }
             if let Some(id) = own_id {
                 let note = self.grid_controlled(id);
                 ui.add_enabled(note.is_none(), egui::Label::new(t("Background Grids")));

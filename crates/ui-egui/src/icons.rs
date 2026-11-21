@@ -58,6 +58,9 @@ icon_names! {
     Offset,
     Trim,
     Split,
+    CreateParts,
+    ExcludeParts,
+    RestoreParts,
     Dimension,
     Tag,
     TagAll,
@@ -565,6 +568,23 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             g.closed(&[(3.0, 8.0), (9.0, 8.0), (9.0, 16.0), (3.0, 16.0)]);
             g.closed(&[(15.0, 8.0), (21.0, 8.0), (21.0, 16.0), (15.0, 16.0)]);
             g.line(&[(13.0, 3.0), (11.0, 21.0)]);
+        }
+        Icon::CreateParts => {
+            // An element's layers drawn apart: three slabs side by side, the middle one the thickest.
+            g.closed(&[(3.0, 4.0), (7.0, 4.0), (7.0, 20.0), (3.0, 20.0)]);
+            g.closed(&[(9.5, 4.0), (16.5, 4.0), (16.5, 20.0), (9.5, 20.0)]);
+            g.closed(&[(19.0, 4.0), (21.0, 4.0), (21.0, 20.0), (19.0, 20.0)]);
+        }
+        Icon::ExcludeParts => {
+            // A part struck through: left out.
+            g.closed(&[(7.0, 4.0), (17.0, 4.0), (17.0, 20.0), (7.0, 20.0)]);
+            g.line(&[(3.0, 21.0), (21.0, 3.0)]);
+        }
+        Icon::RestoreParts => {
+            // A part, and an arrow bringing it back.
+            g.closed(&[(12.0, 4.0), (21.0, 4.0), (21.0, 20.0), (12.0, 20.0)]);
+            g.line(&[(3.0, 12.0), (15.0, 12.0)]);
+            g.line(&[(11.5, 8.5), (15.0, 12.0), (11.5, 15.5)]);
         }
         Icon::Dimension => {
             g.line(&[(4.0, 5.0), (4.0, 21.0)]);
