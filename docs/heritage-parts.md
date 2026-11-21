@@ -34,10 +34,10 @@ HP-8 came onto it by [#85](https://github.com/acpvarchitects/BIMCraft/pull/85) (
 The pieces of a divided part, which views didn't draw at all (found while making the SyncLab screenshots), are drawn
 since [#95](https://github.com/acpvarchitects/BIMCraft/pull/95) (addac69), with full checks and CI green.
 
-Under review against it: [#96](https://github.com/acpvarchitects/BIMCraft/pull/96), HP-7a, the desktop's parts tools,
-with 0.13 merged in after #95.
+HP-7a, the desktop's parts tools, came onto it by [#96](https://github.com/acpvarchitects/BIMCraft/pull/96) (51eb76c),
+with 0.13 merged in after #95, full checks and CI green.
 
-Next: #96, then HP-7b, then the upstream PRs in #440's order. Nothing is upstream yet.
+Next: HP-7b, then the upstream PRs in #440's order. Nothing is upstream yet.
 
 | Step | What | Where | State |
 |---|---|---|---|
@@ -49,7 +49,7 @@ Next: #96, then HP-7b, then the upstream PRs in #440's order. Nothing is upstrea
 | HP-5 | Colour maps (`theme`) by `Decay_Pathology`, `Historical_Period` or any part value, with a legend | same PRs | **Merged** (4d65dee; ca7eb58) |
 | HP-6 | Schedules of parts: the bill of quantities (Restoration Quantities), CSV and xlsx | [#17](https://github.com/acpvarchitects/BIMCraft/pull/17), `vp/heritage-parts-schedules`; on 0.13 by #82 | **Merged** (624491c; ca7eb58) |
 | HP-3/4 fix | The pieces `divide_parts` makes drawn in plans, sections, elevations and the 3D view (from their solid; a plan cuts it) | [#95](https://github.com/acpvarchitects/BIMCraft/pull/95), `vp/heritage-parts-pieces-drawn` → `feature/heritage-parts-0.13` | **Merged** (addac69) |
-| HP-7a | Desktop: Create Parts, Exclude/Restore Parts, Properties of a part with the survey values, Color Parts By and Parts Legend in a view's Properties, the material values in the Materials window | [#96](https://github.com/acpvarchitects/BIMCraft/pull/96), `vp/heritage-parts-desktop` → `feature/heritage-parts-0.13` | Under review |
+| HP-7a | Desktop: Create Parts, Exclude/Restore Parts, Properties of a part with the survey values, Color Parts By and Parts Legend in a view's Properties, the material values in the Materials window | [#96](https://github.com/acpvarchitects/BIMCraft/pull/96), `vp/heritage-parts-desktop` → `feature/heritage-parts-0.13` | **Merged** (51eb76c) |
 | HP-7b | Desktop: Divide Parts (sketch on the face, a plane, a profile) and Edit Division | | Not started |
 | HP-8 | IFC export and import of parts, one PR with round-trip tests (#440): HP-1's export, the material values and #34's rule for a piece of an excluded part; a host taken apart comes back from its parts, divisions included | [#85](https://github.com/acpvarchitects/BIMCraft/pull/85), `vp/heritage-parts-ifc` → `feature/heritage-parts-0.13` | **Merged** (bcd0906) |
 | HP-9 | Parts in `elements`, FORMAT 21 (21–32 reservation narrowed to 22–32), HP-1 ported onto main 3e08223f without its IFC export, `decay.rs` shared with Survey Areas | [#70](https://github.com/acpvarchitects/BIMCraft/pull/70), `vp/heritage-parts-hp9` → `feature/heritage-parts-0.13` | **Merged** (d154dc2) |
@@ -323,7 +323,7 @@ divided part has no area or volume of its own, because its divisions hold them, 
 - the material values in the Material Browser.
 Each tool drives a command; the UI stays thin.
 
-HP-7a ([#96](https://github.com/acpvarchitects/BIMCraft/pull/96), under review) does all of these except Divide Parts,
+HP-7a ([#96](https://github.com/acpvarchitects/BIMCraft/pull/96), merged) does all of these except Divide Parts,
 which is HP-7b. Still to do after HP-7a:
 - choosing a colour map's colours in the desktop (only the `graphics` command can yet);
 - moving the plan's colour key, whose first line the window's floating view tab covers (a placement from HP-5).
