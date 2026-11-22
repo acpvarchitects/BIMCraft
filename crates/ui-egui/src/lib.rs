@@ -7420,6 +7420,8 @@ impl BimApp {
         self.templates_window(ctx);
         self.phasing_window(ctx);
         self.display_window(ctx);
+        self.family_range_window(ctx);
+        self.family_override_window(ctx);
         self.project_info_window(ctx);
         self.reinforce_window(ctx);
         self.steel_window(ctx);
