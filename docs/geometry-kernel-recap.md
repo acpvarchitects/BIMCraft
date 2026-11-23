@@ -18,7 +18,7 @@ A family's forms are built as triangles (`family::Piece::tris`). That is fast, b
 - IFC writes every form as a triangulated face set, so curves are lost on export;
 - a boolean between two curved forms is only as exact as the chord it was meshed at.
 
-The goal is family geometry that is **exact like Rhino's** (exact curves bounding exact faces: plane, cylinder, cone, sphere,
+The goal is family geometry that is **exact** (exact curves bounding exact faces: plane, cylinder, cone, sphere,
 torus, NURBS) **and fast**, with no feature lost. A model with no curved surfaces is not acceptable. A model that is slow to
 navigate or edit isn't either.
 
@@ -159,7 +159,7 @@ cylinder void per panel, so a different mix from ours: compare ratios):
 - a one-panel edit: about 8 ms in the kernel plus 3 ms to mesh, with every triangle tagged by its face;
 - exact plans (`hlr`): 1,000 panels in about 3 s; 10,000 are refused by its internal budgets, quickly and without hanging.
 
-What's missing: a loft (Revit's Blend), sweeps along cornered paths, published crates for the new parts, and a validity gate,
+What's missing: a loft (blend), sweeps along cornered paths, published crates for the new parts, and a validity gate,
 since some degenerate input still comes back as an empty or zero-volume "valid" solid. So the work of writing a tessellator
 for it is no longer ours to do. The next step is to run solidcore's `main` through our same suite and panel on the same two
 laptops, next to arris, and keep whichever does better behind `brep`.
