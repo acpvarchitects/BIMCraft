@@ -158,7 +158,7 @@ impl Cut {
         if let Some((_, work)) = &self.work {
             self.overlay = Some(render::SectionOverlay::new(model, work, id, view));
             self.levels = self.overlay.as_ref().map(|o| o.levels().clone()).unwrap_or_default();
-            self.image = render::section_picture_with(model, work, id, pixels, &[]).map(Arc::new);
+            self.image = render::section_picture_of_cancellable(model, work, id, view, pixels, &[], &|| false).map(Arc::new);
         }
         self.shown = Some((Arc::clone(model), id, view, pixels));
         self.repaint(ctx, model, id, view, tints, ground, grid_background);

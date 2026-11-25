@@ -1995,7 +1995,7 @@ impl SectionWork {
                 out = (out.0.min(lo[2]), out.1.max(hi[2]));
             }
         }
-        let mut components = crate::component_geometry::Components::new(m);
+        let mut components = crate::component_geometry::Components::kept(m);
         for (at, ((id, points), bounds)) in self.placed.iter().zip(&self.boxes).enumerate() {
             if self.cell(at).is_some() && bounds.is_none_or(|[lo, hi]| lo[2] < out.0 || hi[2] > out.1) && look.shows(*id) {
                 if cancelled() {
@@ -2050,7 +2050,7 @@ impl SectionWork {
         let (least, most) =
             shown.iter().filter_map(|(at, _, p, _)| first(*at, p)).fold((f64::MAX, f64::MIN), |(a, z), x| (a.min(x), z.max(x)));
         let mut out = (f64::MAX, f64::MIN);
-        let mut components = crate::component_geometry::Components::new(m);
+        let mut components = crate::component_geometry::Components::kept(m);
         for (at, id, p, (a, z)) in &shown {
             if *a <= least || *z >= most {
                 if cancelled() {
@@ -2082,7 +2082,9 @@ impl SectionWork {
         };
         // Its twin, which tests hold it to: of every solid's corners.
         #[cfg(test)]
-        assert_eq!(extent, m.model_extent(), "the model's extent from the components' farthest points");
+        if twins() {
+            assert_eq!(extent, m.model_extent(), "the model's extent from the components' farthest points");
+        }
         Some(*self.extent.get_or_init(|| extent))
     }
 }
@@ -2096,7 +2098,9 @@ fn heights(m: &Model, w: &SectionWork, look: &Look, cancelled: &(dyn Fn() -> boo
     let found = if w.deferred.is_empty() { of(&mut w.heights(look)) } else { w.deferred_heights(m, look, cancelled)? };
     // Its twin, which tests hold it to: of every solid the look shows.
     #[cfg(test)]
-    assert_eq!(found, of(&mut view3d::solids(m).iter().filter(|s| look.shows(s.owner())).map(|s| s.heights())), "a view's heights");
+    if twins() {
+        assert_eq!(found, of(&mut view3d::solids(m).iter().filter(|s| look.shows(s.owner())).map(|s| s.heights())), "a view's heights");
+    }
     Some(found)
 }
 
@@ -2134,7 +2138,7 @@ fn span(m: &Model, w: &SectionWork, v: &Section, look: &Look, cancelled: &(dyn F
     let solids = [least, most].into_iter().filter(|_| least <= most);
     // Its twin, which tests hold it to: every corner of every solid the look shows, as far along the line.
     #[cfg(test)]
-    {
+    if twins() {
         let fold = |xs: &mut dyn Iterator<Item = f64>| xs.fold((f64::MAX, f64::MIN), |(lo, hi), x| (lo.min(x), hi.max(x)));
         let every = view3d::solids(m);
         let all = fold(&mut every.iter().filter(|s| look.shows(s.owner())).flat_map(|s| s.corners()).map(|p| along(P2(p[0], p[1]))));
@@ -2365,6 +2369,15 @@ fn painted_fronts(m: &Model, scene: &Scene, cam: &Camera, img: &mut Image) {
     }
 }
 
+/// GEO-2c-2a: what section or elevation `id`'s drawing through `view` builds its components at: about half a pixel at its
+/// scale ([`crate::family::Fineness::for_view`], as a plan's), for those whose default build reaches into what it shows. A
+/// picture at the screen's pixels under it ([`section_picture_of_cancellable`]) and its cut ([`SectionOverlay`]) both read
+/// this, so they are of the same builds. None where it is the default.
+fn section_fine_of(m: &Model, id: impl Key, view: View) -> Option<crate::component_geometry::SectionFine> {
+    let (cam, clip) = section_camera(m, id, view)?;
+    crate::component_geometry::section_fine(view.scale, &cam, &clip)
+}
+
 /// What section or elevation `id` sees past its line through `view`, in hidden line, as [`section_image`] draws it from
 /// the whole scene: drawn from a scene of only what can show in it ([`Scene::section`]), the same to the pixel.
 pub fn section_picture(m: &Model, id: impl Key, view: View, tints: &[(Id, Rgb)]) -> Option<Image> {
@@ -2393,7 +2406,7 @@ pub fn section_picture_and_over_with(
         fresh = SectionWork::new(m);
         &fresh
     };
-    let picture = section_picture_in(m, w, id, pixels, tints);
+    let picture = section_picture_of_in(m, w, id, view, pixels, tints);
     let drawing = section_in(m, w, id, view, annotation(m, id, view), scale_of(m, id), picture.as_ref());
     (picture, drawing)
 }
@@ -2413,16 +2426,33 @@ pub fn section_picture_cancellable(
     tints: &[(Id, Rgb)],
     cancelled: &(dyn Fn() -> bool + Sync),
 ) -> Option<Image> {
+    section_picture_of_cancellable(m, work, id, view, view, tints, cancelled)
+}
+
+/// [`section_picture_cancellable`] under the drawing through `view`, at `pixels` (that view at the screen's pixels, a multiple
+/// of it): its components built as finely as the drawing's cut builds them (GEO-2c-2a), so the picture and the cut over it
+/// are of the same builds.
+pub fn section_picture_of_cancellable(
+    m: &Model,
+    work: &SectionWork,
+    id: Id,
+    view: View,
+    pixels: View,
+    tints: &[(Id, Rgb)],
+    cancelled: &(dyn Fn() -> bool + Sync),
+) -> Option<Image> {
     if cancelled() {
         return None;
     }
     if !work.is_of(m) {
         let fresh = SectionWork::new_cancellable(m, cancelled)?;
-        return section_picture_cancellable(m, &fresh, id, view, tints, cancelled);
+        return section_picture_of_cancellable(m, &fresh, id, view, pixels, tints, cancelled);
     }
-    let (cam, clip) = section_camera(m, id, view)?;
+    let fine = section_fine_of(m, id, view);
+    let (cam, clip) = section_camera(m, id, pixels)?;
     let look = Look::of(m, id);
-    let scene = Scene::section_cancellable(m, (&work.solids, &work.ranges, &work.placed, &work.boxes), &cam, &clip, &look, cancelled)?;
+    let work: view3d::Work<'_> = (&work.solids, &work.ranges, &work.placed, &work.boxes);
+    let scene = Scene::section_cancellable(m, work, (&cam, &clip, fine), &look, cancelled)?;
     let mut image = scene.picture_cancellable(&cam, Some(&clip), tints, &look, cancelled);
     if !cancelled() {
         painted_fronts(m, &scene, &cam, &mut image);
@@ -2432,14 +2462,20 @@ pub fn section_picture_cancellable(
 
 /// [`section_picture`], of `w`'s solids and points.
 pub(crate) fn section_picture_in(m: &Model, w: &SectionWork, id: impl Key, view: View, tints: &[(Id, Rgb)]) -> Option<Image> {
-    let (cam, clip) = section_camera(m, id, view)?;
+    section_picture_of_in(m, w, id, view, view, tints)
+}
+
+/// [`section_picture_in`] under the drawing through `view`, at `pixels`, as [`section_picture_of_cancellable`] is.
+fn section_picture_of_in(m: &Model, w: &SectionWork, id: impl Key, view: View, pixels: View, tints: &[(Id, Rgb)]) -> Option<Image> {
+    let fine = section_fine_of(m, id, view);
+    let (cam, clip) = section_camera(m, id, pixels)?;
     let look = Look::of(m, id);
-    let scene = Scene::section(m, (&w.solids, &w.ranges, &w.placed, &w.boxes), &cam, &clip, &look);
+    let scene = Scene::section(m, (&w.solids, &w.ranges, &w.placed, &w.boxes), (&cam, &clip, fine), &look);
     let mut picture = scene.cut_in(&cam, &clip, tints, &look);
-    // Its twin, which tests hold it to: the picture of the whole scene.
+    // Its twin, which tests hold it to: the picture of the whole scene, its components built as the section's are.
     #[cfg(test)]
     if twins()
-        && let Err(e) = picture.same_as(&Scene::new(m).cut_in(&cam, &clip, tints, &look))
+        && let Err(e) = picture.same_as(&crate::component_geometry::as_section(fine, || Scene::new(m)).cut_in(&cam, &clip, tints, &look))
     {
         panic!("a section's picture from what can show in it isn't the whole scene's: {e}");
     }
@@ -2624,8 +2660,8 @@ fn section_base_cancellable(
         }
     }
     // The round runs not made yet, and the components a section cuts (the work holds none of theirs): only those whose
-    // boxes the line's plane crosses.
-    let mut lazy = crate::component_geometry::Components::new(m);
+    // boxes the line's plane crosses. Each as the picture under it builds it (GEO-2c-2a).
+    let mut lazy = crate::component_geometry::Components::for_section(m, section_fine_of(m, id, view));
     let cut_component = |e: &Element| match e {
         Element::Component(c) => m.families.get(&c.family).is_some_and(crate::family::Family::cuts_in_views),
         _ => false,
@@ -2637,7 +2673,12 @@ fn section_base_cancellable(
         let Some(e) = m.elements.get(*id).filter(|e| (e.run().is_some() && work.cell(at).is_some()) || cut_component(e)) else {
             continue;
         };
-        if cfg!(not(test)) && one_side(*id) {
+        // A test's twin builds it to hold it to cutting nothing; a benchmark's doesn't.
+        #[cfg(test)]
+        let skips = !twins();
+        #[cfg(not(test))]
+        let skips = true;
+        if skips && one_side(*id) {
             continue;
         }
         if cancelled() {
@@ -3273,13 +3314,14 @@ thread_local! {
     static NO_TWINS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
-/// Whether a plan drawn on this thread is held to its twins (a test's, unless [`without_twins`]).
+/// Whether a plan, a section or an elevation drawn on this thread is held to its twins (a test's, unless [`without_twins`]).
 #[cfg(test)]
 fn twins() -> bool {
     !NO_TWINS.with(std::cell::Cell::get)
 }
 
-/// `f`, with the plans it draws on this thread drawn once, not held to their twins: what a benchmark times.
+/// `f`, with the plans, sections and elevations it draws on this thread drawn once, not held to their twins: what a benchmark
+/// times.
 #[cfg(test)]
 pub(crate) fn without_twins<T>(f: impl FnOnce() -> T) -> T {
     struct Back(bool);

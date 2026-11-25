@@ -84,7 +84,8 @@ impl Renderer {
         if rebuilt {
             self.base = None;
             let overlay = render::SectionOverlay::new_cancellable(m, work, request.id, view, cancelled)?;
-            let picture = render::section_picture_cancellable(m, work, request.id, pixels, &[], cancelled).map(Arc::new);
+            // Its components as finely as the drawing's cut builds them, at the screen's pixels.
+            let picture = render::section_picture_of_cancellable(m, work, request.id, view, pixels, &[], cancelled).map(Arc::new);
             if cancelled() {
                 return None;
             }
