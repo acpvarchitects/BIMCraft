@@ -425,7 +425,7 @@ fn a_component_on_a_reference_plane_follows_the_plane() {
     check(&moved, LEVEL, at(42_500.0, 2_500.0), "where its plane went");
 }
 
-/// The index's local shapes held for `count` components placed at the origin from one box, each its own height.
+/// `count` boxes placed in a row along x, 2 m apart.
 fn placed(s: &mut Session, count: usize) -> Vec<u64> {
     (0..count).map(|k| id_of(&run(s, "component", json!({"family": "Box", "at": [k as f64 * 2000.0, 0]})))).collect()
 }
@@ -436,6 +436,9 @@ fn placed(s: &mut Session, count: usize) -> Vec<u64> {
 fn a_dragged_instance_parameter_leaves_only_the_keys_its_components_have() {
     let mut s = boxes();
     let ids = placed(&mut s, 2);
+    // Each its height given, so one brought back to the other's has the other's key (a value left to the family's
+    // default is a key of its own).
+    run(&mut s, "modify", json!({"ids": ids, "params": {"Height": 600}}));
     let view = at(0.0, 0.0);
     check(&s.model, LEVEL, view, "two alike");
     assert_eq!(cg::index_locals(&s.model), 1, "two boxes alike share one key");

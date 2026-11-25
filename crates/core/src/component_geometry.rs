@@ -1789,19 +1789,27 @@ fn index_of(model: &Model) -> Option<Arc<index::Index>> {
     Some(slot.brought_up(model))
 }
 
-/// A generation's index ([`index_of`]).
+/// A generation's index ([`index_of`]), behind a lock of its own, apart from the store's: held while the index is made or
+/// brought up, so a second thread asking at once (two plans drawn side by side) waits for it and finds it up to date, where
+/// it used to find none and make it again (ec's review of #90). The store's lock is never taken inside it.
 #[derive(Default)]
 pub(crate) struct IndexSlot(Mutex<Option<Arc<index::Index>>>);
 
 impl IndexSlot {
-    /// The index held, brought up to `model`; made where none is.
+    /// The index held, brought up to `model`; made where none is, or where a thread panicked bringing it up.
     pub(crate) fn brought_up(&self, model: &Model) -> Arc<index::Index> {
-        let had = self.0.lock().ok().and_then(|mut i| i.take());
-        let mut index = had.unwrap_or_else(|| Arc::new(index::Index::of(model)));
+        let mut held = match self.0.lock() {
+            Ok(held) => held,
+            Err(poisoned) => {
+                self.0.clear_poison();
+                let mut held = poisoned.into_inner();
+                *held = None;
+                held
+            }
+        };
+        let mut index = held.take().unwrap_or_else(|| Arc::new(index::Index::of(model)));
         Arc::make_mut(&mut index).bring_up(model);
-        if let Ok(mut i) = self.0.lock() {
-            *i = Some(Arc::clone(&index));
-        }
+        *held = Some(Arc::clone(&index));
         index
     }
 }
