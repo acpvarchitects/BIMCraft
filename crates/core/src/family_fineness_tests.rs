@@ -389,6 +389,70 @@ fn elevation_paint_bench() {
     });
 }
 
+/// The process's peak memory and what it holds now, from `/proc/self/status` (none where there is no such file).
+fn memory() -> String {
+    let status = std::fs::read_to_string("/proc/self/status").unwrap_or_default();
+    let field = |name: &str| status.lines().find(|l| l.starts_with(name)).map_or(String::from("?"), |l| l[name.len()..].trim().to_string());
+    format!("peak {}, now {}", field("VmHWM:"), field("VmRSS:"))
+}
+
+/// GEO-2c-2a's cost in an elevation: the facade of `GEO_PANELS` panels (10,000 unless it says) seen from the north as
+/// `elevation_paint_bench` sees it, drawn as the desktop draws it (its picture and the drawing over it, of the work the desktop
+/// keeps for the model): zoomed to fit, first and again; zoomed in on a panel or two at 1.5 px a mm, first, again, panned half a
+/// screen, zoomed within the band and into the next. Each with what it built and the process's peak memory. `cargo test
+/// --release -p bimcraft-core section_fineness_bench -- --ignored --nocapture`.
+#[test]
+#[ignore]
+fn section_fineness_bench() {
+    let n: usize = std::env::var("GEO_PANELS").ok().and_then(|v| v.parse().ok()).unwrap_or(10_000);
+    let cg = crate::component_geometry::builds;
+    render::without_twins(|| {
+        let (mut s, side) = facade(n);
+        eprintln!("GEO-2c-2a {n} panels made: {}", memory());
+        let width = side as f64 * 1500.0;
+        let id = s
+            .execute("section", &json!({"start": [-1000, -1000], "end": [width + 1000.0, -1000], "depth": 2000}))
+            .unwrap_or_else(|e| panic!("{e}"))["id"]
+            .as_u64()
+            .unwrap_or_else(|| panic!("a section"));
+        let t = std::time::Instant::now();
+        let work = render::SectionWork::new_deferred(&s.model);
+        eprintln!("GEO-2c-2a elevation, the model's work: {:.1} ms, {}", t.elapsed().as_secs_f64() * 1000.0, memory());
+        let fit = render::section_fit_with(&s.model, &work, id, 2000, 800);
+        let time = |what: &str, v: View| {
+            let (before, t) = (cg(), std::time::Instant::now());
+            let (picture, d) = render::section_picture_and_over_with(&s.model, &work, id, v, v, &[]);
+            eprintln!(
+                "GEO-2c-2a elevation, {what} ({:.3} px/mm): {:.1} ms, {} built, {} primitives{}, {}",
+                v.scale,
+                t.elapsed().as_secs_f64() * 1000.0,
+                cg() - before,
+                d.prims.len(),
+                if picture.is_some() { "" } else { " (no picture)" },
+                memory()
+            );
+        };
+        time("fitted, first", fit);
+        time("fitted, again", fit);
+        // A panel or two in the middle of the front row, its knob's chords finer than the default's from 1 px a mm.
+        let cx = 1000.0 + (side / 2) as f64 * 1500.0 + 600.0;
+        let near = |scale: f64, cx: f64| View { angle: 0.0, scale, cx, cy: 250.0, width: 2000, height: 800 };
+        time("zoomed in, first", near(1.5, cx));
+        time("zoomed in, again", near(1.5, cx));
+        time("zoomed in, panned half a screen", near(1.5, cx + 1000.0 / 1.5));
+        time("zoomed in within the band", near(1.9, cx));
+        time("zoomed into the next band", near(3.0, cx));
+        time("zoomed into the next band, again", near(3.0, cx));
+        let (bytes, _) = crate::component_geometry::kept_bytes();
+        eprintln!(
+            "GEO-2c-2a elevation: kept {:.1} MB at the default, {:.1} MB finer; {}",
+            bytes[0] as f64 / 1e6,
+            bytes[1] as f64 / 1e6,
+            memory()
+        );
+    });
+}
+
 /// FE-16c-2: facade `s`'s panels, every `every`th, painted on their top (the end of their first form) a material whose surface
 /// is a model pattern of tiles 200 mm square, as one command paints them.
 fn painted_facade(s: &mut Session, every: usize) {
