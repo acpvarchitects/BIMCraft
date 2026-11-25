@@ -455,7 +455,9 @@ fn a_dragged_instance_parameter_leaves_only_the_keys_its_components_have() {
 }
 
 /// ec's review of #90: two threads asking for the index of one model at once (two plans on a sheet drawn side by side): it is
-/// made once, the second waiting for the first's, not made again beside it.
+/// made once, the second waiting for the first's, not made again beside it. Tests keep the store on each thread, so this
+/// holds an `IndexSlot` itself, as `index_of` holds the one kept with a generation; that `index_of` takes it from the store
+/// and doesn't take the index out of it again is read, not tested here (cp's review of #97).
 #[test]
 fn two_threads_asking_for_the_index_at_once_make_it_once() {
     use std::sync::{Arc, Barrier};
