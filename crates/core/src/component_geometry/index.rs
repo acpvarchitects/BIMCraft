@@ -395,6 +395,12 @@ impl Index {
         out
     }
 
+    /// How many local shapes it holds.
+    #[cfg(test)]
+    pub(crate) fn locals_len(&self) -> usize {
+        self.locals.len()
+    }
+
     /// Whether it is of `m`'s elements as they are, every entry found as `m` would find it now (a test's check).
     #[cfg(test)]
     pub(crate) fn same_as_made(&self, m: &Model) -> bool {
