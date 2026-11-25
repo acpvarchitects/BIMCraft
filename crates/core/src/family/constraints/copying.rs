@@ -153,6 +153,7 @@ impl Family {
             c.id = 0;
             c.guid = out.renew(f.guid);
             c.pinned = false;
+            c.array = None;
             c.host = out.host(f.host);
             for l in c.all_lines_mut() {
                 l.id = 0;
@@ -172,6 +173,7 @@ impl Family {
             let Some(n) = self.nested_instances.get(i) else { continue };
             let host = out.host(n.host);
             out.nested.push(NestedInstance {
+                array: None,
                 id: 0,
                 pinned: false,
                 guid: if n.guid.is_nil() { n.guid } else { Guid::new() },

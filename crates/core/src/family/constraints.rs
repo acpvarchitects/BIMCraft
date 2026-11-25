@@ -2354,6 +2354,13 @@ impl Family {
     }
 
     pub(super) fn flexed_with(&self, values: &BTreeMap<String, Val>, meter: &mut Meter) -> Result<Cow<'_, Family>, Unsat> {
+        if !self.arrays.is_empty() {
+            let mut rebuilt = self.rebuild_arrays(values).map_err(Unsat::from)?;
+            rebuilt.arrays.clear();
+            let mut flexed = rebuilt.flexed_with(values, meter)?.into_owned();
+            flexed.arrays = self.arrays.clone();
+            return Ok(Cow::Owned(flexed));
+        }
         if !self.constrained() {
             return Ok(Cow::Borrowed(self));
         }

@@ -51,6 +51,7 @@ const STEPS: usize = 100;
 /// What a step of the document's history holds: what is typed (even when it doesn't build yet) and the adaptive definition.
 #[derive(Clone, PartialEq)]
 pub(super) struct Draft {
+    arrays: Vec<bimcraft_core::family::arrays::FamilyArray>,
     name: String,
     category: Category,
     operation: Option<Operation>,
@@ -77,6 +78,7 @@ pub(super) struct Draft {
 impl Draft {
     fn of(ed: &FamilyEditor) -> Draft {
         Draft {
+            arrays: ed.arrays.clone(),
             name: ed.name.clone(),
             category: ed.category,
             operation: ed.operation,
@@ -97,6 +99,7 @@ impl Draft {
     }
 
     fn restore(self, ed: &mut FamilyEditor) {
+        ed.arrays = self.arrays;
         // The forms as they stand before the step, each by the tag it keeps while the document is open: what Select Previous
         // would bring back follows its forms to where the step puts them (FE-20).
         let tags: Vec<u64> = ed.forms.iter().map(|f| f.tag).collect();
@@ -164,11 +167,23 @@ impl FamilyEditor {
             adaptive_view::delete(d, &mut self.modeller);
             return Ok(());
         }
-        self.delete_picked()
+        if self.array_options.seed.is_some() {
+            return Err(t("Finish editing or ungroup the array before deleting its seed.").into());
+        }
+        self.delete_picked()?;
+        for array in &mut self.arrays {
+            array
+                .members
+                .retain(|g| self.forms.iter().any(|f| f.original.guid == *g) || self.nested_instances.iter().any(|n| n.guid == *g));
+        }
+        self.arrays.retain(|a| !a.members.is_empty());
+        Ok(())
     }
 
     /// The Select panel's Modify (MD): every tool put down and the selection let go, all of it (FE-1).
     pub(crate) fn modify_tool(&mut self) {
+        self.array_options.active = false;
+        self.array_options.seed = None;
         self.modeller.tool = Draw::Modify;
         self.modeller.picking_plane = false;
         self.views.drawing = None;
@@ -233,6 +248,9 @@ impl FamilyEditor {
         if ask.undo || ask.redo {
             self.cancel_drags();
             self.modify_fresh();
+        }
+        if !ask.undo && !ask.redo {
+            let _ = self.sync_arrays();
         }
         // What the frame took away from the draft goes from the selection too (FE-1).
         self.prune_selection();
@@ -351,6 +369,9 @@ fn dimension_prompt(kind: bimcraft_core::family::DimKind) -> &'static str {
 
 /// The contextual tab for what the family document has in hand: the tool, else what is selected, as Revit names them.
 fn context(ed: &FamilyEditor) -> Option<&'static str> {
+    if ed.array_options.active {
+        return Some(msg!("Modify | Array"));
+    }
     let m = &ed.modeller;
     match m.tool {
         Draw::Point => return Some(msg!("Modify | Place Reference Point")),
@@ -458,6 +479,14 @@ impl BimApp {
     pub(crate) fn family_ribbon(&mut self, ui: &mut Ui) {
         let Some(mut ed) = self.take_family() else { return };
         // The contextual tab comes up when it appears or changes, and goes back to the tab it came from when it goes.
+        match ed.sync_arrays() {
+            Err(error) => self.status = Status { text: format!("Array: {error}"), error: true },
+            Ok(()) => {
+                if self.status.text.starts_with("Array: ") {
+                    self.status = Status::default();
+                }
+            }
+        }
         let now = context(&ed);
         let seen = UiId::new("family-context");
         let before = ui.ctx().data(|d| d.get_temp::<Option<&'static str>>(seen)).flatten();
@@ -726,6 +755,11 @@ impl BimApp {
                         later_small(ui, Icon::Align, "Align");
                     }
                     if !adaptive {
+                        if ui.add_enabled(ed.array_allowed(), egui::Button::new(t(msg!("Array")))).clicked()
+                            && let Err(e) = ed.array_tool()
+                        {
+                            self.status = Status { text: e, error: true };
+                        }
                         // FE-8: Modify's tools on what is selected in a plan or an elevation; the sketch's own greyed, saying why.
                         let tools = super::modify::VIEW_TOOLS;
                         if let Some(tool) = super::modify::tool_buttons(ui, ed, &tools[..3]) {
@@ -1008,6 +1042,8 @@ impl BimApp {
     /// family that isn't adaptive, the family and its forms and symbols.
     pub(crate) fn family_properties(&mut self, ui: &mut Ui) {
         let Some(mut ed) = self.take_family() else { return };
+        ed.array_selection();
+        ed.array_properties(ui);
         // A form being sketched: what it will be.
         if ed.sketching() {
             self.form_sketch_properties(ui, &mut ed);
@@ -1477,7 +1513,11 @@ impl BimApp {
         let planes = ed.adaptive.as_ref().map(|d| work_planes(d, ed.plane_set())).unwrap_or_default();
         ui.horizontal(|ui| {
             ui.set_min_height(24.0);
-            ui.label(t(name));
+            ui.label(if ed.array_options.active { t("Array") } else { t(name) });
+            if ed.array_options.active {
+                super::arrays::options_bar(ui, ed);
+                return;
+            }
             // A Modify tool's options (FE-8).
             let views = &mut ed.views;
             if let Some(m) = views.modify.as_mut() {

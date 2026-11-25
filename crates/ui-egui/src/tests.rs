@@ -7280,6 +7280,7 @@ mod family_align_forms;
 mod family_align_turn;
 mod family_already_exists;
 mod family_angles;
+mod family_arrays;
 mod family_blend;
 mod family_box_select;
 mod family_category_dialog;

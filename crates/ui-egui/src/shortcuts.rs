@@ -22,6 +22,7 @@ const MAX_FILE: u64 = 1 << 20;
 
 /// All available actions that can be bound to shortcuts in BIMCraft.
 pub const ACTIONS: &[&str] = &[
+    "Array",
     "Modify",
     "3D View",
     "Wall",

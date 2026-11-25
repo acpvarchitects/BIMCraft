@@ -1265,7 +1265,7 @@ other_files(
          integer|angle|area|volume|yesno|material|text|url|familytype, instance?, value?, formula?, group?: constraints|\
          construction|dimensions|graphics|identity-data|materials-and-finishes|text|visibility|electrical|mechanical|plumbing|\
          structural|data|other, shared?: guid, reporting?, of?: category}], parameter?: {name, rename?, …a parameter's \
-         fields}, delete_parameter?: [name, …], types?: {type: {parameter: value}}, forms?: [{host?: {plane: guid} | {line: guid, face: \
+         fields}, delete_parameter?: [name, …], types?: {type: {parameter: value}}, arrays?: [{guid, members: [seed guid], pattern: {number, move_to?: second|last, layout}, constrain?}], forms?: [{array?: [array guid, slot], host?: {plane: guid} | {line: guid, face: \
          horizontal|vertical|start|end}, plane?: xy|xz|yz, sketch?: [{start: [a, b], end: [a, b], turn?, axis?} | {centre: [a, b], radius}, …], \
          profile?: [[a, b], …], circle?: {centre: [a, b], radius}, axis?: [[a, b], [a, b]], from?, to, material?, visible?, visibility?, \
          void?, top?: [sketch lines] (a Blend: `sketch` its base at `from`, `top` its top at `to`, each one closed loop in the \
@@ -12889,6 +12889,7 @@ fn family(s: &mut Session, p: &Value) -> R {
             "dimensions",
             "nested",
             "nested_instances",
+            "arrays",
         ]
         .into_iter()
         .filter_map(|k| fields.remove(k).map(|v| (k.to_string(), v)))
@@ -13021,6 +13022,7 @@ fn family(s: &mut Session, p: &Value) -> R {
         "delete_dimension",
         "nested",
         "nested_instances",
+        "arrays",
         "nest",
         "nested_instance",
         "delete_nested",
@@ -13170,6 +13172,9 @@ fn family(s: &mut Session, p: &Value) -> R {
     }
     // The forms as they were: a sketch line a form no longer has takes its dimensions with it (F7b).
     let forms_were = f.forms.clone();
+    if let Some(v) = p.get("arrays").filter(|v| !v.is_null()) {
+        f.arrays = serde_json::from_value(v.clone()).map_err(|e| field("arrays", e))?;
+    }
     if let Some(v) = p.get("forms").filter(|v| !v.is_null()) {
         let mut forms: Vec<crate::family::Form> = serde_json::from_value(v.clone()).map_err(|e| field("forms", e))?;
         crate::library::keep_parts(&mut f.forms, &mut forms);

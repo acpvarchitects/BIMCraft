@@ -18,6 +18,7 @@ use crate::geom::P2;
 use crate::model::{MAX_COORD, MAX_TEXT};
 use crate::view3d::{P3, add, cross, mul};
 
+pub mod arrays;
 mod bounds;
 pub mod clipboard;
 pub mod constraints;
@@ -780,6 +781,9 @@ pub struct ConnectorValues {
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields, try_from = "FormIn")]
 pub struct Form {
+    /// The associated array and its real member slot (zero is the seed).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub array: Option<(crate::ids::Guid, u32)>,
     /// Its id and GUID, as an element's: given when it's made, kept while it stays where it is in its list.
     #[serde(default, skip_serializing_if = "crate::ids::unset")]
     pub id: crate::ids::Id,
@@ -875,6 +879,8 @@ fn no_mesh(mesh: &Arc<Vec<[P3; 3]>>) -> bool {
 #[serde(deny_unknown_fields)]
 struct FormIn {
     #[serde(default)]
+    array: Option<(crate::ids::Guid, u32)>,
+    #[serde(default)]
     id: crate::ids::Id,
     #[serde(default)]
     guid: crate::ids::Guid,
@@ -948,6 +954,7 @@ impl TryFrom<FormIn> for Form {
             lines.push(sketch::axis_line(a));
         }
         Ok(Form {
+            array: f.array,
             id: f.id,
             guid: f.guid,
             pinned: f.pinned,
@@ -973,6 +980,8 @@ impl TryFrom<FormIn> for Form {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Family {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub arrays: Vec<arrays::FamilyArray>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub adaptive: Option<crate::adaptive::Definition>,
     #[serde(default)]
@@ -1048,6 +1057,7 @@ pub struct Family {
 impl Default for Family {
     fn default() -> Family {
         Family {
+            arrays: Vec::new(),
             adaptive: None,
             category: Category::default(),
             kind: None,
@@ -2058,6 +2068,12 @@ impl Family {
     /// [`Family::check`], within a tree of nested families: `chain` the names of the families it is nested in, `total` the
     /// nested definitions counted so far ([`nested`]).
     pub(crate) fn check_in(&self, has_material: &dyn Fn(&str) -> bool, chain: &mut Vec<String>, total: &mut usize) -> Result<(), String> {
+        for tag in self.forms.iter().filter_map(|f| f.array).chain(self.nested_instances.iter().filter_map(|n| n.array)) {
+            if !self.arrays.iter().any(|a| a.guid == tag.0) || tag.1 as usize >= arrays::MAX_ARRAY_MEMBERS {
+                return Err("An array member refers to a missing array or invalid slot".into());
+            }
+        }
+
         if let Some(definition) = &self.adaptive {
             definition.check()?;
         }
@@ -2514,6 +2530,11 @@ impl Family {
         detail: Option<crate::graphics::Detail>,
         meter: &mut nested::Meter,
     ) -> Result<Vec<Tagged>, String> {
+        if !self.arrays.is_empty() {
+            let mut rebuilt = self.flexed(values).map_err(|e| e.to_string())?.into_owned();
+            rebuilt.arrays.clear();
+            return rebuilt.marks_metered(values, detail, meter);
+        }
         let mut read = HashMap::new();
         let mut out = Vec::new();
         for i in 0..self.symbols.len() {
@@ -4037,3 +4058,7 @@ mod tests {
         assert!(e.contains("balanced"), "{e}");
     }
 }
+
+#[cfg(test)]
+#[path = "family/array_tests.rs"]
+mod array_tests;

@@ -44,6 +44,8 @@ pub struct NestedFamily {
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct NestedInstance {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub array: Option<(Guid, u32)>,
     #[serde(default, skip_serializing_if = "crate::ids::unset")]
     pub id: Id,
     #[serde(default, skip_serializing_if = "Guid::is_nil")]

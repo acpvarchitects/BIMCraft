@@ -28,6 +28,8 @@ pub const MAX_FACTOR: f64 = 1000.0;
 /// A rotation, a mirror or a scale of the family's space.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Transform {
+    /// A rigid translation in the family axes.
+    Translate { delta: P3 },
     /// About the line through `centre` along `axis`, `degrees` right-handed about it.
     Rotate { centre: P3, axis: P3, degrees: f64 },
     /// Across the plane through `point` square to `normal`.
@@ -95,6 +97,7 @@ impl Transform {
     /// What it does to a point of the family.
     pub fn point(&self, p: P3) -> P3 {
         match *self {
+            Transform::Translate { delta } => std::array::from_fn(|i| p[i] + delta[i]),
             Transform::Rotate { centre, .. } => {
                 let v = self.vector(sub(p, centre));
                 std::array::from_fn(|k| centre[k] + v[k])
@@ -113,6 +116,7 @@ impl Transform {
     /// What it does to a direction (its linear part).
     pub fn vector(&self, v: P3) -> P3 {
         match *self {
+            Transform::Translate { .. } => v,
             Transform::Rotate { axis, degrees, .. } => {
                 let Some(k) = unit3(axis) else { return v };
                 // Rodrigues: v cos + (k × v) sin + k (k·v)(1 − cos).
@@ -142,6 +146,7 @@ impl Transform {
     /// What it does, for a refusal: "rotated", "mirrored", "scaled".
     pub fn done(&self) -> &'static str {
         match self {
+            Transform::Translate { .. } => "moved",
             Transform::Rotate { .. } => "rotated",
             Transform::Mirror { .. } => "mirrored",
             Transform::Scale { .. } => "scaled",
@@ -152,6 +157,11 @@ impl Transform {
     /// way.
     fn check(&self) -> Result<(), String> {
         match *self {
+            Transform::Translate { delta } => {
+                if !finite(delta) {
+                    return Err("A translation exceeds the coordinate budget".into());
+                }
+            }
             Transform::Rotate { centre, axis, degrees } => {
                 if !finite(centre) || unit3(axis).is_none() || !degrees.is_finite() || degrees.abs() > 3600.0 {
                     return Err(format!("a rotation of {degrees}° about {centre:?} along {axis:?} can't be made"));
@@ -297,8 +307,9 @@ impl Family {
             let host = self.forms[i].host;
             let was = self.frame(&host).map_err(|e| TransformRefused::Unsat(e.into()))?;
             let now = out.frame(&host).map_err(|e| TransformRefused::Unsat(e.into()))?;
+            let along = if let Transform::Translate { delta } = t { dot(*delta, now.z) } else { 0. };
             let onto = |q: P2| -> Result<P2, TransformRefused> {
-                let (p, off) = now.local(t.point(was.point(q, 0.0)));
+                let (p, off) = now.local(t.point(was.point(q, -along)));
                 if off.abs() > ON * (1.0 + q.0.abs() + q.1.abs()) {
                     return Err(TransformRefused::Stays(Stays::Hosted(said)));
                 }
@@ -343,6 +354,12 @@ impl Family {
             }
             let a = worth(&drawn.from, values).map_err(|e| TransformRefused::Unsat(e.into()))?;
             let b = worth(&drawn.to, values).map_err(|e| TransformRefused::Unsat(e.into()))?;
+            if along.abs() > ON {
+                if !matches!(drawn.kind(), FormKind::Extrusion | FormKind::Blend) {
+                    return stays(Stays::Hosted(said));
+                }
+                ok &= put(&mut form.from, a, a + along) && put(&mut form.to, b, b + along);
+            }
             match drawn.kind() {
                 // A revolve mirrored turns the other way round its axis: from −End to −Start. A turn keeps its angles,
                 // whichever way it leaves the plane.

@@ -474,6 +474,7 @@ fn refused_said(r: &TransformRefused, t: &Transform, names: &Names) -> String {
     let said = |n: &Named| names.said(*n);
     let done = match t {
         Transform::Rotate { .. } => crate::lang::t(msg!("rotated")),
+        Transform::Translate { .. } => crate::lang::t(msg!("moved")),
         Transform::Mirror { .. } => crate::lang::t(msg!("mirrored")),
         Transform::Scale { .. } => crate::lang::t(msg!("scaled")),
     };
@@ -560,6 +561,7 @@ impl FamilyEditor {
 
     /// `tool` picked from the ribbon or by its key: in hand, the other tools put down; or why it can't be.
     pub(crate) fn modify_tool_on(&mut self, tool: Tool) -> Result<(), String> {
+        self.array_options.active = false;
         if let Some(why) = self.modify_blocked(&tool) {
             return Err(why);
         }
@@ -605,6 +607,11 @@ impl FamilyEditor {
 
     /// Escape with a Modify tool in hand outside sketch mode: the points clicked let go, then the tool. Whether there was one.
     pub(crate) fn modify_escape(&mut self) -> bool {
+        if self.array_options.active {
+            self.array_options.active = false;
+            self.views.modify = None;
+            return true;
+        }
         let Some(m) = self.views.modify.as_mut() else { return false };
         match m.tool.back() {
             Some(back) => m.tool = back,
@@ -627,6 +634,9 @@ impl FamilyEditor {
         copy: bool,
         (which, view, seen): (Which, bimcraft_core::render::View, u64),
     ) -> Result<(), String> {
+        if self.array_options.active {
+            return self.apply_array_layout(shown, bimcraft_core::family::arrays::ArrayLayout::Linear { displacement: d });
+        }
         let drag = self.move_drag((P2(0.0, 0.0), view, which, seen), shown, copy, None);
         self.views.moving = Some(drag);
         let done = self.drag_move_to(d, copy);
@@ -636,6 +646,9 @@ impl FamilyEditor {
 
     /// `items` rotated, mirrored or scaled by `t` (copies of them, with `copy`): one step; else everything put back and why.
     fn transform_items(&mut self, items: &[Picked], t: Transform, copy: bool) -> Result<(), Refused> {
+        if self.array_options.active {
+            return self.array_transform(items, t).map_err(Refused::Said);
+        }
         let kept = Kept::of(self);
         let selected = self.selection.items().to_vec();
         let broken = self.broken_types();
@@ -942,6 +955,7 @@ pub(super) fn paint_modify(
 fn t_label(t: &Transform) -> &'static str {
     crate::lang::t(match t {
         Transform::Rotate { .. } => "Rotate",
+        Transform::Translate { .. } => msg!("Move"),
         Transform::Mirror { .. } => msg!("Mirror"),
         Transform::Scale { .. } => msg!("Scale"),
     })

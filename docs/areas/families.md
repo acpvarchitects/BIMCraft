@@ -1684,3 +1684,14 @@ In `crates/ui-egui`, the Family Editor:
 - `editor/selection.rs`: the selection's commands (FE-20): Filter, Select Previous, Select by ID, IDs of Selection, Select All
   Instances, Select Elements by Face and Drag Elements on Selection.
 - `editor/pin.rs`: Pin and Unpin, and what a pin refuses (FE-17). `editor/measure.rs`: Measure and Create Similar (FE-17).
+
+
+## Arrays in a family (T17)
+
+Array in Modify takes selected forms or nested instances in a plan or elevation. It is an action in Keyboard Shortcuts with no default key while the shared key registry is being reviewed. Group and Associate, Number, Move To 2nd/Last and Constrain are on the Options Bar. Linear arrays use two clicks; Constrain keeps their displacement square to the view axes. Radial arrays pick a centre and two rays; Place Centre starts that choice again. The rotation axis is the view's normal. A nested instance's radial array must turn about its host normal.
+
+Move To 2nd keeps the gap fixed as Number changes. Move To Last keeps the total span fixed, dividing it into Number minus one gaps. A full radial circle divides by Number so the last member does not overlap the seed. Number is from 2 to 1000, further limited by the family's form, nested-instance and dimension budgets. With association on, Label can name an Integer family parameter; its value or formula drives the count for each type. The Array section of Properties changes Number, enters/leaves Edit Array Seed and Ungroup Array. Editing the seed updates trailing slots. Exclude/restore individual slots (EX) is a follow-up, not yet exposed.
+
+An associated `FamilyArray` holds native id/guid, seed member GUIDs, a pattern and the Constrain authoring option. Real forms and nested instances carry an optional `(array GUID, slot)` tag; slot zero is authored. `Family::rebuild_arrays` replaces trailing slots from the seed through the existing copies and rigid transform APIs, with stable generated GUIDs and preserved assigned ids. Flexing and the editor's refresh use that one rebuild, so parameter/type and seed edits cannot leave a stale second recipe. Generated coordinates are resolved for the evaluated type; the authored seed keeps its expressions. Real members remain ordinary forms/instances for geometry, picking, visibility, export and loading. Array metadata and tags have serde defaults and stay under FORMAT 18.
+
+Group and Associate off leaves independent native copies with no array record. These keep the ordinary Copy/Transform formula and constraint refusal rules. Associated radial arrays have the same host-plane restrictions as the shared rigid transform. Each placement is one step of the family's document history; a refused placement changes nothing.

@@ -2,6 +2,7 @@
 //! preview as they're typed, then made the project's, saved to a file or kept in the Favorites.
 //! Every change to the project is a `family` command, so it's checked, and undone, like any other.
 
+mod arrays;
 mod association;
 pub(crate) mod clipboard;
 pub(crate) mod connector_marks;
@@ -491,6 +492,8 @@ impl FamilyEditor {
 
 /// What the editor shows of a family: its tabs' contents, as typed.
 pub(crate) struct FamilyEditor {
+    pub(crate) array_options: arrays::Options,
+    pub(crate) arrays: Vec<bimcraft_core::family::arrays::FamilyArray>,
     /// The name the project has it under, when it has it.
     original: Option<String>,
     name: String,
@@ -631,6 +634,8 @@ impl FamilyEditor {
             .map(|(n, set)| (n.clone(), own.iter().filter_map(|p| Some((p.name.clone(), value_text(p.kind, set.get(&p.name)?)))).collect()))
             .collect();
         FamilyEditor {
+            array_options: arrays::Options::default(),
+            arrays: f.arrays.clone(),
             original: Some(name.to_string()),
             name: name.to_string(),
             category: f.category,
@@ -804,6 +809,7 @@ impl FamilyEditor {
         let symbols = self.symbols.iter().map(SymbolText::symbol).collect::<Result<_, _>>()?;
         let operation = self.operation.filter(|_| self.category.hosted());
         let mut family = Family {
+            arrays: self.arrays.clone(),
             category: self.category,
             // A kind the category it now is has no row for goes with the change of category.
             kind: self.kind.clone().filter(|k| self.category.kinds().iter().any(|(n, _)| n == k)),

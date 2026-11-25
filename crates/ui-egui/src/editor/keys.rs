@@ -80,6 +80,7 @@ pub(crate) const FAMILY_SHORTCUTS: &[(&str, &str)] = &[
 /// tab. FE-8's Trim/Extend Single and Multiple Elements, FE-14's clipboard (Ctrl+C, Ctrl+X and Ctrl+V are fixed; Paste
 /// Aligned's choices have no key), and the status bar's Drag Elements on Selection.
 pub(crate) const FAMILY_KEYLESS: &[&str] = &[
+    "Array",
     "Trim/Extend Single Element",
     "Trim/Extend Multiple Elements",
     "Copy to Clipboard",
@@ -201,6 +202,7 @@ impl BimApp {
             said = Some(ed.modify_tool_on(tool));
         }
         match action {
+            "Array" => said = Some(ed.array_tool()),
             _ if modify.is_some() => {}
             // While a form is sketched, the sketch's Modify: its Draw panel's shape put down, and Align.
             "Modify" => match ed.sketch.as_mut() {

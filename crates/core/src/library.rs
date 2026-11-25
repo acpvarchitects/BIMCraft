@@ -931,6 +931,7 @@ impl Model {
             add("layer", "ceiling type", n, x.layers.iter().map(|l| (l.id, l.guid)).collect());
         }
         for (n, f) in &self.families {
+            add("family array", "family", n, f.arrays.iter().map(|x| (x.id, x.guid)).collect());
             add("form", "family", n, f.forms.iter().map(|x| (x.id, x.guid)).collect());
             add("sketch line", "family", n, f.forms.iter().flat_map(|x| x.all_lines().map(|l| (l.id, l.guid))).collect());
             add("symbol", "family", n, f.symbols.iter().map(|x| (x.id, x.guid)).collect());
@@ -1070,6 +1071,8 @@ impl Model {
         }
         for f in self.families.values_mut() {
             let forms_were: Vec<Guid> = f.forms.iter().map(|x| x.guid).collect();
+            let arrays_were: Vec<Guid> = f.arrays.iter().map(|x| x.guid).collect();
+            let nested_were: Vec<Guid> = f.nested_instances.iter().map(|x| x.guid).collect();
             let lines_were: Vec<Guid> = f.forms.iter().flat_map(|x| x.all_lines().map(|l| l.guid)).collect();
             f.forms.iter_mut().for_each(|x| give(&mut x.id, &mut x.guid));
             f.forms.iter_mut().flat_map(|x| x.all_lines_mut()).for_each(|l| give(&mut l.id, &mut l.guid));
@@ -1082,9 +1085,27 @@ impl Model {
             f.dimensions.iter_mut().for_each(|x| give(&mut x.id, &mut x.guid));
             f.nested.iter_mut().for_each(|x| give(&mut x.id, &mut x.guid));
             f.nested_instances.iter_mut().for_each(|x| give(&mut x.id, &mut x.guid));
+            f.arrays.iter_mut().for_each(|x| give(&mut x.id, &mut x.guid));
             let moved = |old: &[Guid], new: Vec<Guid>| -> Vec<(Guid, Guid)> {
                 old.iter().zip(new).filter(|(a, b)| !a.is_nil() && **a != *b).map(|(a, b)| (*a, b)).collect()
             };
+            let array_moves = moved(&arrays_were, f.arrays.iter().map(|x| x.guid).collect());
+            let mut member_moves = moved(&forms_were, f.forms.iter().map(|x| x.guid).collect());
+            member_moves.extend(moved(&nested_were, f.nested_instances.iter().map(|x| x.guid).collect()));
+            for array in &mut f.arrays {
+                for member in &mut array.members {
+                    if let Some((_, new)) = member_moves.iter().find(|(old, _)| old == member) {
+                        *member = *new;
+                    }
+                }
+            }
+            for tag in
+                f.forms.iter_mut().filter_map(|x| x.array.as_mut()).chain(f.nested_instances.iter_mut().filter_map(|x| x.array.as_mut()))
+            {
+                if let Some((_, new)) = array_moves.iter().find(|(old, _)| *old == tag.0) {
+                    tag.0 = *new;
+                }
+            }
             let planes = moved(&was.0, f.planes.iter().map(|x| x.guid).collect());
             let lines = moved(&was.1, f.lines.iter().map(|x| x.guid).collect());
             f.rehost(&planes, &lines);
@@ -1297,7 +1318,14 @@ impl Model {
             (l.id, l.guid) = (0, Guid::default());
         }
         for f in self.families.values_mut() {
-            f.forms.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));
+            f.forms.iter_mut().for_each(|x| {
+                if x.array.is_some() {
+                    x.id = 0;
+                } else {
+                    (x.id, x.guid) = (0, Guid::default());
+                }
+            });
+            f.arrays.iter_mut().for_each(|x| x.id = 0);
             f.forms.iter_mut().flat_map(|x| x.all_lines_mut()).for_each(|l| (l.id, l.guid) = (0, Guid::default()));
             f.symbols.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));
             f.connectors.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));
@@ -1306,7 +1334,13 @@ impl Model {
             f.lines.iter_mut().for_each(|x| x.id = 0);
             f.dimensions.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));
             f.nested.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));
-            f.nested_instances.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));
+            f.nested_instances.iter_mut().for_each(|x| {
+                if x.array.is_some() {
+                    x.id = 0;
+                } else {
+                    (x.id, x.guid) = (0, Guid::default());
+                }
+            });
         }
         for g in self.detail_groups.values_mut() {
             g.members.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));
