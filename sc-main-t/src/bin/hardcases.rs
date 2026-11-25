@@ -1,5 +1,9 @@
 //! Hard cases for solidcore from its git main (through solidcore-ops, its application API):
 //! one case per run, named by argv[1]; one JSON line out. Cases and answers: harness/hardcases.py.
+
+#[cfg(feature = "mimalloc")]
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 use solidcore_ops::blend::{blend, Blend, Corners};
 use solidcore_ops::body::{make_box, make_cylinder, Body};
 use solidcore_ops::boolean::{boolean, BooleanOp};

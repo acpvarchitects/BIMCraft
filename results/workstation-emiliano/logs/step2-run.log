@@ -1,0 +1,174 @@
+== before 2026-11-25T12:01:46+01:00
+cpu load 35 %, free RAM 22.2 GB, battery 100 % status 2
+  chrome x60 9.01 GB
+  Memory Compression x1 4.81 GB
+  ServiceShell x1 4.32 GB
+  msedgewebview2 x45 3.16 GB
+  claude x14 2.83 GB
+  svchost x105 2.15 GB
+  Slack x7 1.31 GB
+  ChatGPT x12 0.83 GB
+[arris] hard__1a_loft_rect_to_apex: ok 0.09s cpu=0.02s rss=9MB
+[arris] hard__1b_loft_side_shrinks_to_zero: ok 0.10s cpu=0.08s rss=9MB
+[arris] hard__1c_revolve_profile_touching_axis: ok 0.11s cpu=0.02s rss=28MB
+[arris] hard__1d_revolve_profile_crossing_axis: ok 0.09s cpu=0.02s rss=9MB
+[arris] hard__1e_revolve_cone_apex_on_axis: ok 0.10s cpu=0.03s rss=24MB
+[arris] hard__1f_cone_cut_through_its_apex: ok 0.13s cpu=0.05s rss=27MB
+[arris] hard__1g_cone_apex_inside_a_box_fuse: ok 0.14s cpu=0.06s rss=32MB
+[arris] hard__2a_cylinder_tangent_to_a_face_fuse: ok 0.18s cpu=0.11s rss=42MB
+[arris] hard__2b_cylinder_tangent_inside_a_face_cut: ok 0.15s cpu=0.08s rss=47MB
+[arris] hard__2c_equal_cylinders_crossing_at_90deg_fuse: ok 0.63s cpu=0.53s rss=97MB
+[arris] hard__2d_coplanar_faces_partly_overlapping_fuse: ok 0.10s cpu=0.03s rss=11MB
+[arris] hard__2e_boxes_stacked_sharing_a_face_fuse: ok 0.09s cpu=0.02s rss=11MB
+[arris] hard__2f_void_face_on_a_body_face_cut: ok 0.09s cpu=0.02s rss=11MB
+[arris] hard__3a_cup_wall_1mm: ok 0.10s cpu=0.02s rss=11MB
+[arris] hard__3b_cup_wall_0.1mm: ok 0.10s cpu=0.03s rss=11MB
+[arris] hard__3c_cup_wall_0.01mm: ok 0.09s cpu=0.02s rss=11MB
+[arris] hard__3d_sliver_0.01mm_from_a_near-miss_cut: ok 0.10s cpu=0.02s rss=11MB
+[arris] hard__3e_plane_cut_at_0.1deg: ok 0.09s cpu=0.03s rss=11MB
+[arris] hard__3f_wedge_of_0.1deg: ok 0.09s cpu=0.02s rss=11MB
+[arris] hard__3g_box_minus_a_thin_NURBS_panel: ok 1.84s cpu=1.73s rss=23MB
+[arris] hard__4a_cylinder_minus_a_cylinder_at_45deg: ok 1.27s cpu=1.16s rss=236MB
+[arris] hard__4b_ruled_loft_minus_a_cylinder: ok 1.51s cpu=1.41s rss=63MB
+[arris] hard__4c_two_lofts_fused: ok 0.63s cpu=0.58s rss=44MB
+[arris] hard__4d_revolved_ring_cut_by_an_inclined_plane: ok 0.35s cpu=0.27s rss=70MB
+[arris] hard__4e_cylinder_cut_by_an_inclined_plane: ok 0.18s cpu=0.09s rss=47MB
+[arris] hard__5a_fillet_plane-plane: ok 0.10s cpu=0.03s rss=14MB
+[arris] hard__5b_fillet_plane-cylinder: ok 0.17s cpu=0.06s rss=43MB
+[arris] hard__5c_fillet_NURBS-plane: ok 25.81s cpu=25.28s rss=121MB
+[arris] hard__5d_fillet_NURBS-NURBS: TIMEOUT>90s 90.08s cpu=88.5s rss=238MB
+[arris] hard__5e_shell_a_cylinder_open_at_the_top: ok 0.16s cpu=0.08s rss=58MB
+[arris] hard__5f_offset_a_cylindrical_face: ok 0.14s cpu=0.06s rss=45MB
+[arris] hard__6a_box_with_a_NaN_corner: ok 0.09s cpu=0.02s rss=9MB
+[arris] hard__6b_box_of_zero_thickness: ok 0.09s cpu=0.03s rss=9MB
+[arris] hard__6c_box_with_inverted_corners: ok 0.09s cpu=0.02s rss=9MB
+[arris] hard__6d_cylinder_of_radius_0: ok 0.09s cpu=0.02s rss=9MB
+[arris] hard__6e_cylinder_of_radius_NaN: ok 0.09s cpu=0.03s rss=9MB
+[arris] hard__6f_cylinder_of_negative_radius: ok 0.08s cpu=0.02s rss=9MB
+[arris] hard__6g_unit_box_at_1e9_from_the_origin: ok 0.10s cpu=0.03s rss=10MB
+[arris] hard__6h_box_fused_with_itself: ok 0.10s cpu=0.02s rss=11MB
+[arris] hard__6i_box_cut_by_itself: ok 0.09s cpu=0.02s rss=11MB
+[arris] hard__6j_extrude_a_NaN_profile: ok 0.09s cpu=0.02s rss=9MB
+[arris] hard__6k_extrude_by_zero: ok 0.08s cpu=0.02s rss=9MB
+[arris] hard__6l_extrude_a_self-intersecting_profile: ok 0.32s cpu=0.02s rss=9MB
+[sc-main] hard__1a_loft_rect_to_apex: ok 2.96s cpu=0.05s rss=17MB
+[sc-main] hard__1b_loft_side_shrinks_to_zero: ok 0.13s cpu=0.05s rss=9MB
+[sc-main] hard__1c_revolve_profile_touching_axis: ok 0.24s cpu=0.12s rss=21MB
+[sc-main] hard__1d_revolve_profile_crossing_axis: ok 0.45s cpu=0.33s rss=22MB
+[sc-main] hard__1e_revolve_cone_apex_on_axis: ok 0.36s cpu=0.25s rss=24MB
+[sc-main] hard__1f_cone_cut_through_its_apex: ok 0.38s cpu=0.25s rss=27MB
+[sc-main] hard__1g_cone_apex_inside_a_box_fuse: ok 0.33s cpu=0.2s rss=27MB
+[sc-main] hard__2a_cylinder_tangent_to_a_face_fuse: ok 0.38s cpu=0.28s rss=28MB
+[sc-main] hard__2b_cylinder_tangent_inside_a_face_cut: ok 0.50s cpu=0.36s rss=28MB
+[sc-main] hard__2c_equal_cylinders_crossing_at_90deg_fuse: ok 0.43s cpu=0.41s rss=44MB
+[sc-main] hard__2d_coplanar_faces_partly_overlapping_fuse: ok 0.15s cpu=0.03s rss=20MB
+[sc-main] hard__2e_boxes_stacked_sharing_a_face_fuse: ok 0.14s cpu=0.03s rss=19MB
+[sc-main] hard__2f_void_face_on_a_body_face_cut: ok 0.14s cpu=0.05s rss=19MB
+[sc-main] hard__3a_cup_wall_1mm: ok 0.41s cpu=0.33s rss=29MB
+[sc-main] hard__3b_cup_wall_0.1mm: ok 0.14s cpu=0.03s rss=19MB
+[sc-main] hard__3c_cup_wall_0.01mm: ok 0.14s cpu=0.03s rss=19MB
+[sc-main] hard__3d_sliver_0.01mm_from_a_near-miss_cut: ok 0.15s cpu=0.05s rss=19MB
+[sc-main] hard__3e_plane_cut_at_0.1deg: ok 0.15s cpu=0.06s rss=19MB
+[sc-main] hard__3f_wedge_of_0.1deg: ok 0.38s cpu=0.25s rss=38MB
+[sc-main] hard__3g_box_minus_a_thin_NURBS_panel: ok 0.40s cpu=0.3s rss=33MB
+[sc-main] hard__4a_cylinder_minus_a_cylinder_at_45deg: ok 0.38s cpu=0.44s rss=47MB
+[sc-main] hard__4b_ruled_loft_minus_a_cylinder: ok 0.31s cpu=0.38s rss=42MB
+[sc-main] hard__4c_two_lofts_fused: ok 3.14s cpu=3.41s rss=51MB
+[sc-main] hard__4d_revolved_ring_cut_by_an_inclined_plane: ok 0.38s cpu=0.28s rss=24MB
+[sc-main] hard__4e_cylinder_cut_by_an_inclined_plane: ok 0.17s cpu=0.08s rss=23MB
+[sc-main] hard__5a_fillet_plane-plane: ok 0.16s cpu=0.06s rss=19MB
+[sc-main] hard__5b_fillet_plane-cylinder: ok 0.33s cpu=0.23s rss=27MB
+[sc-main] hard__5c_fillet_NURBS-plane: ok 6.44s cpu=6.33s rss=44MB
+[sc-main] hard__5d_fillet_NURBS-NURBS: ok 0.26s cpu=0.14s rss=21MB
+[sc-main] hard__5e_shell_a_cylinder_open_at_the_top: ok 1.26s cpu=1.11s rss=34MB
+[sc-main] hard__5f_offset_a_cylindrical_face: ok 1.63s cpu=1.48s rss=29MB
+[sc-main] hard__6a_box_with_a_NaN_corner: ok 0.11s cpu=0.02s rss=9MB
+[sc-main] hard__6b_box_of_zero_thickness: ok 0.13s cpu=0.02s rss=9MB
+[sc-main] hard__6c_box_with_inverted_corners: ok 0.13s cpu=0.02s rss=9MB
+[sc-main] hard__6d_cylinder_of_radius_0: ok 0.14s cpu=0.03s rss=9MB
+[sc-main] hard__6e_cylinder_of_radius_NaN: ok 0.13s cpu=0.02s rss=9MB
+[sc-main] hard__6f_cylinder_of_negative_radius: ok 0.13s cpu=0.02s rss=9MB
+[sc-main] hard__6g_unit_box_at_1e9_from_the_origin: ok 2.19s cpu=1.98s rss=16MB
+[sc-main] hard__6h_box_fused_with_itself: ok 0.15s cpu=0.02s rss=18MB
+[sc-main] hard__6i_box_cut_by_itself: ok 0.14s cpu=0.03s rss=16MB
+[sc-main] hard__6j_extrude_a_NaN_profile: ok 0.16s cpu=0.0s rss=9MB
+[sc-main] hard__6k_extrude_by_zero: ok 0.12s cpu=0.02s rss=9MB
+[sc-main] hard__6l_extrude_a_self-intersecting_profile: ok 0.13s cpu=0.03s rss=11MB
+[cadcore] hard__2a_cylinder_tangent_to_a_face_fuse: ok 0.92s cpu=0.05s rss=15MB
+[cadcore] hard__2c_equal_cylinders_crossing_at_90deg_fuse: ok 0.13s cpu=0.06s rss=16MB
+[cadcore] hard__2d_coplanar_faces_partly_overlapping_fuse: ok 0.08s cpu=0.02s rss=10MB
+[cadcore] hard__2e_boxes_stacked_sharing_a_face_fuse: ok 0.09s cpu=0.08s rss=10MB
+[cadcore] hard__3e_plane_cut_at_0.1deg: ok 0.09s cpu=0.02s rss=10MB
+[cadcore] hard__3f_wedge_of_0.1deg: ok 0.08s cpu=0.02s rss=10MB
+[cadcore] hard__4e_cylinder_cut_by_an_inclined_plane: TIMEOUT>90s 90.07s cpu=88.28s rss=141MB
+[cadcore] hard__6a_box_with_a_NaN_corner: ok 0.09s cpu=0.0s rss=10MB
+[cadcore] hard__6b_box_of_zero_thickness: ok 0.07s cpu=0.03s rss=10MB
+[cadcore] hard__6c_box_with_inverted_corners: ok 0.08s cpu=0.0s rss=10MB
+[cadcore] hard__6d_cylinder_of_radius_0: ok 0.10s cpu=0.06s rss=9MB
+[cadcore] hard__6e_cylinder_of_radius_NaN: ok 0.10s cpu=0.02s rss=10MB
+[cadcore] hard__6f_cylinder_of_negative_radius: ok 0.09s cpu=0.02s rss=9MB
+[cadcore] hard__6g_unit_box_at_1e9_from_the_origin: ok 0.09s cpu=0.06s rss=10MB
+[cadcore] hard__6h_box_fused_with_itself: ok 0.09s cpu=0.02s rss=10MB
+== after hard cases 2026-11-25T12:05:55+01:00
+cpu load 20 %, free RAM 22.5 GB, battery 100 % status 2
+  chrome x55 8.12 GB
+  Memory Compression x1 4.74 GB
+  ServiceShell x1 4.33 GB
+  msedgewebview2 x45 3.45 GB
+  claude x14 2.79 GB
+  svchost x104 2.12 GB
+  Slack x7 1.33 GB
+  ChatGPT x12 0.84 GB
+[arris] panels__b-1000-t1: ok 52.46s cpu=51.55s rss=245MB
+[arris] panels__b-1000-t8: ok 6.41s cpu=49.3s rss=451MB
+[arris] panels__b-1000-t16: ok 3.74s cpu=56.09s rss=586MB
+[arris] panels__b-1000-t24: ok 3.41s cpu=64.19s rss=723MB
+[arris] panels__c-1000-t1: ok 25.67s cpu=25.2s rss=67MB
+[arris] panels__c-1000-t8: ok 3.47s cpu=25.31s rss=71MB
+[arris] panels__c-1000-t16: ok 1.80s cpu=25.81s rss=75MB
+[arris] panels__c-1000-t24: ok 1.67s cpu=28.86s rss=79MB
+[arris] panels__b-10000-t1: ok 506.85s cpu=498.09s rss=2138MB
+[arris] panels__b-10000-t8: ok 72.83s cpu=565.3s rss=2335MB
+[arris] panels__b-10000-t16: ok 44.90s cpu=673.55s rss=2496MB
+[arris] panels__b-10000-t24: ok 38.47s cpu=732.73s rss=2577MB
+[arris] panels__c-10000-t1: ok 298.58s cpu=293.69s rss=576MB
+[arris] panels__c-10000-t8: ok 36.81s cpu=287.27s rss=580MB
+[arris] panels__c-10000-t16: ok 20.61s cpu=312.97s rss=584MB
+[arris] panels__c-10000-t24: ok 16.74s cpu=333.55s rss=589MB
+== after arris panels 2026-11-25T12:24:53+01:00
+cpu load 10 %, free RAM 23 GB, battery 100 % status 2
+  chrome x60 9.15 GB
+  Memory Compression x1 5.1 GB
+  ServiceShell x1 4.33 GB
+  claude x15 2.92 GB
+  msedgewebview2 x44 2.48 GB
+  svchost x101 2.03 GB
+  Slack x7 1.39 GB
+  dwm x1 0.9 GB
+[sc-main] panels__b-1000-t1: ok 224.50s cpu=218.2s rss=571MB
+[sc-main] panels__b-1000-t8: ok 27.57s cpu=213.52s rss=749MB
+[sc-main] panels__b-1000-t16: ok 16.50s cpu=246.7s rss=947MB
+[sc-main] panels__b-1000-t24: ok 13.02s cpu=257.56s rss=1039MB
+[sc-main] panels__c-1000-t1: ok 258.91s cpu=254.75s rss=572MB
+[sc-main] panels__c-1000-t8: ok 32.43s cpu=251.28s rss=761MB
+[sc-main] panels__c-1000-t16: ok 19.48s cpu=298.25s rss=962MB
+[sc-main] panels__c-1000-t24: ok 15.95s cpu=303.75s rss=1108MB
+[sc-main] panels__b-10000-t1: TIMEOUT>900s 901.00s cpu=884.89s rss=3222MB
+[sc-main] panels__b-10000-t8: ok 302.97s cpu=2224.84s rss=5487MB
+[sc-main] panels__b-10000-t16: ok 173.34s cpu=2691.19s rss=5700MB
+[sc-main] panels__b-10000-t24: ok 134.06s cpu=2819.95s rss=5899MB
+[sc-main] panels__c-10000-t1: TIMEOUT>900s 901.06s cpu=886.28s rss=2632MB
+[sc-main] panels__c-10000-t8: ok 357.28s cpu=2765.97s rss=5508MB
+[sc-main] panels__c-10000-t16: ok 214.44s cpu=3223.88s rss=5723MB
+[sc-main] panels__c-10000-t24: ok 168.17s cpu=3282.52s rss=5933MB
+== after 2026-11-25T13:27:37+01:00
+cpu load 16 %, free RAM 22.2 GB, battery 100 % status 2
+  chrome x60 10.07 GB
+  Memory Compression x1 5.49 GB
+  ServiceShell x1 4.32 GB
+  claude x15 2.7 GB
+  msedgewebview2 x44 2.56 GB
+  svchost x99 2.02 GB
+  Slack x7 1.32 GB
+  ChatGPT x12 0.82 GB
+done

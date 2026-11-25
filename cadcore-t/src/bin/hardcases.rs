@@ -2,6 +2,10 @@
 //! Cases and answers: harness/hardcases.py. CadCore has boxes, circles swept along polylines
 //! (cylinders), an N-way union and a half-space (plane) cut; a case that needs any other
 //! operation is reported "no_op", never approximated.
+
+#[cfg(feature = "mimalloc")]
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 use cadcore::geom::Plane3;
 use cadcore::math::{Point3, UnitVec3, Vec3};
 use cadcore::mesh::{mesh_brep, mesh_volume, ImportOptions};

@@ -1,5 +1,9 @@
 //! Hard cases for arris 0.12.0: one case per run, named by argv[1]; one JSON line out.
 //! The case list and the expected answers live in harness/hardcases.py.
+
+#[cfg(feature = "mimalloc")]
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 use arris::Control;
 use arris::geom::profile::{Profile, ProfileLoop, ProfileSegment};
 use arris::math::{Axis, Frame, Point2, Point3, Vec3};

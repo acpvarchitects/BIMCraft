@@ -5,6 +5,11 @@ edition = "2021"
 
 [dependencies]
 cadcore = { git = "https://github.com/YATSKOVSKYI/cadcore", rev = "31b2808bc76d31d55cf7e407b8a0f3a40de8d1a1" }
+mimalloc = { version = "0.1", optional = true }
+
+[features]
+# laptop runs (MSVC): mimalloc as the global allocator; off by default, so the ADE build is unchanged
+mimalloc = ["dep:mimalloc"]
 
 [profile.release]
 debug = "line-tables-only"

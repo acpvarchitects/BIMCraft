@@ -5,6 +5,12 @@ edition = "2024"
 
 [dependencies]
 arris = "=0.12.0"
+rayon = "1.12.0"
+mimalloc = { version = "0.1", optional = true }
+
+[features]
+# laptop runs (MSVC): mimalloc as the global allocator; off by default, so the ADE build is unchanged
+mimalloc = ["dep:mimalloc"]
 
 [profile.release]
 debug = "line-tables-only"
