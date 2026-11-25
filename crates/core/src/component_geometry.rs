@@ -1465,14 +1465,14 @@ struct Kept {
     finer: HashMap<Arc<Key>, Vec<Fineness>>,
     envelopes: HashMap<Arc<Key>, Option<[[f64; 3]; 2]>>,
     /// GEO-2g-2: what a plan reads of each component of a model of these families before building any, and where each
-    /// stands ([`index::Index`]): taken out while it is brought up to a model, put back after.
-    index: Option<Arc<index::Index>>,
+    /// stands ([`index::Index`]), behind a lock of its own ([`IndexSlot`]).
+    index: Arc<IndexSlot>,
     used: u64,
 }
 
 impl Kept {
     fn new(families: crate::shared::Identity<BTreeMap<String, crate::family::Family>>, used: u64) -> Self {
-        Kept { families, shapes: HashMap::new(), finer: HashMap::new(), envelopes: HashMap::new(), index: None, used }
+        Kept { families, shapes: HashMap::new(), finer: HashMap::new(), envelopes: HashMap::new(), index: Arc::default(), used }
     }
 
     /// ec's review of #88: the default builds `gone` no longer kept, the finer builds of their keys that shared them charged
@@ -1780,20 +1780,44 @@ fn take_grown() -> bool {
 /// GEO-2g-2: the index of `model`'s components, brought up to it: kept with its families' generation, so a drawing after
 /// an edit finds again only what changed. None where the store can't be had.
 fn index_of(model: &Model) -> Option<Arc<index::Index>> {
-    let had = with_store(|s| {
+    let slot = with_store(|s| {
         let now = s.tick();
         s.prune();
         let i = s.generation(model, now);
-        s.generations[i].index.take()
+        Arc::clone(&s.generations[i].index)
     })?;
-    let mut index = had.unwrap_or_else(|| Arc::new(index::Index::of(model)));
-    Arc::make_mut(&mut index).bring_up(model);
-    with_store(|s| {
-        let now = s.tick();
-        let i = s.generation(model, now);
-        s.generations[i].index = Some(Arc::clone(&index));
-    });
-    Some(index)
+    Some(slot.brought_up(model))
+}
+
+/// A generation's index ([`index_of`]), behind a lock of its own, apart from the store's: held while the index is made or
+/// brought up, so a second thread asking at once (two plans drawn side by side) waits for it and finds it up to date, where
+/// it used to find none and make it again (ec's review of #90). The store's lock is never taken inside it.
+#[derive(Default)]
+pub(crate) struct IndexSlot(Mutex<Option<Arc<index::Index>>>);
+
+impl IndexSlot {
+    /// The index held, brought up to `model`; made where none is, or where a thread panicked bringing it up.
+    pub(crate) fn brought_up(&self, model: &Model) -> Arc<index::Index> {
+        let mut held = match self.0.lock() {
+            Ok(held) => held,
+            Err(poisoned) => {
+                self.0.clear_poison();
+                let mut held = poisoned.into_inner();
+                *held = None;
+                held
+            }
+        };
+        let mut index = held.take().unwrap_or_else(|| Arc::new(index::Index::of(model)));
+        Arc::make_mut(&mut index).bring_up(model);
+        *held = Some(Arc::clone(&index));
+        index
+    }
+}
+
+/// How many local shapes the index kept for `model`'s families holds.
+#[cfg(test)]
+pub(crate) fn index_locals(model: &Model) -> usize {
+    index_of(model).map_or(0, |i| i.locals_len())
 }
 
 /// The index kept for `model`'s families, brought up to it: what a test checks against one made afresh.
