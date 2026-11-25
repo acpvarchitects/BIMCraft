@@ -2362,7 +2362,10 @@ builds only what its window needs, keeps what it built, and builds the rest on s
   drawn among every component and to one drawn afresh, through each. A component's model lines are asked apart from its
   forms (`Components::lines_in_window`): one whose lines alone reach the window draws them and isn't built. A family's
   plan's own pass over its components is windowed too. The default builds an eviction takes out unshare their finer
-  builds once a pass, each key's finer builds looked up by key (`Kept::finer`).
+  builds once a pass, each key's finer builds looked up by key (`Kept::finer`). Each key's local shape is kept while some
+  component has it, so an instance parameter dragged leaves no key a step behind. The index has a lock of its own
+  (`IndexSlot`), held while it is made or brought up: two plans drawn at once make it once, the second waiting for the
+  first's.
 
 `zoomed_plan_bench` in `family_fineness_tests.rs` times it, with room for both of its models' default builds.
 
