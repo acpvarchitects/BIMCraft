@@ -14,7 +14,7 @@ Seconda macchina oltre al portatile di Emiliano. Una run per ogni combinazione.
 | rustc | 1.99.1 (58cf8f9c3 2026-10-13) |
 | toolchain | `stable-x86_64-pc-windows-gnu` (vedi sotto) |
 | alimentazione | collegato alla corrente, batteria al 96-97 %, piano energetico Bilanciato |
-| programmi aperti | Chrome (8,3 GB), Rhino e altre applicazioni desktop, antivirus, 6 processi `bimcraft-cli` (server MCP). Revit chiuso. Non è stato possibile chiuderle. |
+| programmi aperti | Chrome (8,3 GB), Rhino e altre applicazioni desktop, antivirus, 6 processi `bimcraft-cli` (server MCP). Non è stato possibile chiuderle. |
 | carico CPU medio (5 s) | 24,8 % prima di geo_bench, 16,0 % prima di arris, 9,6 % alla fine |
 
 ### Toolchain

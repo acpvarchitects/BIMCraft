@@ -17,7 +17,7 @@ with mimalloc.
 | OS | Windows 11 Enterprise 10.0.26200 (build 26200) |
 | Rust | rustc 1.99.1 (58cf8f9c3 2026-10-13), LLVM 23.1.1, toolchain `stable-x86_64-pc-windows-msvc` (host `x86_64-pc-windows-msvc`), Visual Studio's linker |
 | Power | on AC (battery about 91 %), power plan "Power" |
-| Open apps | **Not a quiet machine**, by the owner's choice: Revit 2023 with a model open (1.9 GB), Chrome (59 processes, 10.4 GB), the Claude desktop app (5.3 GB), Edge WebView processes (2.4 GB) and the BIMCraft desktop, idle. CPU load right after the runs: 55 %. Read ratios rather than decimals. |
+| Open apps | **Not a quiet machine**, by the owner's choice: a large desktop CAD app with a model open (1.9 GB), Chrome (59 processes, 10.4 GB), the Claude desktop app (5.3 GB), Edge WebView processes (2.4 GB) and the BIMCraft desktop, idle. CPU load right after the runs: 55 %. Read ratios rather than decimals. |
 
 ## Code
 
@@ -135,7 +135,7 @@ cases (ADE run, 2026-11-25)"), with CadCore limited to its 15 cases that have an
 - **Panel:** `harness/suites/panels-workstation.json` (new): `panels <b|c> <n> <T> mesh` with n 1,000 and 10,000 and T 1,
   8, 16 and 24, 900 s a call as on 11-18. b = void by a boolean cut, c = void as a hole in the profile; mesh at a 2 mm and
   a 0.5 mm chord. Records in `panels/<kernel>.jsonl`, logs in `logs/panels/`.
-- **Machine:** on AC, power plan "Power", 12:01 to 13:27. Not a quiet machine, but quieter than 11-18: **Revit was not
+- **Machine:** on AC, power plan "Power", 12:01 to 13:27. Not a quiet machine, but quieter than 11-18: **the CAD app was not
   open** this time; Chrome (55-60 processes, 8-10 GB), the Claude desktop app, Edge WebView, Slack and ChatGPT were.
   Sampled CPU load: 35 % before, 20 % after the hard cases, 10 % after arris's panels, 16 % at the end; free RAM 22-23 GB
   throughout.
@@ -156,7 +156,7 @@ cases (ADE run, 2026-11-25)"), with CadCore limited to its 15 cases that have an
   25.7 s against 38.9 on 1 thread, 3.0 against 5.4 on 8. 10,000 panels: 36.1 against 57.5 on 8 threads, 21.4 against
   31.0 on 24. Same triangles (736 and 2,212 a panel), so the same geometry. 11-18 has c only on the system allocator, so
   for c the version and the allocator are mixed: 10,000 panels on 24 threads build in 0.90 s against 1.46 and mesh at 2 mm
-  in 7.2 s against 12.1. 11-18 also had Revit open and a higher load.
+  in 7.2 s against 12.1. 11-18 also had the CAD app open and a higher load.
 - **solidcore `main` works end to end, mesh included**: every panel builds and meshes at both chords, with no error, panic
   or failed mesh. Its mesh is finer: 1,935 triangles a panel at 2 mm and 6,236 at 0.5 mm (arris: 736 and 2,212).
 - **But solidcore `main` is slow on this panel.** 1,000 panels on 1 thread: build 128 s (b) and 172 s (c), against 25.7 s
