@@ -2,12 +2,14 @@
 """Run every bench call in a child process with a time budget and an address-space cap.
 usage: run.py <kernel> <bin-dir> <suite.json> [only-group]
 suite.json: list of {"group","name","bin","args":[...],"threads":N|null}
-Writes logs/<kernel>/<group>__<name>.{out,err,time} and results/<kernel>.jsonl (append)."""
+Writes logs/<kernel>/<group>__<name>.{out,err,time} and results/<kernel>.jsonl (append);
+BENCH_LOGS and BENCH_RESULTS move those two directories."""
 import json, os, re, resource, subprocess, sys, time
 kernel, bindir, suite = sys.argv[1], sys.argv[2], sys.argv[3]
 only = sys.argv[4] if len(sys.argv) > 4 else None
 root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-logd = f"{root}/logs/{kernel}"; os.makedirs(logd, exist_ok=True); os.makedirs(f"{root}/results", exist_ok=True)
+resd = os.environ.get("BENCH_RESULTS", f"{root}/results"); logd = os.path.join(os.environ.get("BENCH_LOGS", f"{root}/logs"), kernel)
+os.makedirs(logd, exist_ok=True); os.makedirs(resd, exist_ok=True)
 BUDGET = int(os.environ.get("BENCH_BUDGET", "90")); AS = int(os.environ.get("BENCH_AS_GB", "96")) << 30
 def cap(): resource.setrlimit(resource.RLIMIT_AS, (AS, AS))
 for c in json.load(open(suite)):
@@ -39,5 +41,5 @@ for c in json.load(open(suite)):
     out = open(f"{logd}/{tag}.out", errors="replace").read()
     rec = dict(kernel=kernel, group=c["group"], name=c["name"], threads=c.get("threads"), status=status, wall_s=round(wall, 3),
                rss_mb=round(rss / 1024) if rss else None, stdout=out.strip()[:4000], stderr_tail=err.strip()[-300:])
-    open(f"{root}/results/{kernel}.jsonl", "a").write(json.dumps(rec) + "\n")
+    open(f"{resd}/{kernel}.jsonl", "a").write(json.dumps(rec) + "\n")
     print(f'[{kernel}] {tag}: {status} {wall:.2f}s rss={rec["rss_mb"]}MB', flush=True)

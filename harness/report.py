@@ -142,4 +142,6 @@ for k, name in K:
     for g, title in (("forms", "Forms, booleans, hostile input"), ("nurbs", "NURBS table"), ("panels", "10,000 panels")):
         t = forms_table(k, g) if g != "panels" else panels_table(k)
         if t: md.append(f"\n### {title}\n\n{t}")
+hard = f"{root}/results/ade-hardcases/README.md"   # the hard-cases section, written by harness/hardcases.py readme
+if os.path.exists(hard): md.append("\n" + open(hard).read())
 open(f"{root}/README.md", "w").write("\n".join(md) + "\n" + open(f"{root}/harness/README-tail.md").read())

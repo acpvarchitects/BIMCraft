@@ -1,0 +1,14 @@
+[package]
+name = "sc-main-t"
+version = "0.1.0"
+edition = "2024"
+
+# solidcore from its git main, pinned (published 1.0.1 stays in sc-t)
+[dependencies]
+solidcore = { git = "https://github.com/tangency-labs/solidcore", rev = "a60ac806bea3312ae4dea1c9460c6988efbbfc66" }
+solidcore-ops = { git = "https://github.com/tangency-labs/solidcore", rev = "a60ac806bea3312ae4dea1c9460c6988efbbfc66" }
+solidcore-tess = { git = "https://github.com/tangency-labs/solidcore", rev = "a60ac806bea3312ae4dea1c9460c6988efbbfc66" }
+solidcore-record = { git = "https://github.com/tangency-labs/solidcore", rev = "a60ac806bea3312ae4dea1c9460c6988efbbfc66" }
+
+[profile.release]
+debug = "line-tables-only"

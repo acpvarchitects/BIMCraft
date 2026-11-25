@@ -1,0 +1,10 @@
+[package]
+name = "cadcore-t"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+cadcore = { git = "https://github.com/YATSKOVSKYI/cadcore", rev = "31b2808bc76d31d55cf7e407b8a0f3a40de8d1a1" }
+
+[profile.release]
+debug = "line-tables-only"

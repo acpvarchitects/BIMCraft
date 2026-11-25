@@ -1,0 +1,10 @@
+[package]
+name = "arris12-t"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+arris = "=0.12.0"
+
+[profile.release]
+debug = "line-tables-only"

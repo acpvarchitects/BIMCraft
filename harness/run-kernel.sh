@@ -3,7 +3,7 @@
 set -u
 export PATH=/mnt/data/emiliano_capasso/tools-venv/bin:$HOME/.cargo/bin:$PATH; export CMAKE_POLICY_VERSION_MINIMUM=3.5
 name=$1; suite=$2; roots=$3; shift 3
-R=/mnt/data/emiliano_capasso/bench-kernels
+R=${BENCH_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}   # the bench checkout
 export CARGO_TARGET_DIR=/mnt/data/emiliano_capasso/cargo-targets/bench-$name
 free=$(df -BG --output=avail /mnt/data | tail -1 | tr -dc 0-9)
 echo "free on /mnt/data before $name: ${free} GB"; [ "$free" -lt 60 ] && { echo "STOP: under 60 GB free"; exit 3; }
