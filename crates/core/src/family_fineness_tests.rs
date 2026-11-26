@@ -666,3 +666,59 @@ fn a_finer_build_reaches_past_the_default_box_by_no_more_than_its_stray() {
         eprintln!("{what}: past the default box by {most:.2} mm, {:.4} of its diagonal", most / diagonal);
     }
 }
+
+/// GEO-2c-3, cp's review: a family's envelope ([`Family::conservative_bounds`]), by which a plan's index finds the components
+/// that may show in it before it builds any, holds every build of it at any fineness, so a plan zoomed in never misses a finer
+/// curve by it. It boxes an arc by the square round its whole circle, a circle by its own square, a revolve by the cylinder
+/// its profile turns within and a blend by both its ends' profiles at each end: every corner of a finer build lies on its true
+/// curve, so within that box, and its triangles between them. A sweep's envelope isn't known, and the index looks at it
+/// everywhere. And placed, turned and mirrored, as the index places it: round a ring's finer build in a plan zoomed in.
+#[test]
+fn a_familys_envelope_holds_every_finer_build_of_it() {
+    let line = |a: [f64; 2], b: [f64; 2]| json!({"start": a, "end": b});
+    let ring = json!({"sketch": [{"start": [2800, 100], "end": [2800, 1100], "turn": 30}, line([2800.0, 1100.0], [2600.0, 1100.0]),
+                                 line([2600.0, 1100.0], [2600.0, 100.0]), line([2600.0, 100.0], [2800.0, 100.0]),
+                                 {"start": [0, 0], "end": [0, 100], "axis": true}],
+                      "host": {"plane": "9e3c0a10-1f0b-4d8c-8a5e-0000000000a2"}, "from": -16.875, "to": 16.875});
+    let mut cases: Vec<(&str, Value)> = vec![
+        ("a disc", json!({"sketch": [{"centre": [100, -50], "radius": 777}], "from": 0, "to": 100})),
+        (
+            "an arc of one chord",
+            json!({"sketch": [{"start": [0, 0], "end": [1000, 0], "turn": 11.25}, line([1000.0, 0.0], [500.0, 10.0]),
+                              line([500.0, 10.0], [0.0, 0.0])], "to": 1}),
+        ),
+        ("a ring curved two ways", ring.clone()),
+        (
+            "a blend between circles",
+            json!({"sketch": [{"centre": [0, 0], "radius": 500}], "top": [{"centre": [0, 0], "radius": 300}], "from": 0, "to": 800}),
+        ),
+    ];
+    cases.extend(["a disc of R", "an arched slab", "a turned knob"].into_iter().zip(curved()));
+    for (what, form) in cases {
+        let (f, v) = family(vec![form]);
+        let Some([lo, hi]) = f.conservative_bounds(&v) else { panic!("{what}: no envelope") };
+        for fineness in [Fineness::DEFAULT, Fineness::for_view(2.0), Fineness::for_view(1e9)] {
+            let p = f.pieces_fine(&v, fineness).unwrap_or_else(|e| panic!("{what}: {e}"));
+            for q in p.iter().flat_map(|x| x.tris.iter().flatten()) {
+                assert!((0..3).all(|i| lo[i] <= q[i] && q[i] <= hi[i]), "{what} at {fineness:?}: {q:?} past {:?}", [lo, hi]);
+            }
+        }
+    }
+    let swept = json!({"sketch": [{"start": [1000, 0], "end": [0, 1000], "turn": 90}],
+                       "sweep": {"profile": [{"start": [50, 0], "end": [-50, 0], "turn": 180}, line([-50.0, 0.0], [50.0, 0.0])]}});
+    let (f, v) = family(vec![swept]);
+    assert_eq!(f.conservative_bounds(&v), None, "a sweep's isn't known");
+    // Placed: the ring turned and mirrored, in a plan zoomed in on it.
+    let mut s = session(vec![ring]);
+    let c = s.execute("component", &json!({"family": "Round", "at": [4000, -3000], "angle": 37, "mirrored": true}));
+    let id = c.unwrap_or_else(|e| panic!("{e}"))["id"].as_u64().unwrap_or_else(|| panic!("an id"));
+    let Some(crate::model::Element::Component(c)) = s.model.elements.get(id) else { panic!("{id}") };
+    let local = crate::component_geometry::local_envelope(&s.model, c).unwrap_or_else(|| panic!("its envelope"));
+    let crate::bounds::Bounds::Box([lo, hi]) = crate::bounds::place_component(&s.model, c, local) else { panic!("placed") };
+    let view = View { angle: 0.0, scale: 2.0, cx: 4000.0, cy: -3000.0, width: 8000, height: 8000 };
+    let fine = crate::component_geometry::Components::for_view(&s.model, &view).pieces(c);
+    assert!(tris(&fine) > tris(&s.model.component_pieces(c)), "built finer");
+    for q in fine.iter().flat_map(|x| x.tris.iter().flatten()) {
+        assert!((0..3).all(|i| lo[i] <= q[i] && q[i] <= hi[i]), "placed: {q:?} past {:?}", [lo, hi]);
+    }
+}
