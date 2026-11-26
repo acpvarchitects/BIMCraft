@@ -1752,7 +1752,7 @@ fn curtain_copies(
     id: Id,
     w: &crate::model::Wall,
     keys: &mut HashMap<ShapeKey, usize>,
-    shapes: &mut Vec<Vec<[P3; 3]>>,
+    shapes: &mut Vec<ShapeTris>,
 ) -> Vec<(usize, crate::component_geometry::ComponentInstance)> {
     use crate::curtain;
     let l = curtain::layout(m, w);
@@ -1774,7 +1774,7 @@ fn curtain_copies(
             let mut tris = Vec::with_capacity(12);
             let local = Frame { o: P2(0.0, 0.0), u: P2(1.0, 0.0), n: P2(0.0, 1.0) };
             local.cuboid(&mut tris, id, (WALL, 0), (-da, da), (-dc, dc), (-dz, dz));
-            shapes.push(tris.into_iter().map(|t| t.p).collect());
+            shapes.push(Arc::new(tris.into_iter().map(|t| t.p).collect()));
             shapes.len() - 1
         });
         let [along, up, across] = piece.centre;
@@ -2546,8 +2546,9 @@ pub struct Scene {
     /// The components whose triangles are a shape of [`Scene::shapes`] placed, exactly: where in `tris` the copy starts, and
     /// how it is placed. A card draws each shape once and places it for each copy.
     placements: Vec<(usize, crate::component_geometry::ComponentInstance)>,
-    /// Each component shape's triangles in its family's own axes, in the order a copy's are in `tris`.
-    shapes: Vec<Vec<[P3; 3]>>,
+    /// Each component shape's triangles in its family's own axes, in the order a copy's are in `tris`: shared, so a scene made
+    /// from this one (an edit's, a refinement's) holds them without copying them.
+    shapes: Vec<ShapeTris>,
     /// What each shape is the shape of, so a copy an edit makes finds its own.
     shape_keys: HashMap<ShapeKey, usize>,
     /// Each element's run of triangles and the box round them, in the elements' order: what an edit replaces.
@@ -2579,6 +2580,9 @@ impl FineOf {
 
 /// GEO-2c-2b: the fineness each component of a scene is drawn at, where it isn't the default.
 pub(crate) type Finer = crate::component_geometry::Finer;
+
+/// A shape's triangles in its own axes ([`Scene::shapes`]).
+type ShapeTris = Arc<Vec<[P3; 3]>>;
 
 /// A family's model line (FE-15) where a component places it: its component, its ends, its Visibility Settings packed with the
 /// component's x axis as a form's are ([`crate::family::visibility::packed`]) and the subcategory key it is drawn in.
@@ -3186,7 +3190,7 @@ fn whole_model(m: &Model, spans: &[Span]) -> (BTreeSet<Id>, Vec<(Id, String, [P3
 }
 
 /// What [`placements`] finds: the shapes, by what each is the shape of; the copies; and what refining reads of each component.
-type Placed = (Vec<Vec<[P3; 3]>>, HashMap<ShapeKey, usize>, Vec<(usize, crate::component_geometry::ComponentInstance)>, Vec<FineOf>);
+type Placed = (Vec<ShapeTris>, HashMap<ShapeKey, usize>, Vec<(usize, crate::component_geometry::ComponentInstance)>, Vec<FineOf>);
 
 /// The components among `tris` that are a shape placed, to the last bit: each shape's triangles in its own axes, and for each
 /// copy where its run of triangles starts and how it is placed. A copy whose triangles aren't exactly its shape's placed (or
@@ -3194,8 +3198,8 @@ type Placed = (Vec<Vec<[P3; 3]>>, HashMap<ShapeKey, usize>, Vec<(usize, crate::c
 /// the fineness `chosen` names (GEO-2c-2b; none, the default), as its triangles are.
 fn placements(m: &Model, tris: &[Tri], chosen: Option<&Finer>, cancelled: &(dyn Fn() -> bool + Sync)) -> Option<Placed> {
     let shared = crate::component_geometry::SharedComponents::new(m, chosen, cancelled)?;
-    let mut shapes: Vec<Vec<[P3; 3]>> =
-        shared.shapes.iter().map(|b| b.pieces.iter().flat_map(|p| p.tris.iter().copied()).collect()).collect();
+    let mut shapes: Vec<ShapeTris> =
+        shared.shapes.iter().map(|b| Arc::new(b.pieces.iter().flat_map(|p| p.tris.iter().copied()).collect())).collect();
     let mut keys: HashMap<ShapeKey, usize> = shared.keys.into_iter().map(|((k, f), n)| (ShapeKey::Family(k, f), n)).collect();
     let fine: Vec<FineOf> =
         shared.instances.iter().zip(shared.coarse).map(|(place, (shape, at))| FineOf { shape, place: *place, at }).collect();
@@ -3220,7 +3224,7 @@ fn placements(m: &Model, tris: &[Tri], chosen: Option<&Finer>, cancelled: &(dyn 
             continue;
         }
         let shape = *tubes.entry(t.material.as_str()).or_insert_with(|| {
-            shapes.push(tube.clone());
+            shapes.push(Arc::new(tube.clone()));
             keys.insert(ShapeKey::Tube(t.material.clone()), shapes.len() - 1);
             shapes.len() - 1
         });
@@ -3249,7 +3253,7 @@ fn placements(m: &Model, tris: &[Tri], chosen: Option<&Finer>, cancelled: &(dyn 
             out.push((i, *copy));
         }
         for (first, copy) in curtains.get(&owner).into_iter().flatten() {
-            let (at, len) = (i + first, shapes.get(copy.shape).map_or(0, Vec::len));
+            let (at, len) = (i + first, shapes.get(copy.shape).map_or(0, |s| s.len()));
             if let (Some(local), Some(own)) = (shapes.get(copy.shape), tris.get(at..at + len).filter(|_| at + len <= end))
                 && update::placed(local, copy, own)
             {
@@ -5708,7 +5712,7 @@ impl Scene {
 
     /// How many triangles shape `shape` has.
     pub(crate) fn shape_size(&self, shape: usize) -> usize {
-        self.shapes.get(shape).map_or(0, Vec::len)
+        self.shapes.get(shape).map_or(0, |s| s.len())
     }
 
     /// How many triangles element `id` has in the scene.

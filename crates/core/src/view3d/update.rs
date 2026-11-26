@@ -187,7 +187,7 @@ impl Scene {
                 out.tris.extend(own);
                 let own = out.tris.get(start..).unwrap_or_default();
                 for (first, copy) in copies_of(after, *id, e, &mut keys, &mut shapes, &mut copying, &mut fine) {
-                    let len = shapes.get(copy.shape).map_or(0, Vec::len);
+                    let len = shapes.get(copy.shape).map_or(0, |s| s.len());
                     if let (Some(local), Some(own)) = (shapes.get(copy.shape), own.get(first..first + len))
                         && placed(local, &copy, own)
                     {
@@ -428,7 +428,7 @@ fn copies_of(
     id: Id,
     e: &Element,
     keys: &mut HashMap<ShapeKey, usize>,
-    shapes: &mut Vec<Vec<[P3; 3]>>,
+    shapes: &mut Vec<super::ShapeTris>,
     copying: &mut Copying,
     fine: &mut std::collections::BTreeMap<Id, FineOf>,
 ) -> Vec<(usize, ComponentInstance)> {
@@ -444,7 +444,7 @@ fn copy_of(
     id: Id,
     e: &Element,
     keys: &mut HashMap<ShapeKey, usize>,
-    shapes: &mut Vec<Vec<[P3; 3]>>,
+    shapes: &mut Vec<super::ShapeTris>,
     copying: &mut Copying,
     fine: &mut std::collections::BTreeMap<Id, FineOf>,
 ) -> Option<ComponentInstance> {
@@ -459,7 +459,7 @@ fn copy_of(
                 Some(n) => *n,
                 None => {
                     let built = copying.components.built(&key, c, at);
-                    shapes.push(built.pieces.iter().flat_map(|p| p.tris.iter().copied()).collect());
+                    shapes.push(Arc::new(built.pieces.iter().flat_map(|p| p.tris.iter().copied()).collect()));
                     keys.insert(shape_key, shapes.len() - 1);
                     shapes.len() - 1
                 }
@@ -477,7 +477,7 @@ fn copy_of(
             let shape = match keys.get(&key) {
                 Some(n) => *n,
                 None => {
-                    shapes.push(crate::runs::unit_tube().0);
+                    shapes.push(Arc::new(crate::runs::unit_tube().0));
                     keys.insert(key, shapes.len() - 1);
                     shapes.len() - 1
                 }
