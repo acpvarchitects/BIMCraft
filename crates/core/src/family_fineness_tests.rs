@@ -686,3 +686,65 @@ fn a_default_build_says_exactly_which_finenesses_would_build_it_otherwise() {
         }
     }
 }
+
+/// cp's review of GEO-2c-2a: a finer build reaches past its default build's box by no more than
+/// [`crate::family::fineness::STRAY`] of the box's diagonal ([`crate::family::fineness::finer_reach`]), at the finest a view
+/// may ask for: an arc of one default chord (the most a default chord turns, a 32nd of a turn: the most a curve strays for the
+/// box it makes), a ring curved two ways (an arc turned, its widest midway between the default's corners both ways), an arc
+/// swept along an arc, and a blend between circles. And the premise: no default chord turns more than a 32nd of a turn,
+/// whatever its curve turns.
+#[test]
+fn a_finer_build_reaches_past_the_default_box_by_no_more_than_its_stray() {
+    use crate::family::fineness::{STRAY, finer_reach, steps};
+    for turn in [1e-6, 1.0, 11.25, 11.250_001, 30.0, 33.75, 90.0, 100.0, 359.0, 360.0, 1e4] {
+        let n = steps(turn, 1000.0);
+        assert!(turn / n as f64 <= 360.0 / 32.0 + 1e-9, "{turn}° in {n} chords");
+    }
+    assert!((std::f64::consts::PI / 64.0).tan() <= STRAY, "two strays of a 32nd of a turn's chord");
+    let line = |a: [f64; 2], b: [f64; 2]| json!({"start": a, "end": b});
+    let cases: Vec<(&str, Value)> = vec![
+        (
+            "an arc of one chord",
+            json!({"sketch": [{"start": [0, 0], "end": [1000, 0], "turn": 11.25}, line([1000.0, 0.0], [500.0, 10.0]),
+                              line([500.0, 10.0], [0.0, 0.0])], "to": 1}),
+        ),
+        (
+            "a ring curved two ways",
+            json!({"sketch": [{"start": [2800, 100], "end": [2800, 1100], "turn": 30}, line([2800.0, 1100.0], [2600.0, 1100.0]),
+                              line([2600.0, 1100.0], [2600.0, 100.0]), line([2600.0, 100.0], [2800.0, 100.0]),
+                              {"start": [0, 0], "end": [0, 100], "axis": true}],
+                   "host": {"plane": "9e3c0a10-1f0b-4d8c-8a5e-0000000000a2"}, "from": -16.875, "to": 16.875}),
+        ),
+        (
+            "an arc swept along an arc",
+            json!({"sketch": [{"start": [1000, 0], "end": [0, 1000], "turn": 90}],
+                   "sweep": {"profile": [{"start": [50, 0], "end": [-50, 0], "turn": 180}, line([-50.0, 0.0], [50.0, 0.0])]}}),
+        ),
+        (
+            "a blend between circles",
+            json!({"sketch": [{"centre": [0, 0], "radius": 500}], "top": [{"centre": [0, 0], "radius": 300}], "from": 0, "to": 800}),
+        ),
+    ];
+    let corners = |p: &[Piece]| p.iter().flat_map(|x| x.tris.iter().flatten().copied()).collect::<Vec<[f64; 3]>>();
+    for (what, form) in cases {
+        let (f, v) = family(vec![form]);
+        let default = f.pieces_fine(&v, Fineness::DEFAULT).unwrap_or_else(|e| panic!("{what}: {e}"));
+        let fine = f.pieces_fine(&v, Fineness::for_view(1e9)).unwrap_or_else(|e| panic!("{what}: {e}"));
+        assert!(tris(&fine) > tris(&default), "{what}: finer at the finest");
+        let [lo, hi] = corners(&default).iter().fold([[f64::INFINITY; 3], [f64::NEG_INFINITY; 3]], |[lo, hi], p| {
+            [std::array::from_fn(|i| lo[i].min(p[i])), std::array::from_fn(|i| hi[i].max(p[i]))]
+        });
+        let diagonal = (0..3).map(|i| (hi[i] - lo[i]).powi(2)).sum::<f64>().sqrt();
+        let [rlo, rhi] = finer_reach([lo, hi]);
+        let mut most: f64 = 0.0;
+        for p in corners(&fine) {
+            assert!((0..3).all(|i| rlo[i] <= p[i] && p[i] <= rhi[i]), "{what}: {p:?} past {:?}", [rlo, rhi]);
+            most = (0..3).map(|i| (lo[i] - p[i]).max(p[i] - hi[i])).fold(most, f64::max);
+        }
+        // The arc of one chord is the worst the bound is for: a 32nd of a turn's stray, half of it.
+        if what == "an arc of one chord" {
+            assert!(most / diagonal > 0.024, "{what}: {:.4} of its diagonal", most / diagonal);
+        }
+        eprintln!("{what}: past the default box by {most:.2} mm, {:.4} of its diagonal", most / diagonal);
+    }
+}

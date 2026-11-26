@@ -22,8 +22,6 @@ pub(crate) type Line = [[f64; 3]; 2];
 const CELL: f64 = 4096.0;
 /// The most cells a component is put in; one reaching over more is looked at by every query.
 const MOST_CELLS: i64 = 256;
-/// The most local shapes kept; past them they are found again.
-const LOCALS: usize = 1 << 18;
 
 /// What a key gives without building it: its local envelope (none where it isn't known) and its model lines' ends.
 #[derive(Clone)]
@@ -83,7 +81,9 @@ pub(crate) struct Index {
     dependents: HashMap<Guid, BTreeSet<Id>>,
     /// The GUID of each element something depends on, as last found: what a gone one was.
     known: HashMap<Id, Guid>,
-    locals: HashMap<Arc<Key>, Local>,
+    /// Each key its components have now, its local shape and how many have it: one no component has any more goes, so an
+    /// instance parameter dragged doesn't heap up a key a step (ec's review of #90).
+    locals: HashMap<Arc<Key>, (Local, usize)>,
 }
 
 /// A plan's question of the index: its window (none, all of the plan), and for a floor plan its cut plane and view depth.
@@ -199,19 +199,19 @@ impl Index {
             None => {
                 let key = m.shape_key(c);
                 match self.locals.get_key_value(&key) {
-                    Some((k, l)) => (Arc::clone(k), l.clone()),
+                    Some((k, (l, _))) => (Arc::clone(k), l.clone()),
                     None => {
                         let local = Local { envelope: super::local_envelope(m, c), lines: Arc::new(local_lines(m, c)) };
-                        if self.locals.len() >= LOCALS {
-                            self.locals.clear();
-                        }
-                        let key = Arc::new(key);
-                        self.locals.insert(Arc::clone(&key), local.clone());
-                        (key, local)
+                        (Arc::new(key), local)
                     }
                 }
             }
         };
+        let key = match self.locals.get_key_value(&key) {
+            Some((k, _)) => Arc::clone(k),
+            None => key,
+        };
+        self.locals.entry(Arc::clone(&key)).or_insert_with(|| (local.clone(), 0)).1 += 1;
         let forms = local.envelope.and_then(|b| match crate::bounds::place_component(m, c, b) {
             crate::bounds::Bounds::Box(b) => Some(b),
             _ => None,
@@ -288,6 +288,12 @@ impl Index {
     /// `id`'s entry taken out of the index.
     fn take(&mut self, id: Id) -> Option<Entry> {
         let e = self.entries.remove(&id)?;
+        if let Some((_, n)) = self.locals.get_mut(&e.key) {
+            *n = n.saturating_sub(1);
+            if *n == 0 {
+                self.locals.remove(&e.key);
+            }
+        }
         match e.at {
             Where::Cells([x0, y0, x1, y1]) => {
                 for x in x0..=x1 {
@@ -395,6 +401,12 @@ impl Index {
         out
     }
 
+    /// How many local shapes it holds.
+    #[cfg(test)]
+    pub(crate) fn locals_len(&self) -> usize {
+        self.locals.len()
+    }
+
     /// Whether it is of `m`'s elements as they are, every entry found as `m` would find it now (a test's check).
     #[cfg(test)]
     pub(crate) fn same_as_made(&self, m: &Model) -> bool {
@@ -411,8 +423,11 @@ impl Index {
             v
         };
         let deps = self.entries.iter().all(|(id, e)| fresh.entries.get(id).is_some_and(|f| e.deps == f.deps));
+        let locals = self.locals.len() == fresh.locals.len()
+            && self.locals.iter().all(|(k, (_, n))| fresh.locals.get(k).is_some_and(|(_, f)| f == n));
         entries
             && deps
+            && locals
             && sorted(&self.cells) == sorted(&fresh.cells)
             && self.big == fresh.big
             && self.always == fresh.always

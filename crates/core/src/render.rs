@@ -2630,12 +2630,11 @@ fn section_base_cancellable(
     // A mass is outlined where the line cuts it, below, not filled.
     // What lies all on one side of the line's upright plane is cut by none of it, whatever it is made of.
     let side = |q: P2| (q - v.start).dot(u.perp());
-    let one_side = |id: Id| {
-        work.box_of(id).is_some_and(|[lo, hi]| {
-            let s = [P2(lo[0], lo[1]), P2(hi[0], lo[1]), P2(hi[0], hi[1]), P2(lo[0], hi[1])].map(side);
-            s.iter().all(|x| *x > 1e-3) || s.iter().all(|x| *x < -1e-3)
-        })
+    let one_side_of = |[lo, hi]: [[f64; 3]; 2]| {
+        let s = [P2(lo[0], lo[1]), P2(hi[0], lo[1]), P2(hi[0], hi[1]), P2(lo[0], hi[1])].map(side);
+        s.iter().all(|x| *x > 1e-3) || s.iter().all(|x| *x < -1e-3)
     };
+    let one_side = |id: Id| work.box_of(id).is_some_and(|b| one_side_of(*b));
     // Its twin, which tests hold it to: what is left out cuts nothing.
     #[cfg(test)]
     for s in solids.iter().filter(|s| one_side(s.owner())) {
@@ -2660,8 +2659,14 @@ fn section_base_cancellable(
         }
     }
     // The round runs not made yet, and the components a section cuts (the work holds none of theirs): only those whose
-    // boxes the line's plane crosses. Each as the picture under it builds it (GEO-2c-2a).
-    let mut lazy = crate::component_geometry::Components::for_section(m, section_fine_of(m, id, view));
+    // boxes the line's plane crosses. Each as the picture under it builds it (GEO-2c-2a); one built finer than the build its
+    // box is of may reach past that box, as far as `finer_reach` says.
+    let fine = section_fine_of(m, id, view);
+    let mut lazy = crate::component_geometry::Components::for_section(m, fine);
+    let lazy_one_side = |id: Id, e: &Element| match e {
+        Element::Component(_) if fine.is_some() => work.box_of(id).is_some_and(|b| one_side_of(crate::family::fineness::finer_reach(*b))),
+        _ => one_side(id),
+    };
     let cut_component = |e: &Element| match e {
         Element::Component(c) => m.families.get(&c.family).is_some_and(crate::family::Family::cuts_in_views),
         _ => false,
@@ -2678,7 +2683,7 @@ fn section_base_cancellable(
         let skips = !twins();
         #[cfg(not(test))]
         let skips = true;
-        if skips && one_side(*id) {
+        if skips && lazy_one_side(*id, e) {
             continue;
         }
         if cancelled() {
@@ -2688,7 +2693,7 @@ fn section_base_cancellable(
             let rings = s.cuts(v.start + u * first, u, last - first);
             // Its twin, which tests hold it to: what is left out cuts nothing.
             #[cfg(test)]
-            assert!(!one_side(*id) || rings.is_empty(), "{id} is cut by a line it lies all on one side of");
+            assert!(!lazy_one_side(*id, e) || rings.is_empty(), "{id} is cut by a line it lies all on one side of");
             for ring in rings {
                 cuts.entry(*id).or_default().push(ring.into_iter().map(|q| P2(q.0 + first, q.1)).collect());
             }

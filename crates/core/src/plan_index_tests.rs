@@ -424,3 +424,64 @@ fn a_component_on_a_reference_plane_follows_the_plane() {
     check(&moved, LEVEL, view, "its plane moved off");
     check(&moved, LEVEL, at(42_500.0, 2_500.0), "where its plane went");
 }
+
+/// `count` boxes placed in a row along x, 2 m apart.
+fn placed(s: &mut Session, count: usize) -> Vec<u64> {
+    (0..count).map(|k| id_of(&run(s, "component", json!({"family": "Box", "at": [k as f64 * 2000.0, 0]})))).collect()
+}
+
+/// ec's review of #90: an instance parameter dragged makes a new key each step; the index keeps the local shape of each
+/// key its components have now, not of every key they had, so a drag doesn't heap them up until the index is wiped.
+#[test]
+fn a_dragged_instance_parameter_leaves_only_the_keys_its_components_have() {
+    let mut s = boxes();
+    let ids = placed(&mut s, 2);
+    // Each its height given, so one brought back to the other's has the other's key (a value left to the family's
+    // default is a key of its own).
+    run(&mut s, "modify", json!({"ids": ids, "params": {"Height": 600}}));
+    let view = at(0.0, 0.0);
+    check(&s.model, LEVEL, view, "two alike");
+    assert_eq!(cg::index_locals(&s.model), 1, "two boxes alike share one key");
+    for step in 0..40 {
+        run(&mut s, "modify", json!({"id": ids[0], "params": {"Height": 601 + step}}));
+        render::draw(&s.model, LEVEL, view);
+    }
+    assert_eq!(cg::index_locals(&s.model), 2, "the one dragged and the one left: two keys, not one a step");
+    check(&s.model, LEVEL, view, "dragged");
+    // Brought back to its twin's height: one key again.
+    run(&mut s, "modify", json!({"id": ids[0], "params": {"Height": 600}}));
+    check(&s.model, LEVEL, view, "brought back");
+    assert_eq!(cg::index_locals(&s.model), 1, "alike again");
+}
+
+/// ec's review of #90: two threads asking for the index of one model at once (two plans on a sheet drawn side by side): it is
+/// made once, the second waiting for the first's, not made again beside it. Tests keep the store on each thread, so this
+/// holds an `IndexSlot` itself, as `index_of` holds the one kept with a generation; that `index_of` takes it from the store
+/// and doesn't take the index out of it again is read, not tested here (cp's review of #97).
+#[test]
+fn two_threads_asking_for_the_index_at_once_make_it_once() {
+    use std::sync::{Arc, Barrier};
+    let s = grid(40);
+    let components = s.model.elements.iter().filter(|(_, e)| matches!(e, Element::Component(_))).count();
+    for round in 0..5 {
+        let slot = Arc::new(cg::IndexSlot::default());
+        let barrier = Arc::new(Barrier::new(2));
+        let threads: Vec<_> = (0..2)
+            .map(|_| {
+                let (slot, barrier, m) = (Arc::clone(&slot), Arc::clone(&barrier), Arc::clone(&s.model));
+                std::thread::spawn(move || {
+                    barrier.wait();
+                    let index = slot.brought_up(&m);
+                    (cg::index_counts().0, index.same_as_made(&m))
+                })
+            })
+            .collect();
+        let mut found = 0;
+        for t in threads {
+            let (n, made) = t.join().unwrap_or_else(|_| panic!("a thread"));
+            assert!(made, "round {round}: an index isn't the one made afresh");
+            found += n;
+        }
+        assert_eq!(found, components, "round {round}: entries found by both threads");
+    }
+}

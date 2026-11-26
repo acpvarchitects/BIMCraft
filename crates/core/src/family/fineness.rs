@@ -150,3 +150,31 @@ pub fn recording<T>(f: impl FnOnce() -> T) -> (T, Needs) {
 pub(crate) fn ring(radius: f64) -> usize {
     steps(360.0, radius)
 }
+
+/// GEO-2c-2a: how far past the box of a family's default build a finer build of it may reach, as a share of the box's
+/// diagonal. A section that draws a component finer culls it, and finds whether its line cuts it, by its box widened by this
+/// much ([`finer_reach`]).
+///
+/// A fineness changes only the curves [`steps`] chords: a sketch's arcs and circles and a revolve's turn (a family's sketches
+/// have no ellipses or splines). Each is cut evenly at corners on its curve, and at the default no chord turns more than a
+/// [`super::SEGMENTS`]th of a turn, its count rounded up (`steps_at`). A chord turning `t` strays from its arc by
+/// `tan(t / 4) / 2` of its length, and both its ends are corners of the default build, so it is no longer than the box's
+/// diagonal. A surface curved two ways (an arc revolved, or swept along an arc) strays from each quad of the default's
+/// corners by the two strays at once, its middle further out than either edge's: a point of it lies within one stray of a
+/// chord of its profile, and that chord, turned or swept, within the other of the quad's four corners. A sweep's mitred
+/// profile lies, out on a bend, no farther than the default's mitre puts it, so within the same reach. A finer build's
+/// corners lie on those surfaces and its triangles between them, so all of it lies within `tan(t / 4)` of the diagonal of
+/// the box: `tan(pi / 64)`, 0.0491, rounded up. No form is curved three ways. A void only takes away: where it takes the
+/// default's corners either side of a curve's widest point, its own corners where it crosses the chords stand for them; only
+/// a void that grazes a chord, crossing none, could leave a sliver of the finer curve past what it leaves.
+pub(crate) const STRAY: f64 = 0.05;
+
+/// `b`, the box of a component's default build, widened each way by [`STRAY`] of its diagonal: as far as a finer build of it
+/// may reach. One whose diagonal isn't a finite number, as it is.
+pub(crate) fn finer_reach([lo, hi]: [[f64; 3]; 2]) -> [[f64; 3]; 2] {
+    let d = STRAY * (0..3).map(|i| (hi[i] - lo[i]).powi(2)).sum::<f64>().sqrt();
+    if !d.is_finite() {
+        return [lo, hi];
+    }
+    [lo.map(|v| v - d), hi.map(|v| v + d)]
+}

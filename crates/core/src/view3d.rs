@@ -3003,16 +3003,15 @@ impl Scene {
             return None;
         }
         // Each element's box, round the points that may be its farthest, and where its solids are; a component's are made
-        // only if it shows.
+        // only if it shows. Drawn finer than the build its box is of, a component may reach past that box, as far as
+        // `finer_reach` says (GEO-2c-2a).
         let listed: Vec<_> = placed.iter().zip(boxes).collect();
         let boxes: Vec<Boxed3> = in_order(&listed, |((id, _), b)| {
             let e = m.elements.get(*id);
-            (look.shows(*id) && !matches!(e, Some(Element::Mass(_)))).then(|| {
-                let at = match e {
-                    Some(Element::Component(_)) => 0..0,
-                    _ => ranges.get(id).cloned().unwrap_or(0..0),
-                };
-                (*id, **b, at)
+            (look.shows(*id) && !matches!(e, Some(Element::Mass(_)))).then(|| match e {
+                Some(Element::Component(_)) if fine.is_some() => (*id, b.map(crate::family::fineness::finer_reach), 0..0),
+                Some(Element::Component(_)) => (*id, **b, 0..0),
+                _ => (*id, **b, ranges.get(id).cloned().unwrap_or(0..0)),
             })
         })
         .into_iter()
