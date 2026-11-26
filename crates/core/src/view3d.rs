@@ -9,6 +9,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::sync::{Arc, OnceLock};
 
+use crate::component_geometry::SectionFine;
 use crate::geom::{self, P2};
 use crate::graphics::{Look, VisualStyle};
 use crate::model::{Element, Id, Layer, Model, TOL};
@@ -1085,7 +1086,8 @@ pub(crate) fn solids_and_extremes_cancellable(m: &Model, cancelled: &(dyn Fn() -
         return None;
     }
     let part = |chunk: &[(Id, &Element)]| -> Option<Made> {
-        let mut components = crate::component_geometry::Components::new(m);
+        // What it builds kept for the drawings of the model (GEO-2c-2a): a section's picture finds its builds.
+        let mut components = crate::component_geometry::Components::kept(m);
         let (mut solids, mut placed) = (Vec::new(), Vec::new());
         for &(id, e) in chunk {
             if cancelled() {
@@ -1147,7 +1149,7 @@ pub(crate) fn solids_and_extremes_deferred(m: &Model, cancelled: &(dyn Fn() -> b
         cancelled,
     )?;
     let part = |chunk: &[(Id, &Element)]| -> Option<(Made, Vec<bool>)> {
-        let mut components = crate::component_geometry::Components::new(m);
+        let mut components = crate::component_geometry::Components::kept(m);
         let (mut solids, mut placed, mut boxes, mut deferred) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
         for &(id, e) in chunk {
             if cancelled() {
@@ -2924,15 +2926,17 @@ impl Scene {
     ///
     /// Every pixel of its picture is what the whole scene's is: what is left out was behind, and the rest are drawn in the
     /// order they are in the whole scene.
-    pub(crate) fn section(m: &Model, work: Work<'_>, cam: &Camera, clip: &Clip, look: &Look) -> Scene {
-        Self::section_cancellable(m, work, cam, clip, look, &|| false).unwrap_or_else(|| Self::bare(Vec::new()))
+    ///
+    /// Its components are built as `fine` asks (GEO-2c-2a: [`crate::component_geometry::section_fine`]), through the builds
+    /// kept across drawings.
+    pub(crate) fn section(m: &Model, work: Work<'_>, view: (&Camera, &Clip, Option<SectionFine>), look: &Look) -> Scene {
+        Self::section_cancellable(m, work, view, look, &|| false).unwrap_or_else(|| Self::bare(Vec::new()))
     }
 
     pub(crate) fn section_cancellable(
         m: &Model,
         (solids, ranges, placed, boxes): Work<'_>,
-        cam: &Camera,
-        clip: &Clip,
+        (cam, clip, fine): (&Camera, &Clip, Option<SectionFine>),
         look: &Look,
         cancelled: &(dyn Fn() -> bool + Sync),
     ) -> Option<Scene> {
@@ -2940,16 +2944,15 @@ impl Scene {
             return None;
         }
         // Each element's box, round the points that may be its farthest, and where its solids are; a component's are made
-        // only if it shows.
+        // only if it shows. Drawn finer than the build its box is of, a component may reach past that box, as far as
+        // `finer_reach` says (GEO-2c-2a).
         let listed: Vec<_> = placed.iter().zip(boxes).collect();
         let boxes: Vec<Boxed3> = in_order(&listed, |((id, _), b)| {
             let e = m.elements.get(*id);
-            (look.shows(*id) && !matches!(e, Some(Element::Mass(_)))).then(|| {
-                let at = match e {
-                    Some(Element::Component(_)) => 0..0,
-                    _ => ranges.get(id).cloned().unwrap_or(0..0),
-                };
-                (*id, **b, at)
+            (look.shows(*id) && !matches!(e, Some(Element::Mass(_)))).then(|| match e {
+                Some(Element::Component(_)) if fine.is_some() => (*id, b.map(crate::family::fineness::finer_reach), 0..0),
+                Some(Element::Component(_)) => (*id, **b, 0..0),
+                _ => (*id, **b, ranges.get(id).cloned().unwrap_or(0..0)),
             })
         })
         .into_iter()
@@ -3029,7 +3032,8 @@ impl Scene {
             in_order(&screened, |(b, s)| tiles.may_show_on(clip, s.as_ref()).then_some(*b)).into_iter().flatten().collect();
         let groups: Vec<&[&Boxed3]> = kept.chunks(TRIS_AT_ONCE).collect();
         let made = in_order(&groups, |group| {
-            let mut components = crate::component_geometry::Components::new(m);
+            // Each group its own, on whichever thread it is made, each reading the builds kept.
+            let mut components = crate::component_geometry::Components::for_section(m, fine);
             let mut tris = Vec::new();
             for (id, _, at) in group.iter().copied() {
                 if cancelled() {
@@ -5731,7 +5735,7 @@ mod tests {
             let view = crate::render::section_fit(&m, id, 900, 600);
             let (cam, clip) = crate::render::section_camera(&m, id, view).unwrap();
             let look = Look::of(&m, id);
-            let lean = Scene::section(&m, (&solids, &ranges, &placed, &boxes), &cam, &clip, &look);
+            let lean = Scene::section(&m, (&solids, &ranges, &placed, &boxes), (&cam, &clip, None), &look);
             lean.cut_in(&cam, &clip, &[], &look).same_as(&whole.cut_in(&cam, &clip, &[], &look)).unwrap();
             // The furniture behind the facade, and the rooms' services, are left out.
             assert!(lean.tris.len() * 4 < whole.tris.len(), "{name}: {} of {} triangles", lean.tris.len(), whole.tris.len());

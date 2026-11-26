@@ -2294,8 +2294,29 @@ heights, and so whether the plan shows it, at the default. The family editor's p
 drawn again (a pan, a selection, an edit elsewhere) builds finer only what changed: by the allocation of the model's families
 (which any edit of a family replaces) and the component's key and fineness, no more than 4 such generations and 256 MB, the
 least lately used going first (and since GEO-2g the default builds too, in a tier of their own). A shape too fine to cut is kept as its default build, so it isn't tried again. Tests: `family_fineness_tests.rs`, among them a 20 m arc in plan
-within a pixel, fitted and at 50 times. The 3D view, sections and elevations, which render through the 3D scene, follow in
-GEO-2c-2.
+within a pixel, fitted and at 50 times.
+
+Sections and elevations (GEO-2c-2a) ask for the same fineness at the same scale (`render::section_fine_of`, from the
+drawing's view, so a section and a plan at the same pixels a millimetre share their builds). What a section shows is its
+screen in its own frame: along its line and up, narrowed by its crop, and from its line back to its far clip
+(`SectionWindow`); a component whose default build's box, placed, meets it is built at that fineness where the default one
+recorded a curve that would take more chords (`Fineness::changes`), the rest at the default (`Components::for_section`).
+The picture's scene and the cut each build through one, from the same view, so the cut's poché and the picture under it
+are of the same build; a picture drawn at the screen's pixels under a drawing in points takes the drawing's fineness
+(`section_picture_of_cancellable`, what the desktop asks for). Both go through the plans' store, the default builds and the
+finer ones, and so do the work a section's frame and heights are read from (`SectionWork`, whose extremes stay the default
+builds'): a section drawn again, panned, or zoomed within a power of two builds nothing, and one zoomed past a power of two
+builds only the curved components on its screen. Each group of 256 elements a picture makes its triangles of reads the
+store with a `Components` of its own, as it may be on another thread. Where the fineness is the default (a scale coarser
+than about 1/512 px a mm), or no curve on the screen strays half a pixel at the default (a facade's small knobs, fitted), a
+section is what it was, to the pixel. A sheet draws its sections at its viewports' scale, as its plans. A finer build may
+reach past the default's box by the stray of the default's chords, twice that where a surface curves two ways (a revolved
+arc): at most 5% of the box's diagonal (`fineness::STRAY` says why). So where a drawing asks for a fineness, the choice of
+what to build finer, the picture's culling (its crop, its tiles' depths) and the cut's choice of what its line crosses each
+widen a component's box by that much (`fineness::finer_reach`): a sliver of a finer curve past its default box is drawn,
+and cut. The frame, the heights and the model's extent read the default boxes as they are, so a fit is what it was. Tests:
+`section_fineness_tests.rs`; `section_fineness_bench` in `family_fineness_tests.rs` times the facade's elevation, fitted and
+zoomed in. The 3D view follows in GEO-2c-2b.
 
 ## Plans of many components (GEO-2g)
 
@@ -2367,7 +2388,8 @@ planes, components hosted on them or on faces (Place on Face), and where a compo
 - `family/options.rs`: Family Category and Parameters' options.
 - `family/views.rs`: a family's plans and elevations.
 - `family/sketch.rs`: forms' sketches. `family/handles.rs`: shape handles on a profile's edges (FE-5).
-- `family/fineness.rs`: how near a build chords its curves, `Fineness`, which a plan sets from its scale (GEO-2c).
+- `family/fineness.rs`: how near a build chords its curves, `Fineness`, which a plan, a section or an elevation sets from
+  its scale (GEO-2c).
 - `family/forms.rs`: Blend, Sweep and Swept Blend: their kinds, paths, vertex mapping and triangles.
 - `family/faces.rs`: face tags (GEO-2b): `FormFace`, the key table a piece's triangles index, and the lines ring edges lie along.
 - `family/paint.rs`: painted faces of a form (FE-16c-1): what a build paints, which faces a form builds, dead paint dropped, the `paint` edit, and the face under a point and the element it is painted on (FE-16c-2). A placed component's own face paint (FE-16c-2) is in the project's `paint.rs`.

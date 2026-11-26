@@ -491,9 +491,9 @@ pub(crate) struct Components<'a> {
     local: HashMap<(Arc<Key>, Fineness), Arc<Built>>,
     /// The keys and finenesses not kept across drawings, looked for once.
     missing: std::collections::HashSet<(Arc<Key>, Fineness)>,
-    /// GEO-2c: the fineness a view asks for, and the part of the plan it shows. A component reaching into it is built at
-    /// that fineness; the rest, which the view doesn't show, at the default.
-    fine: Option<(Fineness, [P2; 2])>,
+    /// GEO-2c: the fineness a view asks for, and the part of the model it shows (a plan's, or a section's: GEO-2c-2a). A
+    /// component reaching into it is built at that fineness; the rest, which the view doesn't show, at the default.
+    fine: Option<(Fineness, Shown)>,
     /// GEO-2g: the part of the plan a component has to reach into to be built and drawn: the view's screen and one more
     /// screen each way ([`window_of`]). None, all of it.
     window: Option<[P2; 2]>,
@@ -513,6 +513,80 @@ pub(crate) struct Components<'a> {
     lines: HashMap<Arc<Key>, Arc<Vec<index::Line>>>,
     /// Charges the store, once the drawing is done, with what it kept beside the builds.
     _settle: Settle,
+}
+
+/// GEO-2c: what of the model a view shows, which a component's default build, placed, is to meet to be built finer.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Shown {
+    /// A plan's: a box in plan.
+    Plan([P2; 2]),
+    /// A section's or an elevation's (GEO-2c-2a): its screen, in its own frame.
+    Section(SectionWindow),
+}
+
+/// GEO-2c-2a: the part of the model a section's or an elevation's drawing shows, in its own frame: across its screen (along
+/// its line) and up it, mm from the middle of the screen, narrowed by its crop; and toward the camera, from its far clip to
+/// its line, as its picture keeps what is there.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct SectionWindow {
+    middle: [f64; 3],
+    /// The picture's right, its up, and toward the camera.
+    axes: [[f64; 3]; 3],
+    across: (f64, f64),
+    rise: (f64, f64),
+    depth: (f64, f64),
+}
+
+impl SectionWindow {
+    /// Of a picture through `cam` and `clip`, as [`crate::render::section_camera`] makes them: none where the camera isn't
+    /// a number, or its screen is no size.
+    fn of(cam: &crate::view3d::Camera, clip: &crate::view3d::Clip) -> Option<Self> {
+        let k = cam.scale;
+        let (back, right, up) = cam.axes();
+        let (w, h) = (f64::from(cam.width), f64::from(cam.height));
+        // Pixel columns and rows as mm from the middle, the crop's within the screen's (a crop that is no number, the screen).
+        let across = ((clip.x.0.max(0.0) - w / 2.0) / k, (clip.x.1.min(w) - w / 2.0) / k);
+        let rise = ((h / 2.0 - clip.y.1.min(h)) / k, (h / 2.0 - clip.y.0.max(0.0)) / k);
+        let depth = (clip.far.map_or(f64::NEG_INFINITY, |f| clip.near - f), clip.near);
+        let numbers = [across.0, across.1, rise.0, rise.1].iter().all(|v| v.is_finite())
+            && cam.target.iter().chain(back.iter()).chain(right.iter()).chain(up.iter()).all(|v| v.is_finite())
+            && !depth.1.is_nan();
+        (k.is_finite() && k > 0.0 && numbers).then_some(SectionWindow { middle: cam.target, axes: [right, up, back], across, rise, depth })
+    }
+
+    /// Whether what lies within `corners` (a box's, placed) may show in it: their extent across, up and toward the camera
+    /// meets its. One of no numbers isn't known to miss it.
+    fn meets(&self, corners: impl IntoIterator<Item = [f64; 3]>) -> bool {
+        let (mut lo, mut hi) = ([f64::INFINITY; 3], [f64::NEG_INFINITY; 3]);
+        for p in corners {
+            let d = [p[0] - self.middle[0], p[1] - self.middle[1], p[2] - self.middle[2]];
+            for (k, a) in self.axes.iter().enumerate() {
+                let v = d[0] * a[0] + d[1] * a[1] + d[2] * a[2];
+                if v.is_nan() {
+                    return true;
+                }
+                (lo[k], hi[k]) = (lo[k].min(v), hi[k].max(v));
+            }
+        }
+        let ranges = [self.across, self.rise, self.depth];
+        (0..3).all(|k| !(lo[k] > ranges[k].1 || hi[k] < ranges[k].0))
+    }
+}
+
+/// GEO-2c-2a: what a section's or an elevation's drawing builds its components at: the fineness its scale asks for, and the
+/// part of the model it shows, a component reaching into which is built at it.
+pub(crate) type SectionFine = (Fineness, SectionWindow);
+
+/// GEO-2c-2a: what a section's or an elevation's drawing through `cam` and `clip`, `scale` px a mm (its drawing's, which the
+/// picture under it shares at the screen's pixels), builds finer, and how finely: [`Fineness::for_view`] of its scale, as a
+/// plan's. None where that is the default, or the camera isn't a number.
+pub(crate) fn section_fine(scale: f64, cam: &crate::view3d::Camera, clip: &crate::view3d::Clip) -> Option<SectionFine> {
+    let fineness = Fineness::for_view(scale);
+    #[cfg(test)]
+    if COARSE.with(std::cell::Cell::get) {
+        return None;
+    }
+    (fineness != Fineness::DEFAULT).then(|| SectionWindow::of(cam, clip).map(|w| (fineness, w))).flatten()
 }
 
 /// GEO-2g: the part of the plan `view` builds and draws components in: its screen and one more screen each way, however it is
@@ -543,11 +617,16 @@ impl Drop for Settle {
 
 impl<'a> Components<'a> {
     pub(crate) fn new(model: &'a Model) -> Self {
+        // A test's twin of a section's picture, the whole scene's, builds its components as the section does.
+        #[cfg(test)]
+        let fine = WHOLE.with(std::cell::Cell::get).map(|(f, w)| (f, Shown::Section(w)));
+        #[cfg(not(test))]
+        let fine = None;
         Self {
             model,
             local: HashMap::new(),
             missing: Default::default(),
-            fine: None,
+            fine,
             window: None,
             keeps: false,
             seen: HashMap::new(),
@@ -562,7 +641,14 @@ impl<'a> Components<'a> {
 
     /// For a plan's extent: what it builds kept across drawings, for the plan drawn next.
     pub(crate) fn kept(model: &'a Model) -> Self {
-        Self { keeps: true, ..Self::new(model) }
+        Self { keeps: true, fine: None, ..Self::new(model) }
+    }
+
+    /// GEO-2c-2a: for a section's or an elevation's drawing that asks for `fine` ([`section_fine`]): what it shows built at
+    /// that fineness, the rest at the default, and what it builds kept across drawings, as a plan's are. Its picture and its
+    /// cut each make one, so each reads the same builds.
+    pub(crate) fn for_section(model: &'a Model, fine: Option<SectionFine>) -> Self {
+        Self { keeps: true, fine: fine.map(|(f, w)| (f, Shown::Section(w))), ..Self::new(model) }
     }
 
     /// For a plan drawn through `view`: what it shows built at the [`Fineness`] its scale asks for (GEO-2c), only what meets
@@ -578,7 +664,7 @@ impl<'a> Components<'a> {
         let window = window_of(view);
         #[cfg(test)]
         let window = window.filter(|_| !UNCULLED.with(std::cell::Cell::get));
-        Self { fine: shown.then_some((fineness, shown_window)), window, keeps: true, ..Self::new(model) }
+        Self { fine: shown.then_some((fineness, Shown::Plan(shown_window))), window, keeps: true, ..Self::new(model) }
     }
 
     fn key(&self, c: &Component) -> Arc<Key> {
@@ -703,13 +789,29 @@ impl<'a> Components<'a> {
 
     /// The fineness `c` is built at: the view's where it may reach into the view, or where its extent isn't known.
     fn fineness(&mut self, c: &'a Component) -> Fineness {
-        let Some((fineness, window)) = self.fine else { return Fineness::DEFAULT };
-        // Its box as built at the default (which its heights are read from already), placed: a family's own box isn't known
-        // for every kind of form, and one not known would be built finer wherever it stands.
-        match self.default_of(c).bounds {
-            Some(local) if meets(self.placed_box(c, local), window) => fineness,
-            _ => Fineness::DEFAULT,
+        if self.fine.is_none() {
+            return Fineness::DEFAULT;
         }
+        let default = self.default_of(c);
+        self.fine_for(c, &default)
+    }
+
+    /// The fineness `c`, `default` its default build, is built at: the view's where that build's box, placed, meets what the
+    /// view shows (a section's, the box widened by as far as a finer build may reach past it: GEO-2c-2a,
+    /// [`crate::family::fineness::finer_reach`]). Its box as built at the default (which its heights are read from already):
+    /// a family's own box isn't known for every kind of form, and one not known would be built finer wherever it stands.
+    fn fine_for(&self, c: &Component, default: &Built) -> Fineness {
+        let (Some((fineness, shown)), Some(local)) = (self.fine, default.bounds) else { return Fineness::DEFAULT };
+        let inside = match shown {
+            Shown::Plan(window) => meets(self.placed_box(c, local), window),
+            Shown::Section(window) => {
+                let local = crate::family::fineness::finer_reach(local);
+                // Its eight corners placed in 3D, not `placed_box`'s box in plan: they go into the section's own frame.
+                let placed = self.model.component_placement(c);
+                window.meets((0..8).map(|k| placed.place(std::array::from_fn(|axis| local[(k >> axis) & 1][axis]))))
+            }
+        };
+        if inside { fineness } else { Fineness::DEFAULT }
     }
 
     /// Its supported local form envelope ([`crate::family::Family::conservative_bounds`]), placed: none where it isn't
@@ -1047,9 +1149,21 @@ impl<'a> Components<'a> {
     }
 
     /// Its pieces where it is placed, as the 3D view draws them ([`crate::hosting::Placement::solid`]): no outline in plan.
+    /// For a section's drawing (GEO-2c-2a), at the fineness it asks of `c`.
     pub(crate) fn solids(&mut self, c: &Component) -> Vec<Piece> {
         let placed = self.model.component_placement(c);
-        self.default_any(c).pieces.iter().map(|pc| placed.solid(pc)).collect()
+        self.drawn(c).pieces.iter().map(|pc| placed.solid(pc)).collect()
+    }
+
+    /// The build `c` is drawn with, of a component that may not be the model's own: its default one, or where it meets what
+    /// the view shows and a finer build may differ from that ([`Fineness::changes`]), at the view's fineness.
+    fn drawn(&mut self, c: &Component) -> Arc<Built> {
+        let key = self.key(c);
+        let default = self.local_at(&key, c, Fineness::DEFAULT);
+        match self.fine_for(c, &default) {
+            fineness if fineness.changes(default.needs) => self.local_at(&key, c, fineness),
+            _ => default,
+        }
     }
 
     /// What a plan draws of its pieces where it is placed: upright, each piece's outline, holes, heights and what says how it
@@ -1878,6 +1992,8 @@ thread_local! {
     static BUILD_THREADS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
     static UNSHARES: std::cell::Cell<(usize, usize)> = const { std::cell::Cell::new((0, 0)) };
     static KEYS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    /// What the components a test's twin of a section's picture builds ask for: the section's ([`as_section`]).
+    static WHOLE: std::cell::Cell<Option<SectionFine>> = const { std::cell::Cell::new(None) };
     /// The workers a test asks for: none asked, the plan's; `Some(None)`, this thread alone.
     static TEST_POOL: std::cell::RefCell<Option<Option<Arc<rayon::ThreadPool>>>> = const { std::cell::RefCell::new(None) };
 }
@@ -1895,10 +2011,18 @@ fn with_cell<V: Copy + 'static, T>(cell: &'static std::thread::LocalKey<std::cel
     f()
 }
 
-/// `f`, with the plans it draws on this thread built at the default however near they are: as before GEO-2c, to compare.
+/// `f`, with the plans, sections and elevations it draws on this thread built at the default however near they are: as before
+/// GEO-2c, to compare.
 #[cfg(test)]
 pub(crate) fn without_fineness<T>(f: impl FnOnce() -> T) -> T {
     with_cell(&COARSE, true, f)
+}
+
+/// `f`, with what it builds of the model's components on this thread through a [`Components`] of its own built as a section's
+/// drawing that asks for `fine` builds them: the whole scene a test holds the section's picture to.
+#[cfg(test)]
+pub(crate) fn as_section<T>(fine: Option<SectionFine>, f: impl FnOnce() -> T) -> T {
+    with_cell(&WHOLE, fine, f)
 }
 
 /// `f`, with the plans it draws on this thread building and drawing every component wherever it is: as before GEO-2g, to

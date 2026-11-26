@@ -279,6 +279,8 @@ pub mod sample;
 pub mod schedule;
 #[cfg(test)]
 mod section_box_tests;
+#[cfg(test)]
+mod section_fineness_tests;
 pub mod selection;
 #[cfg(test)]
 mod shape_tests;
