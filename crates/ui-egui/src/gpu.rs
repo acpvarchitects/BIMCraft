@@ -4,10 +4,11 @@
 //! texture that egui shows as it shows the CPU picture. What changes between pictures is small: the camera, the levels' lines,
 //! and, only when they change, the selection's tints and the textures' mip levels. A section box is a uniform each pixel is cut
 //! to, so a face being dragged builds nothing. Opt-in (Settings > Performance); what the card can't draw (wireframe, a point cloud) is the processor's, and so is everything when the card fails: a validation or out-of-memory error from the device is caught
-//! here, not left to the device's handler, and the window carries on without the card (`BimApp::gpu_failed`).
+//! here, not left to the device's handler, and the window carries on without the card (`BimApp::gpu_failed`). A device lost
+//! reports no error afterwards, only its callback: that is the card's answer to every draw and upload from then on.
 
 use std::collections::BTreeMap;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use bimcraft_core::model::Id;
 use bimcraft_core::render::Rgb;
@@ -104,6 +105,13 @@ impl Card {
             }
         }
         self.gpu.as_mut().filter(|_| self.wanted)
+    }
+
+    /// The card given up after `e`, which the note says: the processor draws. One whose device was lost is given up for good, as
+    /// one that couldn't be made: a card made again on that device would draw nothing and say nothing.
+    pub(crate) fn give_up(&mut self, e: String) {
+        self.failed |= self.gpu.as_ref().is_some_and(|g| g.alive().is_err());
+        (self.gpu, self.note) = (None, Some(e));
     }
 }
 
@@ -478,6 +486,9 @@ pub struct Gpu {
     pub(crate) marks: Vec<PlaneMark>,
     /// Pass 5: the marks, blended over the picture.
     marking: wgpu::RenderPipeline,
+    /// Why the device was lost, once its callback says so: a lost device reports no error of its own afterwards, and what is
+    /// drawn or uploaded on it "succeeds" with nothing in it.
+    lost: Arc<OnceLock<String>>,
 }
 
 /// The most bytes a buffer of vertices holds, whatever the card allows: some drivers place a very large buffer badly.
@@ -1006,6 +1017,11 @@ impl Gpu {
         });
         let segments = (Gpu::storage(&device, SEGMENT), SEGMENT);
         caught(guard)?;
+        let lost = Arc::new(OnceLock::new());
+        let told = Arc::clone(&lost);
+        device.set_device_lost_callback(move |reason, message| {
+            let _ = told.set(if message.is_empty() { format!("{reason:?}") } else { format!("{reason:?}, {message}") });
+        });
         Ok(Gpu {
             device,
             queue,
@@ -1044,7 +1060,16 @@ impl Gpu {
             swapped_ink: false,
             marks: Vec::new(),
             marking,
+            lost,
         })
+    }
+
+    /// Whether the device is still there: once its callback has said it was lost, why, as the error every draw and upload gives.
+    pub(crate) fn alive(&self) -> Result<(), String> {
+        match self.lost.get() {
+            Some(why) => Err(format!("the card was lost: {why}")),
+            None => Ok(()),
+        }
     }
 
     /// The card's name, as the driver gives it.
@@ -1099,7 +1124,7 @@ impl Gpu {
         caps: Option<&Arc<Caps>>,
     ) -> Result<bool, String> {
         let guard = scopes(&self.device);
-        let drawn = self.encode(mesh, cam, tints, ground, cut, caps);
+        let drawn = self.alive().and_then(|()| self.encode(mesh, cam, tints, ground, cut, caps));
         let full = out_of_memory(guard);
         if let Some(up) = &self.mesh {
             self.card_bytes = self.card_bytes.min(up.room.saturating_add(self.parked_bytes()));
@@ -1113,6 +1138,8 @@ impl Gpu {
             Ok(false) => Ok(()),
             Err(e) => Err(e),
         };
+        // Lost while it drew: the picture has nothing in it, and only the callback says so.
+        let caught = caught.and_then(|()| self.alive());
         if drawn.is_err() || caught.is_err() {
             (self.mesh, self.parked, self.parked_owner, self.targets) = (None, None, None, None);
         }
@@ -1144,6 +1171,7 @@ impl Gpu {
     /// Starts the large first upload away from the interface thread. A result belongs to its exact mesh snapshot.
     /// Tests that call `draw` directly retain the synchronous path there.
     pub(crate) fn prepare_upload(&mut self, ctx: &egui::Context, mesh: &Arc<Mesh>) -> Result<bool, String> {
+        self.alive()?;
         if self.mesh.as_ref().is_some_and(|u| Arc::ptr_eq(&u.mesh, mesh)) || self.unpark(mesh) {
             return Ok(true);
         }
@@ -1248,6 +1276,14 @@ impl Gpu {
     /// Waits for what was sent to the card to be done, for a measurement.
     #[cfg(test)]
     pub(crate) fn wait(&self) {
+        let _ = self.device.poll(wgpu::PollType::wait_indefinitely());
+    }
+
+    /// The device lost, for a test, as a driver's reset loses it: destroyed, then waited on, as wgpu tells a destroyed device's
+    /// callback when a poll finds its queue empty (a reset tells it at once).
+    #[cfg(test)]
+    pub(crate) fn lose(&self) {
+        self.device.destroy();
         let _ = self.device.poll(wgpu::PollType::wait_indefinitely());
     }
 
@@ -3158,6 +3194,31 @@ floor {}"#,
         // Nothing but the ground, and the new project's level lines over it.
         let ground = pixels.as_chunks::<4>().0.iter().filter(|p| **p == [10, 20, 30, 255]).count();
         assert!(ground * 10 >= pixels.len() / 4 * 9 && ground < pixels.len() / 4, "{ground} of {} pixels are the ground", pixels.len() / 4);
+    }
+
+    /// A lost device reports no error of its own afterwards, so its pictures and uploads would "succeed" with nothing in them: what
+    /// the device-lost callback said is the card's answer to the next draw and the next upload instead, and nothing is kept.
+    #[test]
+    fn a_card_whose_device_is_lost_says_so_at_the_next_draw_and_upload_and_keeps_nothing() {
+        let Some(mut gpu) = headless() else {
+            eprintln!("no graphics adapter here: a lost card is not tried");
+            return;
+        };
+        let s = sample();
+        let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
+        let cam = scene.fit_in(AZIMUTH, ELEVATION, 320, 240, &look);
+        let mesh = Arc::new(Mesh::new(&scene, &look).unwrap());
+        assert!(gpu.draw(&mesh, &cam, &[], PAPER).unwrap());
+        // `destroy` only marks the device: wgpu tells the callback when a poll finds its queue empty, so the test waits on it (a
+        // driver's reset tells it at once).
+        gpu.device.destroy();
+        gpu.device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
+        let drawn = gpu.draw(&mesh, &cam, &[], PAPER);
+        assert!(drawn.as_ref().is_err_and(|e| e.starts_with("the card was lost")), "{drawn:?}");
+        assert!(gpu.picture().is_none() && gpu.mesh.is_none(), "nothing kept");
+        let other = Arc::new(Mesh::new(&scene, &look).unwrap());
+        let up = gpu.prepare_upload(&egui::Context::default(), &other);
+        assert!(up.as_ref().is_err_and(|e| e.starts_with("the card was lost")), "{up:?}");
     }
 
     /// `cargo test -p bimcraft-ui-egui --release gpu_speed -- --ignored --nocapture`: the 20-storey tower at 1920 x 1080, orbited.
