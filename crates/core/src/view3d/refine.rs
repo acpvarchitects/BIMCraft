@@ -1,8 +1,9 @@
 //! GEO-2c-2b: a scene refined for its camera. A scene is made with every component at the default fineness, as it always was;
 //! [`Scene::refined`] then makes again only the components whose band the camera changes, each at about half a pixel where it
 //! is seen ([`crate::family::Fineness::for_view`]): a parallel view's scale for every one, a perspective view's at the nearest
-//! point of the component's default build's box, placed. A component off the picture (beside it, or behind the eye) stays as
-//! it is; one changes band only half a step past its band's edge ([`crate::family::Fineness::banded`]); finer builds are spent
+//! point of the component's default build's box, placed, widened by as far as a finer build may reach past it
+//! ([`crate::family::fineness::finer_reach`]). A component whose widened box is off the picture (beside it, or behind the eye)
+//! stays as it is; one changes band only half a step past its band's edge ([`crate::family::Fineness::banded`]); finer builds are spent
 //! nearest first within a budget of triangles, past which the farther ones are drawn at the default. Copies in one band share a
 //! shape (`ShapeKey::Family` holds the fineness), so the card still draws them as copies. Nothing else reads it: a scene made
 //! for an export, a sheet or IFC is as before.
@@ -170,7 +171,8 @@ impl Scene {
                 return None;
             }
             let (Some(span), Some(Element::Component(c))) = (self.span(*id), m.elements.get(*id)) else { continue };
-            let seen = of.corners().filter(|_| look.shows(*id)).filter(|k| cut.is_none_or(|b| in_box(k, b))).and_then(|k| sight.sees(&k));
+            // Its box as far as a finer build may reach: a curve of it may show on the picture though its default box doesn't.
+            let seen = of.reach().filter(|_| look.shows(*id)).filter(|k| cut.is_none_or(|b| in_box(k, b))).and_then(|k| sight.sees(&k));
             let (want, near) = match seen {
                 Some((scale, near)) => (of.at.banded(scale, of.shape.needs), near),
                 None => (of.at, f64::INFINITY),

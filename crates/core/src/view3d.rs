@@ -2571,9 +2571,11 @@ pub(crate) struct FineOf {
 }
 
 impl FineOf {
-    /// The corners of its default build's box, placed: none for a build of no triangles.
-    fn corners(&self) -> Option<[P3; 8]> {
-        let b = self.shape.bounds?;
+    /// The corners of its default build's box widened by as far as a finer build of it may reach past it
+    /// ([`crate::family::fineness::finer_reach`], GEO-2c-2a's review), placed: what refining asks whether it is on the picture
+    /// and how near it comes. None for a build of no triangles.
+    fn reach(&self) -> Option<[P3; 8]> {
+        let b = crate::family::fineness::finer_reach(self.shape.bounds?);
         Some(std::array::from_fn(|k| self.place.place([b[k & 1][0], b[(k >> 1) & 1][1], b[(k >> 2) & 1][2]])))
     }
 }

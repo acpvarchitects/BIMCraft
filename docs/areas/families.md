@@ -2323,8 +2323,10 @@ IFC) is what it was to the bit. Refining is a step of its own (`Scene::refined`,
 a worker once the camera has stood still for 200 ms (`orbit::SETTLE`), showing the scene and mesh it has until the refined ones
 are ready; a camera that moves on drops a refinement under way. A component on the picture is asked for about half a pixel
 where it is seen: at a parallel view's scale, the same for every one; in perspective, at the focal length in pixels over how far
-in front of the eye the nearest corner of its default build's box, placed, is (no nearer than `NEAR`). One wholly off the
-picture (beside it, or behind the eye), hidden by the view or outside its section box stays as it is. A component changes band
+in front of the eye the nearest corner of its default build's box, placed, is (no nearer than `NEAR`). That box is widened by
+as far as a finer build may reach past it (`fineness::finer_reach`, as a section's is), so a finer curve reaching onto the
+picture from past the default box is refined and shows. One whose widened box is wholly off the picture (beside it, or behind
+the eye), hidden by the view or outside its section box stays as it is. A component changes band
 only half a power of two past its band's edge (`Fineness::banded`), so an orbit at a constant distance or a zoom by a hair
 round an edge builds nothing; the default's band is every scale that asks no finer than its curves need (`Built::needs`), so one
 whose curves take no more chords is never refined. Finer builds are spent nearest first within a budget of triangles, each copy

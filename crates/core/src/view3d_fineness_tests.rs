@@ -367,3 +367,54 @@ fn a_hostile_camera_refines_nothing() {
         assert!(scene.refined(&m, &cam, &look).is_none(), "{cam:?}");
     }
 }
+
+/// The radius of [`ring`]'s outer arc: 30° through 1000 mm.
+fn ring_radius() -> f64 {
+    500.0 / 15f64.to_radians().sin()
+}
+
+/// How far east [`ring`] reaches, at 600 up: its outer arc at its widest, turned to the east.
+fn apex() -> f64 {
+    2800.0 + ring_radius() * (1.0 - 15f64.to_radians().cos())
+}
+
+/// A ring curved two ways, as GEO-2c-2a's review has it: a profile 200 mm wide from 100 to 1100 up, its outer side an arc of
+/// 30° bulging east to [`apex`], turned about the family's z from -16.875° to 16.875°. Its default build stops 21 mm short of
+/// its apex.
+fn ring() -> Value {
+    json!({"sketch": [
+        {"start": [2800, 100], "end": [2800, 1100], "turn": 30},
+        {"start": [2800, 1100], "end": [2600, 1100]},
+        {"start": [2600, 1100], "end": [2600, 100]},
+        {"start": [2600, 100], "end": [2800, 100]},
+        {"start": [0, 0], "end": [0, 100], "axis": true}],
+        "host": {"plane": FRONT}, "from": -16.875, "to": 16.875})
+}
+
+/// GEO-2c-2a's review, in the 3D view: a component is asked whether it is on the picture by its default build's box widened by
+/// as far as a finer build may reach past it (`fineness::finer_reach`). [`ring`]'s default box stops short of a picture
+/// zoomed in to 2 px a mm whose left edge its curve crosses: refined, its curve shows there out to its apex, within half a pixel
+/// of chord and one of raster.
+#[test]
+fn a_finer_curve_reaching_into_the_picture_past_its_default_box_is_refined_and_shows() {
+    let mut s = Session::new();
+    family(&mut s, "Ring", vec![ring()]);
+    let c = place(&mut s, "Ring", [0.0, 0.0], 0.0);
+    let (m, look) = (std::sync::Arc::clone(&s.model), Look::of_3d(&s.model));
+    let scene = Scene::new(&m);
+    let (_, hi) = box_of(&scene, c);
+    // Looking north, 2 px a mm, the picture's left edge at 2850 east: past its default box, short of its apex.
+    let (scale, w, h) = (2.0, 400u32, 400u32);
+    let left = 2850.0;
+    assert!(hi[0] < left && apex() > left + 10.0, "its default box to {:.1}, its apex at {:.1}", hi[0], apex());
+    let cam = north(scale, [left + f64::from(w) / 2.0 / scale, -5000.0, 600.0], (w, h));
+    let shows = |scene: &Scene| {
+        let img = scene.render(&cam, &[]);
+        (0..w).rev().find(|x| img.pick(f64::from(*x) + 0.5, f64::from(h / 2) + 0.5) == Some(c)).map(|x| left + (f64::from(x) + 0.5) / scale)
+    };
+    assert_eq!(shows(&scene), None, "made as ever, nothing of it on the picture");
+    let refined = scene.refined(&m, &cam, &look).unwrap_or_else(|| panic!("refined: its finer curve reaches into the picture"));
+    assert_eq!(refined.fineness_of(c), Fineness::for_view(scale));
+    let last = shows(&refined).unwrap_or_else(|| panic!("its curve on the picture"));
+    assert!(last <= apex() + 0.01 && apex() - last <= 2.0 / scale, "its last pixel at {last:.2}, its apex at {:.2}", apex());
+}
