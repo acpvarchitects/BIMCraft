@@ -418,3 +418,23 @@ fn a_finer_curve_reaching_into_the_picture_past_its_default_box_is_refined_and_s
     let last = shows(&refined).unwrap_or_else(|| panic!("its curve on the picture"));
     assert!(last <= apex() + 0.01 && apex() - last <= 2.0 / scale, "its last pixel at {last:.2}, its apex at {:.2}", apex());
 }
+
+/// The memory guard (cp's review of #99): running out of memory is a crash nothing catches, and a refinement takes a copy of the
+/// scene, finer builds and, for a card, a mesh. With too little free it refines nothing, and doesn't panic; with plenty, or on
+/// a machine that can't say what is free, as ever.
+#[test]
+fn with_too_little_memory_free_refining_refines_nothing() {
+    use crate::memory::testing::fake;
+    let mut s = Session::new();
+    family(&mut s, "Lying", vec![lying()]);
+    place(&mut s, "Lying", [0.0, 0.0], 0.0);
+    let (m, look) = (std::sync::Arc::clone(&s.model), Look::of_3d(&s.model));
+    let scene = Scene::new(&m);
+    let cam = north(0.8, [0.0, -5000.0, 1000.0], (1200, 800));
+    let free = |bytes: Option<u64>| (fake(bytes).free)();
+    for little in [0, 1 << 20, 64 << 20, 256 << 20] {
+        assert!(scene.refined_with(&m, &cam, &look, free(Some(little)), &|| false).is_none(), "{little} bytes free: refined");
+    }
+    assert!(scene.refined_with(&m, &cam, &look, free(Some(16 << 30)), &|| false).is_some(), "16 GB free");
+    assert!(scene.refined_with(&m, &cam, &look, free(None), &|| false).is_some(), "no meter");
+}

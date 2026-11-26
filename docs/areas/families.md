@@ -2331,7 +2331,10 @@ only half a power of two past its band's edge (`Fineness::banded`), so an orbit 
 round an edge builds nothing; the default's band is every scale that asks no finer than its curves need (`Built::needs`), so one
 whose curves take no more chords is never refined. Finer builds are spent nearest first within a budget of triangles, each copy
 counted: as many of the scene's triangles (128 bytes) as the store keeps bytes of finer builds, some two million; past it the
-farther ones are drawn at the default, never a nearer one coarser than a farther. Only the components whose band changed are
+farther ones are drawn at the default, never a nearer one coarser than a farther. Running out of memory is a crash nothing
+catches, so a refinement first asks whether it fits in what the machine has free, less `memory.rs`'s margin
+(`Scene::refined_with`): a copy of the scene and a card's mesh of it, 512 bytes a triangle, must fit, and what is left bounds
+the finer triangles, 672 bytes each; else nothing is refined and the view stays at the default, with no error. Only the components whose band changed are
 made again, as an edit makes what it touched (`update::element_tris`, spliced into the scene), through the store, so a zoom
 back builds nothing. A shape is its key and its fineness (`ShapeKey::Family`), and `SharedComponents` and an edit's copies
 build each at its component's fineness through the store: copies in one band are one shape the card places for each, copies in

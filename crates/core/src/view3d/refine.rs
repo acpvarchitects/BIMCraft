@@ -22,6 +22,18 @@ const FINER_TRIS: usize = crate::component_geometry::BUDGET / std::mem::size_of:
 /// How many components refining builds at once, on the plans' workers, before it counts what they cost.
 const AT_ONCE: usize = 64;
 
+/// The memory guard (cp's review of #99): running out of memory is a crash nothing catches (`memory.rs`), so a refinement
+/// asks first whether it fits in what the machine has free, less `memory::room`'s margin, and else refines nothing. It may
+/// take, beside the scene it is made from, bytes a triangle: the scene copied (a `Tri` of 128, its plane, face and smooth
+/// normals' handle, some 160: the shapes and the normals themselves are shared), a card's mesh made from it (three vertices of
+/// 52 and a picking triangle of 112, some 270) and the mesh's picking hierarchy, rounded up to [`COPIED`] for each triangle of
+/// the scene; and for each triangle a finer build adds, that again, its build's own (72, kept in the store) and its smooth
+/// normals (88): [`ADDED`]. The scene's must fit; what is left past it bounds the finer triangles, within [`FINER_TRIS`]. A
+/// machine that can't say what is free (the tests, a library) refines as ever. Counted for the mesh whether or not a card
+/// draws it: the processor's picture needs none, so on it the guard is conservative.
+const COPIED: u64 = 512;
+const ADDED: u64 = 672;
+
 #[cfg(test)]
 thread_local! {
     static BUDGET: std::cell::Cell<Option<usize>> = const { std::cell::Cell::new(None) };
@@ -160,9 +172,32 @@ impl Scene {
 
     /// [`Scene::refined`], none when `cancelled`.
     pub fn refined_cancellable(&self, m: &Model, cam: &super::Camera, look: &Look, cancelled: &(dyn Fn() -> bool + Sync)) -> Option<Scene> {
+        self.refined_with(m, cam, look, crate::memory::free(), cancelled)
+    }
+
+    /// [`Scene::refined_cancellable`] on a machine with `free` bytes of memory free (none: it can't say).
+    pub fn refined_with(
+        &self,
+        m: &Model,
+        cam: &super::Camera,
+        look: &Look,
+        free: Option<u64>,
+        cancelled: &(dyn Fn() -> bool + Sync),
+    ) -> Option<Scene> {
         if cancelled() || self.fine.is_empty() {
             return None;
         }
+        // The memory guard: none where the copy doesn't fit, and as many finer triangles as what is left holds.
+        let budget = match free.map(crate::memory::room) {
+            None => budget(),
+            Some(room) => {
+                let copied = (self.tris.len() as u64).saturating_mul(COPIED);
+                if copied > room {
+                    return None;
+                }
+                budget().min(usize::try_from((room - copied) / ADDED).unwrap_or(usize::MAX))
+            }
+        };
         let sight = Sight::of(cam)?;
         let cut = look.section_box();
         let mut asked: Vec<Asked> = Vec::new();
@@ -184,7 +219,7 @@ impl Scene {
         }
         // Nearest first: the budget runs out on the farthest.
         asked.sort_by(|a, b| a.near.total_cmp(&b.near).then(a.id.cmp(&b.id)));
-        let (budget, mut spent, mut over) = (budget(), 0usize, false);
+        let (mut spent, mut over) = (0usize, false);
         let mut components = Components::kept(m);
         let mut finer = Finer::new();
         let mut changed: Vec<Id> = Vec::new();
