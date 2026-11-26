@@ -2309,8 +2309,12 @@ builds'): a section drawn again, panned, or zoomed within a power of two builds 
 builds only the curved components on its screen. Each group of 256 elements a picture makes its triangles of reads the
 store with a `Components` of its own, as it may be on another thread. Where the fineness is the default (a scale coarser
 than about 1/512 px a mm), or no curve on the screen strays half a pixel at the default (a facade's small knobs, fitted), a
-section is what it was, to the pixel. A sheet draws its sections at its viewports' scale, as its plans. The culling and the
-frame still read the default build's box, which a finer build's chords may pass by less than the default's stray. Tests:
+section is what it was, to the pixel. A sheet draws its sections at its viewports' scale, as its plans. A finer build may
+reach past the default's box by the stray of the default's chords, twice that where a surface curves two ways (a revolved
+arc): at most 5% of the box's diagonal (`fineness::STRAY` says why). So where a drawing asks for a fineness, the choice of
+what to build finer, the picture's culling (its crop, its tiles' depths) and the cut's choice of what its line crosses each
+widen a component's box by that much (`fineness::finer_reach`): a sliver of a finer curve past its default box is drawn,
+and cut. The frame, the heights and the model's extent read the default boxes as they are, so a fit is what it was. Tests:
 `section_fineness_tests.rs`; `section_fineness_bench` in `family_fineness_tests.rs` times the facade's elevation, fitted and
 zoomed in. The 3D view follows in GEO-2c-2b.
 
