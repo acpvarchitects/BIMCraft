@@ -5643,6 +5643,78 @@ impl Scene {
 }
 
 #[cfg(test)]
+impl Scene {
+    /// GEO-2c-2b: a hash of all the scene draws and picks with, bit for bit (FNV-1a, the same from one build and platform to
+    /// the next): its triangles, their planes, smooth normals and faces, the textures it holds, the frames, masses, levels,
+    /// scans and model lines, its shapes and their copies, and each element's run. What a guard holds the scene to.
+    pub(crate) fn digest(&self) -> u64 {
+        let mut h = 0xcbf2_9ce4_8422_2325u64;
+        let mut bytes = |b: &[u8]| {
+            for x in b {
+                h ^= u64::from(*x);
+                h = h.wrapping_mul(0x0100_0000_01b3);
+            }
+        };
+        let mut n = |x: u64| bytes(&x.to_le_bytes());
+        let p3 = |p: &P3| p.map(f64::to_bits);
+        let mut all: Vec<u64> = Vec::new();
+        all.push(self.tris.len() as u64);
+        for t in &self.tris {
+            all.extend(t.p.iter().flat_map(p3));
+            all.extend([t.owner, u64::from(t.color.0) << 16 | u64::from(t.color.1) << 8 | u64::from(t.color.2), u64::from(t.tex)]);
+            all.extend(t.curve.map_or([u64::MAX, 0], |(id, k)| [id, k as u64]));
+            all.extend([t.face.map_or(u64::MAX, u64::from), u64::from(t.vis), u64::from(t.part), u64::from(t.paint)]);
+        }
+        all.extend(self.planes.iter().map(|p| *p as u64));
+        for s in &self.smooth {
+            match s {
+                Some(c) => all.extend(c.iter().flat_map(p3)),
+                None => all.push(u64::MAX),
+            }
+        }
+        all.extend(self.skins.iter().map(|s| u64::from(s.is_some())));
+        for (id, f) in &self.frames {
+            all.push(*id);
+            all.extend(f.map(f64::to_bits));
+        }
+        all.extend(self.masses.iter().copied());
+        for (id, _, c) in &self.levels {
+            all.push(*id);
+            all.extend(c.iter().flat_map(p3));
+        }
+        for s in &self.scans {
+            all.extend([s.owner, s.points.len() as u64]);
+        }
+        for s in &self.strokes {
+            all.extend([s.owner, u64::from(s.vis)]);
+            all.extend(s.ends.iter().flat_map(p3));
+        }
+        all.push(self.shapes.len() as u64);
+        for s in &self.shapes {
+            all.push(s.len() as u64);
+            all.extend(s.iter().flatten().flat_map(p3));
+        }
+        for (first, c) in &self.placements {
+            all.extend([*first as u64, c.owner, c.shape as u64]);
+            all.extend(c.at.map(f64::to_bits));
+            all.extend(c.axes.iter().flat_map(p3));
+        }
+        for s in &self.spans {
+            all.extend([s.id, s.at.start as u64, s.at.end as u64]);
+            all.extend(s.bounds.iter().flat_map(p3));
+        }
+        for x in all {
+            n(x);
+        }
+        for f in self.faces.iter() {
+            bytes(f.as_bytes());
+            bytes(b"|");
+        }
+        h
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
