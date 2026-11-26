@@ -838,16 +838,16 @@ impl<'a> Components<'a> {
         self.fine_for(c, &default)
     }
 
-    /// The fineness `c`, `default` its default build, is built at: the view's where that build's box, placed, meets what the
-    /// view shows (a section's, the box widened by as far as a finer build may reach past it: GEO-2c-2a,
-    /// [`crate::family::fineness::finer_reach`]). Its box as built at the default (which its heights are read from already):
-    /// a family's own box isn't known for every kind of form, and one not known would be built finer wherever it stands.
+    /// The fineness `c`, `default` its default build, is built at: the view's where that build's box, placed and widened by
+    /// as far as a finer build may reach past it ([`crate::family::fineness::finer_reach`]: a section's, GEO-2c-2a; a plan's,
+    /// GEO-2c-3), meets what the view shows. Its box as built at the default (which its heights are read from already): a
+    /// family's own box isn't known for every kind of form, and one not known would be built finer wherever it stands.
     fn fine_for(&self, c: &Component, default: &Built) -> Fineness {
         let (Some((fineness, shown)), Some(local)) = (self.fine, default.bounds) else { return Fineness::DEFAULT };
+        let local = crate::family::fineness::finer_reach(local);
         let inside = match shown {
             Shown::Plan(window) => meets(self.placed_box(c, local), window),
             Shown::Section(window) => {
-                let local = crate::family::fineness::finer_reach(local);
                 // Its eight corners placed in 3D, not `placed_box`'s box in plan: they go into the section's own frame.
                 let placed = self.model.component_placement(c);
                 window.meets((0..8).map(|k| placed.place(std::array::from_fn(|axis| local[(k >> axis) & 1][axis]))))
@@ -895,7 +895,8 @@ impl<'a> Components<'a> {
     /// GEO-2g: whether `c`'s forms meet the plan's window: by its default build's box where that is at hand; else not where
     /// its envelope is known to miss the window; else by the box of its default build, built. A component of no geometry
     /// meets it (there is nothing of it to build). Its model lines are asked apart ([`Components::lines_in_window`], ec's
-    /// review of #88): one whose lines alone reach the window draws them, and isn't built for them.
+    /// review of #88): one whose lines alone reach the window draws them, and isn't built for them. Drawn finer, by its finer
+    /// build too (GEO-2c-3, [`Components::finer_in_window`]). Its envelope holds every build of it, at any fineness.
     pub(crate) fn in_window(&mut self, c: &'a Component) -> bool {
         let Some(window) = self.window else { return true };
         if let Some(inside) = self.seen(c).inside {
@@ -909,9 +910,30 @@ impl<'a> Components<'a> {
                 _ => Some(self.local_at(&key, c, Fineness::DEFAULT)),
             },
         };
-        let inside = built.is_some_and(|b| b.bounds.is_none_or(|local| meets(self.placed_box(c, local), window)));
+        let inside = built.is_some_and(|b| {
+            b.bounds.is_none_or(|local| meets(self.placed_box(c, local), window) || self.finer_in_window(c, &key, &b, window))
+        });
         self.seen(c).inside = Some(inside);
         inside
+    }
+
+    /// GEO-2c-3: the fineness the plan draws `c` at where that is finer than `default`, its default build, and builds it
+    /// otherwise ([`Fineness::changes`]): none where it draws `default`.
+    fn finer_than(&self, c: &Component, default: &Built) -> Option<Fineness> {
+        let fineness = self.fine_for(c, default);
+        fineness.changes(default.needs).then_some(fineness)
+    }
+
+    /// GEO-2c-3: whether `c`, `key` its key, whose default build `default` misses `window`, reaches into it drawn finer: a
+    /// finer curve may reach past the default build's box, as far as [`crate::family::fineness::finer_reach`] says. Its finer
+    /// build is found (built, where it isn't at hand) only where that reach meets the window.
+    fn finer_in_window(&mut self, c: &'a Component, key: &Arc<Key>, default: &Built, window: [P2; 2]) -> bool {
+        let (Some(fineness), Some(local)) = (self.finer_than(c, default), default.bounds) else { return false };
+        if !meets(self.placed_box(c, crate::family::fineness::finer_reach(local)), window) {
+            return false;
+        }
+        let finer = self.local_at(key, c, fineness);
+        finer.bounds.is_some_and(|local| meets(self.placed_box(c, local), window))
     }
 
     /// Whether any of `c`'s model lines (FE-15), at any detail, meets the plan's window: a model line may reach far past its
@@ -965,9 +987,10 @@ impl<'a> Components<'a> {
 
     /// GEO-2g: builds at once, on several threads ([`in_parallel`]), what a plan of `cs` will ask of them: the default build
     /// of each that meets the window (by its envelope, where known) and, with `range` (a floor plan's cut plane and view
-    /// depth), that may reach into it; then the finer build of each of those the view shows. What is kept from an earlier
-    /// drawing isn't built again. They are put in the model's order, so the drawing doesn't depend on how many threads built
-    /// them.
+    /// depth), that may reach into it; then the finer build of each of those the view shows (GEO-2c-3: or that may reach
+    /// into the window or the range drawn finer, as far as a finer build may reach past its default box). What is kept from
+    /// an earlier drawing isn't built again. They are put in the model's order, so the drawing doesn't depend on how many
+    /// threads built them.
     pub(crate) fn prepare(&mut self, cs: &[&'a Component], range: Option<(f64, f64)>) {
         let mut jobs: Vec<(Arc<Key>, &'a Component)> = Vec::new();
         let mut queued = std::collections::HashSet::new();
@@ -996,7 +1019,12 @@ impl<'a> Components<'a> {
             if let Some((cut, depth)) = range {
                 let (bottom, top) = self.heights(c);
                 if !(bottom < cut && top > depth) {
-                    continue;
+                    // GEO-2c-3: or within as far as a finer build may reach past them; `Components::finer_reaches` reads
+                    // the heights of the one built here.
+                    let default = self.default_of(c);
+                    if !self.reach_heights(c, &default).is_some_and(|(bottom, top)| bottom < cut && top > depth) {
+                        continue;
+                    }
                 }
             }
             let key = Arc::clone(&self.seen(c).key);
@@ -1144,6 +1172,47 @@ impl<'a> Components<'a> {
         let base = placed.origin[2];
         let (lo, hi) = self.default_of(c).heights;
         (base + lo, base + hi)
+    }
+
+    /// GEO-2c-3: whether `c`, drawn finer than its default build, reaches from a floor plan's view depth `depth` to under its
+    /// cut plane `cut`, which its default build's heights ([`Components::heights`]) may not: a finer curve may rise past the
+    /// default's top, or dip under its bottom, as far as [`crate::family::fineness::finer_reach`] says. By its finer build's
+    /// own heights, found (built, where [`Components::prepare`] didn't) only where that reach meets the range. False where the
+    /// plan draws `c`'s default build.
+    pub(crate) fn finer_reaches(&mut self, c: &'a Component, cut: f64, depth: f64) -> bool {
+        if self.fine.is_none() {
+            return false;
+        }
+        let default = self.default_of(c);
+        let Some(fineness) = self.finer_than(c, &default) else { return false };
+        if !self.reach_heights(c, &default).is_some_and(|(bottom, top)| bottom < cut && top > depth) {
+            return false;
+        }
+        let key = Arc::clone(&self.seen(c).key);
+        let finer = self.local_at(&key, c, fineness);
+        let (bottom, top) = self.heights_at(c, &finer);
+        bottom < cut && top > depth
+    }
+
+    /// GEO-2c-3: the lowest and highest a finer build of `c` may reach, `default` its default build: that build's box widened by
+    /// [`crate::family::fineness::finer_reach`], placed. None for a build of no triangles.
+    fn reach_heights(&self, c: &Component, default: &Built) -> Option<(f64, f64)> {
+        let local = crate::family::fineness::finer_reach(default.bounds?);
+        let placed = self.model.component_placement(c);
+        let z = (0..8).map(|k| placed.place(std::array::from_fn(|axis| local[(k >> axis) & 1][axis]))[2]);
+        Some(z.fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), z| (lo.min(z), hi.max(z))))
+    }
+
+    /// The lowest bottom and highest top of `built`, a build of `c`, where `c` is placed: as [`Components::heights`] finds
+    /// its default build's.
+    fn heights_at(&self, c: &Component, built: &Built) -> (f64, f64) {
+        let placed = self.model.component_placement(c);
+        if !placed.upright {
+            let z = built.pieces.iter().flat_map(|p| p.tris.iter().flatten()).map(|p| placed.place(*p)[2]);
+            return z.fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), z| (lo.min(z), hi.max(z)));
+        }
+        let base = placed.origin[2];
+        (base + built.heights.0, base + built.heights.1)
     }
 
     /// The build `c` is drawn with: at the fineness the view asks of it. Found once a drawing, for its outlines and its

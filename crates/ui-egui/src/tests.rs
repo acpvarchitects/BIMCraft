@@ -6850,6 +6850,7 @@ mod panel_lists;
 mod parameters;
 mod patterns;
 mod perspective;
+mod plan_fineness;
 mod planviews;
 mod plugins;
 mod popup;
