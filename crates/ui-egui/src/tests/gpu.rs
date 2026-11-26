@@ -298,6 +298,41 @@ fn a_card_that_failed_leaves_the_view_on_the_processor_and_the_page_says_why() {
     assert!(h.query_by_label_contains("the card ran away").is_some());
 }
 
+/// A card whose device is lost (a driver's reset) draws nothing and says no error of its own: the view, even one standing still,
+/// is handed to the processor, whose picture has the model in it, not only its ground, and picks it.
+#[test]
+fn a_card_lost_hands_the_3d_view_to_the_processor_which_draws_the_model() {
+    let Some(gpu) = headless() else {
+        eprintln!("no graphics adapter here: a lost card is not driven");
+        return;
+    };
+    let (mut h, uploads) = super::light_canvas::app_keeping_uploads(BOX);
+    h.state_mut().card = Card::with(gpu);
+    press(&mut h, "Default 3D View");
+    assert!(h.state().orbit.on_card, "the card drew it: {:?}", h.state().card.note);
+    uploads.last(&h, "view3d");
+    h.state().card.gpu.as_ref().unwrap().lose();
+    h.run();
+    assert!(!h.state().orbit.on_card, "the view left the lost card");
+    let card = &h.state().card;
+    assert!(card.gpu.is_none() && card.failed, "given up for good, not made again on the lost device");
+    assert!(card.note.as_deref().is_some_and(|n| n.starts_with("the card was lost")), "{:?}", card.note);
+    assert!(h.state().status.text.contains("drawn on the processor"), "{}", h.state().status.text);
+    // The picture drawn after the loss: the model's, not the ground alone.
+    let picture = uploads.last(&h, "view3d").expect("the processor drew the view after the loss");
+    let ground = crate::canvas::color(bimcraft_core::render::PAPER);
+    let model = picture.pixels.iter().filter(|c| **c != ground).count();
+    assert!(model * 10 > picture.pixels.len(), "{model} of {} pixels are the model's", picture.pixels.len());
+    let (rect, at) = (h.state().orbit.rect, h.state().screen3([5000.0, -100.0, 1500.0]));
+    let [w, ht] = picture.size;
+    let (x, y) = (((at.x - rect.min.x) / rect.width() * w as f32) as usize, ((at.y - rect.min.y) / rect.height() * ht as f32) as usize);
+    assert_ne!(picture.pixels[y * w + x], ground, "the south wall's face, where it stands");
+    let wall = find(&h, |e| matches!(e, Element::Wall(w) if w.start == P2(0.0, 0.0)));
+    click_at(&mut h, at);
+    assert_eq!(h.state().selection, [wall], "picked through the processor's picture");
+    assert!(!h.state().orbit.on_card);
+}
+
 #[test]
 fn the_card_keeps_the_3d_view_when_graphic_display_options_change_it() {
     let Some(gpu) = headless() else {
