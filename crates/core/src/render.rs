@@ -945,7 +945,8 @@ fn plan_filter<'a>(
                     // GEO-2g: one its envelope keeps out of the range, or out of the plan's window, isn't built to find out.
                     || components.may_reach(c, r.cut, r.depth) && components.in_window(c) && {
                         let (bottom, top) = components.heights_of(c);
-                        bottom < r.cut && top > r.depth
+                        // GEO-2c-3: or drawn finer, by its finer build's heights.
+                        bottom < r.cut && top > r.depth || components.finer_reaches(c, r.cut, r.depth)
                     }
                     // Its model lines, which the plan draws wherever they reach into its window and its range.
                     || components.lines_reach(c, r.cut, r.depth)
@@ -3735,7 +3736,8 @@ fn draw_plan_among<'m>(
         let mut pieces = Vec::new();
         if forms {
             let (bottom, top) = components.heights(c);
-            if bottom < range.cut && top > range.depth {
+            // GEO-2c-3: or drawn finer, by its finer build's heights, which may reach past its default build's.
+            if bottom < range.cut && top > range.depth || components.finer_reaches(c, range.cut, range.depth) {
                 // Its forms the plan's Visibility Settings leave out (F8) aren't drawn, nor hide what is under them.
                 let mut at = Vec::new();
                 for p in components.plan_pieces(c) {
@@ -3987,7 +3989,7 @@ fn draw_plan_among<'m>(
                 continue;
             }
             let (bottom, top) = components.heights(c);
-            if bottom >= range.cut || top <= range.depth {
+            if (bottom >= range.cut || top <= range.depth) && !components.finer_reaches(c, range.cut, range.depth) {
                 continue;
             }
             for p in components.plan_pieces(c).iter().filter(|p| plan_draws(p, d.detail, range.cut)) {

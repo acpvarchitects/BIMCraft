@@ -946,8 +946,8 @@ impl<'a> Components<'a> {
     /// GEO-2g: builds at once, on several threads ([`in_parallel`]), what a plan of `cs` will ask of them: the default build
     /// of each that meets the window (by its envelope, where known) and, with `range` (a floor plan's cut plane and view
     /// depth), that may reach into it; then the finer build of each of those the view shows (GEO-2c-3: or that may reach
-    /// into the window drawn finer, as far as a finer build may reach past its default box). What is kept from an earlier
-    /// drawing isn't built again. They are put in the model's order, so the drawing doesn't depend on how many
+    /// into the window or the range drawn finer, as far as a finer build may reach past its default box). What is kept from
+    /// an earlier drawing isn't built again. They are put in the model's order, so the drawing doesn't depend on how many
     /// threads built them.
     pub(crate) fn prepare(&mut self, cs: &[&'a Component], range: Option<(f64, f64)>) {
         let mut jobs: Vec<(Arc<Key>, &'a Component)> = Vec::new();
@@ -977,7 +977,12 @@ impl<'a> Components<'a> {
             if let Some((cut, depth)) = range {
                 let (bottom, top) = self.heights(c);
                 if !(bottom < cut && top > depth) {
-                    continue;
+                    // GEO-2c-3: or within as far as a finer build may reach past them; `Components::finer_reaches` reads
+                    // the heights of the one built here.
+                    let default = self.default_of(c);
+                    if !self.reach_heights(c, &default).is_some_and(|(bottom, top)| bottom < cut && top > depth) {
+                        continue;
+                    }
                 }
             }
             let key = Arc::clone(&self.seen(c).key);
@@ -1125,6 +1130,47 @@ impl<'a> Components<'a> {
         let base = placed.origin[2];
         let (lo, hi) = self.default_of(c).heights;
         (base + lo, base + hi)
+    }
+
+    /// GEO-2c-3: whether `c`, drawn finer than its default build, reaches from a floor plan's view depth `depth` to under its
+    /// cut plane `cut`, which its default build's heights ([`Components::heights`]) may not: a finer curve may rise past the
+    /// default's top, or dip under its bottom, as far as [`crate::family::fineness::finer_reach`] says. By its finer build's
+    /// own heights, found (built, where [`Components::prepare`] didn't) only where that reach meets the range. False where the
+    /// plan draws `c`'s default build.
+    pub(crate) fn finer_reaches(&mut self, c: &'a Component, cut: f64, depth: f64) -> bool {
+        if self.fine.is_none() {
+            return false;
+        }
+        let default = self.default_of(c);
+        let Some(fineness) = self.finer_than(c, &default) else { return false };
+        if !self.reach_heights(c, &default).is_some_and(|(bottom, top)| bottom < cut && top > depth) {
+            return false;
+        }
+        let key = Arc::clone(&self.seen(c).key);
+        let finer = self.local_at(&key, c, fineness);
+        let (bottom, top) = self.heights_at(c, &finer);
+        bottom < cut && top > depth
+    }
+
+    /// GEO-2c-3: the lowest and highest a finer build of `c` may reach, `default` its default build: that build's box widened by
+    /// [`crate::family::fineness::finer_reach`], placed. None for a build of no triangles.
+    fn reach_heights(&self, c: &Component, default: &Built) -> Option<(f64, f64)> {
+        let local = crate::family::fineness::finer_reach(default.bounds?);
+        let placed = self.model.component_placement(c);
+        let z = (0..8).map(|k| placed.place(std::array::from_fn(|axis| local[(k >> axis) & 1][axis]))[2]);
+        Some(z.fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), z| (lo.min(z), hi.max(z))))
+    }
+
+    /// The lowest bottom and highest top of `built`, a build of `c`, where `c` is placed: as [`Components::heights`] finds
+    /// its default build's.
+    fn heights_at(&self, c: &Component, built: &Built) -> (f64, f64) {
+        let placed = self.model.component_placement(c);
+        if !placed.upright {
+            let z = built.pieces.iter().flat_map(|p| p.tris.iter().flatten()).map(|p| placed.place(*p)[2]);
+            return z.fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), z| (lo.min(z), hi.max(z)));
+        }
+        let base = placed.origin[2];
+        (base + built.heights.0, base + built.heights.1)
     }
 
     /// The build `c` is drawn with: at the fineness the view asks of it. Found once a drawing, for its outlines and its
