@@ -508,6 +508,11 @@ the processor shades, draws an edge or marks a level goes in the shader too: `th
 The card is made the first time it is wanted (`Card::ready`: compiling its shaders is not a start's cost), and one that can't be made says why on the Performance page.
 A device error is caught
 in the card's own error scopes, never left to wgpu's handler (which ends the program), and hands the view to the processor for good.
+A lost device (a driver's reset) reports no error at all afterwards, so what is drawn on it "succeeds" blank: `Gpu::from_device` sets
+the device's lost callback, and what it said is the answer of every draw and upload, and of `Orbit::card_mesh` each frame, so a view
+standing still goes to the processor too, and the card is not made again on that device (`Card::give_up`;
+`a_card_lost_hands_the_3d_view_to_the_processor_which_draws_the_model`). wgpu tells a destroyed device's callback only when a poll
+finds its queue empty, so the tests wait on it; the app never polls, as wgpu 30 panics when a device really lost is polled.
 
 A 3D view's **Graphic Display Options** (Revit's GD) are `View3D::display`, a `view3d::DisplayOptions`: `edges` (on unless turned
 off; only Shaded leaves them out, as Hidden Line and Wireframe always draw them), `silhouette` (an outline that many px wide, 0 to
