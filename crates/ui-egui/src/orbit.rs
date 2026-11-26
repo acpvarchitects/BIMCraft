@@ -14,7 +14,10 @@
 //! land on its top (`shape.rs`). The drawing tools (walls, runs, columns, components) take their points on the level face under
 //! the cursor, snapped as that level's plan snaps; a run's ends may lie on two faces, and climb from one to the other.
 //! The scene and the card's mesh are made on a worker (`view_worker.rs`), an edit's from the scene before; meanwhile the view
-//! shows the last picture, then faded with what it waits for.
+//! shows the last picture, then faded with what it waits for. Once the camera has stood still a moment ([`SETTLE`]), another
+//! worker refines the scene for it (GEO-2c-2b: `Scene::refined`, its components chorded as finely as the camera shows them)
+//! and makes its mesh; the view shows the scene it has until then, and the card holds the mesh it draws until the new one is
+//! up beside it. A camera that moves on drops a refinement under way.
 //!
 //! What any 3D view needs is the `Orbit`'s: `input` reads the frame (the triad's widget first), `zoom` and `navigate` move the
 //! camera, `paint` draws the picture on the card or the processor with what picks in it, and the ViewCube is drawn from a camera
@@ -134,6 +137,71 @@ fn build_scene(job: SceneJob, cancel: &crate::view_worker::Cancel) -> Option<Sce
         return None;
     }
     Some(SceneDone { streamed, model: job.model, view: job.view, scene, fitted, mesh })
+}
+
+/// GEO-2c-2b: how long the camera stands still, seconds, before the scene is refined for it: a pause in a drag or between turns
+/// of the wheel, longer than a frame or two of either.
+pub(crate) const SETTLE: f64 = 0.2;
+
+/// A scene to refine for a camera: of which model, as which 3D view (its look), and whether to make its mesh.
+pub(crate) struct RefineJob {
+    model: Arc<Model>,
+    view: Option<Id>,
+    scene: Arc<Scene>,
+    cam: Camera,
+    card: bool,
+}
+
+/// A scene refined, and its mesh where one was asked for (or why the card can't draw it).
+type Refined = (Arc<Scene>, Option<Result<Arc<Mesh>, String>>);
+
+/// A refinement made: of which model and view, of which scene, for which camera; the scene refined and its mesh, or none
+/// where nothing changed band.
+pub(crate) struct RefineDone {
+    model: Arc<Model>,
+    view: Option<Id>,
+    from: Arc<Scene>,
+    cam: Camera,
+    refined: Option<Refined>,
+}
+
+/// A refined scene and its mesh waiting to go up to the card beside the mesh drawn, and what it was made of and for.
+struct Staged {
+    model: Arc<Model>,
+    from: Arc<Scene>,
+    cam: Camera,
+    scene: Arc<Scene>,
+    mesh: Arc<Mesh>,
+}
+
+/// A job's scene refined for its camera, and its mesh made for the card, as the 3D view it is drawn as looks.
+pub(crate) fn refine_scene(job: RefineJob, cancel: &crate::view_worker::Cancel) -> Option<RefineDone> {
+    let look = Look::of_3d_view(&job.model, job.view);
+    let refined = job.scene.refined_cancellable(&job.model, &job.cam, &look, &|| cancel.cancelled());
+    if cancel.cancelled() {
+        return None;
+    }
+    let refined = match refined {
+        None => None,
+        Some(scene) => {
+            let mesh = if job.card {
+                match Mesh::new_cancellable(&scene, &look, &|| cancel.cancelled()) {
+                    Ok(Some(mesh)) => Some(Ok(Arc::new(mesh))),
+                    Ok(None) => return None,
+                    Err(error) => Some(Err(error)),
+                }
+            } else {
+                None
+            };
+            if let Some(Ok(mesh)) = &mesh
+                && !mesh.prepare_picking_cancellable(&|| cancel.cancelled())
+            {
+                return None;
+            }
+            Some((Arc::new(scene), mesh))
+        }
+    };
+    (!cancel.cancelled()).then_some(RefineDone { model: job.model, view: job.view, from: job.scene, cam: job.cam, refined })
 }
 
 /// Caps made: of which model, for which box.
@@ -452,6 +520,14 @@ pub struct Orbit {
     /// Fly mode, while the view flies (`fly.rs`); and whether the window holds the pointer for it.
     pub(crate) fly: Option<crate::fly::Fly>,
     pub(crate) fly_held: bool,
+    /// GEO-2c-2b: whether the view refines its scene for its camera once it settles (the tests' don't, but where they ask); the
+    /// camera and since when (egui's time) it has stood; the worker, and the model, scene and camera last asked of it; and a
+    /// refined scene whose mesh is going up to the card.
+    pub(crate) refines: bool,
+    still: Option<(Camera, f64)>,
+    pub(crate) refine_worker: Option<crate::view_worker::Latest<RefineJob, RefineDone>>,
+    pub(crate) refine_asked: Option<(Arc<Model>, Arc<Scene>, Camera)>,
+    staged: Option<Staged>,
 }
 
 /// The next view's slot on the card.
@@ -520,6 +596,11 @@ impl Default for Orbit {
             caps_requested: None,
             fly: None,
             fly_held: false,
+            refines: !cfg!(test),
+            still: None,
+            refine_worker: None,
+            refine_asked: None,
+            staged: None,
         }
     }
 }
@@ -1134,6 +1215,7 @@ impl Orbit {
 
     pub(crate) fn suspend(&mut self) {
         self.cancel_placement_drag();
+        self.drop_refinement();
         self.worker = None;
         self.requested = None;
         self.fit_worker = None;
@@ -1483,6 +1565,90 @@ impl Orbit {
         Nav { cam, settled, selected_box }
     }
 
+    /// GEO-2c-2b: the scene shown refined for `cam` once the camera has stood still for [`SETTLE`]: asked of a worker (with its
+    /// mesh, for a `card`), the scene and mesh it has shown meanwhile. A refinement made is put in place only where it is of
+    /// the model, the view, the scene and the camera shown now: drawn on the processor at once, on the card once its mesh is up
+    /// beside the one drawn ([`Orbit::card_mesh`]). A camera that moves, another model or another scene drops one under way.
+    pub(crate) fn refine(&mut self, ctx: &egui::Context, model: &Arc<Model>, cam: Camera, card: bool) {
+        if !self.refines {
+            return;
+        }
+        let Some(scene) = self.scene.as_ref().filter(|(m, _)| Arc::ptr_eq(m, model)).map(|(_, s)| Arc::clone(s)) else {
+            self.drop_refinement();
+            return;
+        };
+        if let Some(done) = self.refine_worker.as_ref().and_then(crate::view_worker::Latest::take)
+            && Arc::ptr_eq(&done.model, model)
+            && Arc::ptr_eq(&done.from, &scene)
+            && done.view == self.view
+            && done.cam == cam
+            && let Some((refined, mesh)) = done.refined
+        {
+            match mesh {
+                Some(Ok(mesh)) if !cfg!(test) => {
+                    self.staged = Some(Staged { model: Arc::clone(model), from: Arc::clone(&scene), cam, scene: refined, mesh });
+                }
+                mesh => self.install_refined(model, cam, refined, mesh),
+            }
+            ctx.request_repaint();
+            return;
+        }
+        let now = ctx.input(|i| i.time);
+        if !self.still.is_some_and(|(c, _)| c == cam) {
+            self.drop_refinement();
+            self.still = Some((cam, now));
+        }
+        if self.staged.as_ref().is_some_and(|s| !Arc::ptr_eq(&s.from, &scene) || !Arc::ptr_eq(&s.model, model)) {
+            self.staged = None;
+        }
+        let since = self.still.map_or(now, |(_, t)| t);
+        if now - since < SETTLE {
+            ctx.request_repaint_after(std::time::Duration::from_secs_f64((SETTLE - (now - since)).max(0.0)));
+            return;
+        }
+        let asked = self.refine_asked.as_ref().is_some_and(|(m, s, c)| Arc::ptr_eq(m, model) && Arc::ptr_eq(s, &scene) && *c == cam);
+        if !asked && self.staged.is_none() {
+            let job = RefineJob { model: Arc::clone(model), view: self.view, scene: Arc::clone(&scene), cam, card };
+            let wake = ctx.clone();
+            let worker =
+                self.refine_worker.get_or_insert_with(|| crate::view_worker::Latest::new(refine_scene, move || wake.request_repaint()));
+            worker.request(job);
+            self.refine_asked = Some((Arc::clone(model), scene, cam));
+        }
+        if let Some(worker) = &self.refine_worker {
+            // A worker that fails leaves the scene as it was.
+            let _ = worker.start();
+            let _ = worker.take_error();
+        }
+    }
+
+    /// A refinement under way, made or waiting for the card, dropped: the camera, the model or the scene moved on.
+    fn drop_refinement(&mut self) {
+        self.refine_worker = None;
+        self.refine_asked = None;
+        self.staged = None;
+    }
+
+    /// Refined scene `scene` of `model` for `cam` in place of the one shown, with its `mesh` (none: made again for a card that
+    /// wants one), and drawn again.
+    fn install_refined(&mut self, model: &Arc<Model>, cam: Camera, scene: Arc<Scene>, mesh: Option<Result<Arc<Mesh>, String>>) {
+        self.extent = scene.bounds();
+        self.mesh = mesh.map(|m| (Arc::clone(model), m));
+        if self.mesh.is_none() {
+            self.requested = None;
+        }
+        self.refine_asked = Some((Arc::clone(model), Arc::clone(&scene), cam));
+        self.scene = Some((Arc::clone(model), scene));
+        self.shown = None;
+        self.picker = None;
+    }
+
+    /// Whether a refinement is being made, or waits for the card.
+    #[cfg(test)]
+    pub(crate) fn refining(&self) -> bool {
+        self.refine_worker.as_ref().is_some_and(crate::view_worker::Latest::busy) || self.staged.is_some()
+    }
+
     /// The mesh the card draws the picture from, where the card is `ready` and the mesh is made: put on the card off the
     /// interface's thread first (meanwhile [`OnCard::Loading`]). One the card can't take gives the card up, and so does a card whose
     /// device was lost, for good. The card's note says why a card wanted draws nothing, as the mesh says.
@@ -1498,6 +1664,25 @@ impl Orbit {
             && gpu.hold_for(self.slot)
         {
             self.shown = None;
+        }
+        // GEO-2c-2b: a refined scene's mesh goes up beside the one drawn, and is drawn once it is there; for another camera, or
+        // with no card to draw it, it is dropped, or put in place at once.
+        if let Some(staged) = self.staged.take() {
+            let current = self.camera == Some(staged.cam)
+                && self.scene.as_ref().is_some_and(|(m, s)| Arc::ptr_eq(m, &staged.model) && Arc::ptr_eq(s, &staged.from));
+            match card.gpu.as_mut().filter(|_| ready && current) {
+                _ if !current => {}
+                None => self.install_refined(&staged.model, staged.cam, staged.scene, Some(Ok(staged.mesh))),
+                Some(gpu) => match gpu.prepare_upload_beside(ctx, &staged.mesh) {
+                    Ok(true) => {
+                        let Staged { model, cam, scene, mesh, .. } = staged;
+                        self.install_refined(&model, cam, scene, Some(Ok(mesh)));
+                    }
+                    Ok(false) => self.staged = Some(staged),
+                    // Not taken beside the one drawn: in place without it, its mesh made and put up as after an edit.
+                    Err(_) => self.install_refined(&staged.model, staged.cam, staged.scene, None),
+                },
+            }
         }
         let mut mesh = match (ready && failed.is_none()).then(|| self.mesh.as_ref().map(|(_, m)| m)).flatten() {
             Some(Ok(mesh)) => Some(Arc::clone(mesh)),
@@ -2329,6 +2514,8 @@ impl BimApp {
         if let Some(status) = o.paint(ui.ctx(), &p, &mut self.card, mesh.as_ref(), shot) {
             self.status = status;
         }
+        // Its scene refined for the camera once that settles, on a worker; the picture drawn as it is meanwhile.
+        o.refine(ui.ctx(), &model, cam, card_ready);
         let on_view = |(x, y): (f32, f32)| rect.min + vec2(x / ppp, y / ppp);
         let draw_marks = |marks: &[dims3d::Mark], ink: &dyn Fn(Id, Rgb) -> Color32| {
             for mk in marks {

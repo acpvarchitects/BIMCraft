@@ -486,7 +486,9 @@ After an edit the 3D view's worker brings the last scene up to date (`Scene::upd
 triangles of what the edit touched are made again, with what points at it either way, what touches it (its box grown a little) and, for a
 wall, the walls whose location lines come within the thickest wall of it, round after round from each element that came out otherwise;
 every other element's run of triangles (`Scene::spans`), planes, faces and normals is kept. A plane is numbered against the planes the
-scene found before (`PlaneTable`), a curve by its element alone (`local_curves`), a copy by the shape its key names (`ShapeKey`). An edit
+scene found before (`PlaneTable`), a curve by its element alone (`local_curves`), a copy by the shape its key and fineness name
+(`ShapeKey`; GEO-2c-2b: once the camera settles the scene is refined for it, its components chorded as finely as it shows them,
+[families](families.md#curves-at-the-views-scale-geo-2c)). An edit
 of the library or the project's settings, or one that touches a quarter of the elements, is the whole scene again. `Scene::new` stays the
 whole computation, and `a_scene_brought_up_to_date_by_an_edit_is_the_scene_made_whole` and
 `random_edits_of_a_tower_bring_its_scene_up_to_date_as_made_whole` hold the update to it: the same triangles, planes shared alike, the

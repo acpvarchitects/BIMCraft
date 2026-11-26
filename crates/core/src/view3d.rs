@@ -432,9 +432,12 @@ impl PreparedSolids {
 
 mod caps;
 mod fragments;
+mod refine;
 mod update;
 pub use caps::{CapSource, CapTri, Caps};
 pub use fragments::{FragmentStats, SectionCache};
+#[cfg(test)]
+pub(crate) use refine::with_finer_budget;
 pub(crate) type PreparedMade = (Vec<Prepared>, Vec<(Id, Vec<P3>)>, Vec<Option<[P3; 2]>>);
 
 /// A level slab: `ring` from `z.0` up to `z.1`.
@@ -1005,12 +1008,17 @@ pub(crate) fn solids(m: &Model) -> Vec<Solid> {
 }
 
 fn solids_cancellable(m: &Model, cancelled: &(dyn Fn() -> bool + Sync)) -> Option<Vec<Solid>> {
-    solids_among_cancellable(m, None, cancelled)
+    solids_among_cancellable(m, None, None, cancelled)
 }
 
 /// [`solids_cancellable`] of the elements `among` names (none: all), each made against the whole model, so each is what it
-/// is in the whole scene.
-fn solids_among_cancellable(m: &Model, among: Option<&BTreeSet<Id>>, cancelled: &(dyn Fn() -> bool + Sync)) -> Option<Vec<Solid>> {
+/// is in the whole scene; each component at the fineness `chosen` names (GEO-2c-2b; none, each as ever).
+fn solids_among_cancellable(
+    m: &Model,
+    among: Option<&BTreeSet<Id>>,
+    chosen: Option<&Finer>,
+    cancelled: &(dyn Fn() -> bool + Sync),
+) -> Option<Vec<Solid>> {
     if cancelled() {
         return None;
     }
@@ -1029,14 +1037,14 @@ fn solids_among_cancellable(m: &Model, among: Option<&BTreeSet<Id>>, cancelled: 
         // Collect indexed chunks before flattening: triangle order, depth ties and
         // picking are identical to the serial path. Each job owns its family cache.
         let parts = pool.install(|| {
-            elements.par_chunks(128).map(|chunk| (!cancelled()).then(|| solids_in(m, chunk, Some(&index)))).collect::<Vec<_>>()
+            elements.par_chunks(128).map(|chunk| (!cancelled()).then(|| solids_in_at(m, chunk, Some(&index), chosen))).collect::<Vec<_>>()
         });
         return Some(parts.into_iter().collect::<Option<Vec<_>>>()?.into_iter().flatten().collect());
     }
     if cancelled() {
         return None;
     }
-    Some(solids_in(m, &elements, Some(&index)))
+    Some(solids_in_at(m, &elements, Some(&index), chosen))
 }
 
 /// What [`solids_and_extremes`] makes: the solids, each element's farthest points and its box.
@@ -1744,7 +1752,7 @@ fn curtain_copies(
     id: Id,
     w: &crate::model::Wall,
     keys: &mut HashMap<ShapeKey, usize>,
-    shapes: &mut Vec<Vec<[P3; 3]>>,
+    shapes: &mut Vec<ShapeTris>,
 ) -> Vec<(usize, crate::component_geometry::ComponentInstance)> {
     use crate::curtain;
     let l = curtain::layout(m, w);
@@ -1766,7 +1774,7 @@ fn curtain_copies(
             let mut tris = Vec::with_capacity(12);
             let local = Frame { o: P2(0.0, 0.0), u: P2(1.0, 0.0), n: P2(0.0, 1.0) };
             local.cuboid(&mut tris, id, (WALL, 0), (-da, da), (-dc, dc), (-dz, dz));
-            shapes.push(tris.into_iter().map(|t| t.p).collect());
+            shapes.push(Arc::new(tris.into_iter().map(|t| t.p).collect()));
             shapes.len() - 1
         });
         let [along, up, across] = piece.centre;
@@ -1786,8 +1794,14 @@ fn curtain_copies(
     out
 }
 
+#[cfg(test)]
 fn solids_in(m: &Model, elements: &[(Id, &Element)], index: Option<&walls::Index>) -> Vec<Solid> {
-    solids_in_with(m, elements, index, &mut crate::component_geometry::Components::new(m))
+    solids_in_at(m, elements, index, None)
+}
+
+/// [`solids_in`], each component at the fineness `chosen` names (GEO-2c-2b; none, each as ever).
+fn solids_in_at(m: &Model, elements: &[(Id, &Element)], index: Option<&walls::Index>, chosen: Option<&Finer>) -> Vec<Solid> {
+    solids_in_with(m, elements, index, &mut crate::component_geometry::Components::for_3d(m, chosen))
 }
 
 /// [`solids_in`], its families' geometry from `components`.
@@ -1884,7 +1898,7 @@ fn solids_in_with(
             Element::Component(c) => {
                 let cut = m.families.get(&c.family).is_some_and(crate::family::Family::cuts_in_views);
                 let x = m.component_placement(c).axes[0];
-                for piece in components.solids(c) {
+                for piece in components.solids_of(id, c) {
                     let color = m.materials.get(&piece.material).map_or(COMPONENT, |x| Rgb(x.color[0], x.color[1], x.color[2]));
                     let tex = skin(m, &piece.material);
                     let skins = component_skins(m, c, &piece, (color, tex));
@@ -2532,15 +2546,45 @@ pub struct Scene {
     /// The components whose triangles are a shape of [`Scene::shapes`] placed, exactly: where in `tris` the copy starts, and
     /// how it is placed. A card draws each shape once and places it for each copy.
     placements: Vec<(usize, crate::component_geometry::ComponentInstance)>,
-    /// Each component shape's triangles in its family's own axes, in the order a copy's are in `tris`.
-    shapes: Vec<Vec<[P3; 3]>>,
+    /// Each component shape's triangles in its family's own axes, in the order a copy's are in `tris`: shared, so a scene made
+    /// from this one (an edit's, a refinement's) holds them without copying them.
+    shapes: Vec<ShapeTris>,
     /// What each shape is the shape of, so a copy an edit makes finds its own.
     shape_keys: HashMap<ShapeKey, usize>,
     /// Each element's run of triangles and the box round them, in the elements' order: what an edit replaces.
     spans: Vec<Span>,
     /// What numbered the planes, so an edit numbers its triangles' among them.
     table: PlaneTable,
+    /// GEO-2c-2b: what refining reads of each component the scene draws, and the fineness it is drawn at, by id (none for a
+    /// section's scene, which isn't refined).
+    fine: Arc<BTreeMap<Id, FineOf>>,
 }
+
+/// GEO-2c-2b: what refining a scene reads of one of its components: its default build's shape (its key, its box and what its
+/// curves recorded), where it is placed (only `at` and `axes` are read), and the fineness its triangles are at: the default, or
+/// one that builds it otherwise.
+#[derive(Clone, Debug)]
+pub(crate) struct FineOf {
+    shape: Arc<crate::component_geometry::Coarse>,
+    place: crate::component_geometry::ComponentInstance,
+    at: crate::family::Fineness,
+}
+
+impl FineOf {
+    /// The corners of its default build's box widened by as far as a finer build of it may reach past it
+    /// ([`crate::family::fineness::finer_reach`], GEO-2c-2a's review), placed: what refining asks whether it is on the picture
+    /// and how near it comes. None for a build of no triangles.
+    fn reach(&self) -> Option<[P3; 8]> {
+        let b = crate::family::fineness::finer_reach(self.shape.bounds?);
+        Some(std::array::from_fn(|k| self.place.place([b[k & 1][0], b[(k >> 1) & 1][1], b[(k >> 2) & 1][2]])))
+    }
+}
+
+/// GEO-2c-2b: the fineness each component of a scene is drawn at, where it isn't the default.
+pub(crate) type Finer = crate::component_geometry::Finer;
+
+/// A shape's triangles in its own axes ([`Scene::shapes`]).
+type ShapeTris = Arc<Vec<[P3; 3]>>;
 
 /// A family's model line (FE-15) where a component places it: its component, its ends, its Visibility Settings packed with the
 /// component's x axis as a form's are ([`crate::family::visibility::packed`]) and the subcategory key it is drawn in.
@@ -2598,11 +2642,12 @@ struct Span {
     bounds: [P3; 2],
 }
 
-/// What a shape of a scene is the shape of: a family's type, mirrored or not, with the values its family evaluates; or the
-/// tube the round runs of a material are.
+/// What a shape of a scene is the shape of: a family's type, mirrored or not, with the values its family evaluates, at the
+/// fineness it is built at (GEO-2c-2b: copies in one band share it, copies in two are two shapes); or the tube the round runs
+/// of a material are.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 enum ShapeKey {
-    Family(crate::component_geometry::Key),
+    Family(crate::component_geometry::Key, crate::family::Fineness),
     Tube(String),
     /// A curtain wall's box part: its material, and its size to the last bit.
     Part(String, [u64; 3]),
@@ -2842,6 +2887,7 @@ impl Scene {
             shape_keys: HashMap::new(),
             spans: Vec::new(),
             table: PlaneTable::default(),
+            fine: Arc::default(),
         })
     }
 
@@ -2853,11 +2899,22 @@ impl Scene {
     /// The scene of the elements `among` names (none: every one), each as the whole scene has it: what a 3D view of a model too
     /// big for the memory there is holds ([`stream`]).
     pub fn new_among_cancellable(m: &Model, among: Option<&BTreeSet<Id>>, cancelled: &(dyn Fn() -> bool + Sync)) -> Option<Scene> {
+        Scene::new_among_at(m, among, None, cancelled)
+    }
+
+    /// [`Scene::new_among_cancellable`], each component at the fineness `chosen` names (GEO-2c-2b; none, each as ever): what
+    /// an edit the scene can't be brought up to date by makes, keeping each component's fineness.
+    pub(crate) fn new_among_at(
+        m: &Model,
+        among: Option<&BTreeSet<Id>>,
+        chosen: Option<&Finer>,
+        cancelled: &(dyn Fn() -> bool + Sync),
+    ) -> Option<Scene> {
         if cancelled() {
             return None;
         }
         let mut tris = Vec::new();
-        for solid in solids_among_cancellable(m, among, cancelled)?.into_iter().flat_map(|s| layered(m, s)) {
+        for solid in solids_among_cancellable(m, among, chosen, cancelled)?.into_iter().flat_map(|s| layered(m, s)) {
             if cancelled() {
                 return None;
             }
@@ -2895,7 +2952,10 @@ impl Scene {
             return None;
         }
         let (masses, levels, scans) = whole_model(m, &spans);
-        let (shapes, shape_keys, placements) = placements(m, &tris, cancelled)?;
+        let (shapes, shape_keys, placements, fine) = placements(m, &tris, chosen, cancelled)?;
+        // What refining reads of each component the scene draws.
+        let fine =
+            fine.into_iter().filter(|f| spans.binary_search_by_key(&f.place.owner, |s| s.id).is_ok()).map(|f| (f.place.owner, f)).collect();
         Some(Scene {
             tris,
             planes,
@@ -2913,6 +2973,7 @@ impl Scene {
             shape_keys,
             spans,
             table,
+            fine: Arc::new(fine),
         })
     }
 
@@ -3093,6 +3154,7 @@ impl Scene {
             shape_keys: HashMap::new(),
             spans: Vec::new(),
             table: PlaneTable::default(),
+            fine: Arc::default(),
         }
     }
 }
@@ -3128,19 +3190,20 @@ fn whole_model(m: &Model, spans: &[Span]) -> (BTreeSet<Id>, Vec<(Id, String, [P3
     (masses, levels, scans_of(m))
 }
 
+/// What [`placements`] finds: the shapes, by what each is the shape of; the copies; and what refining reads of each component.
+type Placed = (Vec<ShapeTris>, HashMap<ShapeKey, usize>, Vec<(usize, crate::component_geometry::ComponentInstance)>, Vec<FineOf>);
+
 /// The components among `tris` that are a shape placed, to the last bit: each shape's triangles in its own axes, and for each
 /// copy where its run of triangles starts and how it is placed. A copy whose triangles aren't exactly its shape's placed (or
-/// aren't together) is left out, and is drawn from its own triangles as any element is.
-#[allow(clippy::type_complexity)]
-fn placements(
-    m: &Model,
-    tris: &[Tri],
-    cancelled: &(dyn Fn() -> bool + Sync),
-) -> Option<(Vec<Vec<[P3; 3]>>, HashMap<ShapeKey, usize>, Vec<(usize, crate::component_geometry::ComponentInstance)>)> {
-    let shared = crate::component_geometry::SharedComponents::new(m, cancelled)?;
-    let mut shapes: Vec<Vec<[P3; 3]>> =
-        shared.shapes.iter().map(|pieces| pieces.iter().flat_map(|p| p.tris.iter().copied()).collect()).collect();
-    let mut keys: HashMap<ShapeKey, usize> = shared.keys.into_iter().map(|(k, n)| (ShapeKey::Family(k), n)).collect();
+/// aren't together) is left out, and is drawn from its own triangles as any element is. Each component's shape is built at
+/// the fineness `chosen` names (GEO-2c-2b; none, the default), as its triangles are.
+fn placements(m: &Model, tris: &[Tri], chosen: Option<&Finer>, cancelled: &(dyn Fn() -> bool + Sync)) -> Option<Placed> {
+    let shared = crate::component_geometry::SharedComponents::new(m, chosen, cancelled)?;
+    let mut shapes: Vec<ShapeTris> =
+        shared.shapes.iter().map(|b| Arc::new(b.pieces.iter().flat_map(|p| p.tris.iter().copied()).collect())).collect();
+    let mut keys: HashMap<ShapeKey, usize> = shared.keys.into_iter().map(|((k, f), n)| (ShapeKey::Family(k, f), n)).collect();
+    let fine: Vec<FineOf> =
+        shared.instances.iter().zip(shared.coarse).map(|(place, (shape, at))| FineOf { shape, place: *place, at }).collect();
     let mut copies: HashMap<Id, crate::component_geometry::ComponentInstance> = shared.instances.iter().map(|i| (i.owner, *i)).collect();
     // Each round run a copy of one tube, a tube for each material, so a copy takes its shape's colour and texture.
     let tube = crate::runs::unit_tube().0;
@@ -3162,7 +3225,7 @@ fn placements(
             continue;
         }
         let shape = *tubes.entry(t.material.as_str()).or_insert_with(|| {
-            shapes.push(tube.clone());
+            shapes.push(Arc::new(tube.clone()));
             keys.insert(ShapeKey::Tube(t.material.clone()), shapes.len() - 1);
             shapes.len() - 1
         });
@@ -3191,7 +3254,7 @@ fn placements(
             out.push((i, *copy));
         }
         for (first, copy) in curtains.get(&owner).into_iter().flatten() {
-            let (at, len) = (i + first, shapes.get(copy.shape).map_or(0, Vec::len));
+            let (at, len) = (i + first, shapes.get(copy.shape).map_or(0, |s| s.len()));
             if let (Some(local), Some(own)) = (shapes.get(copy.shape), tris.get(at..at + len).filter(|_| at + len <= end))
                 && update::placed(local, copy, own)
             {
@@ -3200,7 +3263,7 @@ fn placements(
         }
         i = end;
     }
-    Some((shapes, keys, out))
+    Some((shapes, keys, out, fine))
 }
 
 /// How many elements a thread makes the triangles of at a time.
@@ -5638,6 +5701,130 @@ impl Scene {
             Some(tri) => surface_of(cam, at, tri.owner, &tri.p),
             None => on_level(&self.levels, cam, at, *image.owners.get(t)?),
         }
+    }
+}
+
+#[cfg(test)]
+impl Scene {
+    /// Each copy drawn from a shape: its component and its shape.
+    pub(crate) fn copies(&self) -> Vec<(Id, usize)> {
+        self.placements.iter().map(|(_, c)| (c.owner, c.shape)).collect()
+    }
+
+    /// How many triangles shape `shape` has.
+    pub(crate) fn shape_size(&self, shape: usize) -> usize {
+        self.shapes.get(shape).map_or(0, |s| s.len())
+    }
+
+    /// How many triangles element `id` has in the scene.
+    pub(crate) fn tris_of(&self, id: Id) -> usize {
+        self.tris.iter().filter(|t| t.owner == id).count()
+    }
+
+    /// The whole scene of `m`, each component at the fineness it is at in `like`: what a refined scene is held to.
+    pub(crate) fn whole_at(m: &Model, like: &Scene) -> Scene {
+        let finer = like.finer();
+        Scene::new_among_at(m, None, (!finer.is_empty()).then_some(&finer), &|| false).unwrap_or_else(|| Scene::new(m))
+    }
+
+    /// Whether this scene draws as `other` does: the same triangles, faces, normals, runs and copies (each of the same shape's
+    /// triangles), and planes numbered alike (the same triangles sharing one).
+    pub(crate) fn same_as(&self, other: &Scene) -> Result<(), String> {
+        if self.tris != other.tris {
+            let at = self.tris.iter().zip(&other.tris).position(|(a, b)| a != b);
+            return Err(format!("triangles: {} and {}, first unlike at {at:?}", self.tris.len(), other.tris.len()));
+        }
+        if self.faces != other.faces || self.smooth != other.smooth {
+            return Err("faces or smooth normals".into());
+        }
+        if self.spans != other.spans {
+            return Err("spans".into());
+        }
+        let (mut there, mut back) = (HashMap::new(), HashMap::new());
+        for (k, (p, q)) in self.planes.iter().zip(&other.planes).enumerate() {
+            if *there.entry(*p).or_insert(*q) != *q || *back.entry(*q).or_insert(*p) != *p {
+                return Err(format!("triangle {k}'s plane is another's"));
+            }
+        }
+        if self.placements.len() != other.placements.len() {
+            return Err(format!("copies: {} and {}", self.placements.len(), other.placements.len()));
+        }
+        for ((i, c), (j, d)) in self.placements.iter().zip(&other.placements) {
+            if (i, c.owner, c.at, c.axes) != (j, d.owner, d.at, d.axes) || self.shapes.get(c.shape) != other.shapes.get(d.shape) {
+                return Err(format!("{}'s copy", c.owner));
+            }
+        }
+        Ok(())
+    }
+
+    /// GEO-2c-2b: a hash of all the scene draws and picks with, bit for bit (FNV-1a): its triangles, their planes, smooth
+    /// normals and faces, the textures it holds, the frames, masses, levels, scans and model lines, its shapes and their copies,
+    /// and each element's run. What a guard holds the scene to, against one made in the same run: the bits differ from one
+    /// platform's maths library to another's.
+    pub(crate) fn digest(&self) -> u64 {
+        let mut h = 0xcbf2_9ce4_8422_2325u64;
+        let mut bytes = |b: &[u8]| {
+            for x in b {
+                h ^= u64::from(*x);
+                h = h.wrapping_mul(0x0100_0000_01b3);
+            }
+        };
+        let mut n = |x: u64| bytes(&x.to_le_bytes());
+        let p3 = |p: &P3| p.map(f64::to_bits);
+        let mut all: Vec<u64> = Vec::new();
+        all.push(self.tris.len() as u64);
+        for t in &self.tris {
+            all.extend(t.p.iter().flat_map(p3));
+            all.extend([t.owner, u64::from(t.color.0) << 16 | u64::from(t.color.1) << 8 | u64::from(t.color.2), u64::from(t.tex)]);
+            all.extend(t.curve.map_or([u64::MAX, 0], |(id, k)| [id, k as u64]));
+            all.extend([t.face.map_or(u64::MAX, u64::from), u64::from(t.vis), u64::from(t.part), u64::from(t.paint)]);
+        }
+        all.extend(self.planes.iter().map(|p| *p as u64));
+        for s in &self.smooth {
+            match s {
+                Some(c) => all.extend(c.iter().flat_map(p3)),
+                None => all.push(u64::MAX),
+            }
+        }
+        all.extend(self.skins.iter().map(|s| u64::from(s.is_some())));
+        for (id, f) in &self.frames {
+            all.push(*id);
+            all.extend(f.map(f64::to_bits));
+        }
+        all.extend(self.masses.iter().copied());
+        for (id, _, c) in &self.levels {
+            all.push(*id);
+            all.extend(c.iter().flat_map(p3));
+        }
+        for s in &self.scans {
+            all.extend([s.owner, s.points.len() as u64]);
+        }
+        for s in &self.strokes {
+            all.extend([s.owner, u64::from(s.vis)]);
+            all.extend(s.ends.iter().flat_map(p3));
+        }
+        all.push(self.shapes.len() as u64);
+        for s in &self.shapes {
+            all.push(s.len() as u64);
+            all.extend(s.iter().flatten().flat_map(p3));
+        }
+        for (first, c) in &self.placements {
+            all.extend([*first as u64, c.owner, c.shape as u64]);
+            all.extend(c.at.map(f64::to_bits));
+            all.extend(c.axes.iter().flat_map(p3));
+        }
+        for s in &self.spans {
+            all.extend([s.id, s.at.start as u64, s.at.end as u64]);
+            all.extend(s.bounds.iter().flat_map(p3));
+        }
+        for x in all {
+            n(x);
+        }
+        for f in self.faces.iter() {
+            bytes(f.as_bytes());
+            bytes(b"|");
+        }
+        h
     }
 }
 

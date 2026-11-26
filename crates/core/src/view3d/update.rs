@@ -8,15 +8,19 @@
 //!   only one that came out otherwise, or one the edit touched, makes those its box touches (grown a little) be made again, until
 //!   none does;
 //! - the library (types, materials, families) and the project's settings: an edit of those is a whole scene again.
+//!
+//! GEO-2c-2b: a component keeps the fineness a refined scene drew it at ([`Scene::refined`]): one made again is made at it, and
+//! so is every one of a whole scene made again.
 
 use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 
 use super::{
-    P3, Scene, ShapeKey, Span, Tri, bounds, corner_normals, layered, local_surfaces, painted, pattern_frames, rules_of, skins_for,
-    solids_in, whole_model,
+    FineOf, Finer, P3, Scene, ShapeKey, Span, Tri, bounds, corner_normals, layered, local_surfaces, painted, pattern_frames, rules_of,
+    skins_for, solids_in_at, whole_model,
 };
-use crate::component_geometry::ComponentInstance;
+use crate::component_geometry::{Coarse, ComponentInstance, Components};
+use crate::family::Fineness;
 use crate::ids::Changed;
 use crate::model::{Element, Id, Model};
 
@@ -37,15 +41,24 @@ impl Scene {
 
     /// [`Scene::update`], none when `cancelled`.
     pub fn update_cancellable(&self, before: &Model, after: &Model, cancelled: &(dyn Fn() -> bool + Sync)) -> Option<Scene> {
-        match self.made_again(before, after, cancelled) {
-            Made::Some(made) => self.spliced(after, made, cancelled),
-            Made::Whole => Scene::new_cancellable(after, cancelled),
+        // GEO-2c-2b: the components drawn finer, at their finenesses.
+        let finer: Finer = self
+            .fine
+            .iter()
+            .filter(|(id, f)| f.at != Fineness::DEFAULT && matches!(after.elements.get(**id), Some(Element::Component(_))))
+            .map(|(id, f)| (*id, f.at))
+            .collect();
+        let chosen = (!finer.is_empty()).then_some(&finer);
+        match self.made_again(before, after, chosen, cancelled) {
+            Made::Some(made) => self.spliced(after, made, chosen, cancelled),
+            Made::Whole => Scene::new_among_at(after, None, chosen, cancelled),
             Made::Cancelled => None,
         }
     }
 
-    /// The elements of `after` whose triangles an edit from `before` changed, each made again.
-    fn made_again(&self, before: &Model, after: &Model, cancelled: &(dyn Fn() -> bool + Sync)) -> Made {
+    /// The elements of `after` whose triangles an edit from `before` changed, each made again, each component at the fineness
+    /// `chosen` names.
+    fn made_again(&self, before: &Model, after: &Model, chosen: Option<&Finer>, cancelled: &(dyn Fn() -> bool + Sync)) -> Made {
         let Changed::Ids(changed) = after.changed_since(before) else { return Made::Whole };
         // Numbers past a card's planes and copies would need the whole scene numbered again.
         if self.table.next > u32::MAX as usize / 4 {
@@ -86,7 +99,7 @@ impl Scene {
             if (made.len() + fresh.len()) * MOST > after.elements.len().max(1) {
                 return Made::Whole;
             }
-            let tris = element_tris(after, &fresh, &index);
+            let tris = element_tris(after, &fresh, Some(&index), chosen);
             // Where what came out otherwise was and is: what the edit touched (gone, too) and what was made unlike before.
             let mut regions: Vec<[P3; 2]> = Vec::new();
             moved = Vec::new();
@@ -127,8 +140,14 @@ impl Scene {
     }
 
     /// This scene with `made`'s elements' triangles in place of theirs, and every element of `after` that isn't any more taken
-    /// out.
-    fn spliced(&self, after: &Model, mut made: HashMap<Id, Vec<Tri>>, cancelled: &(dyn Fn() -> bool + Sync)) -> Option<Scene> {
+    /// out; each component made again copied from its shape at the fineness `chosen` names, as its triangles are made.
+    pub(super) fn spliced(
+        &self,
+        after: &Model,
+        mut made: HashMap<Id, Vec<Tri>>,
+        chosen: Option<&Finer>,
+        cancelled: &(dyn Fn() -> bool + Sync),
+    ) -> Option<Scene> {
         let mut skins = self.skins.clone();
         for own in made.values() {
             skins_for(after, &mut skins, own);
@@ -146,6 +165,15 @@ impl Scene {
         };
         let mut keys = self.shape_keys.clone();
         let mut shapes = self.shapes.clone();
+        let mut copying = Copying { components: Components::for_3d(after, chosen), chosen, was: &self.fine, by_key: None };
+        // What refining reads of each component: the scene's own, where no component was made again or taken out (a deleted
+        // one was made as nothing); else theirs found again as they are copied.
+        let kept = !made.keys().any(|id| self.fine.contains_key(id) || matches!(after.elements.get(*id), Some(Element::Component(_))));
+        let mut fine: std::collections::BTreeMap<Id, FineOf> = if kept {
+            std::collections::BTreeMap::new()
+        } else {
+            self.fine.iter().filter(|(id, _)| !made.contains_key(id)).map(|(id, f)| (*id, f.clone())).collect()
+        };
         for (n, (id, e)) in after.elements.iter().enumerate() {
             if n % 4096 == 0 && cancelled() {
                 return None;
@@ -158,8 +186,8 @@ impl Scene {
                 out.faces.extend(faces);
                 out.tris.extend(own);
                 let own = out.tris.get(start..).unwrap_or_default();
-                for (first, copy) in copies_of(after, *id, e, &mut keys, &mut shapes) {
-                    let len = shapes.get(copy.shape).map_or(0, Vec::len);
+                for (first, copy) in copies_of(after, *id, e, &mut keys, &mut shapes, &mut copying, &mut fine) {
+                    let len = shapes.get(copy.shape).map_or(0, |s| s.len());
                     if let (Some(local), Some(own)) = (shapes.get(copy.shape), own.get(first..first + len))
                         && placed(local, &copy, own)
                     {
@@ -204,11 +232,12 @@ impl Scene {
             shape_keys: keys,
             spans: out.spans,
             table,
+            fine: if kept { Arc::clone(&self.fine) } else { Arc::new(fine) },
         })
     }
 
     /// Where element `id`'s triangles are.
-    fn span(&self, id: Id) -> Option<&Span> {
+    pub(super) fn span(&self, id: Id) -> Option<&Span> {
         let k = self.spans.binary_search_by_key(&id, |s| s.id).ok()?;
         self.spans.get(k)
     }
@@ -326,11 +355,17 @@ fn shaft_reach(m: &Model, id: Id) -> Option<[P3; 2]> {
     Some([[s.plan[0], s.plan[1], s.bottom], [s.plan[2], s.plan[3], s.top]])
 }
 
-/// The triangles of `elements`, each element's as the whole scene makes them: painted, its curves numbered its own.
-fn element_tris(m: &Model, elements: &[(Id, &Element)], index: &crate::walls::Index) -> HashMap<Id, Vec<Tri>> {
+/// The triangles of `elements`, each element's as the whole scene makes them: painted, its curves numbered its own; each
+/// component at the fineness `chosen` names (GEO-2c-2b; none, as ever).
+pub(super) fn element_tris(
+    m: &Model,
+    elements: &[(Id, &Element)],
+    index: Option<&crate::walls::Index>,
+    chosen: Option<&Finer>,
+) -> HashMap<Id, Vec<Tri>> {
     let made = |chunk: &[(Id, &Element)]| {
         let mut tris = Vec::new();
-        for solid in solids_in(m, chunk, Some(index)).into_iter().flat_map(|s| layered(m, s)) {
+        for solid in solids_in_at(m, chunk, index, chosen).into_iter().flat_map(|s| layered(m, s)) {
             solid.tris(&mut tris);
         }
         tris
@@ -357,20 +392,50 @@ fn element_tris(m: &Model, elements: &[(Id, &Element)], index: &crate::walls::In
     out
 }
 
+/// What copying the components a scene makes again reads (GEO-2c-2b): their builds, the fineness each is drawn at, and what
+/// the scene before read of each, by component and (found once, where it is first asked) by key.
+struct Copying<'a> {
+    components: Components<'a>,
+    chosen: Option<&'a Finer>,
+    was: &'a std::collections::BTreeMap<Id, FineOf>,
+    by_key: Option<HashMap<Arc<crate::component_geometry::Key>, Arc<Coarse>>>,
+}
+
+impl Copying<'_> {
+    /// What refining reads of the default build of component `id`, of key `key`: the scene before's, where it read it of
+    /// that key; else of the build, built.
+    fn coarse(&mut self, id: Id, key: &Arc<crate::component_geometry::Key>, c: &crate::model::Component) -> Arc<Coarse> {
+        if let Some(f) = self.was.get(&id).filter(|f| f.shape.key == *key) {
+            return Arc::clone(&f.shape);
+        }
+        let was = self.was;
+        let by_key = self.by_key.get_or_insert_with(|| was.values().map(|f| (Arc::clone(&f.shape.key), Arc::clone(&f.shape))).collect());
+        if let Some(found) = by_key.get(key) {
+            return Arc::clone(found);
+        }
+        let default = self.components.built(key, c, Fineness::DEFAULT);
+        let found = Arc::new(Coarse { key: Arc::clone(key), bounds: default.bounds, needs: default.needs });
+        by_key.insert(Arc::clone(key), Arc::clone(&found));
+        found
+    }
+}
+
 /// The copies of shapes element `id` is, as the whole scene finds them, each with where it starts among the element's
 /// triangles: a component's of its family's, a round run's of its material's tube, a curtain wall's parts; a shape one is the
-/// first of is added.
+/// first of is added. A component's, at the fineness it is drawn at, and what refining reads of it put in `fine`.
 fn copies_of(
     m: &Model,
     id: Id,
     e: &Element,
     keys: &mut HashMap<ShapeKey, usize>,
-    shapes: &mut Vec<Vec<[P3; 3]>>,
+    shapes: &mut Vec<super::ShapeTris>,
+    copying: &mut Copying,
+    fine: &mut std::collections::BTreeMap<Id, FineOf>,
 ) -> Vec<(usize, ComponentInstance)> {
     if let Element::Wall(w) = e {
         return if crate::curtain::pattern(m, w).is_some() { super::curtain_copies(m, id, w, keys, shapes) } else { Vec::new() };
     }
-    copy_of(m, id, e, keys, shapes).map(|copy| (0, copy)).into_iter().collect()
+    copy_of(m, id, e, keys, shapes, copying, fine).map(|copy| (0, copy)).into_iter().collect()
 }
 
 /// The one copy a component or a round run is.
@@ -379,20 +444,29 @@ fn copy_of(
     id: Id,
     e: &Element,
     keys: &mut HashMap<ShapeKey, usize>,
-    shapes: &mut Vec<Vec<[P3; 3]>>,
+    shapes: &mut Vec<super::ShapeTris>,
+    copying: &mut Copying,
+    fine: &mut std::collections::BTreeMap<Id, FineOf>,
 ) -> Option<ComponentInstance> {
     match e {
         Element::Component(c) => {
-            let key = ShapeKey::Family(crate::component_geometry::SharedComponents::key(m, c));
-            let shape = match keys.get(&key) {
+            let key = Arc::new(crate::component_geometry::SharedComponents::key(m, c));
+            let coarse = copying.coarse(id, &key, c);
+            let asked = copying.chosen.and_then(|f| f.get(&id)).copied().unwrap_or(Fineness::DEFAULT);
+            let at = if asked.changes(coarse.needs) { asked } else { Fineness::DEFAULT };
+            let shape_key = ShapeKey::Family((*key).clone(), at);
+            let shape = match keys.get(&shape_key) {
                 Some(n) => *n,
                 None => {
-                    shapes.push(m.component_local_pieces(c).iter().flat_map(|p| p.tris.iter().copied()).collect());
-                    keys.insert(key, shapes.len() - 1);
+                    let built = copying.components.built(&key, c, at);
+                    shapes.push(Arc::new(built.pieces.iter().flat_map(|p| p.tris.iter().copied()).collect()));
+                    keys.insert(shape_key, shapes.len() - 1);
                     shapes.len() - 1
                 }
             };
-            Some(ComponentInstance::placed(id, shape, &m.component_placement(c)))
+            let place = ComponentInstance::placed(id, shape, &m.component_placement(c));
+            fine.insert(id, FineOf { shape: coarse, place, at });
+            Some(place)
         }
         _ => {
             let (t, g) = (m.run_type(e)?, m.run_geom(e)?);
@@ -403,7 +477,7 @@ fn copy_of(
             let shape = match keys.get(&key) {
                 Some(n) => *n,
                 None => {
-                    shapes.push(crate::runs::unit_tube().0);
+                    shapes.push(Arc::new(crate::runs::unit_tube().0));
                     keys.insert(key, shapes.len() - 1);
                     shapes.len() - 1
                 }
@@ -740,7 +814,7 @@ mod tests {
         let scene = Scene::new(&s.model);
         let before = Arc::clone(&s.model);
         let wall = of(&s, "wall").into_iter().find(|w| s.execute("move", &json!({"ids": [w], "by": [0, 200]})).is_ok()).unwrap();
-        let Made::Some(made) = scene.made_again(&before, &s.model, &|| false) else { panic!("the whole scene made again") };
+        let Made::Some(made) = scene.made_again(&before, &s.model, None, &|| false) else { panic!("the whole scene made again") };
         let all = s.model.elements.len();
         assert!(made.contains_key(&wall));
         assert!(made.len() * 20 < all, "{} of {all} made again", made.len());
@@ -777,7 +851,7 @@ fn update_speed() {
         }
         s.model.lookup();
         let t = Instant::now();
-        let made = match scene.made_again(&before, &s.model, &|| false) {
+        let made = match scene.made_again(&before, &s.model, None, &|| false) {
             Made::Some(m) => m.len(),
             _ => usize::MAX,
         };

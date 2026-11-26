@@ -566,7 +566,7 @@ impl Mesh {
         }
         let mut chosen: Vec<(usize, ComponentInstance)> = Vec::new();
         for (&(first, place, _), fit) in candidates.iter().zip(fitting) {
-            let len = scene.shapes.get(place.shape).map_or(0, Vec::len);
+            let len = scene.shapes.get(place.shape).map_or(0, |s| s.len());
             if fit {
                 taken.get_mut(first..first + len).into_iter().flatten().for_each(|t| *t = true);
                 chosen.push((first, place));

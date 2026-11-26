@@ -24,6 +24,11 @@ pub const IFC: u64 = 14;
 /// What a read leaves free for the rest of the machine, at least: a tenth of what's free when that's more.
 const MARGIN: u64 = 256 << 20;
 
+/// What of `free` bytes free work may take: all but [`MARGIN`], or a tenth of it when that's more.
+pub(crate) fn room(free: u64) -> u64 {
+    free.saturating_sub((free / 10).max(MARGIN))
+}
+
 /// How an app measures memory: what the process has allocated now, and what the machine has free (none when it can't say).
 #[derive(Clone, Copy)]
 pub struct Meter {
@@ -144,7 +149,7 @@ impl Budget {
     /// [`Budget::start`] measured by `meter`.
     pub fn with(meter: &Meter, size: u64, factor: u64) -> Result<Option<Budget>, String> {
         let Some(free) = (meter.free)() else { return Ok(None) };
-        let room = free.saturating_sub((free / 10).max(MARGIN));
+        let room = room(free);
         let need = size.saturating_mul(factor);
         if need > room {
             return Err(format!(

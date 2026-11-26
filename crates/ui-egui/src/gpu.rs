@@ -1210,6 +1210,64 @@ impl Gpu {
         Ok(false)
     }
 
+    /// GEO-2c-2b: `mesh`, the picture on the card now made finer (a refined scene's), put on the card off the interface's
+    /// thread beside the mesh it holds, which stays drawn meanwhile, and in its place once there: whether it is. Its upload has
+    /// the room the mesh held leaves, and once in place the card's whole room. Where both don't fit, or the card holds none, as
+    /// [`Gpu::prepare_upload`]: the view waits for it. On a card whose device was lost, the loss, as any upload's.
+    pub(crate) fn prepare_upload_beside(&mut self, ctx: &egui::Context, mesh: &Arc<Mesh>) -> Result<bool, String> {
+        self.alive()?;
+        let held = match &self.mesh {
+            Some(up) if Arc::ptr_eq(&up.mesh, mesh) => return Ok(true),
+            Some(up) => up.held,
+            None => return self.prepare_upload(ctx, mesh),
+        };
+        let room = self.room();
+        let needs = (mesh.vertices.len() as u64)
+            .saturating_mul(STRIDE)
+            .saturating_add((mesh.wires.len() as u64).saturating_mul(WIRE))
+            .saturating_add((mesh.dots.len() as u64).saturating_mul(DOT));
+        if needs.saturating_add(held) > room.bytes {
+            return self.prepare_upload(ctx, mesh);
+        }
+        if let Some(done) = self.upload_worker.as_ref().and_then(crate::view_worker::Latest::take)
+            && Arc::ptr_eq(&done.mesh, mesh)
+        {
+            let mut up = done.uploaded?;
+            // Found full beside the mesh drawn, the card holds what this one could and what that one does, and no more: kept, as
+            // an upload in its place keeps what it found.
+            if up.room < room.bytes.saturating_sub(held) {
+                self.card_bytes = self.card_bytes.min(up.room.saturating_add(held).saturating_add(self.parked_bytes()));
+            }
+            up.room = up.room.max(self.room().bytes);
+            self.mesh = Some(up);
+            return Ok(true);
+        }
+        if !self.upload_requested.as_ref().is_some_and(|m| Arc::ptr_eq(m, mesh)) {
+            let job = UploadJob {
+                device: self.device.clone(),
+                queue: self.queue.clone(),
+                vertex_bytes: self.vertex_bytes,
+                room: Room { bytes: room.bytes.saturating_sub(held), full_at: room.full_at },
+                mesh: Arc::clone(mesh),
+            };
+            let wake = ctx.clone();
+            let worker =
+                self.upload_worker.get_or_insert_with(|| crate::view_worker::Latest::new(build_upload, move || wake.request_repaint()));
+            worker.request(job);
+            self.upload_requested = Some(Arc::clone(mesh));
+        }
+        if let Some(worker) = &self.upload_worker {
+            worker.start()?;
+            if let Some(error) = worker.take_error() {
+                return Err(error);
+            }
+            if worker.busy() {
+                ctx.request_repaint_after(std::time::Duration::from_millis(16));
+            }
+        }
+        Ok(false)
+    }
+
     /// How many bytes of the mesh's own vertices the card holds now.
     #[cfg(test)]
     pub(crate) fn holding(&self) -> u64 {
@@ -2391,6 +2449,61 @@ mod tests {
         assert_eq!(read(&gpu), perspective_pixels);
     }
 
+    /// GEO-2c-2b: a refined scene's mesh goes up beside the one on the card, which is drawn meanwhile without going up again,
+    /// and takes its place once there, drawing what it draws.
+    #[test]
+    fn a_refined_mesh_goes_up_beside_the_one_drawn_which_stays_drawn_meanwhile() {
+        let Some(mut gpu) = headless() else { return };
+        let s = sample();
+        let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
+        let cam = scene.fit_in(AZIMUTH, ELEVATION, 640, 480, &look);
+        let drawn = Arc::new(Mesh::new(&scene, &look).unwrap());
+        // Another mesh of the picture, standing in for a refined scene's.
+        let finer = Arc::new(Mesh::new(&scene, &look).unwrap());
+        gpu.draw(&drawn, &cam, &[], PAPER).unwrap();
+        let pixels = read(&gpu);
+        let ctx = egui::Context::default();
+        assert!(!gpu.prepare_upload_beside(&ctx, &finer).unwrap(), "on its way up");
+        assert!(gpu.mesh.as_ref().is_some_and(|up| Arc::ptr_eq(&up.mesh, &drawn)), "the mesh drawn still on the card");
+        gpu.draw(&drawn, &cam, &[], PAPER).unwrap();
+        assert_eq!(read(&gpu), pixels, "and drawn meanwhile");
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+        while !gpu.prepare_upload_beside(&ctx, &finer).unwrap() {
+            assert!(std::time::Instant::now() < deadline, "the upload beside did not finish");
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert!(gpu.mesh.as_ref().is_some_and(|up| Arc::ptr_eq(&up.mesh, &finer)), "in its place");
+        gpu.draw(&finer, &cam, &[], PAPER).unwrap();
+        assert_eq!(read(&gpu), pixels);
+    }
+
+    /// GEO-2c-2b, cp's review of #99: a refined mesh that finds the card full as it goes up beside the one drawn keeps what that
+    /// taught, as an upload in place of it does: the card holds what the new one could and what the one drawn holds, and the next
+    /// upload isn't given more.
+    #[test]
+    fn a_refined_mesh_that_finds_the_card_full_beside_the_one_drawn_keeps_the_room_it_found() {
+        let Some(mut gpu) = headless() else { return };
+        gpu.vertex_bytes = CHUNK;
+        let s = sample();
+        let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
+        let cam = scene.fit_in(AZIMUTH, ELEVATION, 640, 480, &look);
+        let drawn = Arc::new(Mesh::new(&scene, &look).unwrap());
+        let finer = Arc::new(Mesh::new(&scene, &look).unwrap());
+        gpu.draw(&drawn, &cam, &[], PAPER).unwrap();
+        let held = gpu.holding();
+        assert_eq!(gpu.card_bytes, u64::MAX, "nothing found full yet");
+        // Beside it, room for two buffers more.
+        gpu.full_at = Some(2 * CHUNK);
+        let ctx = egui::Context::default();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+        while !gpu.prepare_upload_beside(&ctx, &finer).unwrap() {
+            assert!(std::time::Instant::now() < deadline, "the upload beside did not finish");
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert!(gpu.card_bytes <= held + 2 * CHUNK, "{} bytes thought free, {held} held and two buffers' room found", gpu.card_bytes);
+        assert!(gpu.holding() <= 2 * CHUNK);
+    }
+
     /// The sample with copies of every kind: three lamps, each a frame and a lens seen through, and round runs, one tube
     /// stretched and turned (level, sloped, upright and at an angle in plan).
     fn with_copies() -> Session {
@@ -3107,6 +3220,26 @@ floor {}"#,
         let other = Arc::new(Mesh::new(&scene, &look).unwrap());
         let up = gpu.prepare_upload(&egui::Context::default(), &other);
         assert!(up.as_ref().is_err_and(|e| e.starts_with("the card was lost")), "{up:?}");
+    }
+
+    /// GEO-2c-2b: a refined mesh offered to go up beside the one drawn, on a card whose device was lost, is refused as any
+    /// upload is, and nothing of it is sent up.
+    #[test]
+    fn a_refined_mesh_offered_beside_the_one_drawn_on_a_lost_card_is_refused_and_not_sent_up() {
+        let Some(mut gpu) = headless() else {
+            eprintln!("no graphics adapter here: a lost card is not tried");
+            return;
+        };
+        let s = sample();
+        let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
+        let cam = scene.fit_in(AZIMUTH, ELEVATION, 320, 240, &look);
+        let drawn = Arc::new(Mesh::new(&scene, &look).unwrap());
+        assert!(gpu.draw(&drawn, &cam, &[], PAPER).unwrap());
+        gpu.lose();
+        let finer = Arc::new(Mesh::new(&scene, &look).unwrap());
+        let up = gpu.prepare_upload_beside(&egui::Context::default(), &finer);
+        assert!(up.as_ref().is_err_and(|e| e.starts_with("the card was lost")), "{up:?}");
+        assert!(gpu.upload_requested.is_none(), "nothing sent up");
     }
 
     /// `cargo test -p bimcraft-ui-egui --release gpu_speed -- --ignored --nocapture`: the 20-storey tower at 1920 x 1080, orbited.

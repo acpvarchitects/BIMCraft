@@ -15,6 +15,8 @@ pub struct Fineness(Option<i8>);
 /// The finest a view may ask for, `2^FINEST` mm, and the coarsest that still changes anything.
 const FINEST: i8 = -4;
 const COARSEST: i8 = 8;
+/// GEO-2c-2b: how far past its band's edge, in powers of two, a view's scale comes before a build is drawn in another band.
+const HALF_STEP: f64 = 0.5;
 
 thread_local! {
     static NOW: Cell<Fineness> = const { Cell::new(Fineness(None)) };
@@ -55,6 +57,32 @@ impl Fineness {
     /// ([`recording`]). False for the default itself.
     pub fn changes(self, needs: Needs) -> bool {
         matches!((self.0, needs), (Some(e), Some(n)) if e <= n)
+    }
+
+    /// GEO-2c-2b: the fineness a build drawn at this one, whose default build recorded `needs`, is drawn at where a view shows
+    /// it at `scale` px a mm. A band is a power of two of the scale, as [`Fineness::for_view`] rounds it; the default's is
+    /// every scale that asks for a fineness no finer than its curves need. While the scale is within half a step (half a power
+    /// of two) of this one's band, this one, so a view sitting on a band's edge (an orbit, a zoom by a hair) doesn't build
+    /// back and forth; past that, what [`Fineness::for_view`] asks. Either is the default where it builds nothing otherwise,
+    /// and this one where the scale isn't a positive number.
+    pub fn banded(self, scale: f64, needs: Needs) -> Fineness {
+        let now = if self.changes(needs) { self } else { Fineness::DEFAULT };
+        let Some(n) = needs else { return Fineness::DEFAULT };
+        let u = (0.5 / scale).log2();
+        if !(scale.is_finite() && scale > 0.0 && u.is_finite()) {
+            return now;
+        }
+        // Where its band is, in powers of two of half a pixel's mm: the finest's reaching down, the default's up.
+        let (lo, hi) = match now.0 {
+            Some(e) if e <= FINEST => (f64::NEG_INFINITY, f64::from(e) + 1.0),
+            Some(e) => (f64::from(e), f64::from(e) + 1.0),
+            None => (f64::from(n) + 1.0, f64::INFINITY),
+        };
+        if u >= lo - HALF_STEP && u < hi + HALF_STEP {
+            return now;
+        }
+        let asked = Fineness::for_view(scale);
+        if asked.changes(needs) { asked } else { Fineness::DEFAULT }
     }
 
     /// `f`, with what it builds at this fineness. The fineness before is back after it, however `f` ends.
