@@ -11,16 +11,32 @@ use crate::model::{Component, Id, Model};
 /// What a shape is the shape of: its family, its type, whether it is mirrored, and the values its family evaluates.
 pub(crate) type Key = (String, String, bool, String);
 
+/// GEO-2c-2b: the fineness each component of a 3D scene is drawn at, by id, where it isn't the default.
+pub(crate) type Finer = BTreeMap<Id, Fineness>;
+
+/// GEO-2c-2b: what refining a 3D view reads of a shape's default build: its key, the box round its triangles in its family's
+/// axes (none: it has none) and what its curves recorded ([`Built::needs`]).
+#[derive(Debug)]
+pub(crate) struct Coarse {
+    pub(crate) key: Arc<Key>,
+    pub(crate) bounds: Option<[[f64; 3]; 2]>,
+    pub(crate) needs: crate::family::fineness::Needs,
+}
+
 /// One local family shape and every component that places it. Mirroring and instance parameters
-/// are part of the shape key; rotation and translation belong to the placement.
+/// are part of the shape key; rotation and translation belong to the placement. GEO-2c-2b: so is the fineness it is built at,
+/// so copies in one band share a shape and copies in two are two.
 pub(crate) struct SharedComponents {
-    pub(crate) shapes: Vec<Vec<Piece>>,
+    pub(crate) shapes: Vec<Arc<Built>>,
     /// Local triangle bounds for each shape, used to bound placed instances without expanding triangles.
     #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) bounds: Vec<Option<[[f64; 3]; 2]>>,
     pub(crate) instances: Vec<ComponentInstance>,
-    /// Each shape's key, and where it is in `shapes`.
-    pub(crate) keys: BTreeMap<Key, usize>,
+    /// Each shape's key and fineness, and where it is in `shapes`.
+    pub(crate) keys: BTreeMap<(Key, Fineness), usize>,
+    /// GEO-2c-2b: each instance's default build, as refining reads it, and the fineness it is drawn at: the one asked of it, or
+    /// the default where that builds it no otherwise.
+    pub(crate) coarse: Vec<(Arc<Coarse>, Fineness)>,
 }
 
 /// A copy of a local shape: `owner`'s, at `at`, its shape's axes taken to `axes` (each square to the others, any length, so a
@@ -85,24 +101,40 @@ impl SharedComponents {
         model.shape_key(c)
     }
 
-    /// Build each local shape once. No triangles are placed or copied for the instances here.
-    pub(crate) fn new(model: &Model, cancelled: &(dyn Fn() -> bool + Sync)) -> Option<Self> {
+    /// Build each local shape once, each component's at the fineness `chosen` names (GEO-2c-2b; the default where it names
+    /// none), through a 3D scene's [`Components::for_3d`]. No triangles are placed or copied for the instances here.
+    pub(crate) fn new(model: &Model, chosen: Option<&Finer>, cancelled: &(dyn Fn() -> bool + Sync)) -> Option<Self> {
+        let mut components = Components::for_3d(model, chosen);
         let mut shapes = Vec::new();
         let mut bounds = Vec::new();
         let mut indices = BTreeMap::new();
         let mut instances = Vec::new();
+        let mut coarse = Vec::new();
+        let mut defaults: HashMap<Key, Arc<Coarse>> = HashMap::new();
         for (i, (owner, element)) in model.elements.iter().enumerate() {
             if i % 256 == 0 && cancelled() {
                 return None;
             }
             let crate::model::Element::Component(c) = element else { continue };
             let key = Self::key(model, c);
-            let shape = match indices.get(&key) {
+            let plain = match defaults.get(&key) {
+                Some(p) => Arc::clone(p),
+                None => {
+                    let shared = Arc::new(key.clone());
+                    let default = components.built(&shared, c, Fineness::DEFAULT);
+                    let p = Arc::new(Coarse { key: shared, bounds: default.bounds, needs: default.needs });
+                    defaults.insert(key.clone(), Arc::clone(&p));
+                    p
+                }
+            };
+            let asked = chosen.and_then(|f| f.get(owner)).copied().unwrap_or(Fineness::DEFAULT);
+            let at = if asked.changes(plain.needs) { asked } else { Fineness::DEFAULT };
+            let shape = match indices.get(&(key.clone(), at)) {
                 Some(&n) => n,
                 None => {
                     let n = shapes.len();
-                    let pieces = model.component_local_pieces(c);
-                    let local = pieces.iter().flat_map(|piece| piece.tris.iter().flatten());
+                    let pieces = components.built(&plain.key, c, at);
+                    let local = pieces.pieces.iter().flat_map(|piece| piece.tris.iter().flatten());
                     let extent = local.fold(None, |state: Option<[[f64; 3]; 2]>, p| {
                         let [mut lo, mut hi] = state.unwrap_or([*p, *p]);
                         for axis in 0..3 {
@@ -113,13 +145,14 @@ impl SharedComponents {
                     });
                     bounds.push(extent);
                     shapes.push(pieces);
-                    indices.insert(key, n);
+                    indices.insert((key, at), n);
                     n
                 }
             };
             instances.push(ComponentInstance::placed(*owner, shape, &model.component_placement(c)));
+            coarse.push((plain, at));
         }
-        (!cancelled()).then_some(Self { shapes, bounds, instances, keys: indices })
+        (!cancelled()).then_some(Self { shapes, bounds, instances, keys: indices, coarse })
     }
 }
 
@@ -511,6 +544,8 @@ pub(crate) struct Components<'a> {
     corners: BTreeMap<Key, Vec<Vec<[f64; 3]>>>,
     /// Each key's model lines in its family's axes (ec's review of #88: found once a key, not once a question).
     lines: HashMap<Arc<Key>, Arc<Vec<index::Line>>>,
+    /// GEO-2c-2b: a 3D scene's: the fineness each component is drawn at, by id (the default where it names none).
+    chosen: Option<&'a Finer>,
     /// Charges the store, once the drawing is done, with what it kept beside the builds.
     _settle: Settle,
 }
@@ -635,8 +670,15 @@ impl<'a> Components<'a> {
             envelopes: HashMap::new(),
             corners: BTreeMap::new(),
             lines: HashMap::new(),
+            chosen: None,
             _settle: Settle,
         }
+    }
+
+    /// GEO-2c-2b: for a 3D scene whose components are each drawn at the fineness `chosen` names (the default where it names
+    /// none), what it builds kept across drawings, as a plan's are. With none, [`Components::new`]: each drawn as ever.
+    pub(crate) fn for_3d(model: &'a Model, chosen: Option<&'a Finer>) -> Self {
+        Self { keeps: chosen.is_some(), chosen, ..Self::new(model) }
     }
 
     /// For a plan's extent: what it builds kept across drawings, for the plan drawn next.
@@ -1152,6 +1194,42 @@ impl<'a> Components<'a> {
         self.drawn(c).pieces.iter().map(|pc| placed.solid(pc)).collect()
     }
 
+    /// [`Components::solids`] of component `id`, `c`; for a 3D scene that names each one's fineness ([`Components::for_3d`],
+    /// GEO-2c-2b), at the one it names.
+    pub(crate) fn solids_of(&mut self, id: Id, c: &Component) -> Vec<Piece> {
+        let Some(chosen) = self.chosen else { return self.solids(c) };
+        let fineness = chosen.get(&id).copied().unwrap_or(Fineness::DEFAULT);
+        let key = self.key(c);
+        let placed = self.model.component_placement(c);
+        self.local_at(&key, c, fineness).pieces.iter().map(|pc| placed.solid(pc)).collect()
+    }
+
+    /// GEO-2c-2b: `c`'s build at `fineness`, `key` its key: kept or built, and where it can't be built that finely, its
+    /// default one.
+    pub(crate) fn built(&mut self, key: &Arc<Key>, c: &Component, fineness: Fineness) -> Arc<Built> {
+        self.local_at(key, c, fineness)
+    }
+
+    /// GEO-2c-2b: builds at once, on several threads, what of `jobs` (a component, its key and a fineness it is wanted at)
+    /// isn't kept: each key's default build first, then each key at each fineness once.
+    pub(crate) fn build_each(&mut self, jobs: &[(Arc<Key>, &'a Component, Fineness)]) {
+        let mut queued = std::collections::HashSet::new();
+        let mut defaults = Vec::new();
+        let mut finer: BTreeMap<Fineness, Vec<(Arc<Key>, &'a Component)>> = BTreeMap::new();
+        for (key, c, fineness) in jobs {
+            if queued.insert((Arc::clone(key), Fineness::DEFAULT)) && self.known(key, Fineness::DEFAULT).is_none() {
+                defaults.push((Arc::clone(key), *c));
+            }
+            if *fineness != Fineness::DEFAULT && queued.insert((Arc::clone(key), *fineness)) && self.known(key, *fineness).is_none() {
+                finer.entry(*fineness).or_default().push((Arc::clone(key), *c));
+            }
+        }
+        self.build_all(&defaults, Fineness::DEFAULT);
+        for (fineness, jobs) in finer {
+            self.build_all(&jobs, fineness);
+        }
+    }
+
     /// The build `c` is drawn with, of a component that may not be the model's own: its default one, or where it meets what
     /// the view shows and a finer build may differ from that ([`Fineness::changes`]), at the view's fineness.
     fn drawn(&mut self, c: &Component) -> Arc<Built> {
@@ -1355,13 +1433,13 @@ mod tests {
                 }
             }
         }
-        let shared = SharedComponents::new(&s.model, &|| false).unwrap();
+        let shared = SharedComponents::new(&s.model, None, &|| false).unwrap();
         assert_eq!(shared.shapes.len(), 3);
         assert_eq!(shared.instances.len(), 4);
         for instance in &shared.instances {
             let Some(crate::model::Element::Component(c)) = s.model.elements.get(instance.owner) else { panic!("component") };
             let placed = s.model.component_pieces(c);
-            let local = &shared.shapes[instance.shape];
+            let local = &shared.shapes[instance.shape].pieces;
             let bounds = instance.bounds(shared.bounds[instance.shape].unwrap());
             assert_eq!(placed.len(), local.len());
             for (p, shape) in placed.iter().zip(local) {
@@ -1391,8 +1469,8 @@ mod tests {
     #[ignore = "measures the large tower fixture"]
     fn shared_component_shape_count_in_the_ten_storey_tower() {
         let model = crate::sample::tower::annotated(crate::sample::tower::Plate::REFERENCE, 10).unwrap();
-        let shared = SharedComponents::new(&model, &|| false).unwrap();
-        let tris = |shape: &Vec<Piece>| shape.iter().map(|p| p.tris.len()).sum::<usize>();
+        let shared = SharedComponents::new(&model, None, &|| false).unwrap();
+        let tris = |shape: &Arc<Built>| shape.pieces.iter().map(|p| p.tris.len()).sum::<usize>();
         let unique = shared.shapes.iter().map(&tris).sum::<usize>();
         let placed = shared.instances.iter().map(|i| tris(&shared.shapes[i.shape])).sum::<usize>();
         eprintln!(
@@ -1449,7 +1527,7 @@ mod tests {
         }
         // Two shapes, as the 3D view has: the six alike, and the taller one.
         assert_eq!(cache.local.len(), 2);
-        assert_eq!(SharedComponents::new(model, &|| false).unwrap().shapes.len(), 2);
+        assert_eq!(SharedComponents::new(model, None, &|| false).unwrap().shapes.len(), 2);
         // The check builds each shape once by the same key: two of them.
         let keys: std::collections::BTreeSet<Key> = model
             .elements
@@ -1650,7 +1728,7 @@ type Envelope = Option<[[f64; 3]; 2]>;
 
 const GENERATIONS: usize = 4;
 /// The finer builds' budget (GEO-2c).
-const BUDGET: usize = 256 << 20;
+pub(crate) const BUDGET: usize = 256 << 20;
 /// The default builds' budget (GEO-2g): 10,000 of GEO-2f's facade panels take some 240 MB (about 24 KB each).
 const DEFAULT_BUDGET: usize = 384 << 20;
 /// The most envelopes a generation keeps, some 40 MB; past them it starts again.
