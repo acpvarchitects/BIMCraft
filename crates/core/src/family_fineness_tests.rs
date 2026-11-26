@@ -519,11 +519,26 @@ fn view3d_fineness_bench() {
         refine(&refined, &Camera { scale: cam.scale * by, ..cam }, &format!("zoomed in {:.0}% (within the band)", (by - 1.0) * 100.0));
         let again = refine(&scene, &cam, "the same zoom from the scene made as ever (its builds kept)");
         drop(again);
-        let t = std::time::Instant::now();
-        let changed = (1..=10)
-            .filter(|k| refined.refined(&m, &Camera { azimuth: cam.azimuth + 3.0 * f64::from(*k), ..cam }, &look).is_some())
-            .count();
-        eprintln!("GEO-2c-2b {what}, orbited 10 steps of 3°: {:.1} ms, {changed} refined, {}", ms(t), memory());
+        // Orbited at a constant distance as the desktop refines it, each settle from the scene the last left: there and back.
+        // What comes onto the picture is refined as it does; going back over the same ground refines nothing.
+        let mut now = refined;
+        for (pass, steps) in [("out", (1..=10).collect::<Vec<i32>>()), ("back", (0..10).rev().collect())] {
+            let (t, b) = (std::time::Instant::now(), builds());
+            let mut changed = 0;
+            for k in steps {
+                if let Some(next) = now.refined(&m, &Camera { azimuth: cam.azimuth + 3.0 * f64::from(k), ..cam }, &look) {
+                    now = next;
+                    changed += 1;
+                }
+            }
+            eprintln!(
+                "GEO-2c-2b {what}, orbited 10 steps of 3° {pass}: {:.1} ms, {changed} settles refined, {} built, {} components finer, {}",
+                ms(t),
+                builds() - b,
+                now.refined_count(),
+                memory()
+            );
+        }
     }
     let (bytes, _) = crate::component_geometry::kept_bytes();
     eprintln!(
