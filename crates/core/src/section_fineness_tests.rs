@@ -13,20 +13,20 @@ use crate::ids::Id;
 use crate::render::{self, Prim, View};
 
 /// The family's Center (Front/Back) plane: a sketch on it is in x and z, and goes from its `from` to its `to` down y.
-const FRONT: &str = "9e3c0a10-1f0b-4d8c-8a5e-0000000000a2";
+pub(crate) const FRONT: &str = "9e3c0a10-1f0b-4d8c-8a5e-0000000000a2";
 /// The cylinders' radius: 32 chords a turn stray 3.85 mm from it.
 const R: f64 = 800.0;
 
-fn run(s: &mut Session, cmd: &str, p: Value) -> Value {
+pub(crate) fn run(s: &mut Session, cmd: &str, p: Value) -> Value {
     s.execute(cmd, &p).unwrap_or_else(|e| panic!("{cmd} {p}: {e}"))
 }
 
-fn id(v: &Value) -> Id {
+pub(crate) fn id(v: &Value) -> Id {
     v["id"].as_u64().unwrap_or_else(|| panic!("no id: {v}"))
 }
 
 /// Generic family `name` of `forms`, one type `T` and an instance parameter `K` that changes nothing but its key.
-fn family(s: &mut Session, name: &str, forms: Vec<Value>) {
+pub(crate) fn family(s: &mut Session, name: &str, forms: Vec<Value>) {
     run(
         s,
         "family",
@@ -36,7 +36,7 @@ fn family(s: &mut Session, name: &str, forms: Vec<Value>) {
 }
 
 /// A component of family `name` at `at`, its `K` `k`.
-fn place(s: &mut Session, name: &str, at: [f64; 2], k: f64) -> Id {
+pub(crate) fn place(s: &mut Session, name: &str, at: [f64; 2], k: f64) -> Id {
     id(&run(s, "component", json!({"family": name, "type": "T", "at": at, "params": {"K": k}})))
 }
 
@@ -343,12 +343,12 @@ fn a_section_at_a_hostile_scale_draws_at_the_default_or_the_finest() {
 }
 
 /// The radius of [`ring`]'s outer arc: 30° through 1000 mm.
-fn ring_radius() -> f64 {
+pub(crate) fn ring_radius() -> f64 {
     500.0 / 15f64.to_radians().sin()
 }
 
 /// How far east [`ring`] reaches, at 600 up: its outer arc at its widest, turned to the east.
-fn apex() -> f64 {
+pub(crate) fn apex() -> f64 {
     2800.0 + ring_radius() * (1.0 - 15f64.to_radians().cos())
 }
 
@@ -356,7 +356,7 @@ fn apex() -> f64 {
 /// 30° bulging east to [`apex`] (three chords at the default, its widest midway along the middle one), turned about the
 /// family's z from -16.875° to 16.875° (three chords, east midway along the middle one). Its default build stops 21 mm short
 /// of its apex: 7 of the arc's chords and 14 of the turn's.
-fn ring() -> Value {
+pub(crate) fn ring() -> Value {
     json!({"sketch": [
         {"start": [2800, 100], "end": [2800, 1100], "turn": 30},
         {"start": [2800, 1100], "end": [2600, 1100]},
@@ -367,7 +367,7 @@ fn ring() -> Value {
 }
 
 /// The box of component `id`'s default build, placed: what a section's work holds of it.
-fn default_box(s: &Session, id: Id) -> [[f64; 3]; 2] {
+pub(crate) fn default_box(s: &Session, id: Id) -> [[f64; 3]; 2] {
     let Some(crate::model::Element::Component(c)) = s.model.elements.get(id) else { panic!("{id} is no component") };
     let points = crate::component_geometry::Components::new(&s.model).extremes(c);
     points.iter().fold([[f64::INFINITY; 3], [f64::NEG_INFINITY; 3]], |[lo, hi], p| {
