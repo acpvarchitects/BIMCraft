@@ -519,6 +519,15 @@ fn view3d_fineness_bench() {
         refine(&refined, &Camera { scale: cam.scale * by, ..cam }, &format!("zoomed in {:.0}% (within the band)", (by - 1.0) * 100.0));
         let again = refine(&scene, &cam, "the same zoom from the scene made as ever (its builds kept)");
         drop(again);
+        // The memory guard's cost: the same, on a machine that says 64 GB are free (with no meter, as the tests have, it asks
+        // nothing).
+        let t = std::time::Instant::now();
+        let guarded = scene.refined_with(&m, &cam, &look, Some(64 << 30), &|| false);
+        eprintln!(
+            "GEO-2c-2b {what}, the same again with the memory guard (64 GB free): {:.1} ms, {} components finer",
+            ms(t),
+            guarded.map_or(0, |g| g.refined_count())
+        );
         // Orbited at a constant distance as the desktop refines it, each settle from the scene the last left: there and back.
         // What comes onto the picture is refined as it does; going back over the same ground refines nothing.
         let mut now = refined;
