@@ -152,14 +152,17 @@ pub(crate) struct RefineJob {
     card: bool,
 }
 
-/// A refinement made: of which model and view, of which scene, for which camera; the scene refined, and its mesh where the
-/// job asked for one, or none where nothing changed band.
+/// A scene refined, and its mesh where one was asked for (or why the card can't draw it).
+type Refined = (Arc<Scene>, Option<Result<Arc<Mesh>, String>>);
+
+/// A refinement made: of which model and view, of which scene, for which camera; the scene refined and its mesh, or none
+/// where nothing changed band.
 pub(crate) struct RefineDone {
     model: Arc<Model>,
     view: Option<Id>,
     from: Arc<Scene>,
     cam: Camera,
-    refined: Option<(Arc<Scene>, Option<Result<Arc<Mesh>, String>>)>,
+    refined: Option<Refined>,
 }
 
 /// A refined scene and its mesh waiting to go up to the card beside the mesh drawn, and what it was made of and for.
