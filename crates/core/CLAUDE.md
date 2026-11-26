@@ -107,7 +107,8 @@ The core caches what it works out from the model and keeps the whole computation
 - `component_geometry/index.rs`: plans' index of components. `nested_elements.rs`: shared nested instances as elements
   ([families](../../docs/areas/families.md#shared-nested-instances-in-a-project)).
 
-Also mapped here, for the root's word budget: `project_geometry.rs`, Cut Geometry's picks; `render/joins.rs`, section joins.
+Also mapped here, for the root's word budget: `project_geometry.rs`, Cut Geometry's picks; `render/joins.rs`, section joins;
+`view3d/refine.rs`, a 3D scene refined for its camera ([families](../../docs/areas/families.md), GEO-2c-2b).
 - `oracle_tests.rs`: random edits checked against the full computation: of walls and what is in them (`edit`), of 2D (`edit_2d`) and
   of the other kinds (`edit_more`: 3D dimensions and cameras, shapes, roofs, schedules, bars, symbols).
   `crosscheck.rs`: a project described for Revit, and Revit's numbers compared with ours ([schedules](../../docs/areas/schedules.md)).

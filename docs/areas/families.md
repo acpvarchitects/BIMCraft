@@ -2312,7 +2312,28 @@ than about 1/512 px a mm), or no curve on the screen strays half a pixel at the 
 section is what it was, to the pixel. A sheet draws its sections at its viewports' scale, as its plans. The culling and the
 frame still read the default build's box, which a finer build's chords may pass by less than the default's stray. Tests:
 `section_fineness_tests.rs`; `section_fineness_bench` in `family_fineness_tests.rs` times the facade's elevation, fitted and
-zoomed in. The 3D view follows in GEO-2c-2b.
+zoomed in.
+
+The 3D view (GEO-2c-2b) is made as ever, every component at the default, so what doesn't ask (a glTF, a sheet's 3D viewport,
+IFC) is what it was to the bit. Refining is a step of its own (`Scene::refined`, `view3d/refine.rs`), which the desktop asks of
+a worker once the camera has stood still for 200 ms (`orbit::SETTLE`), showing the scene and mesh it has until the refined ones
+are ready; a camera that moves on drops a refinement under way. A component on the picture is asked for about half a pixel
+where it is seen: at a parallel view's scale, the same for every one; in perspective, at the focal length in pixels over how far
+in front of the eye the nearest corner of its default build's box, placed, is (no nearer than `NEAR`). One wholly off the
+picture (beside it, or behind the eye), hidden by the view or outside its section box stays as it is. A component changes band
+only half a power of two past its band's edge (`Fineness::banded`), so an orbit at a constant distance or a zoom by a hair
+round an edge builds nothing; the default's band is every scale that asks no finer than its curves need (`Built::needs`), so one
+whose curves take no more chords is never refined. Finer builds are spent nearest first within a budget of triangles, each copy
+counted: as many of the scene's triangles (128 bytes) as the store keeps bytes of finer builds, some two million; past it the
+farther ones are drawn at the default, never a nearer one coarser than a farther. Only the components whose band changed are
+made again, as an edit makes what it touched (`update::element_tris`, spliced into the scene), through the store, so a zoom
+back builds nothing. A shape is its key and its fineness (`ShapeKey::Family`), and `SharedComponents` and an edit's copies
+build each at its component's fineness through the store: copies in one band are one shape the card places for each, copies in
+two are two shapes, and a refined scene keeps no finer shape no copy is drawn from. An edit keeps each component's fineness:
+what it makes again is made at it, and so is a whole scene made again (`Scene::new_among_at`). On the card the refined scene's
+mesh goes up beside the one drawn and replaces it once there (`Gpu::prepare_upload_beside`), or, where both don't fit, as after
+an edit. Tests: `view3d_fineness_tests.rs` (with a guard holding a scene made as ever and its glTF to the hashes made before
+GEO-2c-2b) and the desktop's `tests/refine3d.rs`; `view3d_fineness_bench` in `family_fineness_tests.rs` times the facade.
 
 ## Plans of many components (GEO-2g)
 
@@ -2382,7 +2403,7 @@ planes, components hosted on them or on faces (Place on Face), and where a compo
 - `family/views.rs`: a family's plans and elevations.
 - `family/sketch.rs`: forms' sketches. `family/handles.rs`: shape handles on a profile's edges (FE-5).
 - `family/fineness.rs`: how near a build chords its curves, `Fineness`, which a plan, a section or an elevation sets from
-  its scale (GEO-2c).
+  its scale (GEO-2c), and the 3D view from its camera, a band at a time (GEO-2c-2b).
 - `family/forms.rs`: Blend, Sweep and Swept Blend: their kinds, paths, vertex mapping and triangles.
 - `family/faces.rs`: face tags (GEO-2b): `FormFace`, the key table a piece's triangles index, and the lines ring edges lie along.
 - `family/paint.rs`: painted faces of a form (FE-16c-1): what a build paints, which faces a form builds, dead paint dropped, the `paint` edit, and the face under a point and the element it is painted on (FE-16c-2). A placed component's own face paint (FE-16c-2) is in the project's `paint.rs`.
