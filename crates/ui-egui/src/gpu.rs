@@ -1213,8 +1213,9 @@ impl Gpu {
     /// GEO-2c-2b: `mesh`, the picture on the card now made finer (a refined scene's), put on the card off the interface's
     /// thread beside the mesh it holds, which stays drawn meanwhile, and in its place once there: whether it is. Its upload has
     /// the room the mesh held leaves, and once in place the card's whole room. Where both don't fit, or the card holds none, as
-    /// [`Gpu::prepare_upload`]: the view waits for it.
+    /// [`Gpu::prepare_upload`]: the view waits for it. On a card whose device was lost, the loss, as any upload's.
     pub(crate) fn prepare_upload_beside(&mut self, ctx: &egui::Context, mesh: &Arc<Mesh>) -> Result<bool, String> {
+        self.alive()?;
         let held = match &self.mesh {
             Some(up) if Arc::ptr_eq(&up.mesh, mesh) => return Ok(true),
             Some(up) => up.held,
@@ -3219,6 +3220,26 @@ floor {}"#,
         let other = Arc::new(Mesh::new(&scene, &look).unwrap());
         let up = gpu.prepare_upload(&egui::Context::default(), &other);
         assert!(up.as_ref().is_err_and(|e| e.starts_with("the card was lost")), "{up:?}");
+    }
+
+    /// GEO-2c-2b: a refined mesh offered to go up beside the one drawn, on a card whose device was lost, is refused as any
+    /// upload is, and nothing of it is sent up.
+    #[test]
+    fn a_refined_mesh_offered_beside_the_one_drawn_on_a_lost_card_is_refused_and_not_sent_up() {
+        let Some(mut gpu) = headless() else {
+            eprintln!("no graphics adapter here: a lost card is not tried");
+            return;
+        };
+        let s = sample();
+        let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
+        let cam = scene.fit_in(AZIMUTH, ELEVATION, 320, 240, &look);
+        let drawn = Arc::new(Mesh::new(&scene, &look).unwrap());
+        assert!(gpu.draw(&drawn, &cam, &[], PAPER).unwrap());
+        gpu.lose();
+        let finer = Arc::new(Mesh::new(&scene, &look).unwrap());
+        let up = gpu.prepare_upload_beside(&egui::Context::default(), &finer);
+        assert!(up.as_ref().is_err_and(|e| e.starts_with("the card was lost")), "{up:?}");
+        assert!(gpu.upload_requested.is_none(), "nothing sent up");
     }
 
     /// `cargo test -p bimcraft-ui-egui --release gpu_speed -- --ignored --nocapture`: the 20-storey tower at 1920 x 1080, orbited.
