@@ -341,3 +341,133 @@ fn a_section_at_a_hostile_scale_draws_at_the_default_or_the_finest() {
         }
     }
 }
+
+/// The radius of [`ring`]'s outer arc: 30° through 1000 mm.
+fn ring_radius() -> f64 {
+    500.0 / 15f64.to_radians().sin()
+}
+
+/// How far east [`ring`] reaches, at 600 up: its outer arc at its widest, turned to the east.
+fn apex() -> f64 {
+    2800.0 + ring_radius() * (1.0 - 15f64.to_radians().cos())
+}
+
+/// A ring curved two ways (cp's review of GEO-2c-2a): a profile 200 mm wide from 100 to 1100 up, its outer side an arc of
+/// 30° bulging east to [`apex`] (three chords at the default, its widest midway along the middle one), turned about the
+/// family's z from -16.875° to 16.875° (three chords, east midway along the middle one). Its default build stops 21 mm short
+/// of its apex: 7 of the arc's chords and 14 of the turn's.
+fn ring() -> Value {
+    json!({"sketch": [
+        {"start": [2800, 100], "end": [2800, 1100], "turn": 30},
+        {"start": [2800, 1100], "end": [2600, 1100]},
+        {"start": [2600, 1100], "end": [2600, 100]},
+        {"start": [2600, 100], "end": [2800, 100]},
+        {"start": [0, 0], "end": [0, 100], "axis": true}],
+        "host": {"plane": FRONT}, "from": -16.875, "to": 16.875})
+}
+
+/// The box of component `id`'s default build, placed: what a section's work holds of it.
+fn default_box(s: &Session, id: Id) -> [[f64; 3]; 2] {
+    let Some(crate::model::Element::Component(c)) = s.model.elements.get(id) else { panic!("{id} is no component") };
+    let points = crate::component_geometry::Components::new(&s.model).extremes(c);
+    points.iter().fold([[f64::INFINITY; 3], [f64::NEG_INFINITY; 3]], |[lo, hi], p| {
+        [std::array::from_fn(|i| lo[i].min(p[i])), std::array::from_fn(|i| hi[i].max(p[i]))]
+    })
+}
+
+/// The middle of the last pixel on `row` of `img` that shows `owner`, as x in the model: `x_of` a column's middle.
+fn last_shown(img: &crate::view3d::Image, owner: Id, row: u32, x_of: impl Fn(f64) -> f64) -> Option<f64> {
+    (0..img.width).rev().find(|x| img.pick(f64::from(*x) + 0.5, f64::from(row) + 0.5) == Some(owner)).map(|x| x_of(f64::from(x) + 0.5))
+}
+
+/// cp's review of GEO-2c-2a: a section's picture culls a component by its default build's box and draws its finer build,
+/// which reaches past that box. [`ring`] stands behind a wall that hides every tile its default box covers, in an elevation
+/// zoomed in to 2 px a mm; built finer, its curve reaches 16 mm past the wall's end, and shows there out to its apex, within
+/// half a pixel of chord each way and one of raster. As the whole scene's picture shows it (its twin).
+#[test]
+fn a_finer_curve_past_its_default_box_shows_beside_what_hides_the_box() {
+    let mut s = Session::new();
+    family(&mut s, "Ring", vec![ring()]);
+    let c = place(&mut s, "Ring", [0.0, 0.0], 0.0);
+    let [lo, hi] = default_box(&s, c);
+    assert!(hi[0] < 2845.0 && apex() - hi[0] > 20.0 && lo[1] > -900.0 && lo[2] >= 100.0 - 1e-6, "its default box: {lo:?} {hi:?}");
+    // A wall before it from 2000 to 2850 east, 1500 high: past the last 8-pixel tile the box covers.
+    run(&mut s, "wall", json!({"points": [[2000, -1300], [2850, -1300]], "height": 1500}));
+    // Looking north at both, from y = -2000, its line from x = -1000.
+    let sec = section(&mut s, [-1000.0, -2000.0], [5000.0, -2000.0], 6000.0);
+    let (scale, w, h) = (2.0, 400u32, 1600u32);
+    let view = View { angle: 0.0, scale, cx: 1000.0 + 2850.0, cy: 600.0, width: w, height: h };
+    let x_of = |column: f64| view.cx - 1000.0 + (column - f64::from(w) / 2.0) / scale;
+    // The row through 600 up, where it is widest.
+    let row = h / 2;
+    let culled_or_not = render::without_twins(|| render::section_picture(&s.model, sec, view, &[]));
+    let img = culled_or_not.unwrap_or_else(|| panic!("a picture"));
+    let Some(last) = last_shown(&img, c, row, x_of) else { panic!("nothing of the ring on its widest row: culled behind the wall") };
+    assert!(last > 2852.0, "the ring's curve past the wall's end: its last pixel at {last:.2}");
+    assert!(last <= apex() + 0.01 && apex() - last <= 2.0 / scale, "its last pixel at {last:.2}, its apex at {:.2}", apex());
+    // Held to its twin, the whole scene's picture.
+    render::section_picture(&s.model, sec, view, &[]).unwrap_or_else(|| panic!("a picture"));
+}
+
+/// The same at a crop's edge: [`ring`]'s default box stops 7 mm short of where a cropped elevation begins, its curve reaches
+/// 14 mm into it. Zoomed in to 2 px a mm, it is built finer and shows in the crop out to its apex.
+#[test]
+fn a_finer_curve_reaching_into_a_crop_from_past_its_edge_shows_in_it() {
+    let mut s = Session::new();
+    family(&mut s, "Ring", vec![ring()]);
+    let c = place(&mut s, "Ring", [0.0, 0.0], 0.0);
+    let start = 2852.0;
+    assert!(default_box(&s, c)[1][0] < start - 5.0, "its default box ends before the crop");
+    let sec = section(&mut s, [start, -2000.0], [6000.0, -2000.0], 6000.0);
+    run(&mut s, "crop", json!({"view": sec, "region": [[0, 0], [6000.0 - start, 1500]]}));
+    let (scale, w, h) = (2.0, 400u32, 1600u32);
+    let view = View { angle: 0.0, scale, cx: 20.0, cy: 600.0, width: w, height: h };
+    let x_of = |column: f64| start + view.cx + (column - f64::from(w) / 2.0) / scale;
+    for twins in [false, true] {
+        let draw = || render::section_picture(&s.model, sec, view, &[]);
+        let img = if twins { draw() } else { render::without_twins(draw) }.unwrap_or_else(|| panic!("a picture"));
+        let Some(last) = last_shown(&img, c, h / 2, x_of) else { panic!("nothing of the ring in the crop on its widest row") };
+        assert!(last <= apex() + 0.01 && apex() - last <= 2.0 / scale, "its last pixel at {last:.2}, its apex at {:.2}", apex());
+    }
+}
+
+/// The cut: [`ring`]'s default box stops 10 mm short of a section's line, its curve crosses it by 11. Zoomed in to 2 px a mm,
+/// the line cuts it from either side: looking west, its box past the line, and looking east, its box before the line, where
+/// the section cuts away what it would show. Its poché lies within the ring's true section there, and spans most of it.
+#[test]
+fn a_line_a_finer_curve_crosses_short_of_its_default_box_cuts_it() {
+    let mut s = Session::new();
+    family(&mut s, "Ring", vec![ring()]);
+    let c = place(&mut s, "Ring", [0.0, 0.0], 0.0);
+    let x = 2855.0;
+    assert!(default_box(&s, c)[1][0] < x - 10.0, "its default box ends before the line");
+    // Its true section by the line: along it as far as the apex, turned, reaches the line; up as far as the arc does.
+    let along = (apex() * apex() - x * x).sqrt();
+    let up = (ring_radius().powi(2) - (x - (apex() - ring_radius())).powi(2)).sqrt();
+    for (way, start, end) in [("west", [x, -3000.0], [x, 3000.0]), ("east", [x, 3000.0], [x, -3000.0])] {
+        let sec = section(&mut s, start, end, 6000.0);
+        // y = 0 is 3000 along either line.
+        let view = View { angle: 0.0, scale: 2.0, cx: 3000.0, cy: 600.0, width: 1200, height: 1000 };
+        for twins in [false, true] {
+            let d =
+                if twins { render::section(&s.model, sec, view) } else { render::without_twins(|| render::section(&s.model, sec, view)) };
+            let poche: Vec<P2> = d
+                .prims
+                .iter()
+                .zip(&d.owners)
+                .filter(|(_, o)| **o == Some(c))
+                .flat_map(|(p, _)| match p {
+                    Prim::Fill { rings, .. } => rings.iter().flatten().map(|q| view.mm(*q)).collect(),
+                    _ => Vec::new(),
+                })
+                .collect();
+            assert!(!poche.is_empty(), "looking {way}: no poché of the ring");
+            let (lo, hi) = poche.iter().fold((P2(f64::MAX, f64::MAX), P2(f64::MIN, f64::MIN)), |(lo, hi), p| {
+                (P2(lo.0.min(p.0), lo.1.min(p.1)), P2(hi.0.max(p.0), hi.1.max(p.1)))
+            });
+            assert!(lo.0 >= 3000.0 - along - 0.01 && hi.0 <= 3000.0 + along + 0.01, "looking {way}: along {lo:?} {hi:?}, ±{along:.1}");
+            assert!(lo.1 >= 600.0 - up - 0.01 && hi.1 <= 600.0 + up + 0.01, "looking {way}: up {lo:?} {hi:?}, ±{up:.1}");
+            assert!(hi.0 - lo.0 > along && hi.1 - lo.1 > up, "looking {way}: most of the section: {lo:?} {hi:?}");
+        }
+    }
+}

@@ -797,13 +797,16 @@ impl<'a> Components<'a> {
     }
 
     /// The fineness `c`, `default` its default build, is built at: the view's where that build's box, placed, meets what the
-    /// view shows. Its box as built at the default (which its heights are read from already): a family's own box isn't known
-    /// for every kind of form, and one not known would be built finer wherever it stands.
+    /// view shows (a section's, the box widened by as far as a finer build may reach past it: GEO-2c-2a,
+    /// [`crate::family::fineness::finer_reach`]). Its box as built at the default (which its heights are read from already):
+    /// a family's own box isn't known for every kind of form, and one not known would be built finer wherever it stands.
     fn fine_for(&self, c: &Component, default: &Built) -> Fineness {
         let (Some((fineness, shown)), Some(local)) = (self.fine, default.bounds) else { return Fineness::DEFAULT };
         let inside = match shown {
             Shown::Plan(window) => meets(self.placed_box(c, local), window),
             Shown::Section(window) => {
+                let local = crate::family::fineness::finer_reach(local);
+                // Its eight corners placed in 3D, not `placed_box`'s box in plan: they go into the section's own frame.
                 let placed = self.model.component_placement(c);
                 window.meets((0..8).map(|k| placed.place(std::array::from_fn(|axis| local[(k >> axis) & 1][axis]))))
             }
