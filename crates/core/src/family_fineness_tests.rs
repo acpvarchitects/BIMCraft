@@ -453,6 +453,88 @@ fn section_fineness_bench() {
     });
 }
 
+/// GEO-2c-2b's cost in the 3D view: the facade of `GEO_PANELS` panels (10,000 unless it says), its scene made as ever and its
+/// mesh for the card; then, parallel and in perspective, refined for a camera zoomed in on its corner panel (with what that
+/// rebuilt and the mesh made from it), zoomed within the band, and orbited at a constant distance. Each with the process's
+/// peak memory, and at the end the store's bytes of each tier and the load the machine was under. `cargo test --release -p
+/// bimcraft-core view3d_fineness_bench -- --ignored --nocapture`.
+#[test]
+#[ignore]
+fn view3d_fineness_bench() {
+    use crate::component_geometry::{builds, fine_builds};
+    use crate::view3d::{Camera, Scene, gpu::Mesh};
+    let n: usize = std::env::var("GEO_PANELS").ok().and_then(|v| v.parse().ok()).unwrap_or(10_000);
+    let load = || std::fs::read_to_string("/proc/loadavg").unwrap_or_default().split_whitespace().take(3).collect::<Vec<_>>().join(" ");
+    let ms = |t: std::time::Instant| t.elapsed().as_secs_f64() * 1000.0;
+    let (s, _) = facade(n);
+    let m = std::sync::Arc::clone(&s.model);
+    let look = crate::graphics::Look::of_3d(&m);
+    eprintln!("GEO-2c-2b {n} panels made, load {}: {}", load(), memory());
+    let t = std::time::Instant::now();
+    let scene = Scene::new(&m);
+    eprintln!("GEO-2c-2b Scene::new: {:.0} ms, {} triangles, {}", ms(t), scene.shown(&look), memory());
+    let t = std::time::Instant::now();
+    let mesh = Mesh::new(&scene, &look).unwrap_or_else(|e| panic!("{e}"));
+    eprintln!("GEO-2c-2b its mesh: {:.0} ms, {} shapes, {} copies, {}", ms(t), mesh.shapes.len(), mesh.instances.len(), memory());
+    drop(mesh);
+    // The corner panel (at the origin, about 1 m by 0.9 m, its knob on its front) seen from the south-east and above.
+    let corner = [500.0, 300.0, 200.0];
+    let cameras = [
+        ("parallel", Camera { azimuth: -60.0, elevation: 30.0, scale: 1.5, target: corner, width: 2000, height: 1200, lens: None }),
+        (
+            "perspective",
+            Camera { azimuth: -60.0, elevation: 30.0, scale: 0.9, target: corner, width: 2000, height: 1200, lens: Some(35.0) },
+        ),
+    ];
+    for (what, cam) in cameras {
+        let refine = |from: &Scene, cam: &Camera, doing: &str| {
+            let (b, f, t) = (builds(), fine_builds(), std::time::Instant::now());
+            let out = from.refined(&m, cam, &look);
+            eprintln!(
+                "GEO-2c-2b {what}, {doing}: {:.1} ms, {} components finer, {} built ({} finer), {}",
+                ms(t),
+                out.as_ref().map_or_else(|| "none changed: 0".into(), |r| r.refined_count().to_string()),
+                builds() - b,
+                fine_builds() - f,
+                memory()
+            );
+            out
+        };
+        let Some(refined) = refine(&scene, &cam, "zoomed in on the corner") else {
+            eprintln!("GEO-2c-2b {what}: nothing refined");
+            continue;
+        };
+        let t = std::time::Instant::now();
+        let mesh = Mesh::new(&refined, &look).unwrap_or_else(|e| panic!("{e}"));
+        eprintln!(
+            "GEO-2c-2b {what}, its mesh: {:.0} ms, {} shapes, {} copies, {}",
+            ms(t),
+            mesh.shapes.len(),
+            mesh.instances.len(),
+            memory()
+        );
+        drop(mesh);
+        // Within the band: in perspective each component's own, so by less.
+        let by = if cam.lens.is_some() { 1.05 } else { 1.2 };
+        refine(&refined, &Camera { scale: cam.scale * by, ..cam }, &format!("zoomed in {:.0}% (within the band)", (by - 1.0) * 100.0));
+        let again = refine(&scene, &cam, "the same zoom from the scene made as ever (its builds kept)");
+        drop(again);
+        let t = std::time::Instant::now();
+        let changed = (1..=10)
+            .filter(|k| refined.refined(&m, &Camera { azimuth: cam.azimuth + 3.0 * f64::from(*k), ..cam }, &look).is_some())
+            .count();
+        eprintln!("GEO-2c-2b {what}, orbited 10 steps of 3°: {:.1} ms, {changed} refined, {}", ms(t), memory());
+    }
+    let (bytes, _) = crate::component_geometry::kept_bytes();
+    eprintln!(
+        "GEO-2c-2b kept {:.1} MB at the default, {:.1} MB finer; load {}; {}",
+        bytes[0] as f64 / 1e6,
+        bytes[1] as f64 / 1e6,
+        load(),
+        memory()
+    );
+}
+
 /// FE-16c-2: facade `s`'s panels, every `every`th, painted on their top (the end of their first form) a material whose surface
 /// is a model pattern of tiles 200 mm square, as one command paints them.
 fn painted_facade(s: &mut Session, every: usize) {
