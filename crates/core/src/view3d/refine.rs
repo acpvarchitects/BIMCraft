@@ -275,11 +275,13 @@ impl Scene {
     }
 
     /// The fineness each component of the scene is drawn at, where it isn't the default.
+    #[cfg(test)]
     pub(crate) fn finer(&self) -> Finer {
         self.fine.iter().filter(|(_, f)| f.at != Fineness::DEFAULT).map(|(id, f)| (*id, f.at)).collect()
     }
 
     /// The fineness component `id`'s triangles are at.
+    #[cfg(test)]
     pub(crate) fn fineness_of(&self, id: Id) -> Fineness {
         self.fine.get(&id).map_or(Fineness::DEFAULT, |f| f.at)
     }

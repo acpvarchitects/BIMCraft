@@ -1794,6 +1794,7 @@ fn curtain_copies(
     out
 }
 
+#[cfg(test)]
 fn solids_in(m: &Model, elements: &[(Id, &Element)], index: Option<&walls::Index>) -> Vec<Solid> {
     solids_in_at(m, elements, index, None)
 }
