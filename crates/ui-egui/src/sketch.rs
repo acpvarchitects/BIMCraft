@@ -40,6 +40,8 @@ pub enum Of {
     /// A family's form (F5, the family document's own sketch: `editor/sketch.rs`): an extrusion, or a revolve, solid or void;
     /// `edit`, one it has already, redrawn.
     Form { revolve: bool, void: bool, edit: bool },
+    /// Lines dividing parts, drawn on a face of them (`divide.rs`, which holds the parts and the face).
+    Divide,
 }
 
 /// A drag with Modify while sketching: a grip at a line's end, or a selection box from a pixel.
@@ -98,6 +100,7 @@ impl Sketch {
             Of::Form { revolve: true, void: true, edit: false } => msg!("Modify | Create Void Revolve"),
             Of::Form { revolve: false, edit: true, .. } => msg!("Modify | Edit Extrusion"),
             Of::Form { revolve: true, edit: true, .. } => msg!("Modify | Edit Revolve"),
+            Of::Divide => msg!("Divide Parts"),
         }
     }
 
@@ -352,6 +355,10 @@ impl BimApp {
             Of::Edit(id) => matches!(m.elements.get(id), Some(Element::FilledRegion(_))),
             _ => false,
         };
+        // Another sketch begun: no division is under way any more.
+        if of != Of::Divide {
+            self.dividing = None;
+        }
         let seen = lines.clone();
         let plan = self.sheet;
         self.sketch = Some(Sketch {
@@ -400,6 +407,11 @@ impl BimApp {
     /// Finish Edit Mode: the lines solved and made into what the sketch is for, selected; or what's wrong said, the lines it
     /// names marked, still sketching.
     pub(crate) fn finish_sketch(&mut self) {
+        // A division's lines are cuts, open or closed, not outlines to solve.
+        if self.sketch.as_ref().is_some_and(|sk| sk.of == Of::Divide) {
+            self.finish_divide();
+            return;
+        }
         let Some(sk) = &mut self.sketch else { return };
         // A region is any number of outlines; the rest, one.
         let many = match sk.of {
@@ -460,8 +472,9 @@ impl BimApp {
                 ("filled_region", json!({"view": view, "sketch": lines, "type": sk.region.0, "line_style": sk.region.1}))
             }
             Of::Edit(id) => ("edit_boundary", json!({"id": id, "sketch": lines})),
-            // A family's form is the family document's to finish (`editor/sketch.rs`), never the project's.
-            Of::Form { .. } => return,
+            // A family's form is the family document's to finish (`editor/sketch.rs`), never the project's; a division is
+            // finished above.
+            Of::Form { .. } | Of::Divide => return,
         };
         // Solved, it may still be refused for what it makes (a shaft with a hole): the command says why.
         if let Some(made) = self.run(id, p) {
@@ -483,6 +496,7 @@ impl BimApp {
         self.status = Status::default();
         self.forget_picks();
         self.selection = edited.into_iter().collect();
+        self.cancel_divide();
     }
 
     /// Once a frame while sketching: the changes made to the lines are steps for Ctrl+Z, and the places of lines picked for

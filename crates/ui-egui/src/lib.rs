@@ -27,6 +27,7 @@ pub mod cowork;
 mod dialog;
 mod dimtypes;
 mod display;
+mod divide;
 mod dock;
 mod draw;
 mod editor;
@@ -899,6 +900,8 @@ pub struct BimApp {
     fill_patterns_dialog: Option<fillpatterns::FillPatternsDialog>,
     /// Sketch mode: the lines of an outline being drawn, until Finish or Cancel.
     pub sketch: Option<sketch::Sketch>,
+    /// Divide Parts or Edit Division under way: the parts, and the face sketched on once picked (`divide.rs`).
+    pub(crate) dividing: Option<divide::Dividing>,
     /// The project the window is on (its `uid`, which a project keeps for life): one put in the session's place meanwhile is
     /// another, and everything held of the first (a sketch, a dialog's draft, the views open) is of nothing.
     project: u64,
@@ -1664,6 +1667,7 @@ impl BimApp {
             title_blocks_dialog: None,
             fill_patterns_dialog: None,
             sketch: None,
+            dividing: None,
             mode_width: 0.0,
             standards_dialog: None,
             plugins: bimcraft_plugin::Plugins::empty(),
@@ -3343,7 +3347,7 @@ impl BimApp {
             return;
         }
         // Pick in View goes back to its dialog, and so does Specify Coordinates' pick.
-        if self.stop_work_plane_pick() || self.stop_specify_pick() {
+        if self.stop_work_plane_pick() || self.stop_specify_pick() || self.stop_face_pick() {
             return;
         }
         self.typed.clear();
@@ -5449,6 +5453,7 @@ impl BimApp {
             }
             if self.sketch.is_some() {
                 self.sketch_options(ui);
+                self.divide_options(ui);
                 match self.tool {
                     Tool::SketchLine(_) => self.shape_options(ui),
                     Tool::Offset => self.offset_options(ui),

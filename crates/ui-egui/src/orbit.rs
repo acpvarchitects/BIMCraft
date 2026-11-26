@@ -1529,7 +1529,7 @@ impl BimApp {
         let last = self.orbit.camera.map(|c| Camera { width: w, height: h, ..c });
         let held = self.sketch3d_grab(ui, &response, sketch_z.zip(last).map(|(surface, cam)| Plane { cam, rect, ppp, surface }));
         // Pick in View, taking the work plane's surface or points: clicks are its, not the selection's.
-        let picking = self.work_plane_picking().is_some();
+        let picking = self.work_plane_picking().is_some() || self.picking_face();
         // The work plane's patch, in Modify while nothing is sketched: a click on it opens the Work Plane dialog.
         let patch =
             (self.tool == Tool::Modify && self.sketch.is_none() && !picking).then(|| self.work_plane_ring(last, rect, ppp)).flatten();
@@ -2343,6 +2343,13 @@ impl BimApp {
         }
         if patched {
             self.open_work_plane();
+        }
+        // Divide Parts' face, clicked.
+        if self.picking_face()
+            && let (Some(at), Some((_, scene))) = (click, &self.orbit.scene)
+        {
+            let face = scene.face_at(&cam, px(at), &Look::of_3d(&self.session.model));
+            self.divide_face_pick(face);
         }
         // What a Pick of the work plane would take.
         let m = &self.session.model;

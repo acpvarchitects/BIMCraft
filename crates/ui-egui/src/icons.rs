@@ -61,6 +61,8 @@ icon_names! {
     CreateParts,
     ExcludeParts,
     RestoreParts,
+    DivideParts,
+    EditDivision,
     Dimension,
     Tag,
     TagAll,
@@ -585,6 +587,18 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             g.closed(&[(12.0, 4.0), (21.0, 4.0), (21.0, 20.0), (12.0, 20.0)]);
             g.line(&[(3.0, 12.0), (15.0, 12.0)]);
             g.line(&[(11.5, 8.5), (15.0, 12.0), (11.5, 15.5)]);
+        }
+        Icon::DivideParts => {
+            // A part's face, a zone outlined on it and a line across it.
+            g.closed(&[(3.0, 4.0), (21.0, 4.0), (21.0, 20.0), (3.0, 20.0)]);
+            g.closed(&[(6.0, 7.0), (12.0, 7.0), (12.0, 13.0), (6.0, 13.0)]);
+            g.line(&[(3.0, 16.0), (21.0, 14.0)]);
+        }
+        Icon::EditDivision => {
+            // A face's zone, and a pencil drawing it again.
+            g.closed(&[(3.0, 4.0), (14.0, 4.0), (14.0, 15.0), (3.0, 15.0)]);
+            g.closed(&[(12.0, 19.0), (19.0, 12.0), (21.0, 14.0), (14.0, 21.0)]);
+            g.line(&[(12.0, 19.0), (10.5, 20.5)]);
         }
         Icon::Dimension => {
             g.line(&[(4.0, 5.0), (4.0, 21.0)]);

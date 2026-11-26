@@ -7,6 +7,7 @@
 
 use bimcraft_i18n::msg;
 
+use bimcraft_core::divide::Frame;
 use bimcraft_core::geom::P2;
 use bimcraft_core::model::{Id, Model};
 use bimcraft_core::snap::{self, Reach};
@@ -22,27 +23,49 @@ use crate::{BimApp, Sheet, Status, Tool, draw};
 /// How near a grip, in points, a press takes it.
 const GRIP: f32 = 8.0;
 
+/// What a sketch in the 3D view lies on: a plane over the plan, its points the plan's (an element's outline), or a face at any
+/// angle, its points in the face's own axes (a division of parts, `divide.rs`).
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum Surface {
+    Slope(walls::Plane),
+    Face(Frame),
+}
+
+impl Surface {
+    /// The model point of point `q` of it.
+    fn point(&self, q: P2) -> [f64; 3] {
+        match self {
+            Surface::Slope(s) => [q.0, q.1, s.at(q)],
+            Surface::Face(f) => f.point(q, 0.0).unwrap_or([q.0, q.1, 0.0]),
+        }
+    }
+}
+
 /// The sketch's plane as the 3D view shows it: the camera, where the view is on screen and the pixels a point holds, and the
-/// plane over the plan the lines lie on.
+/// surface the lines lie on.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Plane {
     pub cam: Camera,
     pub rect: Rect,
     pub ppp: f32,
-    pub surface: walls::Plane,
+    pub surface: Surface,
 }
 
 impl Plane {
     /// Where point `q` of the plane shows on screen.
     pub fn screen(&self, q: P2) -> Pos2 {
-        let (x, y, _) = self.cam.project([q.0, q.1, self.surface.at(q)]);
+        let (x, y, _) = self.cam.project(self.surface.point(q));
         self.rect.min + vec2(x as f32 / self.ppp, y as f32 / self.ppp)
     }
 
     /// The plane's point under `at` on screen; none where the view is edge-on to it.
     pub fn at(&self, at: Pos2) -> Option<P2> {
         let px = (f64::from((at.x - self.rect.min.x) * self.ppp), f64::from((at.y - self.rect.min.y) * self.ppp));
-        self.cam.on_slope(px, self.surface).map(|p| P2(p[0], p[1])).filter(|p| p.0.is_finite() && p.1.is_finite())
+        let p = match self.surface {
+            Surface::Slope(s) => self.cam.on_slope(px, s).map(|p| P2(p[0], p[1])),
+            Surface::Face(f) => self.cam.on(px, f.origin, f.normal).and_then(|p| f.local(p)).map(|(q, _)| q),
+        };
+        p.filter(|p| p.0.is_finite() && p.1.is_finite())
     }
 
     /// The mm `points` on screen span, as the view is scaled: a reach on the plane, foreshortening aside.
@@ -100,11 +123,12 @@ fn to_segment(p: Pos2, a: Pos2, b: Pos2) -> f32 {
 impl BimApp {
     /// The plane the sketch lies on while it is sketched in the 3D view: an Edit Boundary begun there, of what still has a
     /// plane, or a new one on the work plane it began on.
-    pub(crate) fn sketch_surface(&self) -> Option<walls::Plane> {
+    pub(crate) fn sketch_surface(&self) -> Option<Surface> {
         let sk = self.sketch.as_ref().filter(|sk| sk.plan == Sheet::View3D)?;
         match sk.of {
-            Of::Edit(id) => self.session.model.sketch_plane(id),
-            _ => sk.surface,
+            Of::Edit(id) => self.session.model.sketch_plane(id).map(Surface::Slope),
+            Of::Divide => self.dividing.as_ref().and_then(|d| d.face).map(Surface::Face),
+            _ => sk.surface.map(Surface::Slope),
         }
     }
 
@@ -117,6 +141,12 @@ impl BimApp {
             Of::Edit(id) => (m.elements.get(id).and_then(|e| m.level_of(e)).and_then(|g| m.elements.id(g)), Some(id)),
             Of::Floor(level) | Of::Ceiling(level) | Of::Roof(level) | Of::Shaft(level) => (Some(level), None),
             Of::Region { .. } | Of::Form { .. } => (None, None),
+            // On a face: the sketch's own line ends, and the points it is drawn from.
+            Of::Divide => {
+                let reach = plane.mm(SNAP);
+                let ends = sk.lines.iter().flat_map(|l| l.curve.handles()).chain(from.iter().copied());
+                return ends.filter(|q| q.dist(raw) <= reach).min_by(|a, b| a.dist(raw).total_cmp(&b.dist(raw))).unwrap_or(raw);
+            }
         };
         let Some(level) = level else { return raw };
         let reach = Reach { point: plane.mm(SNAP), line: plane.mm(f64::from(PICK)) };

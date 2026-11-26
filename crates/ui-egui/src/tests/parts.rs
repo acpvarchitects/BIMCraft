@@ -9,23 +9,23 @@ use bimcraft_core::parts::{BuildingPart, PartType};
 use egui_kittest::kittest::NodeT;
 
 /// A wall south of the box, of plaster on brick.
-const HISTORIC: &str = r#"type {"category": "wall", "name": "Historic", "layers": [{"function": "finish", "thickness": 20, "material": "Plaster"}, {"function": "structure", "thickness": 460, "material": "Brick"}]}
+pub(super) const HISTORIC: &str = r#"type {"category": "wall", "name": "Historic", "layers": [{"function": "finish", "thickness": 20, "material": "Plaster"}, {"function": "structure", "thickness": 460, "material": "Brick"}]}
 wall {"points": [[0,-3000],[4000,-3000]], "type": "Historic", "height": 3000}"#;
 
-type Build = fn(&str) -> Harness<'static, BimApp>;
+pub(super) type Build = fn(&str) -> Harness<'static, BimApp>;
 
 /// The window in both profiles: Rev's ribbon and BIMCraft's Tools palette.
-const BOTH: [(&str, Build); 2] = [("Rev", app), ("BIMCraft", bimcraft)];
+pub(super) const BOTH: [(&str, Build); 2] = [("Rev", app), ("BIMCraft", bimcraft)];
 
 /// The wall south of the box.
-const WALL: Id = 100006;
+pub(super) const WALL: Id = 100006;
 
 /// The wall taken apart: its plaster and its brick.
-fn surveyed() -> Harness<'static, BimApp> {
+pub(super) fn surveyed() -> Harness<'static, BimApp> {
     app(&format!("{BOX}\n{HISTORIC}\ncreate_parts {{\"id\": {WALL}}}"))
 }
 
-fn part_of(h: &Harness<BimApp>, id: Id) -> BuildingPart {
+pub(super) fn part_of(h: &Harness<BimApp>, id: Id) -> BuildingPart {
     match h.state().session.model.elements.get(id) {
         Some(Element::Part(p)) => p.clone(),
         _ => panic!("part {id} is gone"),
@@ -34,7 +34,7 @@ fn part_of(h: &Harness<BimApp>, id: Id) -> BuildingPart {
 
 /// Select `ids`, as a click in the view does: the Modify tab comes up. The ribbon fits its panels to the window over a few
 /// frames, which a pointer moving to them gives it; a harness asks for none, so it is given them here.
-fn select(h: &mut Harness<BimApp>, ids: &[Id]) {
+pub(super) fn select(h: &mut Harness<BimApp>, ids: &[Id]) {
     h.state_mut().selection = ids.to_vec();
     h.state_mut().raise_context();
     h.run();

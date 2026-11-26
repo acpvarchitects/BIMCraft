@@ -1,8 +1,8 @@
 # Parts of elements and the heritage set
 
-Read when touching `crates/core/src/parts.rs`, `parts/solid.rs`, `parts/state.rs`, the `create_parts`, `part` and `parts`
+Read when touching `crates/core/src/parts.rs`, `parts/solid.rs`, `parts/state.rs`, `parts/drawn.rs`, the `create_parts`, `part` and `parts`
 commands, how a part goes to IFC and comes back (`ifc.rs`, `import/parts.rs`), or the desktop's parts tools
-(`crates/ui-egui/src/parts.rs`). Aimed at the recording and restoration of historic buildings (HBIM): a wall is its
+(`crates/ui-egui/src/parts.rs`, `divide.rs`). Aimed at the recording and restoration of historic buildings (HBIM): a wall is its
 plaster and its masonry, and each is described, dated, measured and treated on its own.
 
 ## What a part is
@@ -175,9 +175,26 @@ screenshots of them in both profiles, light and dark):
   set goes to all of them, through `part`; what the core refuses is said in the status bar and changes nothing.
 - **The Materials window** says a material's Density (kg/m³), Thermal Conductivity (W/(m·K)) and Specific Heat (J/(kg·K)),
   each blank for not said (`material {density, conductivity, specific_heat}`).
+- **Divide Parts** and **Edit Division**, the Part panel (`crates/ui-egui/src/divide.rs`, tested in `tests/divide.rs`):
+  - Divide Parts, while the parts selected are neither divided nor pieces, opens the 3D view and waits for a click on a face
+    of them (`Scene::face_at`). Where the view shows the original, a face of the host is taken only where one of the parts has
+    a face in its plane, so a depth is measured from the part's face. Esc gives up.
+  - The view turns square to the face, parallel and fitted to the parts, and the sketch begins on it (`Of::Divide`): its
+    points are in the face's own axes (`sketch3d::Surface::Face`, x level, y up the face), drawn with the Draw panel's shapes,
+    snapped to the sketch's own ends. The Options Bar has Gap, the joint's width, and Depth, how far in an outline cuts
+    (blank: through).
+  - Finish chains the lines end to end (`parts::drawn::redivided`): a chain that closes, or a closed shape, is an outline,
+    one that doesn't a line across; curves go as their points. Each part gets `divide_parts` with its cuts, one undo step that
+    also shows parts in the 3D view; the pieces are then selected. What the core refuses is said, the sketch kept. Lines that
+    branch are refused before that. Cancel leaves the parts as they were, the selection back.
+  - Edit Division, while a divided part or pieces of one part are selected, takes up the division's sketch on the face its
+    first line was drawn on (`parts::drawn::sketched`), with its Gap and Depth. A line left as it was keeps its cut's place
+    in the division, so its pieces keep their keys, ids and values; new lines go last; cuts drawn elsewhere, planes and
+    profiles, and offsets stay as they are.
 
 ## Next
 
-Divide Parts in the desktop (a sketch on the part's face, a plane and a profile; HP-7b), tags of parts, the theme's own
+Dividing by planes (levels, grids, reference planes) and by profiles in the desktop (HP-7c), sketching a division in an
+elevation, snapping to the part's edges while sketching, tags of parts, the theme's own
 colours chosen in the desktop, its key placed clear of the window's view tabs, and a slab whose outer layer's part is excluded
 read back where it was.
