@@ -40,7 +40,10 @@ fn painted(h: &Harness<BimApp>) -> (Vec<Color32>, Vec<Color32>) {
 /// Each whole picture the harness was handed for a texture, in order. The harness takes a frame's uploads for a renderer, and keeps
 /// none of them without one.
 #[derive(Clone, Default)]
-pub(super) struct Uploads(Arc<std::sync::Mutex<Vec<(egui::TextureId, Arc<egui::ColorImage>)>>>);
+pub(super) struct Uploads(Arc<std::sync::Mutex<Vec<Upload>>>);
+
+/// A texture, and the whole picture put in it.
+type Upload = (egui::TextureId, Arc<egui::ColorImage>);
 
 impl Uploads {
     /// The last picture put in the texture named `texture` since the last call, or none if there was none.
