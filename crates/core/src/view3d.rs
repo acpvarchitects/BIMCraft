@@ -5757,9 +5757,10 @@ impl Scene {
         Ok(())
     }
 
-    /// GEO-2c-2b: a hash of all the scene draws and picks with, bit for bit (FNV-1a, the same from one build and platform to
-    /// the next): its triangles, their planes, smooth normals and faces, the textures it holds, the frames, masses, levels,
-    /// scans and model lines, its shapes and their copies, and each element's run. What a guard holds the scene to.
+    /// GEO-2c-2b: a hash of all the scene draws and picks with, bit for bit (FNV-1a): its triangles, their planes, smooth
+    /// normals and faces, the textures it holds, the frames, masses, levels, scans and model lines, its shapes and their copies,
+    /// and each element's run. What a guard holds the scene to, against one made in the same run: the bits differ from one
+    /// platform's maths library to another's.
     pub(crate) fn digest(&self) -> u64 {
         let mut h = 0xcbf2_9ce4_8422_2325u64;
         let mut bytes = |b: &[u8]| {

@@ -94,23 +94,46 @@ fn curved_model() -> Session {
     s
 }
 
-/// The guard: a scene made as ever, with nothing refined, is what it was before GEO-2c-2b to the bit (its triangles, planes,
-/// normals, faces, shapes and copies), of the sample house and of a model of curves and copies; and so is a glTF of each.
+/// The guard: refining never changes a scene made as ever, nor a glTF. Of the sample house and of a model of curves and copies,
+/// in one run: the scene made as ever and the glTF are made, the scene is refined zoomed in on its curves, then in perspective,
+/// then zoomed back out; and the scene refined from is what it was, the one zoomed back out draws as a scene made as ever, and
+/// a scene made as ever and the glTF made again are what they were, to the bit (triangles, planes, normals, faces, shapes and
+/// copies). Each side is made in the same run, so it holds on every platform, whatever the bits of its maths library's sines.
 #[test]
-fn a_scene_made_as_ever_and_a_gltf_are_what_they_were_before_refining() {
+fn refining_leaves_a_scene_made_as_ever_and_a_gltf_as_they_were() {
     let mut house = Session::new();
     house.script(crate::sample::SAMPLE).unwrap_or_else(|e| panic!("{e}"));
     let curved = curved_model();
-    let found: Vec<(u64, u64)> = [&house, &curved]
-        .iter()
-        .map(|s| {
-            let scene = crate::view3d::Scene::new(&s.model);
-            let file = crate::gltf::export(&s.model).unwrap_or_else(|e| panic!("{e}"));
-            (scene.digest(), glb(&file.bytes))
-        })
-        .collect();
-    // Made by the code before GEO-2c-2b (bc8b24b4), the glTF's GUIDs left out.
-    assert_eq!(found, [(0x460e_0bdb_34da_d0e2, 0x1902_dbaf_6c59_2570), (0x04c8_7ff0_25fb_9466, 0x8514_310c_a381_3456)], "{found:#x?}");
+    let made = |s: &Session| {
+        let file = crate::gltf::export(&s.model).unwrap_or_else(|e| panic!("{e}"));
+        (Scene::new(&s.model).digest(), glb(&file.bytes))
+    };
+    let before = [made(&house), made(&curved)];
+    let cams = [
+        north(4.0, [R - 30.0, -5000.0, 1000.0], (400, 1600)),
+        eye(-90.0, [3000.0, 0.0, 1000.0], 4000.0),
+        north(0.02, [0.0, 0.0, 0.0], (1200, 800)),
+    ];
+    let mut finer = Vec::new();
+    for s in [&house, &curved] {
+        let (m, look) = (&s.model, Look::of_3d(&s.model));
+        let first = Scene::new(m);
+        let digest = first.digest();
+        let mut scene = None;
+        for cam in &cams {
+            if let Some(r) = scene.as_ref().unwrap_or(&first).refined(m, cam, &look) {
+                r.same_as(&Scene::whole_at(m, &r)).unwrap_or_else(|e| panic!("refined at {} px a mm: {e}", cam.scale));
+                finer.push(r.finer().len());
+                scene = Some(r);
+            }
+        }
+        assert_eq!(first.digest(), digest, "the scene refined from is what it was");
+        let out = scene.unwrap_or(first);
+        assert!(out.finer().is_empty(), "zoomed out, every component at the default");
+        out.same_as(&Scene::new(m)).unwrap_or_else(|e| panic!("zoomed back out, as a scene made as ever: {e}"));
+    }
+    assert!(finer.iter().any(|n| *n > 0), "some components refined: {finer:?}");
+    assert_eq!([made(&house), made(&curved)], before, "a scene made as ever and a glTF, after refining");
 }
 
 use crate::component_geometry::{builds, fine_builds};

@@ -2341,8 +2341,9 @@ build each at its component's fineness through the store: copies in one band are
 two are two shapes, and a refined scene keeps no finer shape no copy is drawn from. An edit keeps each component's fineness:
 what it makes again is made at it, and so is a whole scene made again (`Scene::new_among_at`). On the card the refined scene's
 mesh goes up beside the one drawn and replaces it once there (`Gpu::prepare_upload_beside`), or, where both don't fit, as after
-an edit. Tests: `view3d_fineness_tests.rs` (with a guard holding a scene made as ever and its glTF to the hashes made before
-GEO-2c-2b) and the desktop's `tests/refine3d.rs`; `view3d_fineness_bench` in `family_fineness_tests.rs` times the facade.
+an edit. Tests: `view3d_fineness_tests.rs` (with a guard holding a scene made as ever and its glTF, after refining, to the
+ones made before it in the same run, since their bits differ between platforms' maths libraries) and the desktop's
+`tests/refine3d.rs`; `view3d_fineness_bench` in `family_fineness_tests.rs` times the facade.
 
 ## Plans of many components (GEO-2g)
 
