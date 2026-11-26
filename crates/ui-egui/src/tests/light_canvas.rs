@@ -37,14 +37,17 @@ fn painted(h: &Harness<BimApp>) -> (Vec<Color32>, Vec<Color32>) {
     out
 }
 
-/// The corner of each whole picture the harness was handed for a texture, in order: a view's ground, where nothing is drawn. The
-/// harness takes a frame's uploads for a renderer, and keeps none of them without one.
+/// Each whole picture the harness was handed for a texture, in order. The harness takes a frame's uploads for a renderer, and keeps
+/// none of them without one.
 #[derive(Clone, Default)]
-struct Uploads(Arc<std::sync::Mutex<Vec<(egui::TextureId, Color32)>>>);
+pub(super) struct Uploads(Arc<std::sync::Mutex<Vec<(egui::TextureId, Arc<egui::ColorImage>)>>>);
 
 impl Uploads {
-    fn take(&self) -> Vec<(egui::TextureId, Color32)> {
-        std::mem::take(&mut *self.0.lock().unwrap())
+    /// The last picture put in the texture named `texture` since the last call, or none if there was none.
+    pub(super) fn last(&self, h: &Harness<BimApp>, texture: &str) -> Option<Arc<egui::ColorImage>> {
+        let named = |id: &egui::TextureId| h.ctx.tex_manager().read().meta(*id).is_some_and(|m| m.name == texture);
+        let kept = std::mem::take(&mut *self.0.lock().unwrap());
+        kept.into_iter().rev().find(|(id, _)| named(id)).map(|(_, picture)| picture)
     }
 }
 
@@ -54,7 +57,7 @@ impl egui_kittest::TestRenderer for Uploads {
         for (id, deltas) in &delta.set {
             for d in deltas.iter().filter(|d| d.pos.is_none()) {
                 let ImageData::Color(image) = &d.image;
-                kept.extend(image.pixels.first().map(|c| (*id, *c)));
+                kept.push((*id, Arc::clone(image)));
             }
         }
         // Nothing here draws them, and a delta dropped unhandled panics.
@@ -67,7 +70,7 @@ impl egui_kittest::TestRenderer for Uploads {
 }
 
 /// [`app`], with the pictures it puts in textures kept.
-fn app_keeping_uploads(script: &str) -> (Harness<'static, BimApp>, Uploads) {
+pub(super) fn app_keeping_uploads(script: &str) -> (Harness<'static, BimApp>, Uploads) {
     let mut s = Session::new();
     s.script(script).unwrap();
     let uploads = Uploads::default();
@@ -80,10 +83,9 @@ fn app_keeping_uploads(script: &str) -> (Harness<'static, BimApp>, Uploads) {
     (h, uploads)
 }
 
-/// The corner of the last picture put in the texture named `texture` since the last call, or none if there was none.
+/// The corner of the last picture put in the texture named `texture` since the last call: a view's ground, where nothing is drawn.
 fn ground(h: &Harness<BimApp>, uploads: &Uploads, texture: &str) -> Option<Color32> {
-    let named = |id: &egui::TextureId| h.ctx.tex_manager().read().meta(*id).is_some_and(|m| m.name == texture);
-    uploads.take().into_iter().rev().find(|(id, _)| named(id)).map(|(_, corner)| corner)
+    uploads.last(h, texture).and_then(|picture| picture.pixels.first().copied())
 }
 
 #[test]
