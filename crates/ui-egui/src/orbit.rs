@@ -1484,20 +1484,25 @@ impl Orbit {
     }
 
     /// The mesh the card draws the picture from, where the card is `ready` and the mesh is made: put on the card off the
-    /// interface's thread first (meanwhile [`OnCard::Loading`]). One the card can't take gives the card up. The card's note says
-    /// why a card wanted draws nothing, as the mesh says.
+    /// interface's thread first (meanwhile [`OnCard::Loading`]). One the card can't take gives the card up, and so does a card whose
+    /// device was lost, for good. The card's note says why a card wanted draws nothing, as the mesh says.
     pub(crate) fn card_mesh(&mut self, ctx: &egui::Context, card: &mut crate::gpu::Card, ready: bool) -> OnCard {
+        let mut failed = None;
+        // A card whose device was lost draws nothing and says no error of its own: given up, even while the view stands still.
+        if let Some(e) = card.gpu.as_ref().and_then(|g| g.alive().err()) {
+            failed = Some(card_failed(&e));
+            card.give_up(e);
+        }
         // Another view's mesh on the card is set aside, and this one's brought back: the picture on the card is not this view's.
         if let Some(gpu) = card.gpu.as_mut()
             && gpu.hold_for(self.slot)
         {
             self.shown = None;
         }
-        let mut mesh = match ready.then(|| self.mesh.as_ref().map(|(_, m)| m)).flatten() {
+        let mut mesh = match (ready && failed.is_none()).then(|| self.mesh.as_ref().map(|(_, m)| m)).flatten() {
             Some(Ok(mesh)) => Some(Arc::clone(mesh)),
             _ => None,
         };
-        let mut failed = None;
         if let (Some(mesh_to_upload), Some(gpu)) = (mesh.as_ref(), card.gpu.as_mut())
             && !cfg!(test)
         {
@@ -1506,7 +1511,7 @@ impl Orbit {
                 Ok(false) => return OnCard::Loading,
                 Err(e) => {
                     failed = Some(card_failed(&e));
-                    (card.gpu, card.note) = (None, Some(e));
+                    card.give_up(e);
                     mesh = None;
                 }
             }
@@ -1558,7 +1563,7 @@ impl Orbit {
                     }
                     Err(e) => {
                         failed = Some(card_failed(&e));
-                        (card.gpu, card.note) = (None, Some(e));
+                        card.give_up(e);
                     }
                 }
             }
@@ -1605,7 +1610,7 @@ impl Orbit {
                     plane_marks.clone_into(&mut gpu.marks);
                     if let Err(e) = gpu.draw_capped(mesh, &cam, tints, rgb(color(render::PAPER)), reboxed.or(boxed), caps.as_ref()) {
                         failed = Some(card_failed(&e));
-                        (card.gpu, card.note) = (None, Some(e));
+                        card.give_up(e);
                         self.shown = None;
                         ctx.request_repaint();
                     }
