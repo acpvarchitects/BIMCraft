@@ -147,7 +147,9 @@ its levels and used type dimensions without holding a model snapshot or old libr
 a weak family-map identity and their own adaptive frames; narrowing this to individual family definitions is pending.
 An adaptive family has no envelope (`Family::conservative_bounds` is unknown): a component of one is boxed by what
 its points make it build. `Family::conservative_bounds`
-handles swept profiles and imported meshes without triangulation. Voids and revolved forms currently return unknown.
+handles swept profiles and imported meshes without triangulation. A void adds nothing to it (it only takes away); a revolve is
+boxed by the cylinder its profile turns within, an arc by its whole circle's square, so the box holds a build at any fineness
+(GEO-2c-3); a sweep along a path, and a revolve with a top or a path, return unknown.
 `Unknown` means a query must retain the object; only `Empty` means the id is absent. These conservative boxes must
 not replace exact framing extrema. Hosted geometry, spatial discovery and renderer integration remain further work.
 Tests compare bounds with fresh solid/family vertices, including mirrored and rotated instance placement.
