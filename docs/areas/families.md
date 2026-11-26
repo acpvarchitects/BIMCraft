@@ -2290,7 +2290,13 @@ A plan asks for about half a pixel at its scale (`Fineness::for_view`), rounded 
 a build, from 1/16 mm to 128 mm; coarser than that it is the default. Its `Components` cache (`component_geometry.rs`,
 `Components::for_view`) builds the components that may reach into the view at that fineness, and the rest at the default. It
 decides with each component's default build, its box placed (built already for its heights), and it keeps a component's
-heights, and so whether the plan shows it, at the default. The family editor's plans are drawn the same way. What is built finer is kept across drawings, so a zoomed plan
+heights at the default. A finer build may reach past that box (as a section's may, below), so a plan widens it by
+`fineness::finer_reach` where it chooses what to build finer and what meets its window, and draws a component built finer
+wherever its finer build's own heights, or its default build's, reach from the view depth to under the cut plane (GEO-2c-3,
+`Components::finer_reaches`; `plan_fineness_tests.rs`): a sliver of curve past the default box is drawn, and a click or a
+hover there finds it. Its index needs no widening, as a family's envelope (`Family::conservative_bounds`) boxes an arc by its
+whole circle and a revolve by the cylinder it turns within, and so holds every build at any fineness. The family editor's
+plans are drawn the same way. What is built finer is kept across drawings, so a zoomed plan
 drawn again (a pan, a selection, an edit elsewhere) builds finer only what changed: by the allocation of the model's families
 (which any edit of a family replaces) and the component's key and fineness, no more than 4 such generations and 256 MB, the
 least lately used going first (and since GEO-2g the default builds too, in a tier of their own). A shape too fine to cut is kept as its default build, so it isn't tried again. Tests: `family_fineness_tests.rs`, among them a 20 m arc in plan
