@@ -1204,7 +1204,12 @@ impl Gpu {
             && Arc::ptr_eq(&done.mesh, mesh)
         {
             let mut up = done.uploaded?;
-            up.room = up.room.max(room.bytes);
+            // Found full beside the mesh drawn, the card holds what this one could and what that one does, and no more: kept, as
+            // an upload in its place keeps what it found.
+            if up.room < room.bytes.saturating_sub(held) {
+                self.card_bytes = self.card_bytes.min(up.room.saturating_add(held).saturating_add(self.parked_bytes()));
+            }
+            up.room = up.room.max(self.room().bytes);
             self.mesh = Some(up);
             return Ok(true);
         }
@@ -2433,6 +2438,33 @@ mod tests {
         assert!(gpu.mesh.as_ref().is_some_and(|up| Arc::ptr_eq(&up.mesh, &finer)), "in its place");
         gpu.draw(&finer, &cam, &[], PAPER).unwrap();
         assert_eq!(read(&gpu), pixels);
+    }
+
+    /// GEO-2c-2b, cp's review of #99: a refined mesh that finds the card full as it goes up beside the one drawn keeps what that
+    /// taught, as an upload in place of it does: the card holds what the new one could and what the one drawn holds, and the next
+    /// upload isn't given more.
+    #[test]
+    fn a_refined_mesh_that_finds_the_card_full_beside_the_one_drawn_keeps_the_room_it_found() {
+        let Some(mut gpu) = headless() else { return };
+        gpu.vertex_bytes = CHUNK;
+        let s = sample();
+        let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
+        let cam = scene.fit_in(AZIMUTH, ELEVATION, 640, 480, &look);
+        let drawn = Arc::new(Mesh::new(&scene, &look).unwrap());
+        let finer = Arc::new(Mesh::new(&scene, &look).unwrap());
+        gpu.draw(&drawn, &cam, &[], PAPER).unwrap();
+        let held = gpu.holding();
+        assert_eq!(gpu.card_bytes, u64::MAX, "nothing found full yet");
+        // Beside it, room for two buffers more.
+        gpu.full_at = Some(2 * CHUNK);
+        let ctx = egui::Context::default();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+        while !gpu.prepare_upload_beside(&ctx, &finer).unwrap() {
+            assert!(std::time::Instant::now() < deadline, "the upload beside did not finish");
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert!(gpu.card_bytes <= held + 2 * CHUNK, "{} bytes thought free, {held} held and two buffers' room found", gpu.card_bytes);
+        assert!(gpu.holding() <= 2 * CHUNK);
     }
 
     /// The sample with copies of every kind: three lamps, each a frame and a lens seen through, and round runs, one tube
