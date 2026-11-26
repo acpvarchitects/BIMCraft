@@ -6863,6 +6863,7 @@ mod publisher;
 mod purge;
 mod pyaddins;
 mod qol;
+mod refine3d;
 mod reinforce;
 mod revit;
 mod ribbon_fit;

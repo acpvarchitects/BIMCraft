@@ -1182,6 +1182,58 @@ impl Gpu {
         Ok(false)
     }
 
+    /// GEO-2c-2b: `mesh`, the picture on the card now made finer (a refined scene's), put on the card off the interface's
+    /// thread beside the mesh it holds, which stays drawn meanwhile, and in its place once there: whether it is. Its upload has
+    /// the room the mesh held leaves, and once in place the card's whole room. Where both don't fit, or the card holds none, as
+    /// [`Gpu::prepare_upload`]: the view waits for it.
+    pub(crate) fn prepare_upload_beside(&mut self, ctx: &egui::Context, mesh: &Arc<Mesh>) -> Result<bool, String> {
+        let held = match &self.mesh {
+            Some(up) if Arc::ptr_eq(&up.mesh, mesh) => return Ok(true),
+            Some(up) => up.held,
+            None => return self.prepare_upload(ctx, mesh),
+        };
+        let room = self.room();
+        let needs = (mesh.vertices.len() as u64)
+            .saturating_mul(STRIDE)
+            .saturating_add((mesh.wires.len() as u64).saturating_mul(WIRE))
+            .saturating_add((mesh.dots.len() as u64).saturating_mul(DOT));
+        if needs.saturating_add(held) > room.bytes {
+            return self.prepare_upload(ctx, mesh);
+        }
+        if let Some(done) = self.upload_worker.as_ref().and_then(crate::view_worker::Latest::take)
+            && Arc::ptr_eq(&done.mesh, mesh)
+        {
+            let mut up = done.uploaded?;
+            up.room = up.room.max(room.bytes);
+            self.mesh = Some(up);
+            return Ok(true);
+        }
+        if !self.upload_requested.as_ref().is_some_and(|m| Arc::ptr_eq(m, mesh)) {
+            let job = UploadJob {
+                device: self.device.clone(),
+                queue: self.queue.clone(),
+                vertex_bytes: self.vertex_bytes,
+                room: Room { bytes: room.bytes.saturating_sub(held), full_at: room.full_at },
+                mesh: Arc::clone(mesh),
+            };
+            let wake = ctx.clone();
+            let worker =
+                self.upload_worker.get_or_insert_with(|| crate::view_worker::Latest::new(build_upload, move || wake.request_repaint()));
+            worker.request(job);
+            self.upload_requested = Some(Arc::clone(mesh));
+        }
+        if let Some(worker) = &self.upload_worker {
+            worker.start()?;
+            if let Some(error) = worker.take_error() {
+                return Err(error);
+            }
+            if worker.busy() {
+                ctx.request_repaint_after(std::time::Duration::from_millis(16));
+            }
+        }
+        Ok(false)
+    }
+
     /// How many bytes of the mesh's own vertices the card holds now.
     #[cfg(test)]
     pub(crate) fn holding(&self) -> u64 {
