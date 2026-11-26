@@ -2407,6 +2407,34 @@ mod tests {
         assert_eq!(read(&gpu), perspective_pixels);
     }
 
+    /// GEO-2c-2b: a refined scene's mesh goes up beside the one on the card, which is drawn meanwhile without going up again,
+    /// and takes its place once there, drawing what it draws.
+    #[test]
+    fn a_refined_mesh_goes_up_beside_the_one_drawn_which_stays_drawn_meanwhile() {
+        let Some(mut gpu) = headless() else { return };
+        let s = sample();
+        let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
+        let cam = scene.fit_in(AZIMUTH, ELEVATION, 640, 480, &look);
+        let drawn = Arc::new(Mesh::new(&scene, &look).unwrap());
+        // Another mesh of the picture, standing in for a refined scene's.
+        let finer = Arc::new(Mesh::new(&scene, &look).unwrap());
+        gpu.draw(&drawn, &cam, &[], PAPER).unwrap();
+        let pixels = read(&gpu);
+        let ctx = egui::Context::default();
+        assert!(!gpu.prepare_upload_beside(&ctx, &finer).unwrap(), "on its way up");
+        assert!(gpu.mesh.as_ref().is_some_and(|up| Arc::ptr_eq(&up.mesh, &drawn)), "the mesh drawn still on the card");
+        gpu.draw(&drawn, &cam, &[], PAPER).unwrap();
+        assert_eq!(read(&gpu), pixels, "and drawn meanwhile");
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+        while !gpu.prepare_upload_beside(&ctx, &finer).unwrap() {
+            assert!(std::time::Instant::now() < deadline, "the upload beside did not finish");
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert!(gpu.mesh.as_ref().is_some_and(|up| Arc::ptr_eq(&up.mesh, &finer)), "in its place");
+        gpu.draw(&finer, &cam, &[], PAPER).unwrap();
+        assert_eq!(read(&gpu), pixels);
+    }
+
     /// The sample with copies of every kind: three lamps, each a frame and a lens seen through, and round runs, one tube
     /// stretched and turned (level, sloped, upright and at an angle in plan).
     fn with_copies() -> Session {
