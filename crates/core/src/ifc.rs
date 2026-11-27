@@ -13,6 +13,7 @@ use bimcraft_i18n::ui_msg;
 
 pub mod classes;
 mod family_metadata;
+pub(crate) use family_metadata::FAMILY_PARAMETERS;
 mod v2x3;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -931,6 +932,9 @@ impl Step {
                     let kind =
                         self.add(format!("{class}({},$,{},$,$,{sets},$,$,${before}{predefined}{after})", self.guid(TYPES, key), s(&name)));
                     self.add(format!("IFCRELDEFINESBYTYPE({},$,$,$,({}),#{kind})", self.guid(TYPE_DEFINES, key), refs(&occurrences)));
+                    if let Some(o) = omniclass {
+                        self.classified.entry(o).or_default().push(kind);
+                    }
                 }
                 if let Some((_, material)) = member.filter(|(_, material)| !material.is_empty()) {
                     let material = self.material(m, &material);

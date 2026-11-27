@@ -2,7 +2,7 @@
 use super::*;
 use crate::family::{Family, Kind, Val};
 
-const PARAMETERS: &str = "BIMCraft_FamilyParameters";
+pub(crate) const FAMILY_PARAMETERS: &str = "BIMCraft_FamilyParameters";
 const IDENTITY: &str = "BIMCraft_NestedFamily";
 
 /// Per-export fingerprints for independent, same-named embedded definitions. The immutable model
@@ -75,7 +75,7 @@ impl Step {
         let (set, ids) = if props.is_empty() {
             (IDENTITY, vec![self.text_property("Family", None, &n.family), self.text_property("Type", None, &n.type_name)])
         } else {
-            (PARAMETERS, self.family_property_ids(&props))
+            (FAMILY_PARAMETERS, self.family_property_ids(&props))
         };
         self.define(ent, set, &ids, (NESTED_PSET, NESTED_DEFINES), id);
     }
@@ -108,7 +108,7 @@ impl Step {
             return "$".into();
         }
         let ids = self.family_property_ids(props);
-        let set = self.property_set(PARAMETERS, &ids, NESTED_TYPE_PSET, key);
+        let set = self.property_set(FAMILY_PARAMETERS, &ids, NESTED_TYPE_PSET, key);
         format!("(#{set})")
     }
 }

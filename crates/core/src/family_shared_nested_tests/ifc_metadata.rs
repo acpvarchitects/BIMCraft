@@ -44,7 +44,9 @@ fn length(n: f64) -> V {
 
 #[test]
 fn nested_ifc_metadata_follows_the_bound_values_and_shares_one_type() {
-    let (mut s, host) = cabinet(true);
+    let mut definition = handle(true);
+    definition["omniclass"] = json!({"number":"23.40.20","title":"Hardware"});
+    let (mut s, host) = cabinet_with(definition);
     run(
         &mut s,
         "family",
@@ -56,7 +58,10 @@ fn nested_ifc_metadata_follows_the_bound_values_and_shares_one_type() {
     assert_eq!(children.len(), 2);
     let first = s.model.families["Cabinet"].nested_instances[0].guid;
     for schema in [Schema::Ifc4, Schema::Ifc2x3, Schema::Ifc4x3] {
-        let file = crate::step::parse(crate::ifc::export_as(&s.model, Origin::Internal, schema).as_bytes()).unwrap();
+        let exchange = crate::ifc::export_as(&s.model, Origin::Internal, schema);
+        let file = crate::step::parse(exchange.as_bytes()).unwrap();
+        let imported = crate::import::ifc(exchange.as_bytes(), "Nested handles").unwrap().model;
+        imported.check().unwrap();
         let host = occurrence(&file, &s.model, host);
         let mut types = Vec::new();
         for (id, n) in &children {
@@ -68,7 +73,13 @@ fn nested_ifc_metadata_follows_the_bound_values_and_shares_one_type() {
             assert_eq!(typ.args[2], V::Str("Handle:Lever".into()));
             types.push(assigned[0]);
             let own = properties(&file, &related(&file, part, "IFCRELDEFINESBYPROPERTIES"));
-            assert_eq!(own.get("W"), Some(&length(if n.path[0] == first { 60. } else { 120. })));
+            let width = if n.path[0] == first { 60. } else { 120. };
+            assert_eq!(own.get("W"), Some(&length(width)));
+            let imported_child = imported.elements.id(s.model.guid(*id)).unwrap();
+            assert_eq!(imported.elements.get(imported_child).unwrap().params().unwrap()["W"], json!(width));
+            let classes = related(&file, assigned[0], "IFCRELASSOCIATESCLASSIFICATION");
+            assert_eq!(classes.len(), 1);
+            assert_eq!(file.entities[&classes[0]].args[1], V::Str("23.40.20".into()));
             let V::List(sets) = &typ.args[5] else { panic!("the type's declared parameters") };
             let refs = sets.iter().filter_map(|p| if let V::Ref(id) = p { Some(*id) } else { None }).collect::<Vec<_>>();
             assert_eq!(properties(&file, &refs).get("W"), Some(&length(40.)));
