@@ -7,10 +7,11 @@ component {"family":"Front Box","type":"Standard","at":[5000,0]}"#;
 
 fn other_after_tab(h: &mut Harness<BimApp>, at: Pos2, view: &str) {
     let boxes = h.state().session.model.elements.iter()
-        .filter_map(|(id, e)| matches!(e, Element::Component(_)).then_some(id))
+        .filter_map(|(id, e)| matches!(e, Element::Component(_)).then_some(*id))
         .collect::<Vec<_>>();
     assert_eq!(boxes.len(), 2);
     click_at(h, at);
+    assert_eq!(h.state().selection.len(), 1, "{view} has an ordinary first pick");
     let first = h.state().selection[0];
     assert!(boxes.contains(&first), "{view} clicked {first}");
     let other = *boxes.iter().find(|id| **id != first).unwrap();
