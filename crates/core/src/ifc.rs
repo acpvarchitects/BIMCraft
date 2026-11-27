@@ -2236,7 +2236,8 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
                     }
                     items.push(set);
                 }
-                let shape = w.tessellated(&items);
+                // An assembly can have all its geometry on its shared products. Its own representation is optional.
+                let shape = if items.is_empty() { "$".to_string() } else { format!("#{}", w.tessellated(&items)) };
                 // A door's or a window's family is placed in a wall, never as a component.
                 let (entity, kind, object_type) = f.ifc();
                 let label = format!("{}:{}", cp.family, cp.type_name);
@@ -2245,7 +2246,7 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
                 // What follows its tag, as IFC4 has its class: its predefined type, and what comes round it.
                 let class = classes::class(&entity);
                 let tail = class.map_or_else(|| format!(",{kind}"), |c| classes::fill(c.1, &kind));
-                let ent = w.add(format!("{entity}({},$,{name},$,{object},#{at},#{shape},'{id}'{tail})", w.guid(ELEMENT, id)));
+                let ent = w.add(format!("{entity}({},$,{name},$,{object},#{at},{shape},'{id}'{tail})", w.guid(ELEMENT, id)));
                 contained.entry(cp.level).or_default().push(ent);
                 // Also in the room its family's room calculation point (else its insertion point) is in.
                 if let Some(room) = rooms.component(cp) {
