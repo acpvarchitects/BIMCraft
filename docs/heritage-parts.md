@@ -40,7 +40,7 @@ with 0.13 merged in after #95, full checks and CI green.
 Under review against it: [#102](https://github.com/acpvarchitects/BIMCraft/pull/102), HP-7b, Divide Parts and Edit Division
 sketched on a face in the 3D view, with full local checks green.
 
-Next: #102, then HP-7c, then the upstream PRs in #440's order. Nothing is upstream yet.
+Next: HP-7c; the two colour-map items of §8 go to Vincenzo's Codex agent (27/11); then the upstream PRs in #440's order. Nothing is upstream yet.
 
 | Step | What | Where | State |
 |---|---|---|---|
@@ -53,8 +53,8 @@ Next: #102, then HP-7c, then the upstream PRs in #440's order. Nothing is upstre
 | HP-6 | Schedules of parts: the bill of quantities (Restoration Quantities), CSV and xlsx | [#17](https://github.com/acpvarchitects/BIMCraft/pull/17), `vp/heritage-parts-schedules`; on 0.13 by #82 | **Merged** (624491c; ca7eb58) |
 | HP-3/4 fix | The pieces `divide_parts` makes drawn in plans, sections, elevations and the 3D view (from their solid; a plan cuts it) | [#95](https://github.com/acpvarchitects/BIMCraft/pull/95), `vp/heritage-parts-pieces-drawn` → `feature/heritage-parts-0.13` | **Merged** (addac69) |
 | HP-7a | Desktop: Create Parts, Exclude/Restore Parts, Properties of a part with the survey values, Color Parts By and Parts Legend in a view's Properties, the material values in the Materials window | [#96](https://github.com/acpvarchitects/BIMCraft/pull/96), `vp/heritage-parts-desktop` → `feature/heritage-parts-0.13` | **Merged** (51eb76c) |
-| HP-7b | Desktop: Divide Parts and Edit Division, sketched on a face of the parts in the 3D view (Vincenzo, 26/11: the 3D view only; planes and profiles in HP-7c) | [#102](https://github.com/acpvarchitects/BIMCraft/pull/102), `vp/heritage-parts-divide-desktop` → `feature/heritage-parts-0.13` | Under review |
-| HP-7c | Desktop: dividing by planes (levels, grids, reference planes) and by profiles | | Not started |
+| HP-7b | Desktop: Divide Parts and Edit Division, sketched on a face of the parts in the 3D view (Vincenzo, 26/11: the 3D view only; planes and profiles in HP-7c) | [#102](https://github.com/acpvarchitects/BIMCraft/pull/102), `vp/heritage-parts-divide-desktop` → `feature/heritage-parts-0.13` | **Merged** (c92fc70) |
+| HP-7c | Desktop: dividing by planes (levels, grids, reference planes) and by profiles | | Next (this agent) |
 | HP-8 | IFC export and import of parts, one PR with round-trip tests (#440): HP-1's export, the material values and #34's rule for a piece of an excluded part; a host taken apart comes back from its parts, divisions included | [#85](https://github.com/acpvarchitects/BIMCraft/pull/85), `vp/heritage-parts-ifc` → `feature/heritage-parts-0.13` | **Merged** (bcd0906) |
 | HP-9 | Parts in `elements`, FORMAT 21 (21–32 reservation narrowed to 22–32), HP-1 ported onto main 3e08223f without its IFC export, `decay.rs` shared with Survey Areas | [#70](https://github.com/acpvarchitects/BIMCraft/pull/70), `vp/heritage-parts-hp9` → `feature/heritage-parts-0.13` | **Merged** (d154dc2) |
 
@@ -328,8 +328,8 @@ divided part has no area or volume of its own, because its divisions hold them, 
 Each tool drives a command; the UI stays thin.
 
 HP-7a ([#96](https://github.com/acpvarchitects/BIMCraft/pull/96), merged) does all of these except Divide Parts,
-which is HP-7b ([#102](https://github.com/acpvarchitects/BIMCraft/pull/102), under review), sketched on a face in the
-3D view; planes and profiles follow as HP-7c. Still to do after HP-7a:
+which is HP-7b ([#102](https://github.com/acpvarchitects/BIMCraft/pull/102), merged), sketched on a face in the
+3D view; planes and profiles follow as HP-7c. Still to do after HP-7a (both handed to Vincenzo's Codex agent, `vp-w-cdx-ade-bimcraft`, on 27/11):
 - choosing a colour map's colours in the desktop (only the `graphics` command can yet);
 - moving the plan's colour key, whose first line the window's floating view tab covers (a placement from HP-5).
 
