@@ -315,7 +315,7 @@ impl BimApp {
                                 self.set_shape(target, s);
                             }
                         }
-                        if target == Target::Sketch && k == 1 {
+                        if target == Target::Sketch && k == 1 && !self.sketching_division() {
                             let tip = msg!("Pick Walls: a boundary line along each wall clicked");
                             if small_button(ui, Icon::Wall, "Pick Walls", picking_walls, tip).clicked() {
                                 self.tool = Tool::SketchPick;

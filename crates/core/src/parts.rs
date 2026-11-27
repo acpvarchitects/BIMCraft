@@ -19,6 +19,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::model::{Element, Guid, Id, MAX_TEXT, Model};
 
+pub mod drawn;
 pub mod solid;
 mod state;
 

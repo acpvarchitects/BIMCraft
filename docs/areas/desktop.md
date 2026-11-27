@@ -427,6 +427,9 @@ is a box picking the sketch's lines (`sketch3d_box`: wholly inside from the left
 click), Split, Trim/Extend, Offset and Vertex take the plane's point as the plan takes its own, through `sketch_click`,
 `sketch_modify` and `vertex_click`, snapped by `snap::in_sketch` in the element's level with reaches from the view's scale.
 Align, which lines up with what a plan shows, says so. A view edge-on to the plane picks nothing on it, and says to turn it.
+A division of parts (Divide Parts, Edit Division: `divide.rs`, [parts](parts.md#in-the-desktop)) is sketched the same way on a
+face at any angle, its points in the face's own axes (`sketch3d::Surface::Face`, taken to screen and back by `Camera::on`), with
+the Draw panel's shapes and no Pick Walls, snapped to the sketch's own ends.
 
 Work planes in 3D (`workplane.rs`; the core's in [views and graphics](views-and-graphics.md)). The plane has a patch of its own in
 the view, as ArchiCAD's: a small square of it (`work_plane_ring`, the same size on screen at any zoom), by the model's south-west corner

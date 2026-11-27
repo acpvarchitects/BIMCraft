@@ -95,7 +95,22 @@ impl BimApp {
         let (parts, some_in, some_out) = self.selected_parts();
         if !parts.is_empty() {
             let mut excluded = None;
+            // Divide Parts and Edit Division (`divide.rs`), each greyed out when the selection can't be.
+            let (dividable, edited) = (self.dividable(), self.division_to_edit());
+            let (mut divide, mut edit) = (false, false);
             panel(ui, msg!("Part"), |ui| {
+                let tip = msg!(
+                    "Divide Parts: sketch lines on a face of the selected parts in the 3D view; each outline and each line across divides them"
+                );
+                let enabled = !dividable.is_empty();
+                divide =
+                    ui.add_enabled_ui(enabled, |ui| big_button(ui, Icon::DivideParts, msg!("Divide Parts"), false, tip)).inner.clicked();
+                let tip = msg!(
+                    "Edit Division: sketch again the division of the selected part, or of the part the selected pieces were divided from"
+                );
+                let enabled = edited.is_some();
+                edit =
+                    ui.add_enabled_ui(enabled, |ui| big_button(ui, Icon::EditDivision, msg!("Edit Division"), false, tip)).inner.clicked();
                 let tip = msg!("Exclude Parts: leave the selected parts out of what is counted, scheduled and exported");
                 if ui.add_enabled_ui(some_in, |ui| big_button(ui, Icon::ExcludeParts, msg!("Exclude Parts"), false, tip)).inner.clicked() {
                     excluded = Some(true);
@@ -107,6 +122,11 @@ impl BimApp {
             });
             if let Some(excluded) = excluded {
                 self.run("part", json!({"ids": parts, "excluded": excluded}));
+            }
+            if divide {
+                self.divide_parts(dividable);
+            } else if let (true, Some(part)) = (edit, edited) {
+                self.edit_division(part);
             }
         }
     }
