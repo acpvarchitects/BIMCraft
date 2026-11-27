@@ -43,6 +43,30 @@ fn length(n: f64) -> V {
 }
 
 #[test]
+fn shared_children_supply_an_assemblys_only_ifc_geometry() {
+    let (mut session, parent) = cabinet(true);
+    run(&mut session, "family", json!({"name":"Cabinet","forms":[]}));
+    let children = nested(&session.model);
+    assert_eq!(children.len(), 1);
+    for schema in [Schema::Ifc4, Schema::Ifc2x3, Schema::Ifc4x3] {
+        let exchange = crate::ifc::export_as(&session.model, Origin::Internal, schema);
+        let file = crate::step::parse(exchange.as_bytes()).unwrap();
+        let root = occurrence(&file, &session.model, parent);
+        let part = occurrence(&file, &session.model, children[0].0);
+        let assembly = &file.entities[&root];
+        assert!(matches!(assembly.args[5], V::Ref(_)), "{schema:?}: keep the parent placement");
+        assert_eq!(assembly.args[6], V::Null, "{schema:?}: a parent with no own shapes omits its representation");
+        assert!(matches!(file.entities[&part].args[6], V::Ref(_)));
+        assert_eq!(related(&file, root, "IFCRELDEFINESBYTYPE").len(), 1);
+        assert_eq!(related(&file, part, "IFCRELDEFINESBYTYPE").len(), 1);
+        assert_eq!(properties(&file, &related(&file, part, "IFCRELDEFINESBYPROPERTIES")).get("W"), Some(&length(60.)));
+        assert!(file.entities.values().any(|r| r.name == "IFCRELAGGREGATES"
+            && r.args[4] == V::Ref(root)
+            && matches!(&r.args[5], V::List(children) if children.contains(&V::Ref(part)))));
+    }
+}
+
+#[test]
 fn nested_ifc_metadata_follows_the_bound_values_and_shares_one_type() {
     let mut definition = handle(true);
     definition["omniclass"] = json!({"number":"23.40.20","title":"Hardware"});
