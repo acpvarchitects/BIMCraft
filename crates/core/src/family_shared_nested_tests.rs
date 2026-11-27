@@ -9,6 +9,7 @@ use crate::engine::Session;
 use crate::ids::Id;
 use crate::model::{Element, Model};
 use crate::nested_elements::NestedElement;
+mod ifc_metadata;
 
 fn run(s: &mut Session, id: &str, p: Value) -> Value {
     s.execute(id, &p).unwrap_or_else(|e| panic!("{id} {p}: {e}"))
