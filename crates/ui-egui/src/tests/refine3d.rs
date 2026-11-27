@@ -1,13 +1,21 @@
 //! GEO-2c-2b: once the 3D view's camera settles, a worker refines its scene for it (its components chorded as finely as the
-//! camera shows them) and the view swaps it in; a camera that moves on before it is made never gets it.
+//! camera shows them) and the view swaps it in; a camera that moves on before it is made never gets it. GEO-2c-2c: the family
+//! editor's {3D} is refined so too, and in either, Paint on a refined curve paints the face it is on.
 
 use super::*;
+use bimcraft_core::family::FormFace;
+use bimcraft_core::ids::Guid;
+use bimcraft_core::model::Model;
 use bimcraft_core::view3d::{Camera, Scene};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
-/// A drum 1600 mm across and 2 m tall, standing at the origin.
-const DRUM: &str = r#"family {"name": "Drum", "category": "generic", "types": {"T": {}}, "forms": [{"sketch": [{"centre": [0, 0], "radius": 800}], "from": 0, "to": 2000}]}
+/// The drum's circle, which its side is keyed by.
+const CIRCLE: &str = "9e0c2c2c-0000-4000-8000-000000000001";
+
+/// A drum 1600 mm across and 2 m tall, standing at the origin; and a red material.
+const DRUM: &str = r#"material {"name": "Red", "color": [220, 30, 30]}
+family {"name": "Drum", "category": "generic", "types": {"T": {}}, "forms": [{"sketch": [{"guid": "9e0c2c2c-0000-4000-8000-000000000001", "centre": [0, 0], "radius": 800}], "from": 0, "to": 2000}]}
 component {"family": "Drum", "type": "T", "at": [0, 0]}"#;
 
 /// The scene the 3D view shows.
@@ -113,4 +121,77 @@ fn a_camera_that_moves_on_before_its_refinement_is_made_never_gets_it() {
     }
     assert!(Arc::ptr_eq(&shown(&h), &before), "the refinement for the camera before never shown");
     assert_eq!(shown(&h).refined_count(), 0);
+}
+
+/// A point on the drum's side 1 m up, south of its axis, where its default build has no face within the millimetre a click's
+/// face is looked for within: between two of its default chords' ends, whose chords lie up to 3.85 mm inside its circle.
+fn between_chords(m: &Model, drum: Id) -> [f64; 3] {
+    (0..=80)
+        .map(|i| (260.0 + f64::from(i) * 0.25_f64).to_radians())
+        .map(|a| ([800.0 * a.cos(), 800.0 * a.sin(), 1000.0], [a.cos(), a.sin(), 0.0]))
+        .find(|(p, n)| m.component_face(drum, *p, *n).is_none())
+        .map(|(p, _)| p)
+        .unwrap_or_else(|| panic!("a point between the default's chords' ends"))
+}
+
+/// Paint (FE-16c-2) on the refined drum's side, between its default chords' ends, paints that side.
+#[test]
+fn paint_on_a_refined_drums_side_between_its_default_chords_paints_that_side() {
+    let mut h = app(DRUM);
+    press(&mut h, "Default 3D View");
+    h.state_mut().orbit.refines = true;
+    let drum = ids(&h, "component")[0];
+    let p = between_chords(&h.state().session.model, drum);
+    look_at(&mut h, 2.0, p[0]);
+    until(&mut h, "the scene refined", |h| shown(h).refined_count() == 1);
+    topmost(&mut h, "Modify");
+    h.state_mut().paint_material = "Red".into();
+    press(&mut h, "Paint");
+    let at = h.state().screen3(p);
+    click_at(&mut h, at);
+    let painted: Vec<(FormFace, String)> = match h.state().session.model.elements.get(drum) {
+        Some(Element::Component(c)) => c.face_paint.iter().map(|f| (f.face.clone(), f.material.clone())).collect(),
+        _ => panic!("the drum"),
+    };
+    let side = FormFace::side(Guid::parse(CIRCLE).unwrap_or_else(|| panic!("a GUID")));
+    assert_eq!(painted, [(side, "Red".to_string())], "{}", h.state().status.text);
+}
+
+/// The family editor's {3D} (GEO-2c-2c): zoomed in on the drum family's side, once the camera settles its scene is refined, as
+/// the project's 3D view's is; Paint there, between its default chords' ends, paints the family's side; and the family staged
+/// again for that edit is drawn as refined at once, not at the default until the camera settles again.
+#[test]
+fn the_family_editors_3d_view_refines_and_paint_on_a_refined_side_paints_it() {
+    use super::family_views::{editor, open, view};
+    let (mut h, _) = open(DRUM, "Drum");
+    view(&mut h, None);
+    let p = between_chords(&h.state().session.model, ids(&h, "component")[0]);
+    let shown = |h: &Harness<BimApp>| editor(h).orbit.scene.as_ref().map(|(_, s)| Arc::clone(s)).unwrap_or_else(|| panic!("{{3D}} shown"));
+    assert_eq!(shown(&h).refined_count(), 0, "made at the default");
+    let ed = h.state_mut().active_family_mut().unwrap_or_else(|| panic!("the family open"));
+    ed.orbit.refines = true;
+    let cam = ed.orbit.camera.unwrap_or_else(|| panic!("{{3D}} drawn"));
+    ed.orbit.camera = Some(Camera { azimuth: -90.0, elevation: 0.0, scale: 2.0, target: [p[0], 0.0, 1000.0], lens: None, ..cam });
+    until(&mut h, "{3D} refined", |h| shown(h).refined_count() == 1);
+    // Refined no more from here: what is refined after the edit is what the edit kept.
+    h.state_mut().active_family_mut().unwrap_or_else(|| panic!("the family open")).orbit.refines = false;
+    let staged = |h: &Harness<BimApp>| editor(h).scene3d.as_ref().map(|s| Arc::clone(&s.model)).unwrap_or_else(|| panic!("staged"));
+    let before = staged(&h);
+    shortcut(&mut h, "PT");
+    h.state_mut().active_family_mut().unwrap_or_else(|| panic!("the family open")).views.paint_material = "Red".into();
+    h.run();
+    super::family_modify_3d::click3(&mut h, p);
+    h.run();
+    let painted: Vec<(FormFace, String)> = editor(&h).draft_family().unwrap_or_else(|e| panic!("{e}")).forms[0]
+        .paint
+        .iter()
+        .map(|f| (f.face.clone(), f.material.clone()))
+        .collect();
+    let side = FormFace::side(Guid::parse(CIRCLE).unwrap_or_else(|| panic!("a GUID")));
+    assert_eq!(painted, [(side, "Red".to_string())], "{}", h.state().status.text);
+    let after = staged(&h);
+    assert!(!Arc::ptr_eq(&after, &before), "the family staged again");
+    let o = &editor(&h).orbit;
+    assert!(o.scene.as_ref().is_some_and(|(m, _)| Arc::ptr_eq(m, &after)), "{{3D}} of the family as painted");
+    assert_eq!(shown(&h).refined_count(), 1, "its drum still refined");
 }
