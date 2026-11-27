@@ -33,6 +33,12 @@ fn other_after_tab(h: &mut Harness<BimApp>, at: Pos2, view: &str) {
     key(h, Key::Tab);
     click_at(h, at);
     assert_eq!(h.state().selection, [first], "cycling wraps to the ordinary first pick in {view}");
+    key(h, Key::Tab);
+    h.hover_at(at + vec2(12., 0.));
+    h.run();
+    h.hover_at(at);
+    h.run();
+    assert_eq!(h.state().nested_tab.current(), Some(first), "moving the pointer starts the cycle again");
 }
 
 #[test]
