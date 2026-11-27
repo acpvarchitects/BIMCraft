@@ -2990,8 +2990,21 @@ impl Scene {
     ///
     /// Its components are built as `fine` asks (GEO-2c-2a: [`crate::component_geometry::section_fine`]), through the builds
     /// kept across drawings.
+    #[cfg(test)]
     pub(crate) fn section(m: &Model, work: Work<'_>, view: (&Camera, &Clip, Option<SectionFine>), look: &Look) -> Scene {
-        Self::section_cancellable(m, work, view, look, &|| false).unwrap_or_else(|| Self::bare(Vec::new()))
+        Self::section_capturing(m, work, view, look, None)
+    }
+
+    /// [`Scene::section`], what it builds of each component, door and window that can show kept in `capture` as it builds
+    /// it: what a family's elevation picks (GEO-2c-2e).
+    pub(crate) fn section_capturing(
+        m: &Model,
+        work: Work<'_>,
+        view: (&Camera, &Clip, Option<SectionFine>),
+        look: &Look,
+        capture: Option<&crate::render::ElevationCapture>,
+    ) -> Scene {
+        Self::section_cancellable(m, work, view, look, &|| false, capture).unwrap_or_else(|| Self::bare(Vec::new()))
     }
 
     pub(crate) fn section_cancellable(
@@ -3000,6 +3013,7 @@ impl Scene {
         (cam, clip, fine): (&Camera, &Clip, Option<SectionFine>),
         look: &Look,
         cancelled: &(dyn Fn() -> bool + Sync),
+        capture: Option<&crate::render::ElevationCapture>,
     ) -> Option<Scene> {
         if cancelled() {
             return None;
@@ -3101,10 +3115,23 @@ impl Scene {
                     return None;
                 }
                 let made: Vec<Solid> = match m.elements.get(*id) {
-                    Some(e @ Element::Component(_)) => lazy_solids(m, *id, e, &mut components),
+                    Some(e @ Element::Component(c)) => {
+                        // Its pieces as they are drawn (the builds kept, so built once), kept for what picks.
+                        if let Some(capture) = capture {
+                            let x = m.component_placement(c).axes[0];
+                            capture.component(&components.solids_of(*id, c), P2(x[0], x[1]), look);
+                        }
+                        lazy_solids(m, *id, e, &mut components)
+                    }
                     // No solids in the list: a round run left until now, or one that has none, which makes none here.
                     Some(e) if at.is_empty() && e.run().is_some() => lazy_solids(m, *id, e, &mut components),
-                    _ => own(*id, at).collect(),
+                    other => {
+                        if let (Some(capture), Some(e @ (Element::Door(o) | Element::Window(o)))) = (capture, other) {
+                            let x = m.opening_frame(o).map_or(P2(1.0, 0.0), |(_, u, _)| u);
+                            capture.opening(m.opening_pieces(e), x, look);
+                        }
+                        own(*id, at).collect()
+                    }
                 };
                 for solid in made.into_iter().flat_map(|s| layered(m, s)) {
                     solid.tris(&mut tris);

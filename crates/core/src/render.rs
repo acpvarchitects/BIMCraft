@@ -36,6 +36,8 @@ use crate::{font, massing, sheet, stairs};
 
 mod crop;
 mod dimensions;
+mod family_elevation;
+pub(crate) use family_elevation::{ElevationCapture, family_elevation};
 mod joins;
 use dimensions::dimension;
 #[cfg(test)]
@@ -1576,7 +1578,7 @@ pub fn sketch(m: &Model, view: View, id: Id, e: &Element) -> Drawing {
             }
         }
         Element::Component(c) => {
-            component(&mut d, m, &m.component_pieces(c));
+            component(&mut d, m, &m.component_pieces(c), |_, _, _| {});
             for ([a, b], sub) in m.component_model_lines(c, Some(d.detail), true) {
                 d.sub(sub);
                 d.line(&[P2(a[0], a[1]), P2(b[0], b[1])], BY_CATEGORY, INK, false);
@@ -1589,7 +1591,7 @@ pub fn sketch(m: &Model, view: View, id: Id, e: &Element) -> Drawing {
         // Drawn at its sill, where the cut plane would pass through it whatever the plan's cut is.
         Element::Door(o) | Element::Window(o) => {
             if let Some(w) = m.wall(o.host) {
-                opening(&mut d, m, e, o, w, m.own_base(w) + o.sill, true, &|_| false);
+                opening(&mut d, m, e, o, w, m.own_base(w) + o.sill, true, &|_| false, None);
             }
         }
         Element::Stair(st) => stair(&mut d, m, st, st.level, &StairSubs::default()),
@@ -2453,7 +2455,7 @@ pub fn section_picture_of_cancellable(
     let (cam, clip) = section_camera(m, id, pixels)?;
     let look = Look::of(m, id);
     let work: view3d::Work<'_> = (&work.solids, &work.ranges, &work.placed, &work.boxes);
-    let scene = Scene::section_cancellable(m, work, (&cam, &clip, fine), &look, cancelled)?;
+    let scene = Scene::section_cancellable(m, work, (&cam, &clip, fine), &look, cancelled, None)?;
     let mut image = scene.picture_cancellable(&cam, Some(&clip), tints, &look, cancelled);
     if !cancelled() {
         painted_fronts(m, &scene, &cam, &mut image);
@@ -2468,10 +2470,22 @@ pub(crate) fn section_picture_in(m: &Model, w: &SectionWork, id: impl Key, view:
 
 /// [`section_picture_in`] under the drawing through `view`, at `pixels`, as [`section_picture_of_cancellable`] is.
 fn section_picture_of_in(m: &Model, w: &SectionWork, id: impl Key, view: View, pixels: View, tints: &[(Id, Rgb)]) -> Option<Image> {
+    section_picture_capturing(m, w, id, (view, pixels), tints, None)
+}
+
+/// [`section_picture_of_in`], what its scene builds of each component, door and window kept in `capture` (GEO-2c-2e).
+fn section_picture_capturing(
+    m: &Model,
+    w: &SectionWork,
+    id: impl Key,
+    (view, pixels): (View, View),
+    tints: &[(Id, Rgb)],
+    capture: Option<&ElevationCapture>,
+) -> Option<Image> {
     let fine = section_fine_of(m, id, view);
     let (cam, clip) = section_camera(m, id, pixels)?;
     let look = Look::of(m, id);
-    let scene = Scene::section(m, (&w.solids, &w.ranges, &w.placed, &w.boxes), (&cam, &clip, fine), &look);
+    let scene = Scene::section_capturing(m, (&w.solids, &w.ranges, &w.placed, &w.boxes), (&cam, &clip, fine), &look, capture);
     let mut picture = scene.cut_in(&cam, &clip, tints, &look);
     // Its twin, which tests hold it to: the picture of the whole scene, its components built as the section's are.
     #[cfg(test)]
@@ -3550,7 +3564,7 @@ fn pale(v: u8) -> u8 {
 /// it has it; a window letters it itself over the canvas, and shows it in the view's tab, and a sheet has it under its viewport). Its annotation `k` times the size it
 /// is laid out at, its pens the line weights' at 1 : `n`.
 fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, titled: bool) -> Drawing {
-    draw_plan_with(m, plan, view, up, k, n, titled, &mut crate::component_geometry::Components::for_view(m, &view))
+    draw_plan_with(m, plan, view, up, k, n, titled, &mut crate::component_geometry::Components::for_view(m, &view), None)
 }
 
 /// [`draw_plan`], its components found through `components`.
@@ -3564,14 +3578,15 @@ fn draw_plan_with<'m>(
     n: f64,
     titled: bool,
     components: &mut crate::component_geometry::Components<'m>,
+    picks: Option<&mut crate::family::views::DisplayedForms>,
 ) -> Drawing {
     let key = m.guid(plan);
-    let d = draw_plan_among(m, key, view, up, k, n, titled, true, components);
+    let d = draw_plan_among(m, key, view, up, k, n, titled, true, components, picks);
     // Its twin, which tests hold it to: every element looked at, the walls joined through an index of every wall.
     #[cfg(test)]
     if twins() {
         let mut fresh = crate::component_geometry::Components::for_view(m, &view);
-        let every = regions::uncounted(|| draw_plan_among(m, key, view, up, k, n, titled, false, &mut fresh));
+        let every = regions::uncounted(|| draw_plan_among(m, key, view, up, k, n, titled, false, &mut fresh, None));
         let same = d.prims.len() == every.prims.len()
             && d.owners == every.owners
             && d.parts == every.parts
@@ -3595,6 +3610,7 @@ fn draw_plan_among<'m>(
     titled: bool,
     among: bool,
     components: &mut crate::component_geometry::Components<'m>,
+    mut picks: Option<&mut crate::family::views::DisplayedForms>,
 ) -> Drawing {
     // The plan's own guid says what it is: its graphics, range, crop and annotation; its level is what it shows of the model.
     let level = m.plan_level(key).map_or(key, |l| m.guid(l));
@@ -3746,7 +3762,7 @@ fn draw_plan_among<'m>(
                         pieces.push(p);
                     }
                 }
-                component(&mut d, m, &pieces);
+                component(&mut d, m, &pieces, |_, _, _| {});
                 // FE-16c-2: its painted tops' surface patterns, at Fine detail, as a floor's top shows its own.
                 // Only one the view shows: what it keeps of its build for them is found where it is first seen.
                 let seen = || {
@@ -3931,7 +3947,7 @@ fn draw_plan_among<'m>(
             let wall = m.elements.id(o.host).and_then(|h| m.elements.get(h));
             if !wall.is_some_and(|wall| look.fills(m, e, wall)) {
                 d.owner = Some(id);
-                opening(&mut d, m, e, o, w, range.cut, shown(id), &|sub| graphics.hides(sub));
+                opening(&mut d, m, e, o, w, range.cut, shown(id), &|sub| graphics.hides(sub), picks.as_deref_mut());
             } else if m.elements.id(o.host).is_some_and(shown)
                 && look.phase_at().is_some_and(|at| crate::phasing::openings::lifetime(m, e).1 == Some(at))
             {
@@ -4284,8 +4300,9 @@ fn plan_draws(p: &crate::family::Piece, detail: Detail, cut: f64) -> bool {
 }
 
 /// A component seen from above: each of its forms' outlines, but where a higher form covers it (a
-/// table's top over its legs).
-fn component(d: &mut Drawing, m: &Model, pieces: &[crate::family::Piece]) {
+/// table's top over its legs). Each stroke drawn is handed to `edge` too, with the place of the piece it is of (GEO-2c-2e:
+/// what a family's plan picks by).
+fn component(d: &mut Drawing, m: &Model, pieces: &[crate::family::Piece], mut edge: impl FnMut(usize, P2, P2)) {
     if pattern_style(d, false).is_some() {
         for p in pieces {
             let own = p.holes.iter().fold(vec![p.outline.clone()], |rings, h| walls::minus(&rings, h));
@@ -4313,12 +4330,16 @@ fn component(d: &mut Drawing, m: &Model, pieces: &[crate::family::Piece]) {
             let mut at = 0.0;
             for (s0, s1) in hidden {
                 if s0 > at {
-                    d.line(&[a + u * at, a + u * s0], BY_CATEGORY, INK, false);
+                    let (from, to) = (a + u * at, a + u * s0);
+                    d.line(&[from, to], BY_CATEGORY, INK, false);
+                    edge(i, from, to);
                 }
                 at = f64::max(at, s1);
             }
             if at < len {
-                d.line(&[a + u * at, b], BY_CATEGORY, INK, false);
+                let from = a + u * at;
+                d.line(&[from, b], BY_CATEGORY, INK, false);
+                edge(i, from, b);
             }
         }
     }
@@ -5000,10 +5021,15 @@ const MAX_BELOW: usize = 600;
 /// says covers a point: the wall cut round the opening) or the part below the cut of a piece reaching higher covers both
 /// sides of it. An edge is the shadow's where one side of it is in the
 /// shadow and the other not, so the triangles a cut leaves split along a face draw nothing between them.
-fn below_cut(pieces: &[&crate::family::Piece], cut_rings: &[Vec<P2>], (over, over_edges): Cover, cut: f64) -> Vec<(P2, P2)> {
+fn below_cut(
+    pieces: &[(usize, &crate::family::Piece)],
+    cut_rings: &[Vec<P2>],
+    (over, over_edges): Cover,
+    cut: f64,
+) -> Vec<(usize, P2, P2)> {
     let shadows: Vec<(Vec<[P2; 3]>, f64)> = pieces
         .iter()
-        .map(|p| {
+        .map(|(_, p)| {
             let tris = below_tris(&p.tris, cut);
             let top = tris.iter().flatten().map(|q| q[2]).fold(f64::NEG_INFINITY, f64::max);
             let flat = tris.iter().map(|t| t.map(|q| P2(q[0], q[1]))).filter(|t| (t[1] - t[0]).cross(t[2] - t[0]).abs() > 1e-6).collect();
@@ -5013,8 +5039,8 @@ fn below_cut(pieces: &[&crate::family::Piece], cut_rings: &[Vec<P2>], (over, ove
     let mut out = Vec::new();
     if shadows.iter().map(|(t, _)| t.len()).sum::<usize>() > MAX_BELOW {
         // Too many to sort out: each one's outline, as a component's is drawn.
-        for p in pieces {
-            out.extend(geom::ring_edges(&p.outline));
+        for &(i, p) in pieces {
+            out.extend(geom::ring_edges(&p.outline).map(|(a, b)| (i, a, b)));
         }
         return out;
     }
@@ -5080,7 +5106,7 @@ fn below_cut(pieces: &[&crate::family::Piece], cut_rings: &[Vec<P2>], (over, ove
                 let (kp, kq) = (key(p), key(q));
                 let k = if kp < kq { [kp[0], kp[1], kq[0], kq[1]] } else { [kq[0], kq[1], kp[0], kp[1]] };
                 if seen.insert(k) {
-                    out.push((p, q));
+                    out.push((pieces[i].0, p, q));
                 }
             }
         }
@@ -5125,9 +5151,20 @@ fn infill(d: &mut Drawing, m: &Model, e: &Element, o: &Opening, w: &Wall, cut: f
 }
 
 /// A door or window the cut plane at height `cut` passes through: a gap in the wall, jambs, and
-/// a leaf with its swing, or glass.
+/// a leaf with its swing, or glass. With `picks` (a family's plan, GEO-2c-2e), a family's forms are kept there as the plan
+/// sees them, each with the strokes it is drawn with: what of it lies below the cut and outside the wall, and where it is cut.
 #[allow(clippy::too_many_arguments)]
-fn opening(d: &mut Drawing, m: &Model, e: &Element, o: &Opening, w: &Wall, cut: f64, shown: bool, hides: &dyn Fn(&str) -> bool) {
+fn opening(
+    d: &mut Drawing,
+    m: &Model,
+    e: &Element,
+    o: &Opening,
+    w: &Wall,
+    cut: f64,
+    shown: bool,
+    hides: &dyn Fn(&str) -> bool,
+    picks: Option<&mut crate::family::views::DisplayedForms>,
+) {
     let Some(h) = m.opening_hole(e, cut) else { return };
     let (axis, (ext, int)) = (Axis::of(w), walls::faces(m, w));
     let (s0, s1) = (h.s0, h.s1);
@@ -5166,16 +5203,29 @@ fn opening(d: &mut Drawing, m: &Model, e: &Element, o: &Opening, w: &Wall, cut: 
         // outlined whole); its outline where the cut finds no ring.
         let pieces = m.opening_pieces(e);
         let mut cut_rings: Vec<Vec<P2>> = Vec::new();
-        for piece in pieces.iter().filter(|p| p.bottom <= cut && cut < p.top && drawn(p)) {
+        // Kept for `picks`: each piece's strokes, and the regions where it is cut.
+        let mut strokes = picks.is_some().then(|| vec![Vec::new(); pieces.len()]);
+        let mut caps = picks.is_some().then(|| vec![Vec::new(); pieces.len()]);
+        for (i, piece) in pieces.iter().enumerate().filter(|(_, p)| p.bottom <= cut && cut < p.top && drawn(p)) {
             let rings = view3d::level_slice(&piece.tris, cut);
             if rings.is_empty() {
                 d.line(&piece.outline, BY_CATEGORY, INK, true);
+                if let (Some(strokes), Some(caps)) = (&mut strokes, &mut caps) {
+                    strokes[i].extend(geom::ring_edges(&piece.outline));
+                    caps[i].push(piece.outline.clone());
+                }
                 cut_rings.push(piece.outline.clone());
             }
             // Drawn by its outlines (a frame's cut round its opening is two rings, not the pieces it is covered by); what
             // it covers by its regions.
             for ring in view3d::level_outlines(&piece.tris, cut) {
                 d.line(&ring, BY_CATEGORY, INK, true);
+                if let Some(strokes) = &mut strokes {
+                    strokes[i].extend(geom::ring_edges(&ring));
+                }
+            }
+            if let Some(caps) = &mut caps {
+                caps[i].extend(rings.iter().cloned());
             }
             cut_rings.extend(rings);
         }
@@ -5187,7 +5237,8 @@ fn opening(d: &mut Drawing, m: &Model, e: &Element, o: &Opening, w: &Wall, cut: 
             Some(v) => v.in_plan(detail, p.bottom <= cut && cut < p.top),
             None => detail != Detail::Coarse,
         };
-        let below: Vec<&crate::family::Piece> = pieces.iter().filter(|p| p.bottom < cut - 1e-6 && seen(p)).collect();
+        let below: Vec<(usize, &crate::family::Piece)> =
+            pieces.iter().enumerate().filter(|(_, p)| p.bottom < cut - 1e-6 && seen(p)).collect();
         // The wall cut round the opening covers what lies under it: within its faces, but where the opening clears it.
         let void_rings: Vec<Vec<P2>> = voids.iter().flat_map(|v| view3d::level_slice(v, cut)).collect();
         let (lo, hi) = (ext.min(int), ext.max(int));
@@ -5207,8 +5258,32 @@ fn opening(d: &mut Drawing, m: &Model, e: &Element, o: &Opening, w: &Wall, cut: 
         } else {
             edges.extend(void_rings.iter().flat_map(|r| geom::ring_edges(r)));
         }
-        for (a, b) in below_cut(&below, &cut_rings, (&wall_covers, &edges), cut) {
+        for (i, a, b) in below_cut(&below, &cut_rings, (&wall_covers, &edges), cut) {
             d.line(&[a, b], BY_CATEGORY, INK, false);
+            if let Some(strokes) = &mut strokes {
+                strokes[i].push((a, b));
+            }
+        }
+        // What the plan sees of each form: below the cut, less the wall round the opening (where the opening or its voids
+        // don't clear it), and its cut's regions at the cut.
+        if let (Some(picks), Some(strokes), Some(caps)) = (picks, strokes, caps) {
+            let strip = |from: f64, to: f64| axis.points(from, to, ext).into_iter().chain(axis.points(to, from, int)).collect::<Vec<_>>();
+            let wall = vec![strip(0.0, axis.length())];
+            let wall = if voids.is_empty() {
+                walls::minus(&wall, &strip(s0, s1))
+            } else {
+                void_rings.iter().fold(wall, |parts, ring| walls::minus(&parts, ring))
+            };
+            for ((mut piece, strokes), caps) in pieces.into_iter().zip(strokes).zip(caps) {
+                if !seen(&piece) || piece.bottom > cut {
+                    continue;
+                }
+                piece.tris = crate::family::views::exposed_below(below_tris(&piece.tris, cut), &wall);
+                for r in caps {
+                    piece.tris.extend(geom::triangulate(&r).into_iter().map(|t| t.map(|k| [r[k].0, r[k].1, cut])));
+                }
+                picks.push_plan(piece, strokes);
+            }
         }
         // Each in its subcategory, which the view may hide (Doors > Opening: the swing) or draw its own way.
         for (mark, sub) in m.opening_marks_in(e, detail) {
@@ -6868,10 +6943,14 @@ pub fn rgba(d: &Drawing, under: Option<&view3d::Image>) -> Result<Vec<u8>, Strin
 /// component's forms seen from above whatever their height (a family's plan sees all of it), and where a form crosses the
 /// cut plane, its cut outline in the cut pen ([`crate::family::views::plan_cut_outlines`]). Project plans never cut a component. Once
 /// its View Range is set (FE-18), `seen` the heights it sees, lowest and highest: a form wholly below or above them is left out.
-pub(crate) fn family_plan(m: &Model, level: Id, view: View, seen: Option<(f64, f64)>) -> Drawing {
+/// With it, what it drew of each form and nested instance, each piece as it was built for the drawing and with the strokes
+/// it was drawn with: what a click, an edge click and a box in it take (GEO-2c-2e).
+pub(crate) fn family_plan(m: &Model, level: Id, view: View, seen: Option<(f64, f64)>) -> (Drawing, crate::family::views::DisplayedForms) {
+    let mut picks = crate::family::views::DisplayedForms::default();
     // One cache for the project's plan and its own pass over the components: each built once (ec's review of #84).
     let mut components = crate::component_geometry::Components::for_view(m, &view);
-    let mut d = draw_plan_with(m, level, view, false, annotation(m, level, view), scale_of(m, level), false, &mut components);
+    let (k, n) = (annotation(m, level, view), scale_of(m, level));
+    let mut d = draw_plan_with(m, level, view, false, k, n, false, &mut components, Some(&mut picks));
     let cut = m.level(level).map_or(crate::model::CUT_HEIGHT, |l| l.view_range.cut);
     let look = Look::of(m, level);
     let mut extra = Drawing::new(view);
@@ -6886,13 +6965,18 @@ pub(crate) fn family_plan(m: &Model, level: Id, view: View, seen: Option<(f64, f
         pieces.retain(|p| plan_draws(p, d.detail, cut) && seen.is_none_or(|(lo, hi)| p.top > lo && p.bottom < hi));
         extra.owner = Some(id);
         extra.part(Part::Projection);
-        component(&mut extra, m, &pieces);
+        let mut strokes = vec![Vec::new(); pieces.len()];
+        component(&mut extra, m, &pieces, |i, a, b| strokes[i].push((a, b)));
         extra.part(Part::Cut);
-        for p in pieces.iter().filter(|p| p.bottom < cut && p.top > cut) {
-            // Its outlines, never the pieces of a region with a hole (a ring's cut is two circles).
-            for ring in crate::family::views::plan_cut_outlines(&p.tris, cut) {
-                extra.line(&ring, Pen::CUT, INK, true);
+        for (p, mut strokes) in pieces.into_iter().zip(strokes) {
+            if p.bottom < cut && p.top > cut {
+                // Its outlines, never the pieces of a region with a hole (a ring's cut is two circles).
+                for ring in crate::family::views::plan_cut_outlines(&p.tris, cut) {
+                    extra.line(&ring, Pen::CUT, INK, true);
+                    strokes.extend(geom::ring_edges(&ring));
+                }
             }
+            picks.push_plan(p, strokes);
         }
     }
     extra.owner = None;
@@ -6909,7 +6993,7 @@ pub(crate) fn family_plan(m: &Model, level: Id, view: View, seen: Option<(f64, f
         d.parts.push(part);
         d.pens.push(pen);
     }
-    d
+    (d, picks)
 }
 
 /// A picture of `width` x `height` premultiplied RGBA pixels as a PNG: what a front end's screenshot is written as.

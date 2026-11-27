@@ -277,7 +277,7 @@ fn a_familys_plan_builds_nothing_far_off_its_window() {
         let near = id_of(&run(&mut s, "component", json!({"family": "Box", "at": [0, 0]})));
         let far = id_of(&run(&mut s, "component", json!({"family": "Box", "at": [500_000, 0], "params": {"Height": 700}})));
         let before = cg::builds();
-        let d = render::family_plan(&s.model, LEVEL, at(0.0, 0.0), None);
+        let (d, _) = render::family_plan(&s.model, LEVEL, at(0.0, 0.0), None);
         assert_eq!(cg::builds() - before, 1, "the near one alone");
         assert!(d.owners.contains(&Some(near)) && !d.owners.contains(&Some(far)));
     });

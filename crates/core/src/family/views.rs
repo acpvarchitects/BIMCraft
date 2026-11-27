@@ -99,9 +99,17 @@ pub fn flat_views(normal: P3) -> Vec<Which> {
     Which::ALL.into_iter().filter(|w| w.faces(normal)).collect()
 }
 
+mod displayed;
+pub(crate) use displayed::{DisplayedForms, exposed_below};
+
 /// A scratch model a family is placed in, made ready for its views.
 pub struct Staged {
     pub model: Model,
+    /// GEO-2c-2e: each of the family's forms and nested instances by GUID, its place in the family; and what the view last
+    /// drawn (a plan or an elevation) drew, which a click, an edge click and a box then take.
+    form_ids: BTreeMap<Guid, usize>,
+    instance_ids: BTreeMap<Guid, usize>,
+    displayed: Option<(Which, DisplayedForms)>,
     /// Ref. Level.
     pub level: Id,
     elevations: Vec<(Side, Id, P2)>,
@@ -284,7 +292,8 @@ pub fn stage(mut m: Model, family: &Family, values: &BTreeMap<String, Val>, show
     }
     let lines = family.lines.iter().map(|l| (l.start, l.end)).collect();
     let model_lines = family.model_lines.iter().filter(|l| shown(l.guid)).map(|l| (l.start, l.end)).collect();
-    Staged { model: m, level, elevations, planes, room, lines, model_lines, seen: None }
+    let (form_ids, instance_ids) = displayed::identities(&mut m, family);
+    Staged { model: m, form_ids, instance_ids, displayed: None, level, elevations, planes, room, lines, model_lines, seen: None }
 }
 
 /// What one of a family's views draws, for a front end that paints it as vectors: its frame, its drawing (what picks), and
@@ -303,6 +312,11 @@ pub struct Shown {
 }
 
 impl Staged {
+    /// What view `which` drew, when it is the view last drawn and one that keeps it (a plan, an elevation).
+    fn displayed(&self, which: Which) -> Option<&DisplayedForms> {
+        self.displayed.as_ref().filter(|(drawn, _)| *drawn == which).map(|(_, forms)| forms)
+    }
+
     /// The elevation looking from `side`.
     pub fn elevation(&self, side: Side) -> Option<Id> {
         self.elevations.iter().find(|(s, ..)| *s == side).map(|(_, id, _)| *id)
@@ -487,15 +501,20 @@ impl Staged {
         // The reference lines, as the view sees them: seen from above in plan (and from below in the ceiling plan), across
         // an elevation where their plane is square to it, foreshortened where it isn't.
         let lines: Vec<(P2, P2)> = self.lines.iter().map(|(a, b)| (self.to_view(which, *a), self.to_view(which, *b))).collect();
-        let (mut drawing, picture) = match which {
-            Which::Plan => (render::family_plan(m, self.level, view, self.seen), None),
-            Which::Ceiling => (render::draw_ceiling(m, self.level, view), None),
+        // What a plan or an elevation drew is kept, for what is picked in it (GEO-2c-2e).
+        let (mut drawing, picture, displayed) = match which {
+            Which::Plan => {
+                let (drawing, forms) = render::family_plan(m, self.level, view, self.seen);
+                (drawing, None, Some(forms))
+            }
+            Which::Ceiling => (render::draw_ceiling(m, self.level, view), None, None),
             Which::Elevation(side) => {
                 let id = self.elevation(side).ok_or("the family has no such elevation")?;
-                let picture = render::section_picture(m, id, view, &[]).ok_or("the elevation can't be drawn")?;
-                (render::section_over(m, id, view, &picture), Some(picture))
+                let (drawing, picture, forms) = render::family_elevation(m, id, view).ok_or("the elevation can't be drawn")?;
+                (drawing, Some(picture), Some(forms))
             }
         };
+        self.displayed = displayed.map(|forms| (which, forms));
         render::reference_lines(&mut drawing, &lines);
         let model: Vec<(P2, P2)> = self.model_lines.iter().map(|(a, b)| (self.to_view(which, *a), self.to_view(which, *b))).collect();
         render::family_model_lines(&mut drawing, &model);
@@ -619,6 +638,16 @@ pub fn form_at_among(
     at: P2,
     shown: &dyn Fn(usize) -> bool,
 ) -> Option<usize> {
+    // What the view drew there (GEO-2c-2e): a nested instance on top hides a form under it.
+    if let Some(drawn) = st.displayed(which) {
+        return match drawn.face(st, which, at, |part| match part {
+            Part::Form(i) => shown(i),
+            Part::Nested(_) => true,
+        }) {
+            Some(Part::Form(i)) => Some(i),
+            _ => None,
+        };
+    }
     let mut read = HashMap::new();
     let mut best: Option<(f64, usize)> = None;
     for i in 0..family.forms.len() {
@@ -648,6 +677,12 @@ pub fn form_at_among(
 /// the one nearest the eye there, as [`form_at`] finds a form, by the pieces the view draws of it (its Visibility Settings
 /// there). None where none is.
 pub fn nested_at(family: &Family, values: &BTreeMap<String, Val>, st: &Staged, which: Which, at: P2) -> Option<usize> {
+    if let Some(drawn) = st.displayed(which) {
+        return match drawn.face(st, which, at, |_| true) {
+            Some(Part::Nested(i)) => Some(i),
+            _ => None,
+        };
+    }
     let mut best: Option<(f64, usize)> = None;
     for i in 0..family.nested_instances.len() {
         for t in &nested_drawn(family, values, st, which, i) {
@@ -669,8 +704,9 @@ pub fn nested_at(family: &Family, values: &BTreeMap<String, Val>, st: &Staged, w
 }
 
 /// How near point `at` of view `which` the edges solid `tris` is seen with there pass ([`outline_edges`]), when within
-/// `reach`: none past it, or where it has no edge.
-fn edge_near(tris: &[[P3; 3]], st: &Staged, which: Which, at: P2, reach: f64) -> Option<f64> {
+/// `reach` and where the point of the edge nearest `at` is `visible` (nothing else drawn nearer the eye there): none past it,
+/// or where it has no edge.
+fn edge_near(tris: &[[P3; 3]], st: &Staged, which: Which, at: P2, reach: f64, visible: impl Fn(P2) -> bool) -> Option<f64> {
     // Off the box round what it covers, no edge of it is near: the occlusion is worked out only for the solids under the cursor.
     let seen: Vec<P2> = tris.iter().flatten().map(|p| st.to_view(which, *p)).collect();
     let lo = seen.iter().fold(P2(f64::INFINITY, f64::INFINITY), |a, q| P2(a.0.min(q.0), a.1.min(q.1)));
@@ -680,8 +716,11 @@ fn edge_near(tris: &[[P3; 3]], st: &Staged, which: Which, at: P2, reach: f64) ->
     }
     seen_edges(tris, st, which)
         .iter()
-        .map(|(a, b)| crate::geom::dist_to_segment(at, *a, *b))
-        .filter(|d| d.is_finite() && *d <= reach)
+        .filter_map(|&(a, b)| {
+            let q = a + (b - a) * geom::param_on_segment(at, a, b);
+            let d = at.dist(q);
+            (d.is_finite() && d <= reach && visible(q)).then_some(d)
+        })
         .min_by(f64::total_cmp)
 }
 
@@ -703,11 +742,17 @@ pub fn form_edge_at_among(
     reach: f64,
     shown: &dyn Fn(usize) -> bool,
 ) -> Option<usize> {
+    if let Some(drawn) = st.displayed(which) {
+        return match drawn.edge(st, which, at, reach, |part| matches!(part, Part::Form(i) if shown(i))) {
+            Some(Part::Form(i)) => Some(i),
+            _ => None,
+        };
+    }
     let mut read = HashMap::new();
     let mut best: Option<(f64, usize)> = None;
     for i in (0..family.forms.len()).filter(|i| !family.forms[*i].void && shown(*i)) {
         let Some(piece) = family.solid(i, values, &mut read).ok().flatten() else { continue };
-        if let Some(d) = edge_near(&piece.tris, st, which, at, reach)
+        if let Some(d) = edge_near(&piece.tris, st, which, at, reach, |_| true)
             && best.is_none_or(|(b, _)| d < b)
         {
             best = Some((d, i));
@@ -719,8 +764,14 @@ pub fn form_edge_at_among(
 /// The nested instance of `family` an edge of which, as view `which` draws it, passes within `reach` of point `at`, as
 /// [`form_edge_at`] finds a form ([`nested_outline_edges`]).
 pub fn nested_edge_at(family: &Family, values: &BTreeMap<String, Val>, st: &Staged, which: Which, at: P2, reach: f64) -> Option<usize> {
+    if let Some(drawn) = st.displayed(which) {
+        return match drawn.edge(st, which, at, reach, |part| matches!(part, Part::Nested(_))) {
+            Some(Part::Nested(i)) => Some(i),
+            _ => None,
+        };
+    }
     (0..family.nested_instances.len())
-        .filter_map(|i| edge_near(&nested_drawn(family, values, st, which, i), st, which, at, reach).map(|d| (d, i)))
+        .filter_map(|i| edge_near(&nested_drawn(family, values, st, which, i), st, which, at, reach, |_| true).map(|d| (d, i)))
         .min_by(|a, b| a.0.total_cmp(&b.0))
         .map(|(_, i)| i)
 }
@@ -737,6 +788,9 @@ pub fn face_in_box(
     part: Part,
     boxed: &crate::geom::SelectBox,
 ) -> bool {
+    if let Some(drawn) = st.displayed(which) {
+        return drawn.in_box(st, which, part, boxed);
+    }
     let tris: Vec<[P3; 3]> = match part {
         Part::Form(i) if family.forms.get(i).is_some_and(|f| !f.void) => {
             family.solid(i, values, &mut HashMap::new()).ok().flatten().map(|p| p.tris).unwrap_or_default()
@@ -758,6 +812,9 @@ pub fn face_in_box(
 /// the view draws of it, seen together, so one hides another. What it is picked, boxed and drawn selected by. Empty where the
 /// view draws none of it.
 pub fn nested_outline_edges(family: &Family, values: &BTreeMap<String, Val>, st: &Staged, which: Which, i: usize) -> Vec<(P2, P2)> {
+    if let Some(drawn) = st.displayed(which) {
+        return drawn.outline(st, which, Part::Nested(i));
+    }
     seen_edges(&nested_drawn(family, values, st, which, i), st, which)
 }
 
@@ -989,6 +1046,11 @@ pub fn outline(family: &Family, values: &BTreeMap<String, Val>, st: &Staged, whi
 /// drawn with, and what a click and a box take it by while a face doesn't select ([`form_edge_at`]). Empty for a form that
 /// builds nothing.
 pub fn outline_edges(family: &Family, values: &BTreeMap<String, Val>, st: &Staged, which: Which, i: usize) -> Vec<(P2, P2)> {
+    if let Some(drawn) = st.displayed(which)
+        && family.forms.get(i).is_some_and(|f| !f.void)
+    {
+        return drawn.outline(st, which, Part::Form(i));
+    }
     if i >= family.forms.len() {
         return Vec::new();
     }
@@ -1095,6 +1157,9 @@ fn inside(t: &[P2; 3], p: P2) -> bool {
     let area = (t[1].0 - t[0].0) * (t[2].1 - t[0].1) - (t[1].1 - t[0].1) * (t[2].0 - t[0].0);
     area.abs() > 1e-9 && (s.iter().all(|x| *x >= -1e-9) || s.iter().all(|x| *x <= 1e-9))
 }
+
+#[cfg(test)]
+mod pick_tests;
 
 #[cfg(test)]
 mod tests {

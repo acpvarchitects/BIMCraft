@@ -7981,6 +7981,7 @@ mod family_temporary_hide;
 mod family_type_params;
 mod family_types_dialog;
 mod family_view_graphics;
+mod family_view_picks;
 mod family_views;
 mod family_visibility;
 mod family_windows;
