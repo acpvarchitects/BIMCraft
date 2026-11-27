@@ -276,7 +276,10 @@ fn the_tools_work_in_an_elevation_and_in_3d() {
     let mut h = plan();
     view(&mut h, Some(Which::Elevation(Side::Front)));
     shortcut(&mut h, "GU");
-    // A above the hole V cuts through it (up to 200), which the elevation draws clear and so picks nothing in (GEO-2c-2e).
+    // Through the hole V cuts in A (up to 200), which the elevation draws clear: nothing there to take, the tool still in hand
+    // (GEO-2c-2e). Above the hole, A.
+    click_family(&mut h, [300.0, 300.0, 150.0]);
+    assert!(mode(&h).is_some() && editor(&h).views.cutting.and_then(|c| c.first).is_none(), "{}", status(&h));
     click_family(&mut h, [300.0, 300.0, 250.0]);
     click_family(&mut h, [-800.0, 300.0, 150.0]);
     assert_eq!(family(&h).forms[0].cut_by, vec![guid(B)], "{}", status(&h));
