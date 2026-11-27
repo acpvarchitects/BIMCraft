@@ -169,27 +169,34 @@ fn nested_ifc_metadata_keeps_the_family_name_boundary_in_equal_display_labels() 
     let mut instance = cabinet.nested_instances[0].clone();
     instance.guid = crate::ids::Guid::new();
     instance.type_name = "Fixture:Lever".into();
-    cabinet.nested_instances.push(instance);
     cabinet.nested_instances[0].family = left.name.clone();
-    cabinet.nested = vec![left.clone(), right.clone()];
-    m.families.insert(left.name, left.family);
-    m.families.insert(right.name, right.family);
+    cabinet.nested = vec![left.clone()];
+    m.families.insert(left.name.clone(), left.family);
+    let read = |m: &Model| {
+        let file = crate::step::parse(crate::ifc::export(m).as_bytes()).unwrap();
+        let mut ids = std::collections::BTreeMap::new();
+        for (id, _) in m.nested_in(m.guid(host)) {
+            let Some(Element::Nested(n)) = m.elements.get(id) else { panic!("child") };
+            let part = occurrence(&file, m, id);
+            let assigned = related(&file, part, "IFCRELDEFINESBYTYPE");
+            assert_eq!(assigned.len(), 1);
+            let typ = &file.entities[&assigned[0]];
+            assert_eq!(typ.args[2], V::Str("Handle:Fixture:Lever".into()));
+            let rel = file.entities.values().find(|e| e.name == "IFCRELDEFINESBYTYPE" && e.args[5] == V::Ref(assigned[0])).unwrap();
+            ids.insert(n.family.clone(), (typ.args[0].clone(), rel.args[0].clone()));
+        }
+        ids
+    };
     m.sync_nested();
-    let children = m.nested_in(m.guid(host));
-    assert_eq!(children.len(), 2);
-    let file = crate::step::parse(crate::ifc::export(m).as_bytes()).unwrap();
-    let mut ids = Vec::new();
-    let mut relation_ids = Vec::new();
-    for (id, _) in children {
-        let part = occurrence(&file, m, id);
-        let assigned = related(&file, part, "IFCRELDEFINESBYTYPE");
-        assert_eq!(assigned.len(), 1);
-        let typ = &file.entities[&assigned[0]];
-        assert_eq!(typ.args[2], V::Str("Handle:Fixture:Lever".into()));
-        ids.push(typ.args[0].clone());
-        let rel = file.entities.values().find(|e| e.name == "IFCRELDEFINESBYTYPE" && e.args[5] == V::Ref(assigned[0])).unwrap();
-        relation_ids.push(rel.args[0].clone());
-    }
-    assert_ne!(ids[0], ids[1]);
-    assert_ne!(relation_ids[0], relation_ids[1]);
+    let alone = read(m);
+    let cabinet = m.families.get_mut("Cabinet").unwrap();
+    cabinet.nested_instances.push(instance);
+    cabinet.nested.push(right.clone());
+    m.families.insert(right.name.clone(), right.family);
+    m.sync_nested();
+    let both = read(m);
+    assert_eq!(both.len(), 2);
+    assert_eq!(alone[&left.name], both[&left.name], "adding a colliding label must preserve both original GlobalIds");
+    assert_ne!(both[&left.name].0, both[&right.name].0);
+    assert_ne!(both[&left.name].1, both[&right.name].1);
 }

@@ -1987,7 +1987,7 @@ and `Model::nested_pieces` reads the host's pieces that are its own.
   nested in, the nearest written, else into its host (cabinet, handle, knob: two `IfcRelAggregates`). A shared family
   inside one that isn't shared stays part of it, as before. No FORMAT change: a file holds the GUIDs it held.
 
-Known: IFC writes it without a type object or a property set of its own. A component's plan marks now include those of
+A component's plan marks now include those of
 its nested instances standing on its level planes even when it has no symbols of its own (before, a host without symbols
 dropped them).
 

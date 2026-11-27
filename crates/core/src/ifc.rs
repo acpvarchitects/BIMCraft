@@ -901,7 +901,6 @@ impl Step {
     /// its occurrences use, one for each cardinal point. All the GlobalIds come from the class, the name and the member, so they
     /// are the same on every export.
     fn write_types(&mut self, m: &Model) {
-        let mut used_keys = BTreeSet::new();
         for ((class, before, after, name, member, family), TypeBuild { predefined, occurrences, usages, omniclass, family_props }) in
             std::mem::take(&mut self.typed)
         {
@@ -911,16 +910,20 @@ impl Step {
                 .chain(class.bytes())
                 .chain(member_text.bytes())
                 .fold(0xCBF2_9CE4_8422_2325u64, |h, b| (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01B3));
-            if let Some((_, Some(variant))) = &family {
-                key = mix(key ^ variant);
-            }
-            // Existing, unambiguous type IDs stay stable. The visible label may contain colons, and
-            // two schema-specific layouts can share a class and label (a door/window style in 2x3).
-            if !used_keys.insert(key) {
-                key = mix(key ^ key_of(&format!("{before:?}/{after:?}/{family:?}")));
-                while !used_keys.insert(key) {
-                    key = key.wrapping_add(1);
+            // The ordinary family label splits at its first colon. Qualify other boundaries (or a
+            // project type with a literal colon) from the name itself, independent of the other
+            // types exported today. An independently embedded definition retains its own key.
+            match &family {
+                Some((family_name, variant)) => {
+                    if family_name.contains(':') {
+                        key = mix(key ^ key_of(family_name) ^ 0x6661_6d69_6c79);
+                    }
+                    if let Some(variant) = variant {
+                        key = mix(key ^ variant);
+                    }
                 }
+                None if member.is_none() && name.contains(':') => key = mix(key ^ 0x7072_6f6a_6563_74),
+                _ => {}
             }
             // Six attributes after the name (description to element type), then `before`, the predefined type and `after`.
             let sets = self.family_type_sets(key, family_props.as_deref().unwrap_or_default());
