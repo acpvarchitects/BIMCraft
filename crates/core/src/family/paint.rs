@@ -224,43 +224,48 @@ impl crate::model::Model {
     /// nearest triangle that faces that way ([`FormFace`]), with its form's GUID and the nested instances down to it
     /// (FE-16c-2), what Paint clicks name. None where `id` is no component or no triangle of it is within a millimetre.
     pub fn component_face(&self, id: crate::model::Id, at: [f64; 3], normal: [f64; 3]) -> Option<crate::paint::FaceAt> {
-        use crate::view3d::{cross, dot, sub};
         let Some(crate::model::Element::Component(c)) = self.elements.get(id) else { return None };
-        if !at.iter().chain(&normal).all(|v| v.is_finite()) {
-            return None;
-        }
-        let mut best: Option<(f64, crate::paint::FaceAt)> = None;
-        for piece in self.component_pieces(c) {
-            for (t, k) in piece.tris.iter().zip(&piece.faces) {
-                let n = cross(sub(t[1], t[0]), sub(t[2], t[0]));
-                let len = dot(n, n).sqrt();
-                if len < 1e-12 {
-                    continue;
-                }
-                let n = n.map(|v| v / len);
-                let way = dot(n, normal) / dot(normal, normal).sqrt().max(1e-12);
-                if way.abs() < 0.9 {
-                    continue;
-                }
-                let off = dot(sub(at, t[0]), n).abs();
-                // Inside the triangle, by the side of each edge, a millimetre's slack.
-                let inside = (0..3).all(|e| {
-                    let (a, b) = (t[e], t[(e + 1) % 3]);
-                    let edge = sub(b, a);
-                    let elen = dot(edge, edge).sqrt().max(1e-12);
-                    dot(cross(edge, sub(at, a)), n) / elen >= -1.0
-                });
-                if off > 1.0 || !inside {
-                    continue;
-                }
-                let Some(key) = piece.keys.get(*k as usize) else { continue };
-                if best.as_ref().is_none_or(|(d, _)| off < *d) {
-                    best = Some((off, crate::paint::FaceAt { form: piece.form, nested: piece.path.clone(), face: key.clone() }));
-                }
+        face_among(&self.component_pieces(c), at, normal)
+    }
+}
+
+/// [`crate::model::Model::component_face`] among a component's `pieces`, placed: the build it is looked for in.
+pub(crate) fn face_among(pieces: &[crate::family::Piece], at: [f64; 3], normal: [f64; 3]) -> Option<crate::paint::FaceAt> {
+    use crate::view3d::{cross, dot, sub};
+    if !at.iter().chain(&normal).all(|v| v.is_finite()) {
+        return None;
+    }
+    let mut best: Option<(f64, crate::paint::FaceAt)> = None;
+    for piece in pieces {
+        for (t, k) in piece.tris.iter().zip(&piece.faces) {
+            let n = cross(sub(t[1], t[0]), sub(t[2], t[0]));
+            let len = dot(n, n).sqrt();
+            if len < 1e-12 {
+                continue;
+            }
+            let n = n.map(|v| v / len);
+            let way = dot(n, normal) / dot(normal, normal).sqrt().max(1e-12);
+            if way.abs() < 0.9 {
+                continue;
+            }
+            let off = dot(sub(at, t[0]), n).abs();
+            // Inside the triangle, by the side of each edge, a millimetre's slack.
+            let inside = (0..3).all(|e| {
+                let (a, b) = (t[e], t[(e + 1) % 3]);
+                let edge = sub(b, a);
+                let elen = dot(edge, edge).sqrt().max(1e-12);
+                dot(cross(edge, sub(at, a)), n) / elen >= -1.0
+            });
+            if off > 1.0 || !inside {
+                continue;
+            }
+            let Some(key) = piece.keys.get(*k as usize) else { continue };
+            if best.as_ref().is_none_or(|(d, _)| off < *d) {
+                best = Some((off, crate::paint::FaceAt { form: piece.form, nested: piece.path.clone(), face: key.clone() }));
             }
         }
-        best.map(|(_, k)| k)
     }
+    best.map(|(_, k)| k)
 }
 
 impl crate::model::Model {

@@ -461,3 +461,69 @@ fn with_too_little_memory_free_refining_refines_nothing() {
     assert!(scene.refined_with(&m, &cam, &look, free(Some(16 << 30)), &|| false).is_some(), "16 GB free");
     assert!(scene.refined_with(&m, &cam, &look, free(None), &|| false).is_some(), "no meter");
 }
+
+/// Paint on a refined curve (GEO-2c-2c): the face a click on a component finds is looked for in the build the scene draws it
+/// with. Zoomed in on a drum's side, its refined chords lie up to 3.85 mm outside the default's, past the millimetre a face is
+/// looked for within: at the default, a click there finds nothing. Every pixel on the drum finds its side, all round.
+#[test]
+fn a_click_on_a_refined_curve_finds_the_face_it_is_on() {
+    let mut s = Session::new();
+    family(&mut s, "Standing", vec![standing()]);
+    let c = place(&mut s, "Standing", [0.0, 0.0], 0.0);
+    let (m, look) = (&s.model, Look::of_3d(&s.model));
+    // Looking north at its south side, 1 m up: 2 px a mm, a metre across.
+    let cam = north(2.0, [0.0, 0.0, 1000.0], (2000, 40));
+    let scene = Scene::new(m).refined(m, &cam, &look).unwrap_or_else(|| panic!("refined"));
+    assert_eq!(scene.fineness_of(c), Fineness::for_view(2.0));
+    let img = scene.render(&cam, &[]);
+    let (mut faces, mut missed) = (Vec::new(), 0);
+    for x in 0..2000 {
+        let Some(hit) = scene.surface_in(&img, &cam, (f64::from(x) + 0.5, 20.5)) else { continue };
+        assert_eq!(hit.id, c, "only the drum on the picture");
+        if m.component_face(c, hit.at, hit.normal).is_none() {
+            missed += 1;
+        }
+        let at = scene.component_face(m, c, hit.at, hit.normal).unwrap_or_else(|| panic!("a face at column {x}: {hit:?}"));
+        faces.push(at.face);
+    }
+    assert!(faces.len() > 1900, "the drum across the picture: {} columns", faces.len());
+    assert!(missed > 0, "at the default, somewhere between its chords' ends a click finds nothing");
+    faces.dedup();
+    assert_eq!(faces.len(), 1, "one side all round: {faces:?}");
+    assert!(!matches!(faces[0], crate::family::FormFace::Start | crate::family::FormFace::End), "its side: {:?}", faces[0]);
+}
+
+/// A 20 m disc with two 6 m round voids: within the cutting's limits at the default, past them however little finer (as in
+/// `family_fineness_tests.rs`).
+fn holed() -> Vec<Value> {
+    let mut forms = vec![json!({"sketch": [{"centre": [0, 0], "radius": 20000}], "from": 0, "to": 3000})];
+    for x in [-10000, 10000] {
+        forms.push(json!({"sketch": [{"centre": [x, 0], "radius": 6000}], "from": 1000, "to": 4000, "void": true}));
+    }
+    forms
+}
+
+/// A component too fine to cut at the fineness the camera asks for is drawn with its default build (GEO-2c), though the scene
+/// is refined for it: a click on it finds its face in the build it is drawn with, not in one that can't be made.
+#[test]
+fn a_click_on_a_component_too_fine_to_cut_finds_its_face_in_the_default_build_drawn() {
+    let mut s = Session::new();
+    family(&mut s, "Holed", holed());
+    let c = place(&mut s, "Holed", [0.0, 0.0], 0.0);
+    let (m, look) = (&s.model, Look::of_3d(&s.model));
+    let Some(crate::model::Element::Component(component)) = m.elements.get(c) else { panic!("the disc") };
+    assert!(Fineness::for_view(8.0).scoped(|| m.component_pieces(component)).is_empty(), "too fine to cut at 8 px a mm");
+    // Looking north at its south side, half a metre up: 8 px a mm, 50 mm across.
+    let cam = north(8.0, [0.0, 0.0, 500.0], (400, 40));
+    let scene = Scene::new(m).refined(m, &cam, &look).unwrap_or_else(|| panic!("refined"));
+    assert_eq!(scene.fineness_of(c), Fineness::for_view(8.0), "the scene refined for it");
+    let img = scene.render(&cam, &[]);
+    let mut found = 0;
+    for x in 0..400 {
+        let Some(hit) = scene.surface_in(&img, &cam, (f64::from(x) + 0.5, 20.5)) else { continue };
+        assert_eq!(hit.id, c, "only the disc on the picture");
+        scene.component_face(m, c, hit.at, hit.normal).unwrap_or_else(|| panic!("a face at column {x}: {hit:?}"));
+        found += 1;
+    }
+    assert!(found > 380, "the disc across the picture: {found} columns");
+}
