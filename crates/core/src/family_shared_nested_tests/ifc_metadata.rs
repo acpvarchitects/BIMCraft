@@ -79,7 +79,16 @@ fn nested_ifc_metadata_follows_the_bound_values_and_shares_one_type() {
             assert_eq!(imported.elements.get(imported_child).unwrap().params().unwrap()["W"], json!(width));
             let classes = related(&file, assigned[0], "IFCRELASSOCIATESCLASSIFICATION");
             assert_eq!(classes.len(), 1);
-            assert_eq!(file.entities[&classes[0]].args[1], V::Str("23.40.20".into()));
+            let reference = &file.entities[&classes[0]];
+            assert_eq!(reference.args[1], V::Str("23.40.20".into()));
+            let V::Ref(system) = reference.args[3] else { panic!("the classification system") };
+            let fields = &file.entities[&system].args;
+            if schema == Schema::Ifc2x3 {
+                assert_eq!(fields[0], V::Str("CSI (Construction Specifications Institute)".into()));
+                assert_eq!(fields[1], V::Str(String::new()), "required label for an unspecified edition");
+            } else {
+                assert_eq!(fields[1], V::Null);
+            }
             let V::List(sets) = &typ.args[5] else { panic!("the type's declared parameters") };
             let refs = sets.iter().filter_map(|p| if let V::Ref(id) = p { Some(*id) } else { None }).collect::<Vec<_>>();
             assert_eq!(properties(&file, &refs).get("W"), Some(&length(40.)));

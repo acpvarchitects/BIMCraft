@@ -922,7 +922,7 @@ impl Step {
                         key = mix(key ^ variant);
                     }
                 }
-                None if member.is_none() && name.contains(':') => key = mix(key ^ 0x7072_6f6a_6563_74),
+                None if member.is_none() && name.contains(':') => key = mix(key ^ 0x0070_726f_6a65_6374),
                 _ => {}
             }
             // Six attributes after the name (description to element type), then `before`, the predefined type and `after`.
@@ -998,8 +998,13 @@ impl Step {
         if let Some(&written) = self.systems.get(system) {
             return written;
         }
-        let source = source.map_or_else(|| "$".to_string(), s);
-        let edition = edition.map_or_else(|| "$".to_string(), s);
+        // IFC2x3 requires both labels. An empty label preserves an unspecified edition or publisher.
+        let (source, edition) = if self.schema == Schema::Ifc2x3 {
+            let source = source.or_else(|| crate::classification::known_system(system).map(|def| def.publisher));
+            (s(source.unwrap_or_default()), s(edition.unwrap_or_default()))
+        } else {
+            (source.map_or_else(|| "$".to_string(), s), edition.map_or_else(|| "$".to_string(), s))
+        };
         let written = self.add(format!("IFCCLASSIFICATION({source},{edition},$,{},$,$,$)", s(system)));
         self.systems.insert(system.to_string(), written);
         written
