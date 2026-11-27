@@ -50,6 +50,7 @@ pub use fineness::Fineness;
 pub use nested::{Keep, NestedFamily, NestedInstance};
 pub use options::{MAX_OMNICLASS, OPTION_KEYS, OmniClass};
 pub use origin::PlacedOrigin;
+pub(crate) use paint::face_among;
 pub use paint::unread_paint;
 pub use visibility::Visibility;
 

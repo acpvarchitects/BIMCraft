@@ -2953,7 +2953,8 @@ impl BimApp {
                 let face = ed.orbit.surface_at(&input, &cam, p, fresh.then_some(&*scene)).and_then(|under| {
                     let staged = ed.scene3d.as_ref()?;
                     let bimcraft_core::family::views::Part::Form(i) = *staged.part.get(&under.id)? else { return None };
-                    let key = staged.model.component_face(under.id, under.at, under.normal)?.face;
+                    // Of the build {3D} draws it with, a refined one's too (GEO-2c-2c).
+                    let key = scene.component_face(&staged.model, under.id, under.at, under.normal)?.face;
                     Some((i, super::paint::key_back(key, staged.guids.get(&under.id)?)))
                 });
                 let names: Vec<String> = self.session.model.materials.keys().cloned().collect();
@@ -3051,6 +3052,9 @@ impl BimApp {
         if let Some(status) = ed.orbit.paint(ui.ctx(), &p, &mut self.card, mesh.as_ref(), shot) {
             self.status = status;
         }
+        // Its scene refined for the camera once that settles, on a worker, as the project's 3D view's is (GEO-2c-2c); the
+        // picture drawn as it is meanwhile.
+        ed.orbit.refine(ui.ctx(), &model, cam, card_ready);
         // The box's frame, with no grips: BX on another selection makes another.
         if let Some(b) = boxed {
             let at = on_pane(cam, size, pane);

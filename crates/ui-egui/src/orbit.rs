@@ -2963,10 +2963,11 @@ impl BimApp {
         let paste_click = click.filter(|_| pasting).map(paste_point);
         // The face of what's clicked, as paint names the faces of an element.
         let face = click.and_then(|at| pick(&o.picker, at).map(|h| h.face).filter(|f| !f.is_empty()));
-        // A component's face under the click, as its family names it (FE-16c-2): what Paint paints of it.
+        // A component's face under the click, as its family names it (FE-16c-2): what Paint paints of it. Of its build the
+        // scene draws, a refined one's too (GEO-2c-2c).
         let component_face = click.filter(|_| paint || unpaint).and_then(|at| {
             let under = surface(&o.picker, &cam, at)?;
-            Some((under.id, model.component_face(under.id, under.at, under.normal)?))
+            Some((under.id, scene.component_face(&model, under.id, under.at, under.normal)?))
         });
         // Place on Face: the face under the click, of what hosts components, by its role.
         let on_face = drawing && placing_on_face;
