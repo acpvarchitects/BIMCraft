@@ -1517,7 +1517,9 @@ build of 21 from before paint leaves the field out and opens the family unpainte
 `family {name, paint: {form, face, material}}` paints one face (the form by id or GUID; refused unless the form has that
 face), `material: null` takes that face's paint off and `face: null` with it all the form's; a form
 patch's `paint` gives the list whole. `Model::component_face` names the face of a component under a point on its surface (its
-nearest triangle facing that way), what a click in a 3D view finds. The family document has Paint (PT) and Remove Paint on
+nearest triangle facing that way, within a millimetre), what a click in a 3D view finds; a 3D view asks its scene
+(`Scene::component_face`), which looks in the build it draws the component with, so a click on a curve refined for the camera
+(GEO-2c-2b), which may lie a few millimetres off the default's chords, finds its face too. The family document has Paint (PT) and Remove Paint on
 its Geometry panel, beside Cut and Join (`editor/paint.rs`): {3D} opens, the Options Bar picks the material, and a click on a form's face paints
 it (`FamilyScene::guids` gives the staged part's GUIDs back as the family's), one step of the document's history. Project-side
 paint of a component's single faces is FE-16c-2 (below); picking and snapping on faces is GEO-2b-2. Tests: `family_paint_tests.rs`,
@@ -2347,9 +2349,12 @@ build each at its component's fineness through the store: copies in one band are
 two are two shapes, and a refined scene keeps no finer shape no copy is drawn from. An edit keeps each component's fineness:
 what it makes again is made at it, and so is a whole scene made again (`Scene::new_among_at`). On the card the refined scene's
 mesh goes up beside the one drawn and replaces it once there (`Gpu::prepare_upload_beside`), or, where both don't fit, as after
-an edit. Tests: `view3d_fineness_tests.rs` (with a guard holding a scene made as ever and its glTF, after refining, to the
-ones made before it in the same run, since their bits differ between platforms' maths libraries) and the desktop's
-`tests/refine3d.rs`; `view3d_fineness_bench` in `family_fineness_tests.rs` times the facade.
+an edit. The family document's {3D} is refined the same way (GEO-2c-2c): its staged parts are components of the scratch
+project, and the family staged again after an edit is brought up to date from the scene shown, so it keeps each part's
+fineness. Paint in either view finds the face clicked in the build the scene draws (`Scene::component_face`, above). Tests:
+`view3d_fineness_tests.rs` (with a guard holding a scene made as ever and its glTF, after refining, to the ones made before it
+in the same run, since their bits differ between platforms' maths libraries) and the desktop's `tests/refine3d.rs`;
+`view3d_fineness_bench` in `family_fineness_tests.rs` times the facade.
 
 ## Plans of many components (GEO-2g)
 
