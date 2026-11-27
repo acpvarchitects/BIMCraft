@@ -4461,6 +4461,15 @@ fn outline(
     depth: &[f32],
     mut paint: impl FnMut(usize),
 ) {
+    outline_samples(a, b, (w, h), wide, |k, z| {
+        if depth.get(k).is_some_and(|d| f64::from(*d) <= z + slack(z)) {
+            paint(k);
+        }
+    });
+}
+
+/// Each pixel of a projected model line, at its depth before another owner's geometry obscures it.
+fn outline_samples(a: Px, b: Px, (w, h): (usize, usize), wide: u8, mut sample: impl FnMut(usize, f64)) {
     let steps = (b.0 - a.0).abs().max((b.1 - a.1).abs()).ceil();
     if !steps.is_finite() || steps > 4.0 * MAX_SIDE as f64 {
         return;
@@ -4476,9 +4485,7 @@ fn outline(
                 continue;
             }
             let k = py as usize * w + px as usize;
-            if depth.get(k).is_some_and(|d| f64::from(*d) <= z + slack(z)) {
-                paint(k);
-            }
+            sample(k, z);
         }
     }
 }

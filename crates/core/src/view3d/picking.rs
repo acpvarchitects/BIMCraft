@@ -56,14 +56,18 @@ impl<'a> Ray<'a> {
     }
 
     /// Clip the line in the same camera, section range and crop that produced the picture.
-    fn line(&self, ends: [P3; 2]) -> Option<([P2; 2], f64)> {
+    fn projected_line(&self, ends: [P3; 2]) -> Option<(Px, Px)> {
         let [a, b] = match self.section {
             Some(_) => ends,
             None => self.boxed.as_ref().map_or(Some(ends), |b| within(ends[0], ends[1], (b.lo, b.hi)))?,
         };
         let [a, b] = self.camera.in_front(a, b)?;
         let segment = (self.project.at(a), self.project.at(b));
-        let (a, b) = self.section.map_or(Some(segment), |c| kept_in_depth(segment, c))?;
+        self.section.map_or(Some(segment), |c| kept_in_depth(segment, c))
+    }
+
+    fn line(&self, ends: [P3; 2]) -> Option<([P2; 2], f64)> {
+        let (a, b) = self.projected_line(ends)?;
         let (p, q) = (P2(a.0, a.1), P2(b.0, b.1));
         let (lo, hi) = self
             .section
@@ -71,6 +75,31 @@ impl<'a> Ray<'a> {
         let (start, end) = clip(p, q, lo, hi)?;
         let t = geom::param_on_segment(self.at, p, q);
         Some(([start, end], a.2 + (b.2 - a.2) * t))
+    }
+
+    fn wire_hit(&self, [a, b]: [P2; 2]) -> bool {
+        let at = (self.at.0.floor() as i64, self.at.1.floor() as i64);
+        geom::dist_to_segment(self.at, a, b) <= 4. && wire_pixels(a, b).any(|(x, y)| (x - at.0).abs() <= 2 && (y - at.1).abs() <= 2)
+    }
+
+    fn line_depth(&self, ends: [P3; 2], wide: u8) -> Option<f64> {
+        if self.section.is_none() && self.look.style() == VisualStyle::Wireframe {
+            let (line, z) = self.line(ends)?;
+            return self.wire_hit(line).then_some(z);
+        }
+        let (a, b) = self.projected_line(ends)?;
+        if geom::dist_to_segment(self.at, P2(a.0, a.1), P2(b.0, b.1)) > 2. {
+            return None;
+        }
+        let size = (self.camera.width as usize, self.camera.height as usize);
+        let pixel = self.at.1.floor() as usize * size.0 + self.at.0.floor() as usize;
+        let mut depth: Option<f64> = None;
+        outline_samples(a, b, size, wide, |k, z| {
+            if k == pixel && self.contains(self.at.0, self.at.1, z) {
+                depth = Some(depth.map_or(z, |d| d.max(z)));
+            }
+        });
+        depth
     }
 
     fn add(&mut self, id: Id, depth: f64, lines: Vec<[P2; 2]>) {
@@ -95,8 +124,7 @@ impl<'a> Ray<'a> {
         part.planes = planes(&part.tris);
         let lines: Vec<_> = part.edges().iter().filter_map(|(_, seg)| self.line(*seg)).collect();
         if wire {
-            depth =
-                lines.iter().filter(|([a, b], _)| geom::dist_to_segment(self.at, *a, *b) <= 2.8).map(|(_, z)| *z).max_by(f64::total_cmp);
+            depth = lines.iter().filter(|(line, _)| self.wire_hit(*line)).map(|(_, z)| *z).max_by(f64::total_cmp);
         }
         if let Some(z) = depth {
             self.add(id, z, lines.into_iter().map(|(line, _)| line).collect());
@@ -104,23 +132,23 @@ impl<'a> Ray<'a> {
     }
 
     fn strokes(&mut self, strokes: &[Stroke]) {
-        let mut lines: BTreeMap<Id, Vec<([P2; 2], f64)>> = BTreeMap::new();
+        let mut lines: BTreeMap<Id, Vec<[P2; 2]>> = BTreeMap::new();
+        let mut depths: BTreeMap<Id, f64> = BTreeMap::new();
         for s in strokes {
             if !crate::link::is_linked(s.owner)
                 && self.look.shows(s.owner)
                 && self.look.forms_show(s.vis, false)
                 && self.look.line_edge(s.owner, s.sub, EDGE).is_some()
-                && let Some(line) = self.line(s.ends)
+                && let Some((line, _)) = self.line(s.ends)
             {
                 lines.entry(s.owner).or_default().push(line);
+                if let Some(z) = self.line_depth(s.ends, 1) {
+                    depths.entry(s.owner).and_modify(|d| *d = d.max(z)).or_insert(z);
+                }
             }
         }
-        for (id, lines) in lines {
-            let z =
-                lines.iter().filter(|([a, b], _)| geom::dist_to_segment(self.at, *a, *b) <= 2.5).map(|(_, z)| *z).max_by(f64::total_cmp);
-            if let Some(z) = z {
-                self.add(id, z, lines.into_iter().map(|(line, _)| line).collect());
-            }
+        for (id, z) in depths {
+            self.add(id, z, lines.remove(&id).unwrap_or_default());
         }
     }
 
@@ -179,6 +207,9 @@ impl Scene {
             }
         }
         ray.strokes(&self.strokes);
+        if look.style() == VisualStyle::Wireframe {
+            return ray.finish();
+        }
         ray.scans(&self.scans);
         // Caps are already cut to the box. Level heads sit just outside its clipped datum corners.
         let bounded = ray.boxed.take().map(|b| levels_in(&self.levels, (b.lo, b.hi)));
@@ -207,9 +238,10 @@ impl Scene {
         }) {
             let lines: Vec<_> = mark.lines.iter().filter_map(|(s, _)| ray.line(*s)).collect();
             let [a, b, c, d] = mark.head;
-            let z = ray.face_depth(&[a, b, c]).or_else(|| ray.face_depth(&[a, c, d])).or_else(|| {
-                lines.iter().filter(|([a, b], _)| geom::dist_to_segment(ray.at, *a, *b) <= 2.5).map(|(_, z)| *z).max_by(f64::total_cmp)
-            });
+            let z = ray
+                .face_depth(&[a, b, c])
+                .or_else(|| ray.face_depth(&[a, c, d]))
+                .or_else(|| mark.lines.iter().filter_map(|(ends, wide)| ray.line_depth(*ends, *wide)).max_by(f64::total_cmp));
             if let Some(z) = z {
                 ray.add(mark.id, z, lines.into_iter().map(|(line, _)| line).collect());
             }
@@ -224,6 +256,9 @@ impl Scene {
         look: &Look,
         at: (f64, f64),
     ) -> Vec<PickCandidate> {
+        if !(at.0 >= 0. && at.1 >= 0. && at.0 < f64::from(cam.width) && at.1 < f64::from(cam.height)) {
+            return Vec::new();
+        }
         let mut ray = Ray::new(cam, Some(clip), look, at);
         let mut components = crate::component_geometry::Components::for_section(m, fine);
         for ((id, _), bounds) in placed.iter().zip(boxes) {
@@ -294,6 +329,35 @@ mod tests {
         let hit = scene.pick_all(&cam, (x, y), &look, Some(&caps), &[]).into_iter().find(|c| c.id == 89).unwrap();
         assert_eq!(hit.edges.len(), 1);
         assert!(scene.pick_all(&cam, (x, y), &look, None, &[]).iter().all(|c| c.id != 89));
+    }
+
+    #[test]
+    fn each_overlapping_model_line_uses_the_same_shaded_or_wire_pixels_as_its_picture() {
+        let mut s = Session::new();
+        let mut cam = Camera::at([1000., 0., 0.], [0., 0., 0.], 50., 40, 40);
+        cam.lens = None;
+        cam.scale = 1.;
+        let mut scene = Scene::bare(Vec::new());
+        scene.strokes = [40, 41].map(|owner| Stroke { owner, ends: [[0., -14., -6.], [0., 12., 7.]], vis: 0, sub: None }).to_vec();
+        for style in ["shaded", "wireframe"] {
+            s.execute("visual_style", &json!({"style":style})).unwrap();
+            let look = Look::of_3d(&s.model);
+            let pic = scene.render_in(&cam, &[], &look);
+            let mut pixels = 0;
+            for y in 8..33 {
+                for x in 2..38 {
+                    let at = (f64::from(x) + 0.5, f64::from(y) + 0.5);
+                    let candidates = scene.pick_all(&cam, at, &look, None, &[]);
+                    if pic.pick(at.0, at.1).is_some() {
+                        pixels += 1;
+                        assert_eq!(candidates.iter().map(|c| c.id).collect::<Vec<_>>(), [40, 41], "{style} at {at:?}");
+                    } else {
+                        assert!(candidates.is_empty(), "{style} at {at:?}");
+                    }
+                }
+            }
+            assert!(pixels > 15);
+        }
     }
 
     #[test]
