@@ -80,3 +80,105 @@ fn nested_ifc_metadata_follows_the_bound_values_and_shares_one_type() {
         assert!(!properties(&file, &related(&file, host, "IFCRELDEFINESBYPROPERTIES")).contains_key("W"));
     }
 }
+
+#[test]
+fn nested_ifc_metadata_keeps_distinct_embedded_types_and_reuses_the_matching_project_type() {
+    let (mut s, cabinet) = cabinet(true);
+    let h = s.model.families["Cabinet"].nested[0].family.clone();
+    s.model_mut().families.insert("Handle".into(), h);
+    let direct = run(&mut s, "component", json!({"family":"Handle","type":"Lever","at":[7000,0]}))["id"].as_u64().unwrap();
+    let other = run(&mut s, "component", json!({"family":"Cabinet","type":"Small","at":[9000,0]}))["id"].as_u64().unwrap();
+
+    // An embedded definition in an older file can differ from the library under the same family/type name.
+    let m = s.model_mut();
+    let mut alternate = m.families["Cabinet"].clone();
+    alternate.nested[0].family.parameters[0].value = json!(90);
+    m.families.insert("Other cabinet".into(), alternate);
+    let Some(Element::Component(cp)) = m.elements.get_mut(other) else { panic!("component") };
+    cp.family = "Other cabinet".into();
+    m.sync_nested();
+    let file = crate::step::parse(crate::ifc::export(m).as_bytes()).unwrap();
+    let type_of = |id| {
+        let ids = related(&file, occurrence(&file, m, id), "IFCRELDEFINESBYTYPE");
+        assert_eq!(ids.len(), 1);
+        ids[0]
+    };
+    let nested_type = |id| type_of(m.nested_in(m.guid(id))[0].0);
+    let first = nested_type(cabinet);
+    let second = nested_type(other);
+    assert_eq!(first, type_of(direct));
+    assert_ne!(file.entities[&first].args[0], file.entities[&second].args[0]);
+    for (t, w) in [(first, 40.), (second, 90.)] {
+        let typ = &file.entities[&t];
+        assert_eq!(typ.args[2], V::Str("Handle:Lever".into()));
+        let V::List(sets) = &typ.args[5] else { panic!("declared values of this definition") };
+        let V::Ref(set) = sets[0] else { panic!("type property set") };
+        assert_eq!(properties(&file, &[set]).get("W"), Some(&length(w)));
+    }
+}
+
+#[test]
+fn nested_ifc_metadata_preserves_a_parameterless_childs_class_and_uses_only_available_type_classes() {
+    let (mut s, host) = cabinet(true);
+    let m = s.model_mut();
+    let f = m.families.get_mut("Cabinet").unwrap();
+    f.nested_instances[0].params.clear();
+    let child = &mut f.nested[0].family;
+    child.parameters.clear();
+    child.forms = serde_json::from_value(json!([{"profile":[[0,0],[50,0],[50,20],[0,20]],"to":30}])).unwrap();
+    child.ifc = Some(serde_json::from_value(json!({"class":"IFCBUILDINGELEMENTPART"})).unwrap());
+    let id = m.nested_in(m.guid(host))[0].0;
+    for schema in [Schema::Ifc4, Schema::Ifc2x3, Schema::Ifc4x3] {
+        let file = crate::step::parse(crate::ifc::export_as(m, Origin::Internal, schema).as_bytes()).unwrap();
+        let occ = occurrence(&file, m, id);
+        assert_eq!(file.entities[&occ].name, "IFCBUILDINGELEMENTPART");
+        let types = related(&file, occ, "IFCRELDEFINESBYTYPE");
+        if schema == Schema::Ifc2x3 {
+            assert!(types.is_empty(), "IFC2X3 has no IfcBuildingElementPartType");
+        } else {
+            assert_eq!(types.len(), 1);
+            assert_eq!(file.entities[&types[0]].name, "IFCBUILDINGELEMENTPARTTYPE");
+        }
+        let own = properties(&file, &related(&file, occ, "IFCRELDEFINESBYPROPERTIES"));
+        assert_eq!(own.get("Family"), Some(&V::Typed("IFCTEXT".into(), Box::new(V::Str("Handle".into())))));
+        assert_eq!(own.get("Type"), Some(&V::Typed("IFCTEXT".into(), Box::new(V::Str("Lever".into())))));
+    }
+}
+
+#[test]
+fn nested_ifc_metadata_keeps_the_family_name_boundary_in_equal_display_labels() {
+    let (mut s, host) = cabinet(true);
+    let m = s.model_mut();
+    let cabinet = m.families.get_mut("Cabinet").unwrap();
+    let mut left = cabinet.nested[0].clone();
+    left.name = "Handle:Fixture".into();
+    let mut right = cabinet.nested[0].clone();
+    right.family.types = [("Fixture:Lever".into(), Default::default())].into();
+    right.family.parameters[0].value = json!(90);
+    let mut instance = cabinet.nested_instances[0].clone();
+    instance.guid = crate::ids::Guid::new();
+    instance.type_name = "Fixture:Lever".into();
+    cabinet.nested_instances.push(instance);
+    cabinet.nested_instances[0].family = left.name.clone();
+    cabinet.nested = vec![left.clone(), right.clone()];
+    m.families.insert(left.name, left.family);
+    m.families.insert(right.name, right.family);
+    m.sync_nested();
+    let children = m.nested_in(m.guid(host));
+    assert_eq!(children.len(), 2);
+    let file = crate::step::parse(crate::ifc::export(m).as_bytes()).unwrap();
+    let mut ids = Vec::new();
+    let mut relation_ids = Vec::new();
+    for (id, _) in children {
+        let part = occurrence(&file, m, id);
+        let assigned = related(&file, part, "IFCRELDEFINESBYTYPE");
+        assert_eq!(assigned.len(), 1);
+        let typ = &file.entities[&assigned[0]];
+        assert_eq!(typ.args[2], V::Str("Handle:Fixture:Lever".into()));
+        ids.push(typ.args[0].clone());
+        let rel = file.entities.values().find(|e| e.name == "IFCRELDEFINESBYTYPE" && e.args[5] == V::Ref(assigned[0])).unwrap();
+        relation_ids.push(rel.args[0].clone());
+    }
+    assert_ne!(ids[0], ids[1]);
+    assert_ne!(relation_ids[0], relation_ids[1]);
+}

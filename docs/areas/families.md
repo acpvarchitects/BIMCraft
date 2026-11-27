@@ -1968,6 +1968,10 @@ and `Model::nested_pieces` reads the host's pieces that are its own.
 - **IFC.** `ifc.rs` writes it as an element of its own of its family's class, named `Family:Type`, placed with its host,
   its body the pieces that are its own (taken out of its host's body), and aggregated into its host with the
   `IfcRelAggregates` that reinforcing bars use; a part isn't in the storey's `IfcRelContainedInSpatialStructure`.
+  The occurrence's `BIMCraft_FamilyParameters` property set carries its evaluated values, including bindings from its host.
+  A child without authored parameters carries its family and type names in `BIMCraft_NestedFamily`. Where the IFC schema
+  provides a type class, `IfcRelDefinesByType` links occurrences to the shared type object. Its `HasPropertySets` carries
+  the family's declared type values. A host binding can give two instances of that type different values.
 - **Edits.** It goes with its host: a move, a rotation or a mirror of the host takes it along, and deleting the host deletes
   it and its tags. Moved, turned, mirrored or deleted apart from its host, it is refused, saying it is part of it.
 

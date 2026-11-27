@@ -233,6 +233,23 @@ pub struct Entry {
     pub guid: Guid,
 }
 
+impl crate::family::Family {
+    /// Drop this definition's project-library part identities. References to its authored planes and lines stay usable.
+    pub(crate) fn forget_project_parts(&mut self) {
+        self.forms.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));
+        self.forms.iter_mut().flat_map(|x| x.all_lines_mut()).for_each(|l| (l.id, l.guid) = (0, Guid::default()));
+        self.symbols.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));
+        self.model_lines.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));
+        self.connectors.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));
+        // A plane's and a line's GUIDs stay: the forms and lines drawn on them name them by it.
+        self.planes.iter_mut().filter(|x| !x.datum()).for_each(|x| x.id = 0);
+        self.lines.iter_mut().for_each(|x| x.id = 0);
+        self.dimensions.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));
+        self.nested.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));
+        self.nested_instances.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));
+    }
+}
+
 /// A part of a library entry, with an id and a GUID of its own that it holds itself, kept while it stays where it is
 /// in its list: a type's layer, a family's form, plan symbol or connector. `what` it is, what it's `of` and its place there.
 #[derive(Clone, Debug, PartialEq)]
@@ -1394,17 +1411,7 @@ impl Model {
             (l.id, l.guid) = (0, Guid::default());
         }
         for f in self.families.values_mut() {
-            f.forms.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));
-            f.forms.iter_mut().flat_map(|x| x.all_lines_mut()).for_each(|l| (l.id, l.guid) = (0, Guid::default()));
-            f.symbols.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));
-            f.model_lines.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));
-            f.connectors.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));
-            // A plane's and a line's GUIDs stay: the forms and lines drawn on them name them by it.
-            f.planes.iter_mut().filter(|x| !x.datum()).for_each(|x| x.id = 0);
-            f.lines.iter_mut().for_each(|x| x.id = 0);
-            f.dimensions.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));
-            f.nested.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));
-            f.nested_instances.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));
+            f.forget_project_parts();
         }
         for g in self.detail_groups.values_mut().chain(self.model_groups.values_mut()) {
             g.members.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));

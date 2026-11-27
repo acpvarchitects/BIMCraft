@@ -12,6 +12,7 @@
 use bimcraft_i18n::ui_msg;
 
 pub mod classes;
+mod family_metadata;
 mod v2x3;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -115,6 +116,9 @@ const CURTAIN_MATERIALS: u64 = 100;
 const CODES_CLASSIFIED: u64 = 101;
 /// Join Geometry's pairs (T23).
 const JOINS: u64 = 102;
+const NESTED_PSET: u64 = 103;
+const NESTED_DEFINES: u64 = 104;
+const NESTED_TYPE_PSET: u64 = 105;
 
 /// Site footprint metadata in curve order: Names, Guids and Levels (native GUIDs).
 pub const PROPERTY_LINES: &str = "BIMCraft_PropertyLines";
@@ -654,11 +658,12 @@ type Member = (Section, String);
 
 /// A type object's key: its IFC class, what comes ahead of and after its predefined type (each with its comma), its name and, for
 /// a beam's, column's or footing's, its member (two types of one name and two sections are two type objects).
-type TypeKey = (String, String, String, String, Option<Member>);
+type TypeKey = (String, String, String, String, Option<Member>, Option<(String, Option<u64>)>);
 
 /// A type object as the export builds it: the predefined type its occurrences share, their ids, and which of them use its
 /// material profile set by each cardinal point.
 struct TypeBuild {
+    family_props: Option<Vec<family_metadata::Property>>,
     predefined: String,
     occurrences: Vec<u64>,
     usages: BTreeMap<u8, Vec<u64>>,
@@ -777,7 +782,15 @@ impl Step {
     /// Shared nested instance `n` (element `id`, T6b) of a component placed at `#host_at`: an element of its own of its
     /// family's class, named by its family and type, placed with its host, its body `pieces` (in the host's axes) styled in
     /// their materials. Its whole aggregates it.
-    fn nested_part(&mut self, m: &Model, id: Id, n: &crate::nested_elements::NestedElement, pieces: &[&Piece], host_at: u64) -> u64 {
+    fn nested_part(
+        &mut self,
+        m: &Model,
+        id: Id,
+        n: &crate::nested_elements::NestedElement,
+        pieces: &[&Piece],
+        host_at: u64,
+        family: Option<&crate::family::Family>,
+    ) -> u64 {
         let at = self.place(Some(host_at), (0.0, 0.0, 0.0), None);
         let mut items = Vec::new();
         let mut made_of: Vec<u64> = Vec::new();
@@ -795,7 +808,7 @@ impl Step {
             items.push(set);
         }
         let shape = self.tessellated(&items);
-        let (entity, kind, object_type) = match m.families.get(&n.family) {
+        let (entity, kind, object_type) = match family.or_else(|| m.families.get(&n.family)) {
             Some(f) => f.ifc(),
             None => ("IFCBUILDINGELEMENTPROXY".into(), ".NOTDEFINED.".into(), None),
         };
@@ -837,8 +850,12 @@ impl Step {
             Some((_, more)) => [props, &more].concat(),
             None => props.to_vec(),
         };
-        let set = self.add(format!("IFCPROPERTYSET({},$,{},$,({}))", self.guid(set, key), s(name), refs(&props)));
+        let set = self.property_set(name, &props, set, key);
         self.add(format!("IFCRELDEFINESBYPROPERTIES({},$,$,$,(#{ent}),#{set})", self.guid(relation, key)));
+    }
+
+    fn property_set(&mut self, name: &str, props: &[u64], role: u64, key: u64) -> u64 {
+        self.add(format!("IFCPROPERTYSET({},$,{},$,({}))", self.guid(role, key), s(name), refs(props)))
     }
 
     /// Says `ent` is an occurrence of the type object `class` (with its `predefined` type) named `name`.
@@ -850,14 +867,14 @@ impl Step {
     /// furniture type's assembly place comes before; a door's operation after). Occurrences whose predefined types differ make
     /// their type's NOTDEFINED: a roof type is flat only when every roof of it is. An empty `predefined` is a class that has none.
     fn typed_with(&mut self, class: &str, before: &str, predefined: &str, after: &str, name: &str, ent: u64) {
-        let key = (class.to_string(), before.to_string(), after.to_string(), name.to_string(), None);
+        let key = (class.to_string(), before.to_string(), after.to_string(), name.to_string(), None, None);
         self.build(key, predefined).occurrences.push(ent);
     }
 
     /// As `typed`, for a beam, a column or a footing: its type holds `member` (its section and material) as a material profile
     /// set, and `ent` uses that set, placed by `cardinal` (an `IfcCardinalPointReference`).
     fn typed_member(&mut self, class: &str, predefined: &str, name: &str, member: Member, cardinal: u8, ent: u64) {
-        let key = (class.to_string(), String::new(), String::new(), name.to_string(), Some(member));
+        let key = (class.to_string(), String::new(), String::new(), name.to_string(), Some(member), None);
         let build = self.build(key, predefined);
         build.occurrences.push(ent);
         build.usages.entry(cardinal).or_default().push(ent);
@@ -870,6 +887,7 @@ impl Step {
             occurrences: Vec::new(),
             usages: BTreeMap::new(),
             omniclass: None,
+            family_props: None,
         });
         if build.predefined != predefined {
             build.predefined = ".NOTDEFINED.".into();
@@ -882,23 +900,36 @@ impl Step {
     /// its occurrences use, one for each cardinal point. All the GlobalIds come from the class, the name and the member, so they
     /// are the same on every export.
     fn write_types(&mut self, m: &Model) {
-        for ((class, before, after, name, member), TypeBuild { predefined, occurrences, usages, omniclass }) in
+        let mut used_keys = BTreeSet::new();
+        for ((class, before, after, name, member, family), TypeBuild { predefined, occurrences, usages, omniclass, family_props }) in
             std::mem::take(&mut self.typed)
         {
             let member_text = member.as_ref().map(|x| format!("{x:?}")).unwrap_or_default();
-            let key = name
+            let mut key = name
                 .bytes()
                 .chain(class.bytes())
                 .chain(member_text.bytes())
                 .fold(0xCBF2_9CE4_8422_2325u64, |h, b| (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01B3));
+            if let Some((_, Some(variant))) = &family {
+                key = mix(key ^ variant);
+            }
+            // Existing, unambiguous type IDs stay stable. The visible label may contain colons, and
+            // two schema-specific layouts can share a class and label (a door/window style in 2x3).
+            if !used_keys.insert(key) {
+                key = mix(key ^ key_of(&format!("{before:?}/{after:?}/{family:?}")));
+                while !used_keys.insert(key) {
+                    key = key.wrapping_add(1);
+                }
+            }
             // Six attributes after the name (description to element type), then `before`, the predefined type and `after`.
+            let sets = self.family_type_sets(key, family_props.as_deref().unwrap_or_default());
             let predefined = if predefined.is_empty() { predefined } else { format!(",{predefined}") };
             // IFC2x3 has no profile sets, and no type object for some classes (a roof's, a footing's): a member's material is
             // its occurrences' own there, and its section is in their bodies alone.
             if self.schema == Schema::Ifc2x3 {
                 if v2x3::has_type(&class) {
                     let kind =
-                        self.add(format!("{class}({},$,{},$,$,$,$,$,${before}{predefined}{after})", self.guid(TYPES, key), s(&name)));
+                        self.add(format!("{class}({},$,{},$,$,{sets},$,$,${before}{predefined}{after})", self.guid(TYPES, key), s(&name)));
                     self.add(format!("IFCRELDEFINESBYTYPE({},$,$,$,({}),#{kind})", self.guid(TYPE_DEFINES, key), refs(&occurrences)));
                 }
                 if let Some((_, material)) = member.filter(|(_, material)| !material.is_empty()) {
@@ -911,7 +942,7 @@ impl Step {
                 }
                 continue;
             }
-            let kind = self.add(format!("{class}({},$,{},$,$,$,$,$,${before}{predefined}{after})", self.guid(TYPES, key), s(&name)));
+            let kind = self.add(format!("{class}({},$,{},$,$,{sets},$,$,${before}{predefined}{after})", self.guid(TYPES, key), s(&name)));
             self.add(format!("IFCRELDEFINESBYTYPE({},$,$,$,({}),#{kind})", self.guid(TYPE_DEFINES, key), refs(&occurrences)));
             if let Some(o) = omniclass {
                 self.classified.entry(o).or_default().push(kind);
@@ -1770,6 +1801,9 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
     // Reinforcing bars as (level, host, entity): aggregated to their host, else in their level.
     let mut bars: Vec<(Guid, Option<Id>, u64)> = Vec::new();
     // Each component's shared nested instances (T6b), written as elements of their own: its parts, aggregated into it.
+    // Embedded definitions may differ from the project library in older files. Use their content
+    // only when needed to distinguish same-named types; visiting another placement reuses the key.
+    let mut embedded_types = family_metadata::Definitions::default();
     let mut nested_parts: BTreeMap<Id, Vec<u64>> = BTreeMap::new();
     // The runs in each system, by its name, for the IfcSystem they are assigned to.
     let mut systems: BTreeMap<&str, Vec<u64>> = BTreeMap::new();
@@ -2207,13 +2241,21 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
                 }
                 products.insert(id, ent);
                 let mut written: BTreeMap<&[Guid], Id> = BTreeMap::new();
+                let host_values = (!shared.is_empty()).then(|| f.values(&cp.type_name, &cp.params).ok()).flatten();
                 for (nid, path) in &shared {
                     let own: Vec<&Piece> = theirs.iter().filter(|p| p.nested == *path).collect();
                     let Some(Element::Nested(n)) = m.elements.get(*nid) else { continue };
                     if own.is_empty() {
                         continue;
                     }
-                    let part = w.nested_part(m, *nid, n, &own, at);
+                    let selected = host_values.as_ref().and_then(|v| f.nested_values(path, v));
+                    let family = selected.as_ref().map(|(family, _)| *family);
+                    let part = w.nested_part(m, *nid, n, &own, at, family);
+                    if let Some(family) = family {
+                        let variant = embedded_types.variant(family, m.families.get(&n.family));
+                        w.family_type(family, &n.family, &n.type_name, part, true, variant);
+                    }
+                    w.nested_properties(part, *nid, n, selected.as_ref().map(|(family, values)| (*family, values)));
                     products.insert(*nid, part);
                     written.insert(path, *nid);
                 }
@@ -2225,24 +2267,7 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
                         nested_parts.entry(whole).or_default().push(*part);
                     }
                 }
-                let omniclass = f.omniclass.as_ref().map(|o| (o.number.clone(), o.title.clone()));
-                // Its type object, of the class it is written as, where IFC4 has one: with its family's kind's predefined type,
-                // or the one it remembers but `USERDEFINED` (which a type object would have to say), else none defined.
-                let says = f.kind.is_some() || f.remembered().is_some();
-                let type_kind = if kind.is_empty() || says && kind != ".USERDEFINED." { &kind } else { ".NOTDEFINED." };
-                if let Some(attributes) = class.and_then(|c| c.2) {
-                    let (before, after) = classes::around(attributes);
-                    w.typed_with(&format!("{entity}TYPE"), &before, type_kind, &after, &label, ent);
-                    if omniclass.is_some() {
-                        let key = (format!("{entity}TYPE"), before, after, label.clone(), None);
-                        if let Some(b) = w.typed.get_mut(&key) {
-                            b.omniclass = omniclass;
-                        }
-                    }
-                } else if let Some(o) = omniclass {
-                    // No type object to classify: the occurrence is.
-                    w.classified.entry(o).or_default().push(ent);
-                }
+                w.family_type(f, &cp.family, &cp.type_name, ent, false, None);
                 // What it's made of: its material, or the set of them.
                 let relating = match made_of.as_slice() {
                     [] => None,
@@ -2788,7 +2813,9 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
             ("IFCWINDOWTYPE", ".WINDOW.", Operation::ifc_window_partitioning(t.operation))
         };
         let user_operation = if matches!(e, Element::Door(_)) { user_operation } else { "$".into() };
-        w.typed_with(class, "", predefined, &format!(",{how},.T.,{user_operation}"), &label, ent);
+        let after = format!(",{how},.T.,{user_operation}");
+        let family = o.family.as_ref().map(|name| (name.clone(), None));
+        w.build((class.into(), String::new(), after, label, None, family), predefined).occurrences.push(ent);
         w.add(format!("IFCRELFILLSELEMENT({},$,$,$,#{opening},#{ent})", w.guid(FILLS, id)));
         let qto = if matches!(e, Element::Door(_)) { "Qto_DoorBaseQuantities" } else { "Qto_WindowBaseQuantities" };
         let values = [
