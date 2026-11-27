@@ -27,7 +27,9 @@ startup, tags) is [the desktop](../../docs/areas/desktop.md).
   change to what the 3D view shows or how it picks goes through both. A test gives the app a card with `gpu::headless()`. Once the
   camera settles, `Orbit::refine` has a worker refine the scene for it (GEO-2c-2b; the family document's {3D} too, GEO-2c-2c) and
   swaps it in, the card's mesh going up beside the one drawn first (`Gpu::prepare_upload_beside`); a test's view refines only where
-  it sets `Orbit::refines`. What a click reads of a component's faces it reads through the scene (`Scene::component_face`).
+  it sets `Orbit::refines`. What a click reads of a component's faces it reads through the scene (`Scene::component_face`). Settled
+  means the same camera, exactly equal (`==`), frame to frame: whatever recomputes it each frame (fly mode, a drag held still) must
+  leave it as it was when nothing moved it, as `Camera::orbit_about` does for a turn of nothing (GEO-2c-2d).
 
 ## Testing
 

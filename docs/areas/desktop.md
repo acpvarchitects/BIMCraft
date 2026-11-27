@@ -306,7 +306,10 @@ view), and a banner over the view says so. Clicks are dropped while it flies (`r
 hidden one would click whatever it roamed over. The letters fly only with no Ctrl, Cmd or Alt held, so Ctrl+S saves and Alt+drag still
 turns the view. Esc, FY or the wing again end it, and so do leaving the 3D view, opening a family, a dialog that takes the keys
 (`keys_taken`) or the window losing focus (`BimApp::fly_frame`). A camera view writes where it flew to back to its camera once, as fly
-mode ends however it ends, so a flight is one step to undo. It is the 3D view's only: elsewhere FY says so.
+mode ends however it ends, so a flight is one step to undo. It is the 3D view's only: elsewhere FY says so. Flying still, with no
+key held and the mouse at rest, the camera stays exactly equal to what it was (`Camera::orbit_about` turned by nothing is the
+camera as it was), so the view refines its scene as it does for any camera that settles (GEO-2c-2d,
+`flying_still_close_to_a_drum_the_3d_view_refines_its_scene`); a drag held still is the same.
 
 A wall or column selected alone in Modify has handles in the 3D view (core `handles.rs`, drawn by `orbit::draw_handle`): a wall's two
 ends at its base on its location line, which is drawn dashed along its base (`handles::location_line`), a column's place, and an arrow on the top and under the base of each, as a section box's faces have. A drag previews the element
