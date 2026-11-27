@@ -406,8 +406,14 @@ pub(crate) struct Shown<'a> {
     pub(crate) caps: Option<Arc<Caps>>,
 }
 
-/// The card's failure to draw the 3D view, as the status bar says it.
-fn card_failed(e: &str) -> Status {
+/// The card's failure to draw the 3D view, as the status bar says it. A device lost says to restart BIMCraft: the window draws
+/// through that device too, and nothing makes it again, so the processor's picture may not reach the screen until then.
+pub(crate) fn card_failed(e: &str) -> Status {
+    if e.starts_with(crate::gpu::LOST) {
+        return crate::updates::failed(
+            crate::lang::t("The graphics card stopped responding: restart BIMCraft to draw the 3D view again").to_string(),
+        );
+    }
     crate::updates::failed(crate::lang::tf("The graphics card couldn't draw the 3D view ({}): it is drawn on the processor", &[e]))
 }
 

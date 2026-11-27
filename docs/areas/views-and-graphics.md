@@ -513,7 +513,10 @@ in the card's own error scopes, never left to wgpu's handler (which ends the pro
 A lost device (a driver's reset) reports no error at all afterwards, so what is drawn on it "succeeds" blank: `Gpu::from_device` sets
 the device's lost callback, and what it said is the answer of every draw and upload, and of `Orbit::card_mesh` each frame, so a view
 standing still goes to the processor too, and the card is not made again on that device (`Card::give_up`;
-`a_card_lost_hands_the_3d_view_to_the_processor_which_draws_the_model`). wgpu tells a destroyed device's callback only when a poll
+`a_card_lost_hands_the_3d_view_to_the_processor_which_draws_the_model`). The window draws through that device as well, and
+nothing makes it again, so the processor's picture may not reach the screen: the status bar says so, "The graphics card stopped
+responding: restart BIMCraft to draw the 3D view again" (`orbit::card_failed`, for an error beginning `gpu::LOST`), where any
+other failure says why and that the processor draws. wgpu tells a destroyed device's callback only when a poll
 finds its queue empty, so the tests wait on it; the app never polls, as wgpu 30 panics when a device really lost is polled.
 
 A 3D view's **Graphic Display Options** (Revit's GD) are `View3D::display`, a `view3d::DisplayOptions`: `edges` (on unless turned
