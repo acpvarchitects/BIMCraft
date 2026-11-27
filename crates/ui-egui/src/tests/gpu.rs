@@ -298,8 +298,21 @@ fn a_card_that_failed_leaves_the_view_on_the_processor_and_the_page_says_why() {
     assert!(h.query_by_label_contains("the card ran away").is_some());
 }
 
+/// What the status says once the card's device is lost (Emiliano's words, untranslated until an approved batch).
+const RESTART: &str = "The graphics card stopped responding: restart BIMCraft to draw the 3D view again";
+
+/// A card whose device was lost says to restart BIMCraft: the window draws through that device too, and nothing makes it again
+/// (#101), so the processor's picture may never reach the screen. Any other failure says why, and that the processor draws.
+#[test]
+fn a_lost_card_says_to_restart_and_another_failure_says_why() {
+    let lost = crate::orbit::card_failed(&format!("{}: a driver's reset", crate::gpu::LOST));
+    assert_eq!((lost.text.as_str(), lost.error), (RESTART, true));
+    let other = crate::orbit::card_failed("out of memory");
+    assert!(other.error && other.text.contains("out of memory") && other.text.contains("drawn on the processor"), "{}", other.text);
+}
+
 /// A card whose device is lost (a driver's reset) draws nothing and says no error of its own: the view, even one standing still,
-/// is handed to the processor, whose picture has the model in it, not only its ground, and picks it.
+/// is handed to the processor, whose picture has the model in it, not only its ground, and picks it; the status says to restart.
 #[test]
 fn a_card_lost_hands_the_3d_view_to_the_processor_which_draws_the_model() {
     let Some(gpu) = headless() else {
@@ -317,7 +330,7 @@ fn a_card_lost_hands_the_3d_view_to_the_processor_which_draws_the_model() {
     let card = &h.state().card;
     assert!(card.gpu.is_none() && card.failed, "given up for good, not made again on the lost device");
     assert!(card.note.as_deref().is_some_and(|n| n.starts_with("the card was lost")), "{:?}", card.note);
-    assert!(h.state().status.text.contains("drawn on the processor"), "{}", h.state().status.text);
+    assert_eq!(h.state().status.text, RESTART, "the status says to restart");
     // The picture drawn after the loss: the model's, not the ground alone.
     let picture = uploads.last(&h, "view3d").expect("the processor drew the view after the loss");
     let ground = crate::canvas::color(bimcraft_core::render::PAPER);
