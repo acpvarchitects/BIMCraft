@@ -7400,7 +7400,7 @@ impl BimApp {
                 self.option_selector(ui);
                 ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
                     let label = if self.tool == Tool::Modify && matches!(self.sheet, Sheet::View3D | Sheet::Section(_)) {
-                        self.nested_tab.current().map(|id| crate::canvas::named(&self.session.model, id))
+                        self.nested_tab.label(&self.session.model)
                     } else {
                         None
                     };

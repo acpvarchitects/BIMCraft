@@ -60,6 +60,18 @@ impl Cycle {
         self.under.get(self.at).copied()
     }
 
+    pub(crate) fn label(&self, model: &Model) -> Option<String> {
+        let id = self.current()?;
+        let owner = crate::canvas::named(model, id);
+        Some(match model.elements.get(id) {
+            Some(Element::Component(c)) => format!("{owner} · {} / {}", c.family, c.type_name),
+            Some(Element::Nested(n)) => format!("{owner} · {} / {}", n.family, n.type_name),
+            Some(Element::Level(l)) => format!("{owner} · {}", l.name),
+            Some(Element::Grid(g)) => format!("{owner} · {}", g.name),
+            _ => owner,
+        })
+    }
+
     pub(crate) fn passed_front(&self, at: Option<(f32, f32)>) -> bool {
         self.at > 0 && self.pointer.map(|(_, point)| point) == at.map(|(x, y)| (x.floor() as i32, y.floor() as i32))
     }

@@ -22,11 +22,22 @@ fn other_after_tab(h: &mut Harness<BimApp>, at: Pos2, view: &str) {
     key(h, Key::Tab);
     h.run();
     assert_eq!(h.state().nested_tab.current(), Some(other), "the candidate is preselected before the click");
-    let label = crate::canvas::named(&h.state().session.model, other);
+    let model = &h.state().session.model;
+    let Some(Element::Component(component)) = model.elements.get(other) else { panic!("expected a placed component") };
+    let label = format!("{} · {} / {}", crate::canvas::named(model, other), component.family, component.type_name);
     assert!(h.query_by_label(label.as_str()).is_some(), "the status bar names the candidate");
     if let Some(dir) = std::env::var_os("BIMCRAFT_PROJECT_TAB_CAPTURE") {
-        h.run();
-        h.render().unwrap().save(std::path::Path::new(&dir).join(format!("tab-{view}.png"))).unwrap();
+        for (name, theme, light_canvas) in
+            [("light", egui::Theme::Light, false), ("dark", egui::Theme::Dark, false), ("dark-light", egui::Theme::Dark, true)]
+        {
+            h.ctx.set_theme(theme);
+            h.state_mut().light_canvas = light_canvas;
+            h.run();
+            h.run();
+            assert_eq!(h.state().nested_tab.current(), Some(other));
+            assert!(h.query_by_label(label.as_str()).is_some());
+            h.render().unwrap().save(std::path::Path::new(&dir).join(format!("tab-{view}-{name}.png"))).unwrap();
+        }
     }
     click_at(h, at);
     assert_eq!(h.state().selection, [other], "Tab and click take the second projected owner in {view}");
