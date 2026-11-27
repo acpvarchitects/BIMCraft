@@ -6872,6 +6872,7 @@ mod rooms;
 mod section_box;
 mod shape3d;
 mod shared_nested;
+mod project_tab;
 mod sheets;
 mod shortcuts_ctrl;
 mod shortcuts_kept;
