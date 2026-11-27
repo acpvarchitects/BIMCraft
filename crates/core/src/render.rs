@@ -1853,7 +1853,11 @@ pub struct SectionWork {
 
 impl SectionWork {
     pub fn new(m: &Model) -> Self {
-        let (solids, placed, boxes) = view3d::solids_and_extremes(m);
+        Self::from_geometry(m, view3d::solids_and_extremes(m))
+    }
+
+    /// The work of model `m`'s solids and extremes `made`, as [`SectionWork::new`] makes them.
+    fn from_geometry(m: &Model, (solids, placed, boxes): view3d::Made) -> Self {
         let solids = view3d::PreparedSolids::Owned(solids);
         // Each element's solids lie together, in the order of the elements.
         let mut ranges: std::collections::HashMap<Id, std::ops::Range<usize>> = std::collections::HashMap::new();

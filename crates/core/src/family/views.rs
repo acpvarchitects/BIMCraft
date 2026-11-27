@@ -100,6 +100,7 @@ pub fn flat_views(normal: P3) -> Vec<Which> {
 }
 
 mod displayed;
+mod displayed_host;
 pub(crate) use displayed::{DisplayedForms, exposed_below};
 
 /// A scratch model a family is placed in, made ready for its views.

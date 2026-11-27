@@ -1083,6 +1083,15 @@ pub(crate) fn solids_and_extremes(m: &Model) -> Made {
 }
 
 pub(crate) fn solids_and_extremes_cancellable(m: &Model, cancelled: &(dyn Fn() -> bool + Sync)) -> Option<Made> {
+    solids_and_extremes_capturing(m, cancelled, None)
+}
+
+/// [`solids_and_extremes_cancellable`], each door's and window's pieces' identities kept in `capture` (GEO-2c-2e).
+pub(crate) fn solids_and_extremes_capturing(
+    m: &Model,
+    cancelled: &(dyn Fn() -> bool + Sync),
+    capture: Option<&crate::render::ElevationCapture>,
+) -> Option<Made> {
     if cancelled() {
         return None;
     }
@@ -1104,7 +1113,7 @@ pub(crate) fn solids_and_extremes_cancellable(m: &Model, cancelled: &(dyn Fn() -
             match e {
                 Element::Component(c) => placed.push((id, components.extremes(c))),
                 _ => {
-                    let own = solids_in_with(m, &[(id, e)], Some(&index), &mut components);
+                    let own = solids_in_capturing(m, &[(id, e)], Some(&index), &mut components, capture);
                     if !own.is_empty() {
                         placed.push((id, extremes(own.iter().flat_map(Solid::corners))));
                     }
@@ -1228,6 +1237,32 @@ fn lazy_run_box(m: &Model, id: Id, e: &Element) -> Option<[P3; 2]> {
         _ => 0.0,
     };
     Some([[lo[0] - past, lo[1] - past, lo[2]], [hi[0] + past, hi[1] + past, hi[2]]])
+}
+
+/// Component `id`, `c`'s solids from `pieces`, its pieces placed: each in its material's colour, a curved one's facets one
+/// surface, as a curved wall's are.
+fn component_solids(m: &Model, id: Id, c: &crate::model::Component, pieces: Vec<crate::family::Piece>) -> Vec<Solid> {
+    let cut = m.families.get(&c.family).is_some_and(crate::family::Family::cuts_in_views);
+    let x = m.component_placement(c).axes[0];
+    pieces
+        .into_iter()
+        .map(|piece| {
+            let color = m.materials.get(&piece.material).map_or(COMPONENT, |x| Rgb(x.color[0], x.color[1], x.color[2]));
+            let tex = skin(m, &piece.material);
+            let skins = component_skins(m, c, &piece, (color, tex));
+            Solid::Mesh {
+                owner: id,
+                color,
+                tex,
+                skins,
+                tris: piece.tris,
+                caps: piece.caps,
+                round: piece.round,
+                cut,
+                vis: crate::family::visibility::packed(piece.vis, P2(x[0], x[1])),
+            }
+        })
+        .collect()
 }
 
 /// The solids of an element whose preparation was deferred: a round run reads no wall, and a component no wall index.
@@ -1813,6 +1848,18 @@ fn solids_in_with(
     index: Option<&walls::Index>,
     components: &mut crate::component_geometry::Components,
 ) -> Vec<Solid> {
+    solids_in_capturing(m, elements, index, components, None)
+}
+
+/// [`solids_in_with`], what a door or a window is of (its form and nested path, piece by piece) kept in `capture` beside the
+/// placed mesh the scene is made of: a family's elevation picks by them (GEO-2c-2e, ec's d381329a2).
+fn solids_in_capturing(
+    m: &Model,
+    elements: &[(Id, &Element)],
+    index: Option<&walls::Index>,
+    components: &mut crate::component_geometry::Components,
+    capture: Option<&crate::render::ElevationCapture>,
+) -> Vec<Solid> {
     let mut out = Vec::new();
     for &(id, e) in elements {
         match e {
@@ -1897,26 +1944,7 @@ fn solids_in_with(
             }
             Element::Mass(ms) => out.push(slab(id, MASS, &ms.footprint(), m.span(ms.level, ms.base_offset, ms.top_level, ms.height))),
             // Each form in its material's colour; a curved one's facets one surface, as a curved wall's are.
-            Element::Component(c) => {
-                let cut = m.families.get(&c.family).is_some_and(crate::family::Family::cuts_in_views);
-                let x = m.component_placement(c).axes[0];
-                for piece in components.solids_of(id, c) {
-                    let color = m.materials.get(&piece.material).map_or(COMPONENT, |x| Rgb(x.color[0], x.color[1], x.color[2]));
-                    let tex = skin(m, &piece.material);
-                    let skins = component_skins(m, c, &piece, (color, tex));
-                    out.push(Solid::Mesh {
-                        owner: id,
-                        color,
-                        tex,
-                        skins,
-                        tris: piece.tris,
-                        caps: piece.caps,
-                        round: piece.round,
-                        cut,
-                        vis: crate::family::visibility::packed(piece.vis, P2(x[0], x[1])),
-                    });
-                }
-            }
+            Element::Component(c) => out.extend(component_solids(m, id, c, components.solids_of(id, c))),
             // Each tread a block from the floor up to it, each landing a slab up to its top; the last
             // riser of a run climbs onto a landing, or the floor above.
             // A stair of a type, built as the type says.
@@ -2015,6 +2043,9 @@ fn solids_in_with(
             // Of a family: each form in its material's colour, cut where a section's line passes through it. Else a door's leaf or a window's glass: a 50 mm panel in the middle of the wall, square to it.
             Element::Door(o) | Element::Window(o) => {
                 let pieces = m.opening_pieces(e);
+                if let Some(capture) = capture {
+                    capture.identify_opening(id, &pieces);
+                }
                 if o.family.is_some() || !pieces.is_empty() {
                     let fallback = if matches!(e, Element::Door(_)) { DOOR } else { GLASS };
                     let cut = o.family.as_ref().and_then(|f| m.families.get(f)).is_none_or(crate::family::Family::cuts_in_views);
@@ -3117,20 +3148,21 @@ impl Scene {
                     return None;
                 }
                 let made: Vec<Solid> = match m.elements.get(*id) {
-                    Some(e @ Element::Component(c)) => {
-                        // Its pieces as they are drawn (the builds kept, so built once), kept for what picks.
+                    Some(Element::Component(c)) => {
+                        // Its pieces as they are drawn, placed once for both the picture and what picks (ec's review).
+                        let pieces = components.solids_of(*id, c);
                         if let Some(capture) = capture {
                             let x = m.component_placement(c).axes[0];
-                            capture.component(&components.solids_of(*id, c), P2(x[0], x[1]), look);
+                            capture.component(&pieces, P2(x[0], x[1]), look);
                         }
-                        lazy_solids(m, *id, e, &mut components)
+                        component_solids(m, *id, c, pieces)
                     }
                     // No solids in the list: a round run left until now, or one that has none, which makes none here.
                     Some(e) if at.is_empty() && e.run().is_some() => lazy_solids(m, *id, e, &mut components),
                     other => {
-                        if let (Some(capture), Some(e @ (Element::Door(o) | Element::Window(o)))) = (capture, other) {
-                            let x = m.opening_frame(o).map_or(P2(1.0, 0.0), |(_, u, _)| u);
-                            capture.opening(m.opening_pieces(e), x, look);
+                        // A door's or a window's mesh as the scene holds it, paired with what each piece is of.
+                        if let (Some(capture), Some(Element::Door(_) | Element::Window(_))) = (capture, other) {
+                            capture.opening(*id, solids.in_range(at.clone()), look);
                         }
                         own(*id, at).collect()
                     }
@@ -5479,6 +5511,11 @@ impl Image {
     pub fn point(&self, cam: &Camera, x: f64, y: f64) -> Option<P3> {
         let z = *self.depth.get(self.index(x, y)?)?;
         (z.is_finite()).then(|| cam.at_depth((x.floor() + 0.5, y.floor() + 0.5), f64::from(z)))
+    }
+
+    /// Its pixels' triangles and their owners, shared with what picks in the view it was drawn for (GEO-2c-2e).
+    pub(crate) fn shared_hits(&self) -> (Arc<Vec<u32>>, Arc<Vec<Id>>) {
+        (Arc::clone(&self.hit), Arc::clone(&self.owners))
     }
 
     /// The element the pixel at `(x, y)` shows.

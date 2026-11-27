@@ -11,6 +11,8 @@ use std::sync::OnceLock;
 #[derive(Default)]
 pub(crate) struct DisplayedForms {
     pieces: Vec<DisplayedPiece>,
+    /// In a door's or a window's elevation, the wall it stands in as the picture shows it: what hides a pick behind it.
+    host: Option<super::displayed_host::HostCover>,
 }
 
 struct DisplayedPiece {
@@ -33,6 +35,11 @@ struct DisplayedPiece {
 const PATCH: usize = 32;
 
 impl DisplayedForms {
+    /// Wall `wall` as `picture`, drawn through `view`, shows it: what of the family lies behind it is no one's to pick.
+    pub(crate) fn keep_host(&mut self, view: View, picture: &view3d::Image, wall: Id) {
+        self.host = super::displayed_host::HostCover::new(view, picture, wall);
+    }
+
     /// A piece an elevation drew. A nested instance is selected whole, so its pieces are kept as one (as far as
     /// [`MAX_OCCLUDERS`] lets them hide each other's edges): its nearer forms hide its farther ones' rims, as in the picture.
     pub(crate) fn push_mesh(&mut self, form: Guid, path: Vec<Guid>, tris: Vec<[P3; 3]>) {
@@ -68,6 +75,10 @@ impl DisplayedForms {
     /// What of the family the piece on top at `at` is, among those `keep` keeps: in plan the highest, in an elevation the
     /// nearest the eye.
     pub(super) fn face(&self, st: &Staged, which: Which, at: P2, keep: impl Fn(Part) -> bool) -> Option<Part> {
+        // Where the picture shows the wall it stands in, nothing of it is seen.
+        if self.host.as_ref().is_some_and(|host| host.hides(at)) {
+            return None;
+        }
         let mut hit = None;
         for piece in &self.pieces {
             if let Some(part) = piece.part(st).filter(|part| keep(*part))
@@ -115,6 +126,9 @@ impl DisplayedForms {
             seen_edges_with(&piece.tris, st, which, |a, b| {
                 let (a, b) = (projected(st, which, a), projected(st, which, b));
                 let mut hidden = Vec::new();
+                if let Some(host) = &self.host {
+                    host.hide_edge(P2(a[0], a[1]), P2(b[0], b[1]), &mut hidden);
+                }
                 for other in &others {
                     let may_cover = |[lo, hi]: &[P3; 2]| {
                         hi[2] > a[2].min(b[2]) + DEPTH_EPS && (0..2).all(|i| hi[i] >= a[i].min(b[i]) && lo[i] <= a[i].max(b[i]))
@@ -159,7 +173,10 @@ impl DisplayedForms {
             return false;
         }
         if boxed.crossing {
-            tris.any(|t| boxed.touches(&t.map(|p| st.to_view(which, p))))
+            tris.any(|t| {
+                let tri = t.map(|p| st.to_view(which, p));
+                boxed.touches(&tri) && self.host.as_ref().is_none_or(|host| host.crosses(boxed, &tri))
+            })
         } else {
             tris.all(|t| t.iter().all(|p| boxed.holds(st.to_view(which, *p))))
         }

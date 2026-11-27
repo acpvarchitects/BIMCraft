@@ -34,6 +34,12 @@ use crate::walls;
 
 pub use crate::ids::{Changed, Elements, FIRST_ID, Guid, Id, Key};
 
+#[cfg(test)]
+thread_local! {
+    /// How many times a door's or a window's placed pieces were built ([`Model::opening_pieces`]), for a test to count.
+    pub(crate) static PLACED_OPENING_BUILDS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 /// A line in plan, through two points.
 pub type Line = (P2, P2);
 
@@ -6668,6 +6674,8 @@ impl Model {
     /// outline seen from above, and what it reaches from and to, over the level.
     pub fn opening_pieces(&self, e: &Element) -> Vec<Piece> {
         let (Element::Door(o) | Element::Window(o)) = e else { return Vec::new() };
+        #[cfg(test)]
+        PLACED_OPENING_BUILDS.set(PLACED_OPENING_BUILDS.get() + 1);
         let (Some((pieces, _)), Some(placed)) = (self.opening_local(e), self.opening_placement(o)) else { return Vec::new() };
         pieces.iter().map(|pc| placed.piece(pc)).collect()
     }
