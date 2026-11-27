@@ -34,6 +34,7 @@ pub(super) struct Frame {
     pub pixels: View,
     pub image: Option<Arc<Image>>,
     pub drawing: render::Drawing,
+    pub work: Arc<render::SectionWork>,
     pub rebuilt: bool,
     pub levels: std::collections::BTreeMap<Id, (f64, f64)>,
 }
@@ -43,7 +44,7 @@ type Base = (Id, View, View, render::SectionOverlay, Option<Arc<Image>>);
 #[derive(Default)]
 pub(super) struct Renderer {
     model: Option<Arc<Model>>,
-    work: Option<render::SectionWork>,
+    work: Option<Arc<render::SectionWork>>,
     base: Option<Base>,
 }
 
@@ -64,7 +65,7 @@ impl Renderer {
             self.base = None;
             self.work = None;
             self.model = None;
-            self.work = Some(render::SectionWork::new_deferred_cancellable(m, cancelled)?);
+            self.work = Some(Arc::new(render::SectionWork::new_deferred_cancellable(m, cancelled)?));
             self.model = Some(Arc::clone(m));
         }
         let work = self.work.as_ref()?;
@@ -96,7 +97,16 @@ impl Renderer {
             Arc::make_mut(image).retint_section(&request.tints);
         }
         let drawing = overlay.draw_cancellable(m, picture.as_deref(), cancelled)?;
-        Some(Frame { request, view, pixels, image: picture.clone(), drawing, rebuilt, levels: overlay.levels().clone() })
+        Some(Frame {
+            request,
+            view,
+            pixels,
+            image: picture.clone(),
+            work: Arc::clone(work),
+            drawing,
+            rebuilt,
+            levels: overlay.levels().clone(),
+        })
     }
 }
 

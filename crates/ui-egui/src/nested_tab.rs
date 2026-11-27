@@ -1,7 +1,5 @@
-//! T6b: Tab over a component in a section, an elevation or the 3D view reaches its shared nested instances, as a plan's Tab
-//! does (`canvas.rs`, through `Drawing::pick_all`): the host first, then each of its shared nested instances under the
-//! cursor, nearest first; a click takes the one Tab has reached. What such a view sees of them is the core's
-//! (`Model::nested_seen`), and the one under the cursor or selected is outlined in the hover or the selection colour.
+//! Preselection in a project section, elevation or 3D view. A click takes the ordinary front
+//! owner until Tab reaches another projected owner or a shared child.
 use bimcraft_core::model::{Element, Id, Model};
 use bimcraft_core::render::{self, NestedPick};
 use egui::{Painter, Pos2, Shape, Stroke};
@@ -9,11 +7,33 @@ use egui::{Painter, Pos2, Shape, Stroke};
 use crate::canvas::PICK;
 use crate::style::canvas_pal;
 
-/// What Tab steps through in a section or the 3D view: what is under the cursor, host first, and how far Tab has gone.
+/// The view whose projected coordinates are used by the current pick.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum Frame {
+    Orbit(Option<Id>, bimcraft_core::view3d::Camera),
+    Section(Id, render::View, render::View),
+}
+
+pub(crate) struct Target<'a> {
+    pub model: &'a std::sync::Arc<Model>,
+    pub frame: Frame,
+    pub hovered: Option<Id>,
+    pub at: Option<(f32, f32)>,
+    pub seen: &'a [NestedPick],
+    pub project: &'a dyn Fn([f64; 3]) -> Option<(f32, f32)>,
+}
+
+/// Keep an expanded candidate list only for the displayed model, view and pointer location.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct Cycle {
+    model: std::sync::Weak<Model>,
+    pointer: Option<(Frame, (i32, i32))>,
+    front: Option<Id>,
     under: Vec<Id>,
     at: usize,
+    geometry: Vec<bimcraft_core::view3d::PickCandidate>,
+    nested: Vec<NestedPick>,
+    expanded: bool,
 }
 
 /// The shared nested instances a view through `project` sees of the hosts it may show lit: `hovered`, and the hosts of the
@@ -32,21 +52,87 @@ pub(crate) fn seen(m: &Model, hovered: Option<Id>, selection: &[Id], project: &d
 }
 
 impl Cycle {
-    /// What is under the cursor once Tab is counted: `hovered`, what the view picks there, and after it, when it is a
-    /// component, its shared nested instances `seen` at `at` (the view's pixels); `tabbed`, whether Tab was pressed.
-    pub(crate) fn step(&mut self, hovered: Option<Id>, seen: &[NestedPick], at: Option<(f32, f32)>, tabbed: bool) -> Option<Id> {
-        let mut under: Vec<Id> = hovered.into_iter().collect();
-        if let (Some(h), Some(at)) = (hovered, at) {
-            let mine: Vec<NestedPick> = seen.iter().filter(|n| n.host == h).cloned().collect();
-            under.extend(render::nested_at(&mine, at, PICK));
+    pub(crate) fn clear(&mut self) {
+        *self = Self::default();
+    }
+
+    pub(crate) fn current(&self) -> Option<Id> {
+        self.under.get(self.at).copied()
+    }
+
+    pub(crate) fn passed_front(&self, at: Option<(f32, f32)>) -> bool {
+        self.at > 0 && self.pointer.map(|(_, point)| point) == at.map(|(x, y)| (x.floor() as i32, y.floor() as i32))
+    }
+
+    pub(crate) fn step(
+        &mut self,
+        target: Target<'_>,
+        tabbed: bool,
+        candidates: impl FnOnce((f32, f32)) -> (Vec<Id>, Vec<bimcraft_core::view3d::PickCandidate>),
+    ) -> Option<Id> {
+        let Target { model, frame, hovered, at, seen, project } = target;
+        let (Some(at), Some(front)) = (at, hovered) else {
+            self.clear();
+            return None;
+        };
+        let pointer = Some((frame, (at.0.floor() as i32, at.1.floor() as i32)));
+        let new_front = hovered != self.front && hovered != self.current();
+        if pointer != self.pointer || self.model.as_ptr() != std::sync::Arc::as_ptr(model) || new_front {
+            self.clear();
+            self.model = std::sync::Arc::downgrade(model);
+            self.pointer = pointer;
+            self.front = hovered;
+            self.under.push(front);
         }
-        if under != self.under {
-            *self = Cycle { under, at: 0 };
+        if tabbed && !self.expanded {
+            let (overlay, geometry) = candidates(at);
+            let mut visited = std::collections::BTreeSet::new();
+            self.under.clear();
+            for owner in hovered.into_iter().chain(overlay).chain(geometry.iter().map(|p| p.id)) {
+                if !visited.insert(owner) {
+                    continue;
+                }
+                self.under.push(owner);
+                let children: Vec<_> = if Some(owner) == hovered {
+                    seen.iter().filter(|n| n.host == owner).cloned().collect()
+                } else {
+                    model.nested_seen(owner, project)
+                };
+                for child in render::nested_at(&children, at, PICK) {
+                    if visited.insert(child) {
+                        self.under.push(child);
+                    }
+                }
+                if Some(owner) != hovered {
+                    self.nested.extend(children);
+                }
+            }
+            self.geometry = geometry;
+            self.expanded = true;
         }
         if tabbed && !self.under.is_empty() {
             self.at = (self.at + 1) % self.under.len();
         }
-        self.under.get(self.at).copied()
+        self.current()
+    }
+
+    pub(crate) fn draw(&self, p: &Painter, to_screen: impl Fn(bimcraft_core::geom::P2) -> Pos2) {
+        if self.at == 0 {
+            return;
+        }
+        let Some(id) = self.current() else {
+            return;
+        };
+        if let Some(hit) = self.geometry.iter().find(|p| p.id == id) {
+            let stroke = Stroke::new(2., canvas_pal().hover);
+            for [a, b] in &hit.edges {
+                p.line_segment([to_screen(*a), to_screen(*b)], stroke);
+            }
+        }
+    }
+
+    pub(crate) fn nested(&self) -> &[NestedPick] {
+        &self.nested
     }
 }
 

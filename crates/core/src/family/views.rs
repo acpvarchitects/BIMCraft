@@ -8,7 +8,7 @@
 use std::collections::{BTreeMap, HashMap};
 
 use super::{Family, Val};
-use crate::geom::{self, P2};
+use crate::geom::{self, P2, depth_at};
 use crate::hosting::ReferencePlane;
 use crate::ids::{Guid, Id};
 use crate::model::{Element, Model, Section};
@@ -953,23 +953,6 @@ pub fn reference_at_3d(
     form_shown: &dyn Fn(usize) -> bool,
 ) -> Option<Picked3d> {
     References3d::new(family, values, shown, form_shown).within(cam, px, reach).into_iter().next()
-}
-
-/// How near the eye triangle `q` (its corners projected: pixel and nearness) is at pixel `p`, where it covers it.
-fn depth_at(q: [(f64, f64, f64); 3], p: (f64, f64)) -> Option<f64> {
-    if q.iter().any(|(x, y, z)| !(x.is_finite() && y.is_finite() && z.is_finite())) {
-        return None;
-    }
-    let [a, b, c] = q;
-    let area = (b.0 - a.0) * (c.1 - a.1) - (b.1 - a.1) * (c.0 - a.0);
-    if area.abs() < 1e-9 {
-        return None;
-    }
-    let wb = ((p.0 - a.0) * (c.1 - a.1) - (p.1 - a.1) * (c.0 - a.0)) / area;
-    let wc = ((b.0 - a.0) * (p.1 - a.1) - (b.1 - a.1) * (p.0 - a.0)) / area;
-    let wa = 1.0 - wb - wc;
-    let e = -1e-9;
-    (wa >= e && wb >= e && wc >= e).then_some(a.2 * wa + b.2 * wb + c.2 * wc)
 }
 
 /// The outline form `i` of `family` is seen with in view `which`: the hull of its solid's corners there. Empty for a form

@@ -6954,7 +6954,7 @@ pub(crate) fn snap_mark(p: &Painter, at: Pos2, from: Option<Pos2>, kind: Kind, l
 }
 
 /// Element `id` as the window names it: what it is, then its id ("Wall 100002").
-fn named(m: &Model, id: Id) -> String {
+pub(crate) fn named(m: &Model, id: Id) -> String {
     match m.elements.get(id) {
         Some(e) => format!("{} {id}", crate::lang::category(e.category(), false)),
         None => id.to_string(),

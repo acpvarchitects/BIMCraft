@@ -40,8 +40,7 @@ pub struct Cut {
     /// Region ink is repainted on interaction from retained model cuts and the tinted picture.
     drawn: Option<Drawn>,
     /// What every section of a model asks of all of it, kept with the model (a snapshot) it was made of.
-    #[cfg(test)]
-    work: Option<(Arc<Model>, render::SectionWork)>,
+    work: Option<(Arc<Model>, Arc<render::SectionWork>)>,
     /// How many times a picture was drawn (by the core, for the drawing over it or for the texture): a tick of the test that a
     /// pan or a zoom draws it once.
     #[cfg(test)]
@@ -104,7 +103,7 @@ impl Cut {
     fn poll(&mut self, ctx: &Context, model: &Arc<Model>, id: Id, ground: Color32, grid_background: bool) {
         let Some(frame) = self.worker.as_ref().and_then(Latest::take) else { return };
         // The mailbox rejects superseded generations, and all display/pick data is installed together.
-        let Frame { mut request, view, pixels, image, drawing, rebuilt, levels } = frame;
+        let Frame { mut request, view, pixels, image, work, drawing, rebuilt, levels } = frame;
         if !Arc::ptr_eq(&request.model, model) || request.id != id {
             return;
         }
@@ -117,6 +116,7 @@ impl Cut {
         self.shown = Some((Arc::clone(&request.model), request.id, view, pixels));
         self.tints = request.tints.clone();
         self.image = image;
+        self.work = Some((Arc::clone(model), work));
         self.levels = levels;
         self.requested = Some(request);
         #[cfg(test)]
@@ -153,7 +153,7 @@ impl Cut {
         self.generation += 1;
         // The picture, and the drawing over it, which keeps its regions' ink from it: the whole model's work once for both.
         if !self.work.as_ref().is_some_and(|(m, _)| Arc::ptr_eq(m, model)) {
-            self.work = Some((Arc::clone(model), render::SectionWork::new(model)));
+            self.work = Some((Arc::clone(model), Arc::new(render::SectionWork::new(model))));
         }
         if let Some((_, work)) = &self.work {
             self.overlay = Some(render::SectionOverlay::new(model, work, id, view));
@@ -332,6 +332,7 @@ impl BimApp {
         let tabbed = std::mem::take(&mut self.tab_cycle) | std::mem::take(&mut self.face_cycle) || tab;
         let mut curtain_tabbed = false;
         if tabbed
+            && !self.nested_tab.passed_front(local.map(unproject))
             && let (Some(q), Some(wall)) = (local, hovered)
             && crate::curtain::tab_wall(&model, &self.selection, &[wall], Some(wall), self.tool == Tool::Modify) == Some(wall)
             && let Some((cam, _)) = render::section_camera(&model, id, view)
@@ -345,13 +346,44 @@ impl BimApp {
             if self.curtain_part.is_some() {
                 self.selection = vec![wall];
             }
-            curtain_tabbed = true;
+            curtain_tabbed = self.curtain_part.is_some();
         }
         // Elsewhere, Tab over a component reaches its shared nested instances after it (T6b), as in a plan.
-        let nested = crate::nested_tab::seen(&model, hovered, &self.selection, &|p| render::section_px(&model, id, source, p));
+        let project = |p| render::section_px(&model, id, source, p);
+        let nested = crate::nested_tab::seen(&model, hovered, &self.selection, &project);
         let hovered = if matches!(self.tool, Tool::Modify) {
-            self.nested_tab.step(hovered, &nested, local.map(unproject), tabbed && !curtain_tabbed)
+            let at = local.map(unproject);
+            let pixels = displayed.map_or(source, |(_, _, _, pixels)| *pixels);
+            let target = crate::nested_tab::Target {
+                model: &model,
+                frame: crate::nested_tab::Frame::Section(id, source, pixels),
+                hovered,
+                at,
+                seen: &nested,
+                project: &project,
+            };
+            self.nested_tab.step(target, tabbed && !curtain_tabbed, |at| {
+                let overlay = d.pick_all(at, PICK / k);
+                let owners = self
+                    .cut
+                    .work
+                    .as_ref()
+                    .filter(|(m, _)| Arc::ptr_eq(m, &model))
+                    .map(|(_, work)| {
+                        render::section_pick_all(
+                            &model,
+                            work,
+                            id,
+                            source,
+                            pixels,
+                            (f64::from(at.0) * source_ppp[0], f64::from(at.1) * source_ppp[1]),
+                        )
+                    })
+                    .unwrap_or_default();
+                (overlay, owners)
+            })
         } else {
+            self.nested_tab.clear();
             hovered
         };
         // A selected group lights its members, and a curtain wall selected stays as it is drawn, for the part Tab picks to be
@@ -418,7 +450,9 @@ impl BimApp {
             p.image(t.id(), image_rect, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
         }
         paint(&p, place, &d, &lit, lit_hover, self.thin, &[]);
+        self.nested_tab.draw(&p, |q| place.pos(((q.0 / source_ppp[0]) as f32, (q.1 / source_ppp[1]) as f32)));
         crate::nested_tab::outline(&p, &nested, hovered, &self.selection, &|q| place.pos(q));
+        crate::nested_tab::outline(&p, self.nested_tab.nested(), hovered, &self.selection, &|q| place.pos(q));
         self.paint_underlay(ui.ctx(), &p, rect, view, under.as_ref(), true);
         // Underlay Settings' Move or Rotate is picking here: the view's own clicks wait.
         let picking = self.underlay_pick(ui, &response, &p, rect, &view, id, None);

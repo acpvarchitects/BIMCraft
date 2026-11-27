@@ -2461,6 +2461,21 @@ pub fn section_picture_of_cancellable(
     (!cancelled()).then_some(image)
 }
 
+/// The distinct owners at a frame's pixel, including elements concealed by other section geometry.
+pub fn section_pick_all(m: &Model, work: &SectionWork, id: Id, view: View, pixels: View, at: (f64, f64)) -> Vec<view3d::PickCandidate> {
+    if !work.is_of(m) {
+        return section_pick_all(m, &SectionWork::new_deferred(m), id, view, pixels, at);
+    }
+    let Some((camera, clip)) = section_camera(m, id, pixels) else { return Vec::new() };
+    Scene::section_pick_all(
+        m,
+        (&work.solids, &work.ranges, &work.placed, &work.boxes),
+        (&camera, &clip, section_fine_of(m, id, view)),
+        &Look::of(m, id),
+        at,
+    )
+}
+
 /// [`section_picture`], of `w`'s solids and points.
 pub(crate) fn section_picture_in(m: &Model, w: &SectionWork, id: impl Key, view: View, tints: &[(Id, Rgb)]) -> Option<Image> {
     section_picture_of_in(m, w, id, view, view, tints)

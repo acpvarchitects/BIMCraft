@@ -4336,6 +4336,10 @@ impl BimApp {
 
     /// Open a view in a tab, or bring its tab forward.
     fn open_sheet(&mut self, sheet: Sheet) {
+        if sheet != self.sheet {
+            self.nested_tab.clear();
+        }
+
         let changed_vertical_plane = self.sheet != sheet && (matches!(self.sheet, Sheet::Section(_)) || matches!(sheet, Sheet::Section(_)));
         // A family document's view: its tab after the document's others (after the project's and the documents' before it),
         // and the document showing it. The project's tool, selection and views are left as they are.
@@ -7395,7 +7399,15 @@ impl BimApp {
                 }
                 self.option_selector(ui);
                 ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
-                    ui.add(egui::Label::new(RichText::new(t(self.prompt())).color(pal().muted)).truncate());
+                    let label = if self.tool == Tool::Modify && matches!(self.sheet, Sheet::View3D | Sheet::Section(_)) {
+                        self.nested_tab.current().map(|id| crate::canvas::named(&self.session.model, id))
+                    } else {
+                        None
+                    };
+                    ui.add(
+                        egui::Label::new(RichText::new(label.unwrap_or_else(|| t(self.prompt()).to_string())).color(pal().muted))
+                            .truncate(),
+                    );
                 });
             });
         });

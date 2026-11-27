@@ -2457,6 +2457,7 @@ impl BimApp {
         let tabbed = std::mem::take(&mut self.tab_cycle) | std::mem::take(&mut self.face_cycle) || tab;
         let mut curtain_tabbed = false;
         if tabbed
+            && !self.nested_tab.passed_front(hover.map(|h| (h.x - rect.min.x, h.y - rect.min.y)))
             && let (Some(at), Some(id)) = (hover, hovered)
             && crate::curtain::tab_wall(&model, &selection, &[id], Some(id), self.tool == Tool::Modify) == Some(id)
             && let Some(w) = model.wall(id)
@@ -2474,7 +2475,7 @@ impl BimApp {
             if self.curtain_part.is_some() {
                 self.selection = vec![id];
             }
-            curtain_tabbed = true;
+            curtain_tabbed = self.curtain_part.is_some();
         }
         // The nested instances, seen through the camera, in the view's points from its corner.
         let project = |p: [f64; 3]| {
@@ -2484,8 +2485,20 @@ impl BimApp {
         let nested = crate::nested_tab::seen(&model, hovered, &selection, &project);
         let hovered = if modify {
             let at = hover.map(|h| (h.x - rect.min.x, h.y - rect.min.y));
-            self.nested_tab.step(hovered, &nested, at, tabbed && !curtain_tabbed && hover.is_some())
+            let target = crate::nested_tab::Target {
+                model: &model,
+                frame: crate::nested_tab::Frame::Orbit(active, cam),
+                hovered,
+                at,
+                seen: &nested,
+                project: &project,
+            };
+            self.nested_tab.step(target, tabbed && !curtain_tabbed && fresh, |at| {
+                let owners = scene.pick_all(&cam, (f64::from(at.0 * ppp), f64::from(at.1 * ppp)), &look3);
+                (Vec::new(), owners)
+            })
         } else {
+            self.nested_tab.clear();
             hovered
         };
         // The floor or roof being shaped is drawn as it is, not in the selection's colour: edit mode's marks are what's lit.
@@ -2531,7 +2544,9 @@ impl BimApp {
                 ));
             }
         };
+        self.nested_tab.draw(&p, |q| rect.min + vec2(q.0 as f32 / ppp, q.1 as f32 / ppp));
         crate::nested_tab::outline(&p, &nested, hovered, &selection, &|(x, y)| rect.min + vec2(x, y));
+        crate::nested_tab::outline(&p, self.nested_tab.nested(), hovered, &selection, &|(x, y)| rect.min + vec2(x, y));
         draw_marks(&marks, &|owner, c| {
             if selection.contains(&owner) {
                 canvas_pal().accent
