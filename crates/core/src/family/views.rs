@@ -1067,12 +1067,13 @@ pub fn draft_outline_edges(family: &Family, values: &BTreeMap<String, Val>, st: 
 /// The edges solid `tris` (in the family's axes) is seen with in view `which`, as [`outline_edges`] says.
 fn seen_edges(solid: &[[P3; 3]], st: &Staged, which: Which) -> Vec<(P2, P2)> {
     let mut out = Vec::new();
-    seen_edges_with(solid, st, which, |a, b| out.push((st.to_view(which, a), st.to_view(which, b))));
+    seen_edges_with(solid, st, which, true, |a, b| out.push((st.to_view(which, a), st.to_view(which, b))));
     out
 }
 
 /// [`seen_edges`], each handed to `edge` in the family's axes, so a view can clip it against other forms at its depth.
-fn seen_edges_with(solid: &[[P3; 3]], st: &Staged, which: Which, mut edge: impl FnMut(P3, P3)) {
+/// When `sample_self` is false the caller clips against this solid with the same depth test as the surrounding solids.
+fn seen_edges_with(solid: &[[P3; 3]], st: &Staged, which: Which, sample_self: bool, mut edge: impl FnMut(P3, P3)) {
     let eye: P3 = match which {
         Which::Plan => [0.0, 0.0, 1.0],
         Which::Ceiling => [0.0, 0.0, -1.0],
@@ -1093,7 +1094,9 @@ fn seen_edges_with(solid: &[[P3; 3]], st: &Staged, which: Which, mut edge: impl 
             continue;
         }
         let n = view3d::mul(n, 1.0 / len);
-        tris.push(*t);
+        if sample_self {
+            tris.push(*t);
+        }
         for k in 0..3 {
             let (a, b) = (t[k], t[(k + 1) % 3]);
             let (ka, kb) = (key(&a), key(&b));
@@ -1104,7 +1107,7 @@ fn seen_edges_with(solid: &[[P3; 3]], st: &Staged, which: Which, mut edge: impl 
     let crease = CREASE.to_radians().cos();
     let facing = |n: &P3| view3d::dot(*n, eye) > 1e-6;
     // Past this many triangles, edges are drawn without asking what hides them: the work grows with edges times triangles.
-    let occlude = tris.len() <= MAX_OCCLUDERS;
+    let occlude = sample_self && tris.len() <= MAX_OCCLUDERS;
     for (a, b, normals) in edges.into_values() {
         let toward: Vec<&P3> = normals.iter().filter(|n| facing(n)).collect();
         let seen = match (toward.len(), normals.len()) {
@@ -1116,12 +1119,18 @@ fn seen_edges_with(solid: &[[P3; 3]], st: &Staged, which: Which, mut edge: impl 
         if !seen {
             continue;
         }
+        if !occlude {
+            if st.to_view(which, a).dist(st.to_view(which, b)) > 1e-6 {
+                edge(a, b);
+            }
+            continue;
+        }
         // In pieces, each kept where nothing of the solid lies between its middle and the eye.
         const PIECES: usize = 8;
         let at = |s: f64| view3d::add(a, view3d::mul(view3d::sub(b, a), s));
         let mut run: Option<f64> = None;
         for k in 0..=PIECES {
-            let shown = k < PIECES && (!occlude || !hidden(&tris, at((k as f64 + 0.5) / PIECES as f64), eye));
+            let shown = k < PIECES && !hidden(&tris, at((k as f64 + 0.5) / PIECES as f64), eye);
             match (shown, run) {
                 (true, None) => run = Some(k as f64 / PIECES as f64),
                 (false, Some(from)) => {

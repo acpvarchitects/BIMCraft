@@ -22,6 +22,8 @@ struct DisplayedPiece {
     /// Its triangles, placed: in plan, what the plan sees of it (below a hosted opening's cut, less what the wall covers,
     /// with the cut's caps); in an elevation, what the picture was drawn from.
     tris: Vec<[P3; 3]>,
+    /// Several meshes of one selectable instance share their crease topology and clip each other's rims at the true depth.
+    grouped: bool,
     /// Its edges as the view shows them, in the view's millimetres: in plan, the strokes it was drawn with; in an elevation,
     /// its seen edges less where another piece lies nearer the eye, worked out when first asked.
     edges: OnceLock<Vec<(P2, P2)>>,
@@ -48,12 +50,14 @@ impl DisplayedForms {
             && owner.tris.len() + tris.len() <= MAX_OCCLUDERS
         {
             owner.tris.extend(tris);
+            owner.grouped = true;
             return;
         }
         self.pieces.push(DisplayedPiece {
             form,
             path,
             tris,
+            grouped: false,
             edges: OnceLock::new(),
             bounds: OnceLock::new(),
             patch_bounds: OnceLock::new(),
@@ -66,6 +70,7 @@ impl DisplayedForms {
             form: piece.form,
             path: piece.path,
             tris: piece.tris,
+            grouped: false,
             edges: OnceLock::from(edges),
             bounds: OnceLock::new(),
             patch_bounds: OnceLock::new(),
@@ -121,15 +126,18 @@ impl DisplayedForms {
     /// picture on what is seen (ec's 68be32306).
     fn edges<'a>(&self, st: &Staged, which: Which, piece: &'a DisplayedPiece) -> &'a [(P2, P2)] {
         piece.edges.get_or_init(|| {
-            let others: Vec<&DisplayedPiece> = self.pieces.iter().filter(|p| !std::ptr::eq(*p, piece) && p.part(st).is_some()).collect();
+            // A combined nested mesh keeps its common edges for crease classification. Its faces take part in the same
+            // exact depth clipping as other pieces, so a narrow visible stretch cannot fall between two self-occlusion samples.
+            let occluders: Vec<_> =
+                self.pieces.iter().filter(|p| (piece.grouped || !std::ptr::eq(*p, piece)) && p.part(st).is_some()).collect();
             let mut out = Vec::new();
-            seen_edges_with(&piece.tris, st, which, |a, b| {
+            seen_edges_with(&piece.tris, st, which, !piece.grouped, |a, b| {
                 let (a, b) = (projected(st, which, a), projected(st, which, b));
                 let mut hidden = Vec::new();
                 if let Some(host) = &self.host {
                     host.hide_edge(P2(a[0], a[1]), P2(b[0], b[1]), &mut hidden);
                 }
-                for other in &others {
+                for other in &occluders {
                     let may_cover = |[lo, hi]: &[P3; 2]| {
                         hi[2] > a[2].min(b[2]) + DEPTH_EPS && (0..2).all(|i| hi[i] >= a[i].min(b[i]) && lo[i] <= a[i].max(b[i]))
                     };
