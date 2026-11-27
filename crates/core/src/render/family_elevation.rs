@@ -161,4 +161,29 @@ mod hosted {
             assert_eq!(views::face_in_box(&f, &values, &st, which, views::Part::Form(1), &boxed), hidden);
         }
     }
+
+    #[test]
+    fn hosted_elevation_with_the_normal_comparison_oracles_reuses_the_displayed_mesh() {
+        let (f, mut st, _, window) = window();
+        let which = Which::Elevation(Side::Front);
+        let jamb = st.to_view(which, [500., 0., 700.]);
+        crate::model::PLACED_OPENING_BUILDS.set(0);
+        let drawn = draw(&mut st, which);
+        let builds = crate::model::PLACED_OPENING_BUILDS.get();
+        let px = drawn.view.px(jamb);
+        let picture = drawn.picture.unwrap();
+        assert_eq!(picture.pick(px.0.into(), px.1.into()), Some(window));
+        assert_eq!(views::form_at(&f, &f.values("A", &Default::default()).unwrap(), &st, which, jamb), Some(0));
+        assert_eq!(crate::model::PLACED_OPENING_BUILDS.get(), builds, "picking the jamb reuses the displayed mesh");
+        // Both the fork's section picture and its overlay can build comparison scenes in tests. Measure the
+        // ordinary draw using previously prepared work, so these checks remain active in the editor's draw.
+        let m = &st.model;
+        let id = st.elevation(Side::Front).unwrap();
+        let work = SectionWork::new(m);
+        crate::model::PLACED_OPENING_BUILDS.set(0);
+        let reference = section_picture_capturing(m, &work, id, (drawn.view, drawn.view), &[], None).unwrap();
+        section_in(m, &work, id, drawn.view, annotation(m, id, drawn.view), scale_of(m, id), Some(&reference));
+        let reference_builds = crate::model::PLACED_OPENING_BUILDS.get();
+        assert_eq!(builds, reference_builds + 1, "one placed window mesh supplies both the picture and its pick identity");
+    }
 }

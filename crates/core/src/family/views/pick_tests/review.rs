@@ -103,26 +103,33 @@ fn hosted_elevation_picks_the_jamb_and_the_flange_only_where_the_picture_exposes
     }
 }
 
+fn hosted_plan_gap(open: bool) -> (Family, Session, Id) {
+    // The cut passes between two closed parts of a form, or through an incomplete skin. The sill lies below the cut.
+    let mut forms = if open {
+        vec![json!({"mesh":[[[-300,-80,100],[300,-80,1700],[0,80,1700]]]})]
+    } else {
+        vec![
+            json!({"profile":[[-300,-80],[300,-80],[300,80],[-300,80]],"from":100,"to":1700}),
+            json!({"profile":[[-500,-150],[500,-150],[500,150],[-500,150]],"from":800,"to":1450,"void":true,"cuts":"forms"}),
+        ]
+    };
+    forms.push(json!({"profile":[[-450,-15],[450,-15],[450,15],[-450,15]],"from":950,"to":1000}));
+    let family: Family = serde_json::from_value(json!({
+        "category":"window","parameters":[{"name":"Width","value":1200},{"name":"Height","value":1800}],
+        "types":{"T":{}},"forms":forms
+    }))
+    .unwrap();
+    let mut s = Session::new();
+    s.model_mut().families.insert("W".into(), family.clone());
+    s.execute("wall", &json!({"points":[[-2500,0],[2500,0]]})).unwrap();
+    let window = s.execute("window", &json!({"at":[0,0],"family":"W","type":"T","sill":0})).unwrap()["id"].as_u64().unwrap();
+    (family, s, window)
+}
+
 #[test]
 fn a_hosted_plan_sees_a_sill_between_closed_parts_and_outlines_an_open_skin() {
-    // A single closed form split in two by a horizontal void, and a single open triangle crossing the same cut plane.
-    let disconnected = vec![
-        json!({"profile":[[-300,-80],[300,-80],[300,80],[-300,80]],"from":100,"to":1700}),
-        json!({"profile":[[-500,-150],[500,-150],[500,150],[-500,150]],"from":800,"to":1450,"void":true,"cuts":"forms"}),
-    ];
-    let open_skin = vec![json!({"mesh":[[[-300,-80,100],[300,-80,1700],[0,80,1700]]]})];
-    for (mut forms, open) in [(disconnected, false), (open_skin, true)] {
-        // The sill lies above the lower part and below the plan cut.
-        forms.push(json!({"profile":[[-450,-15],[450,-15],[450,15],[-450,15]],"from":950,"to":1000}));
-        let family = serde_json::from_value(json!({
-            "category":"window","parameters":[{"name":"Width","value":1200},{"name":"Height","value":1800}],
-            "types":{"T":{}},"forms":forms
-        }))
-        .unwrap();
-        let mut s = Session::new();
-        s.model_mut().families.insert("W".into(), family);
-        s.execute("wall", &json!({"points":[[-2500,0],[2500,0]]})).unwrap();
-        let window = s.execute("window", &json!({"at":[0,0],"family":"W","type":"T","sill":0})).unwrap()["id"].as_u64().unwrap();
+    for open in [false, true] {
+        let (_, s, window) = hosted_plan_gap(open);
         let pieces = s.model.opening_pieces(s.model.elements.get(window).unwrap());
         assert_eq!(pieces.len(), 2);
         let view = View { cx: 0.0, cy: 0.0, scale: 0.2, width: 600, height: 400, angle: 0.0 };
@@ -146,5 +153,59 @@ fn a_hosted_plan_sees_a_sill_between_closed_parts_and_outlines_an_open_skin() {
             assert!(visible, "the sill edge stays visible in the gap");
             assert!(drawing.pick_all(view.px(probe), 1.0).contains(&window));
         }
+    }
+}
+
+#[test]
+fn a_hosted_plan_picks_the_sill_through_the_gap_and_the_open_skin_at_its_cut() {
+    for open in [false, true] {
+        let (family, s, _) = hosted_plan_gap(open);
+        let values = family.values("T", &BTreeMap::new()).unwrap();
+        let mut staged = stage(std::sync::Arc::unwrap_or_clone(s.model), &family, &values, &|_| true);
+        let centre = P2(17., 3.);
+        zoom_at(&mut staged, Which::Plan, centre, 0.5, (600, 400));
+        let pick = |p| form_at(&family, &values, &staged, Which::Plan, p);
+        assert_eq!(pick(centre), Some(if open { 0 } else { 2 }), "the face visible over the sill");
+        if !open {
+            assert_eq!(pick(P2(17., 45.)), Some(0), "the lower part beside the sill");
+            assert_eq!(form_edge_at(&family, &values, &staged, Which::Plan, P2(17., 15.), 0.5), Some(2), "the sill rim in the gap");
+        }
+    }
+}
+
+#[test]
+fn a_sloping_panel_clips_the_crossing_and_clickable_rim_at_the_depth_intersection() {
+    // The panels have the same projected span along the rim. Their order changes where
+    // the sloping panel's near face crosses the straight panel, away from either outline.
+    let f: Family = serde_json::from_value(json!({
+        "category":"generic","types":{"A":{}},"forms":[
+            {"guid":"00000000-0000-4000-8000-000000000311","profile":[[-180,0],[180,0],[180,12],[-180,12]],"from":0,"to":100},
+            {"guid":"00000000-0000-4000-8000-000000000322","profile":[[-220,-121],[220,99],[220,119],[-220,-101]],"from":-50,"to":150}
+        ]
+    }))
+    .unwrap();
+    let (mut st, values, owner) = staged(&f, "A");
+    for (side, front) in [(Side::Front, true), (Side::Back, false)] {
+        let which = Which::Elevation(side);
+        let centre = st.to_view(which, [0., 0., 75.]);
+        let drawn = zoom_at(&mut st, which, centre, 1.0, (440, 250));
+        let picture = drawn.picture.unwrap();
+        let (camera, _) = crate::render::section_camera(&st.model, st.elevation(side).unwrap(), drawn.view).unwrap();
+        let outline = views::outline_edges(&f, &values, &st, which, 0);
+        for x in [-80., 80.] {
+            let visible = (x > 0.) == front;
+            let rim = st.to_view(which, [x, 0., 100.]);
+            let (u, v) = drawn.view.px(st.to_view(which, [x, 0., 95.]));
+            assert_eq!(picture.pick(u.into(), v.into()), Some(owner));
+            let surface = picture.point(&camera, u.into(), v.into()).unwrap();
+            let depth = if visible { if front { 0. } else { 12. } } else { 0.5 * x + if front { -11. } else { 9. } };
+            assert!((surface[1] - depth).abs() < 1., "{side:?} at {x}: {surface:?}");
+            let crossing = crate::geom::SelectBox::dragged(rim + P2(1., 1.), rim - P2(1., 1.));
+            assert_eq!(crossing.takes(&outline), visible);
+            assert_eq!(views::form_edge_at(&f, &values, &st, which, rim, 0.25), visible.then_some(0));
+        }
+        // Front: x/2 - 11 = 0. Back: x/2 + 9 = 12. Both are inside a projected face.
+        let split = st.to_view(which, [if front { 22. } else { 6. }, 0., 100.]);
+        assert!(outline.iter().flat_map(|(a, b)| [*a, *b]).any(|p| p.dist(split) < 0.01), "{side:?}: {outline:?}");
     }
 }
