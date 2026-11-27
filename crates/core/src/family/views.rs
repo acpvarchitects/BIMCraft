@@ -601,7 +601,7 @@ pub fn new_line(st: &Staged, which: Which, on: &super::Frame, a: P2, b: P2) -> R
 /// skin in, an outline and its holes alike, what the cut is drawn with ([`view3d::slice_loops`]). A ring cut is its two
 /// circles, never the pieces a region with a hole is made of.
 pub fn plan_cut_outlines(tris: &[[P3; 3]], z: f64) -> Vec<Vec<P2>> {
-    view3d::level_outlines(tris, z)
+    view3d::level_outlines(tris, z).unwrap_or_default()
 }
 
 /// Where the level plane at height `z` cuts closed mesh `tris`, as rings in plan (mm). The same slicing a section's cut is
@@ -704,9 +704,8 @@ pub fn nested_at(family: &Family, values: &BTreeMap<String, Val>, st: &Staged, w
 }
 
 /// How near point `at` of view `which` the edges solid `tris` is seen with there pass ([`outline_edges`]), when within
-/// `reach` and where the point of the edge nearest `at` is `visible` (nothing else drawn nearer the eye there): none past it,
-/// or where it has no edge.
-fn edge_near(tris: &[[P3; 3]], st: &Staged, which: Which, at: P2, reach: f64, visible: impl Fn(P2) -> bool) -> Option<f64> {
+/// `reach`: none past it, or where it has no edge.
+fn edge_near(tris: &[[P3; 3]], st: &Staged, which: Which, at: P2, reach: f64) -> Option<f64> {
     // Off the box round what it covers, no edge of it is near: the occlusion is worked out only for the solids under the cursor.
     let seen: Vec<P2> = tris.iter().flatten().map(|p| st.to_view(which, *p)).collect();
     let lo = seen.iter().fold(P2(f64::INFINITY, f64::INFINITY), |a, q| P2(a.0.min(q.0), a.1.min(q.1)));
@@ -716,11 +715,8 @@ fn edge_near(tris: &[[P3; 3]], st: &Staged, which: Which, at: P2, reach: f64, vi
     }
     seen_edges(tris, st, which)
         .iter()
-        .filter_map(|&(a, b)| {
-            let q = a + (b - a) * geom::param_on_segment(at, a, b);
-            let d = at.dist(q);
-            (d.is_finite() && d <= reach && visible(q)).then_some(d)
-        })
+        .map(|(a, b)| crate::geom::dist_to_segment(at, *a, *b))
+        .filter(|d| d.is_finite() && *d <= reach)
         .min_by(f64::total_cmp)
 }
 
@@ -752,7 +748,7 @@ pub fn form_edge_at_among(
     let mut best: Option<(f64, usize)> = None;
     for i in (0..family.forms.len()).filter(|i| !family.forms[*i].void && shown(*i)) {
         let Some(piece) = family.solid(i, values, &mut read).ok().flatten() else { continue };
-        if let Some(d) = edge_near(&piece.tris, st, which, at, reach, |_| true)
+        if let Some(d) = edge_near(&piece.tris, st, which, at, reach)
             && best.is_none_or(|(b, _)| d < b)
         {
             best = Some((d, i));
@@ -771,7 +767,7 @@ pub fn nested_edge_at(family: &Family, values: &BTreeMap<String, Val>, st: &Stag
         };
     }
     (0..family.nested_instances.len())
-        .filter_map(|i| edge_near(&nested_drawn(family, values, st, which, i), st, which, at, reach, |_| true).map(|d| (d, i)))
+        .filter_map(|i| edge_near(&nested_drawn(family, values, st, which, i), st, which, at, reach).map(|d| (d, i)))
         .min_by(|a, b| a.0.total_cmp(&b.0))
         .map(|(_, i)| i)
 }
@@ -1069,6 +1065,13 @@ pub fn draft_outline_edges(family: &Family, values: &BTreeMap<String, Val>, st: 
 
 /// The edges solid `tris` (in the family's axes) is seen with in view `which`, as [`outline_edges`] says.
 fn seen_edges(solid: &[[P3; 3]], st: &Staged, which: Which) -> Vec<(P2, P2)> {
+    let mut out = Vec::new();
+    seen_edges_with(solid, st, which, |a, b| out.push((st.to_view(which, a), st.to_view(which, b))));
+    out
+}
+
+/// [`seen_edges`], each handed to `edge` in the family's axes, so a view can clip it against other forms at its depth.
+fn seen_edges_with(solid: &[[P3; 3]], st: &Staged, which: Which, mut edge: impl FnMut(P3, P3)) {
     let eye: P3 = match which {
         Which::Plan => [0.0, 0.0, 1.0],
         Which::Ceiling => [0.0, 0.0, -1.0],
@@ -1101,7 +1104,6 @@ fn seen_edges(solid: &[[P3; 3]], st: &Staged, which: Which) -> Vec<(P2, P2)> {
     let facing = |n: &P3| view3d::dot(*n, eye) > 1e-6;
     // Past this many triangles, edges are drawn without asking what hides them: the work grows with edges times triangles.
     let occlude = tris.len() <= MAX_OCCLUDERS;
-    let mut out: Vec<(P2, P2)> = Vec::new();
     for (a, b, normals) in edges.into_values() {
         let toward: Vec<&P3> = normals.iter().filter(|n| facing(n)).collect();
         let seen = match (toward.len(), normals.len()) {
@@ -1122,9 +1124,9 @@ fn seen_edges(solid: &[[P3; 3]], st: &Staged, which: Which) -> Vec<(P2, P2)> {
             match (shown, run) {
                 (true, None) => run = Some(k as f64 / PIECES as f64),
                 (false, Some(from)) => {
-                    let (p, q) = (st.to_view(which, at(from)), st.to_view(which, at(k as f64 / PIECES as f64)));
-                    if p.dist(q) > 1e-6 {
-                        out.push((p, q));
+                    let (p, q) = (at(from), at(k as f64 / PIECES as f64));
+                    if st.to_view(which, p).dist(st.to_view(which, q)) > 1e-6 {
+                        edge(p, q);
                     }
                     run = None;
                 }
@@ -1132,7 +1134,6 @@ fn seen_edges(solid: &[[P3; 3]], st: &Staged, which: Which) -> Vec<(P2, P2)> {
             }
         }
     }
-    out
 }
 
 /// How far apart, degrees, two faces both turned to the eye turn at an edge for it to be drawn: the sketch's crease.
@@ -1421,6 +1422,69 @@ mod tests {
                 _ => Vec::new(),
             })
             .collect()
+    }
+
+    /// A window's form split in two by a void, its cut plane between the parts: the plane cuts nothing of it, so nothing is
+    /// drawn cut and the sill between the parts is seen, and picked, in the project's plan and the family's (GEO-2c-2e). An
+    /// open skin the plane crosses, which has no outline of its own there, still falls back to its outline (ec's 0f841ca2a).
+    #[test]
+    fn a_hosted_plan_sees_a_sill_between_closed_parts_and_outlines_an_open_skin() {
+        let disconnected = vec![
+            json!({"profile": [[-300, -80], [300, -80], [300, 80], [-300, 80]], "from": 100, "to": 1700}),
+            json!({"profile": [[-500, -150], [500, -150], [500, 150], [-500, 150]], "from": 800, "to": 1450, "void": true, "cuts": "forms"}),
+        ];
+        let open_skin = vec![json!({"mesh": [[[-300, -80, 100], [300, -80, 1700], [0, 80, 1700]]]})];
+        for (mut forms, open) in [(disconnected, false), (open_skin, true)] {
+            // The sill lies above the lower part and below the plan's cut.
+            forms.push(json!({"profile": [[-450, -15], [450, -15], [450, 15], [-450, 15]], "from": 950, "to": 1000}));
+            let sill = forms.len() - 1;
+            let f: Family = serde_json::from_value(json!({
+                "category": "window", "parameters": [{"name": "Width", "value": 1200}, {"name": "Height", "value": 1800}],
+                "types": {"T": {}}, "forms": forms
+            }))
+            .unwrap();
+            let mut s = Session::new();
+            s.model_mut().families.insert("W".into(), f.clone());
+            s.execute("wall", &json!({"points": [[-2500, 0], [2500, 0]]})).unwrap();
+            let window =
+                s.execute("window", &json!({"at": [0, 0], "family": "W", "type": "T", "sill": 0})).unwrap()["id"].as_u64().unwrap();
+            let pieces = s.model.opening_pieces(s.model.elements.get(window).unwrap());
+            assert_eq!(pieces.len(), 2);
+            let loops = view3d::level_outlines(&pieces[0].tris, 1200.0);
+            if open {
+                assert!(loops.is_none(), "an open skin has no outline of its own at the cut");
+            } else {
+                assert_eq!(loops, Some(Vec::new()), "the cut passes between the closed parts");
+                for z in [500.0, 1500.0] {
+                    assert_eq!(view3d::level_outlines(&pieces[0].tris, z).unwrap().len(), 1, "closed skin at {z}");
+                }
+            }
+            let view = render::View { cx: 0.0, cy: 0.0, scale: 0.2, width: 600, height: 400, angle: 0.0 };
+            let drawing = render::draw(&s.model, 100000, view);
+            let cut = drawing
+                .prims
+                .iter()
+                .zip(&drawing.parts)
+                .zip(&drawing.owners)
+                .filter(|((p, part), owner)| {
+                    **part == render::Part::Cut && **owner == Some(window) && matches!(p, render::Prim::Line { closed: true, .. })
+                })
+                .count();
+            assert_eq!(cut, usize::from(open), "only the open skin is outlined at the cut");
+            if !open {
+                let probe = P2(0.0, 15.0);
+                assert!(
+                    seen_lines(&drawing, window).iter().any(|(a, b)| geom::dist_to_segment(probe, *a, *b) < 0.5),
+                    "the sill in the gap"
+                );
+                assert!(drawing.pick_all(view.px(probe), 1.0).contains(&window));
+                // The family's plan picks the sill there, not a cut the plane doesn't make.
+                let values = f.values("T", &BTreeMap::new()).unwrap();
+                let mut st = stage(std::sync::Arc::unwrap_or_clone(s.model.clone()), &f, &values, &|_| true);
+                st.draw(Which::Plan, 600, 400, 1.0, P2(0.0, 0.0)).unwrap();
+                assert_eq!(form_at(&f, &values, &st, Which::Plan, P2(0.0, 0.0)), Some(sill), "the sill between the parts");
+            }
+        }
     }
 
     /// F10b: a window's forms below the plan's cut plane are seen from it, in projection, as walls below the cut are: the

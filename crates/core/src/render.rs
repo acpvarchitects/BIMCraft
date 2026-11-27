@@ -5207,18 +5207,21 @@ fn opening(
         let mut strokes = picks.is_some().then(|| vec![Vec::new(); pieces.len()]);
         let mut caps = picks.is_some().then(|| vec![Vec::new(); pieces.len()]);
         for (i, piece) in pieces.iter().enumerate().filter(|(_, p)| p.bottom <= cut && cut < p.top && drawn(p)) {
-            let rings = view3d::level_slice(&piece.tris, cut);
-            if rings.is_empty() {
+            // An open skin the plane crosses has no outline of its own there: its outline instead. Where the plane meets
+            // none of it (between two closed parts of it), nothing is cut, and what lies below is seen (GEO-2c-2e).
+            let Some(outlines) = view3d::level_outlines(&piece.tris, cut) else {
                 d.line(&piece.outline, BY_CATEGORY, INK, true);
                 if let (Some(strokes), Some(caps)) = (&mut strokes, &mut caps) {
                     strokes[i].extend(geom::ring_edges(&piece.outline));
                     caps[i].push(piece.outline.clone());
                 }
                 cut_rings.push(piece.outline.clone());
-            }
+                continue;
+            };
+            let rings = view3d::level_slice(&piece.tris, cut);
             // Drawn by its outlines (a frame's cut round its opening is two rings, not the pieces it is covered by); what
             // it covers by its regions.
-            for ring in view3d::level_outlines(&piece.tris, cut) {
+            for ring in outlines {
                 d.line(&ring, BY_CATEGORY, INK, true);
                 if let Some(strokes) = &mut strokes {
                     strokes[i].extend(geom::ring_edges(&ring));

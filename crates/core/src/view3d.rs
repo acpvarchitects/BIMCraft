@@ -1660,12 +1660,14 @@ pub(crate) fn host_holes(m: &Model, host: Id, z_at: impl Fn(P2) -> Option<f64>) 
 }
 
 /// Where the level plane at height `z` cuts closed mesh `tris`, as its outlines in plan: each loop, an outline and its holes
-/// alike ([`slice_loops`]), what the cut is drawn with; [`level_slice`]'s regions are what it covers.
-pub(crate) fn level_outlines(tris: &[[P3; 3]], z: f64) -> Vec<Vec<P2>> {
+/// alike ([`slice_loops`]), what the cut is drawn with; [`level_slice`]'s regions are what it covers. Empty where the plane
+/// meets none of it (between two closed parts of one form, say); none where it crosses an open skin, which leaves no closed
+/// loop: a hosted plan falls back to the form's outline there (GEO-2c-2e, ec's 0f841ca2a).
+pub(crate) fn level_outlines(tris: &[[P3; 3]], z: f64) -> Option<Vec<Vec<P2>>> {
     const FAR: f64 = 1.0e6;
     let turned: Vec<[P3; 3]> = tris.iter().map(|t| t.map(|p| [p[0], p[2] - z, p[1]])).collect();
-    let rings = slice_loops(&turned, P2(-FAR, 0.0), P2(1.0, 0.0)).unwrap_or_default();
-    rings.into_iter().map(|r| r.into_iter().map(|q| P2(q.0 - FAR, q.1)).collect()).collect()
+    let rings = slice_loops(&turned, P2(-FAR, 0.0), P2(1.0, 0.0))?;
+    Some(rings.into_iter().map(|r| r.into_iter().map(|q| P2(q.0 - FAR, q.1)).collect()).collect())
 }
 
 /// Where the level plane at height `z` cuts closed mesh `tris`, as rings in plan: [`slice`] of the mesh turned on its side,

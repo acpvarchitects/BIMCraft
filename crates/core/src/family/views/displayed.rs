@@ -2,9 +2,10 @@
 //! the view shows: each piece of a form or a nested instance as the drawing built it (refined for the zoom, GEO-2c, or its
 //! default build where that is too fine to cut), with, in plan, the strokes it was drawn with. The scratch model may hold a
 //! second, halftone placement of what the type hides: its pieces name the same forms. (Ported from the upstream series'
-//! picker, ec's 7f768c09e and e23c403b0.)
+//! picker, ec's 7f768c09e, e23c403b0, 7e3789a49, d19ae07d8 and 68be32306.)
 
 use super::*;
+use std::sync::OnceLock;
 
 /// The pieces a view drew, each as it drew it.
 #[derive(Default)]
@@ -19,9 +20,17 @@ struct DisplayedPiece {
     /// Its triangles, placed: in plan, what the plan sees of it (below a hosted opening's cut, less what the wall covers,
     /// with the cut's caps); in an elevation, what the picture was drawn from.
     tris: Vec<[P3; 3]>,
-    /// In plan, the strokes it was drawn with, in the view's millimetres; an elevation finds a piece's edges in its own frame.
-    edges: Option<Vec<(P2, P2)>>,
+    /// Its edges as the view shows them, in the view's millimetres: in plan, the strokes it was drawn with; in an elevation,
+    /// its seen edges less where another piece lies nearer the eye, worked out when first asked.
+    edges: OnceLock<Vec<(P2, P2)>>,
+    /// Its box in the view's millimetres and depth (larger nearer the eye), and each run of [`PATCH`] of its triangles' box:
+    /// what quickly rules out a piece, or part of one, that can't hide an edge.
+    bounds: OnceLock<[P3; 2]>,
+    patch_bounds: OnceLock<Vec<[P3; 2]>>,
 }
+
+/// How many triangles of a piece one box rounds, to rule them out together.
+const PATCH: usize = 32;
 
 impl DisplayedForms {
     /// A piece an elevation drew. A nested instance is selected whole, so its pieces are kept as one (as far as
@@ -34,12 +43,26 @@ impl DisplayedForms {
             owner.tris.extend(tris);
             return;
         }
-        self.pieces.push(DisplayedPiece { form, path, tris, edges: None });
+        self.pieces.push(DisplayedPiece {
+            form,
+            path,
+            tris,
+            edges: OnceLock::new(),
+            bounds: OnceLock::new(),
+            patch_bounds: OnceLock::new(),
+        });
     }
 
     /// A piece a plan drew, with the strokes it drew it with.
     pub(crate) fn push_plan(&mut self, piece: crate::family::Piece, edges: Vec<(P2, P2)>) {
-        self.pieces.push(DisplayedPiece { form: piece.form, path: piece.path, tris: piece.tris, edges: Some(edges) });
+        self.pieces.push(DisplayedPiece {
+            form: piece.form,
+            path: piece.path,
+            tris: piece.tris,
+            edges: OnceLock::from(edges),
+            bounds: OnceLock::new(),
+            patch_bounds: OnceLock::new(),
+        });
     }
 
     /// What of the family the piece on top at `at` is, among those `keep` keeps: in plan the highest, in an elevation the
@@ -57,42 +80,76 @@ impl DisplayedForms {
         hit.map(|(_, part)| part)
     }
 
-    /// What of the family `keep` keeps has an edge the view drew within `reach` of `at`: the one whose edge is nearest. In an
-    /// elevation only where no other piece lies nearer the eye there.
+    /// What of the family `keep` keeps has an edge the view shows within `reach` of `at` ([`DisplayedForms::edges`]): the one
+    /// whose edge is nearest.
     pub(super) fn edge(&self, st: &Staged, which: Which, at: P2, reach: f64, keep: impl Fn(Part) -> bool) -> Option<Part> {
         self.pieces
             .iter()
             .filter_map(|piece| {
                 let part = piece.part(st).filter(|part| keep(*part))?;
-                let distance = match &piece.edges {
-                    Some(edges) => {
-                        edges.iter().map(|(a, b)| geom::dist_to_segment(at, *a, *b)).filter(|d| *d <= reach).min_by(f64::total_cmp)
+                if let Which::Elevation(_) = which {
+                    let [lo, hi] = *piece.bounds(st, which);
+                    if at.0 < lo[0] - reach || at.0 > hi[0] + reach || at.1 < lo[1] - reach || at.1 > hi[1] + reach {
+                        return None;
                     }
-                    None => edge_near(&piece.tris, st, which, at, reach, |q| {
-                        if self.pieces.len() == 1 {
-                            return true;
-                        }
-                        let depth = piece.depth(st, which, q).unwrap_or(f64::NEG_INFINITY);
-                        !self.pieces.iter().any(|other| {
-                            !std::ptr::eq(other, piece)
-                                && other.part(st).is_some()
-                                && other.depth(st, which, q).is_some_and(|near| near > depth + 1e-3)
-                        })
-                    }),
-                }?;
+                }
+                let distance = self
+                    .edges(st, which, piece)
+                    .iter()
+                    .map(|(a, b)| geom::dist_to_segment(at, *a, *b))
+                    .filter(|d| d.is_finite() && *d <= reach)
+                    .min_by(f64::total_cmp)?;
                 Some((part, distance))
             })
             .min_by(|a, b| a.1.total_cmp(&b.1))
             .map(|(part, _)| part)
     }
 
-    /// The edges `part` was drawn with: in plan its strokes, in an elevation its pieces' seen edges.
+    /// `piece`'s edges as the view shows them: in plan its strokes; in an elevation its seen edges ([`seen_edges`]), each less
+    /// the spans another piece lies nearer the eye over, so a click, a box and the outline drawn selected agree with the
+    /// picture on what is seen (ec's 68be32306).
+    fn edges<'a>(&self, st: &Staged, which: Which, piece: &'a DisplayedPiece) -> &'a [(P2, P2)] {
+        piece.edges.get_or_init(|| {
+            let others: Vec<&DisplayedPiece> = self.pieces.iter().filter(|p| !std::ptr::eq(*p, piece) && p.part(st).is_some()).collect();
+            let mut out = Vec::new();
+            seen_edges_with(&piece.tris, st, which, |a, b| {
+                let (a, b) = (projected(st, which, a), projected(st, which, b));
+                let mut hidden = Vec::new();
+                for other in &others {
+                    let may_cover = |[lo, hi]: &[P3; 2]| {
+                        hi[2] > a[2].min(b[2]) + DEPTH_EPS && (0..2).all(|i| hi[i] >= a[i].min(b[i]) && lo[i] <= a[i].max(b[i]))
+                    };
+                    if !may_cover(other.bounds(st, which)) {
+                        continue;
+                    }
+                    let bounds =
+                        other.patch_bounds.get_or_init(|| other.tris.chunks(PATCH).map(|patch| mesh_bounds(patch, st, which)).collect());
+                    for (patch, bounds) in other.tris.chunks(PATCH).zip(bounds) {
+                        if may_cover(bounds) {
+                            hidden.extend(patch.iter().filter_map(|tri| covered_span(a, b, tri.map(|p| projected(st, which, p)))));
+                        }
+                    }
+                }
+                hidden.sort_unstable_by(|x, y| x.0.total_cmp(&y.0));
+                let xy = |s: f64| P2(a[0] + (b[0] - a[0]) * s, a[1] + (b[1] - a[1]) * s);
+                let mut start = 0.0;
+                for (lo, hi) in hidden {
+                    if lo > start + 1e-10 {
+                        out.push((xy(start), xy(lo)));
+                    }
+                    start = f64::max(start, hi);
+                }
+                if start < 1.0 - 1e-10 {
+                    out.push((xy(start), xy(1.0)));
+                }
+            });
+            out
+        })
+    }
+
+    /// The edges `part` is shown with ([`DisplayedForms::edges`]): what it is drawn selected with and boxed by.
     pub(super) fn outline(&self, st: &Staged, which: Which, part: Part) -> Vec<(P2, P2)> {
-        self.pieces
-            .iter()
-            .filter(|p| p.part(st) == Some(part))
-            .flat_map(|p| p.edges.clone().unwrap_or_else(|| seen_edges(&p.tris, st, which)))
-            .collect()
+        self.pieces.iter().filter(|p| p.part(st) == Some(part)).flat_map(|p| self.edges(st, which, p).iter().copied()).collect()
     }
 
     /// Whether `boxed` takes `part` by what the view drew of it, as [`face_in_box`] says.
@@ -118,18 +175,18 @@ impl DisplayedPiece {
         }
     }
 
+    /// Its box in the view ([`mesh_bounds`]).
+    fn bounds(&self, st: &Staged, which: Which) -> &[P3; 2] {
+        self.bounds.get_or_init(|| mesh_bounds(&self.tris, st, which))
+    }
+
     /// How near the eye it is at `at` (in plan, how high), where it covers it.
     fn depth(&self, st: &Staged, which: Which, at: P2) -> Option<f64> {
         self.tris
             .iter()
             .filter_map(|tri| {
                 let projected = tri.map(|p| {
-                    let P2(x, y) = st.to_view(which, p);
-                    let z = match which {
-                        Which::Plan => p[2],
-                        Which::Ceiling => -p[2],
-                        Which::Elevation(side) => -P2(p[0], p[1]).dot(side.looking()),
-                    };
+                    let [x, y, z] = projected(st, which, p);
                     (x, y, z)
                 });
                 depth_at(projected, (at.0, at.1))
@@ -212,4 +269,82 @@ pub(super) fn identities(model: &mut Model, family: &Family) -> (BTreeMap<Guid, 
         }
     }
     (forms, instances)
+}
+
+/// The box round `tris` in view `which`: its millimetres, and depth, larger nearer the eye ([`projected`]).
+fn mesh_bounds(tris: &[[P3; 3]], st: &Staged, which: Which) -> [P3; 2] {
+    let mut bounds = [[f64::INFINITY; 3], [f64::NEG_INFINITY; 3]];
+    for p in tris.iter().flatten() {
+        for (i, x) in projected(st, which, *p).into_iter().enumerate() {
+            bounds[0][i] = bounds[0][i].min(x);
+            bounds[1][i] = bounds[1][i].max(x);
+        }
+    }
+    bounds
+}
+
+/// Point `p` in view `which`: its millimetres there, and how near the eye it is (in plan, how high).
+fn projected(st: &Staged, which: Which, p: P3) -> P3 {
+    let P2(x, y) = st.to_view(which, p);
+    let depth = match which {
+        Which::Plan => p[2],
+        Which::Ceiling => -p[2],
+        Which::Elevation(side) => -P2(p[0], p[1]).dot(side.looking()),
+    };
+    [x, y, depth]
+}
+
+/// How much nearer the eye a face must be than an edge to hide it.
+const DEPTH_EPS: f64 = 1e-3;
+
+/// The span (as fractions from `a` to `b`) of the segment from `a` to `b` (view millimetres and depth) that triangle `t` lies in
+/// front of: the segment clipped to the triangle's three sides in the view and to the half space behind its face. Barycentric
+/// coordinates and the depth between them both run straight along the segment. None where it hides none of it.
+fn covered_span(a: P3, b: P3, t: [P3; 3]) -> Option<(f64, f64)> {
+    let xy = |p: P3| P2(p[0], p[1]);
+    let u = xy(t[1]) - xy(t[0]);
+    let v = xy(t[2]) - xy(t[0]);
+    let area = u.cross(v);
+    if area.abs() < 1e-9 {
+        return None;
+    }
+    let distances = |p: P3| {
+        let q = xy(p) - xy(t[0]);
+        let w1 = q.cross(v) / area;
+        let w2 = u.cross(q) / area;
+        let depth = t[0][2] + w1 * (t[1][2] - t[0][2]) + w2 * (t[2][2] - t[0][2]);
+        [1.0 - w1 - w2, w1, w2, depth - p[2] - DEPTH_EPS]
+    };
+    let (mut lo, mut hi) = (0.0_f64, 1.0_f64);
+    for (x, y) in distances(a).into_iter().zip(distances(b)) {
+        if x < 0.0 && y < 0.0 {
+            return None;
+        }
+        if x < 0.0 {
+            lo = lo.max(x / (x - y));
+        } else if y < 0.0 {
+            hi = hi.min(x / (x - y));
+        }
+    }
+    (lo < hi).then_some((lo, hi))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// An edge passing behind a sloping triangle and out in front of it again is hidden only where the triangle lies nearer.
+    #[test]
+    fn an_edge_crossing_the_depth_of_a_sloped_occluder_is_only_partly_hidden() {
+        let triangle = [[0.0, 0.0, 0.0], [10.0, 0.0, 10.0], [0.0, 10.0, 0.0]];
+        // At y = 2 the triangle runs from x 0 to 8, x deep there. The segment runs from x -2 to 10, 3 deep.
+        let (a, b) = ([-2.0, 2.0, 3.0], [10.0, 2.0, 3.0]);
+        let (lo, hi) = ((5.0 + DEPTH_EPS) / 12.0, 10.0 / 12.0);
+        for (start, end, expected) in [(a, b, (lo, hi)), (b, a, (1.0 - hi, 1.0 - lo))] {
+            let actual = covered_span(start, end, triangle).unwrap();
+            assert!((actual.0 - expected.0).abs() < 1e-9 && (actual.1 - expected.1).abs() < 1e-9, "{actual:?}");
+        }
+        let coplanar = [[0.0, 0.0, 3.0], [10.0, 0.0, 3.0], [0.0, 10.0, 3.0]];
+        assert_eq!(covered_span(a, b, coplanar), None);
+    }
 }

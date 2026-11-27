@@ -291,3 +291,51 @@ fn a_nested_instances_elevation_leaves_its_hidden_rear_rim_out_of_a_click_and_a_
         );
     }
 }
+
+/// Three forms of the family's own one behind another (from the front): an elevation selects each by the part of its edges
+/// the picture shows, a rim another form hides being no one's to click or to box, from the front and from the back. Ported
+/// with ec's 68be32306, whose source predicted a hidden rear rim boxed though a click missed it.
+#[test]
+fn distinct_forms_elevation_crossing_and_click_follow_the_visible_part_of_each_edge() {
+    let f: Family = serde_json::from_value(json!({
+        "category": "generic", "types": {"T": {}}, "forms": [
+            {"guid": "00000000-0000-4000-8000-000000000111", "profile": [[-200, -80], [140, -80], [140, -50], [-200, -50]], "from": -100, "to": 140},
+            {"guid": "00000000-0000-4000-8000-000000000222", "profile": [[-110, 210], [110, 210], [110, 240], [-110, 240]], "from": -60, "to": 90},
+            {"guid": "00000000-0000-4000-8000-000000000333", "profile": [[-100, 350], [300, 350], [300, 375], [-100, 375]], "from": -75, "to": 115}
+        ]
+    }))
+    .unwrap();
+    let (mut st, values, owner) = staged(&f, "T");
+    for (side, front) in [(Side::Front, true), (Side::Back, false)] {
+        let which = Which::Elevation(side);
+        let centre = st.to_view(which, [0.0, 0.0, 30.0]);
+        let drawn = zoom_at(&mut st, which, centre, 0.24, (220, 180));
+        let picture = drawn.picture.as_ref().unwrap();
+        let (camera, _) = render::section_camera(&st.model, st.elevation(side).unwrap(), drawn.view).unwrap();
+        // Form 1 is wholly behind form 0 from the front; form 2 reaches past its right side. From the back form 2 covers most
+        // of form 1, but its leftmost 10 mm.
+        let samples = [
+            (1, [-110.0, 220.0, 22.0], if front { -80.0 } else { 240.0 }, !front),
+            (2, [30.0, 360.0, 115.0], if front { -80.0 } else { 375.0 }, !front),
+            (2, [200.0, 360.0, 115.0], if front { 350.0 } else { 375.0 }, true),
+        ];
+        for (i, point, depth, visible) in samples {
+            let rim = st.to_view(which, point);
+            // Just inside the solid's silhouette: the pixels may straddle the edge itself.
+            let inside = if i == 1 { [-105.0, point[1], point[2]] } else { [point[0], point[1], 108.0] };
+            let (x, y) = drawn.view.px(st.to_view(which, inside));
+            assert_eq!(picture.pick(f64::from(x), f64::from(y)), Some(owner));
+            let hit = picture.point(&camera, f64::from(x), f64::from(y)).unwrap();
+            assert!((hit[1] - depth).abs() < 1.0, "{side:?} {point:?}: {hit:?}");
+            let crossing = geom::SelectBox::dragged(rim + P2(1.0, 1.0), rim - P2(1.0, 1.0));
+            assert_eq!(crossing.takes(&outline_edges(&f, &values, &st, which, i)), visible, "{side:?} form {i} boxed at {point:?}");
+            assert_eq!(form_edge_at(&f, &values, &st, which, rim, 0.5), visible.then_some(i), "{side:?} form {i} clicked at {point:?}");
+        }
+        // Where the long rear rim stops being seen is the front panel's edge, not a point of the sampling.
+        if front {
+            assert!(outline_edges(&f, &values, &st, which, 1).is_empty());
+            let boundary = st.to_view(which, [140.0, 350.0, 115.0]);
+            assert!(outline_edges(&f, &values, &st, which, 2).iter().flat_map(|(a, b)| [*a, *b]).any(|p| p.dist(boundary) < 1e-6));
+        }
+    }
+}
