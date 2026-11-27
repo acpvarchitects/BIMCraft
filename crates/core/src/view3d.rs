@@ -725,7 +725,11 @@ impl Solid {
 /// (a frame cut across its face is a ring round its opening). None where no loop closes, which only an open mesh
 /// leaves: the caller then falls back on its hull.
 pub(crate) fn slice(tris: &[[P3; 3]], p: P2, u: P2, len: f64) -> Option<Vec<Vec<P2>>> {
-    let loops = slice_loops(tris, p, u)?;
+    slice_loops(tris, p, u).map(|loops| cut_regions(&loops, Some(len)))
+}
+
+/// Polygonal coverage of the nested cut loops. A section limits it to the length of its cut line.
+pub(crate) fn cut_regions(loops: &[Vec<P2>], len: Option<f64>) -> Vec<Vec<P2>> {
     // How many loops hold each: an even count is solid, an odd one a hole in the loop just round it.
     let depth: Vec<usize> = loops
         .iter()
@@ -737,13 +741,13 @@ pub(crate) fn slice(tris: &[[P3; 3]], p: P2, u: P2, len: f64) -> Option<Vec<Vec<
         let holes = loops.iter().enumerate().filter(|(j, h)| depth[*j] == depth[i] + 1 && geom::contains(outer, h[0]));
         let pieces = holes.fold(vec![outer.clone()], |pieces, (_, h)| walls::minus(&pieces, h));
         for piece in pieces {
-            let piece = geom::clip(&geom::clip(&piece, |q| q.0), |q| len - q.0);
+            let piece = if let Some(len) = len { geom::clip(&geom::clip(&piece, |q| q.0), |q| len - q.0) } else { piece };
             if piece.len() >= 3 && geom::area(&piece).abs() > 1e-6 {
                 out.push(piece);
             }
         }
     }
-    Some(out)
+    out
 }
 
 /// Where the upright plane through the line from `p` along unit `u` cuts closed mesh `tris`, as the loops the plane cuts its
@@ -1699,19 +1703,15 @@ pub(crate) fn host_holes(m: &Model, host: Id, z_at: impl Fn(P2) -> Option<f64>) 
 /// meets none of it (between two closed parts of one form, say); none where it crosses an open skin, which leaves no closed
 /// loop: a hosted plan falls back to the form's outline there (GEO-2c-2e, ec's 0f841ca2a).
 pub(crate) fn level_outlines(tris: &[[P3; 3]], z: f64) -> Option<Vec<Vec<P2>>> {
-    const FAR: f64 = 1.0e6;
-    let turned: Vec<[P3; 3]> = tris.iter().map(|t| t.map(|p| [p[0], p[2] - z, p[1]])).collect();
-    let rings = slice_loops(&turned, P2(-FAR, 0.0), P2(1.0, 0.0))?;
-    Some(rings.into_iter().map(|r| r.into_iter().map(|q| P2(q.0 - FAR, q.1)).collect()).collect())
+    // Turn height into the coordinate normal to the section plane. The loop coordinates are already world XY.
+    let turned: Vec<_> = tris.iter().map(|t| t.map(|p| [p[0], p[2], p[1]])).collect();
+    slice_loops(&turned, P2(0.0, z), P2(1.0, 0.0))
 }
 
-/// Where the level plane at height `z` cuts closed mesh `tris`, as rings in plan: [`slice`] of the mesh turned on its side,
-/// so its upright plane is the level one.
+/// The regions covered by a horizontal mesh cut in world XY.
+/// A plan cut extends across the model, while a section is limited by its cut line.
 pub(crate) fn level_slice(tris: &[[P3; 3]], z: f64) -> Vec<Vec<P2>> {
-    const FAR: f64 = 1.0e6;
-    let turned: Vec<[P3; 3]> = tris.iter().map(|t| t.map(|p| [p[0], p[2] - z, p[1]])).collect();
-    let rings = slice(&turned, P2(-FAR, 0.0), P2(1.0, 0.0), 2.0 * FAR).unwrap_or_default();
-    rings.into_iter().map(|r| r.into_iter().map(|q| P2(q.0 - FAR, q.1)).collect()).collect()
+    level_outlines(tris, z).map_or_else(Vec::new, |loops| cut_regions(&loops, None))
 }
 
 /// The corners of the box round `tris`.

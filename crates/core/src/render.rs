@@ -5222,7 +5222,7 @@ fn opening(
                 cut_rings.push(piece.outline.clone());
                 continue;
             };
-            let rings = view3d::level_slice(&piece.tris, cut);
+            let rings = view3d::cut_regions(&outlines, None);
             // Drawn by its outlines (a frame's cut round its opening is two rings, not the pieces it is covered by); what
             // it covers by its regions.
             for ring in outlines {
