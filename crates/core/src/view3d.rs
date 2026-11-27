@@ -5082,8 +5082,8 @@ impl Camera {
 
     /// Turned as [`orbit`](Self::orbit) turns it, but about `pivot` rather than the target: the whole camera turns round
     /// `pivot` as its axes turn, so `pivot` stays on the pixel it showed at, in perspective too. Turned by nothing (fly mode
-    /// with nothing held, a drag held still), a camera whose angles are in range stands exactly where it stood, to the bit:
-    /// the 3D view refines its scene once its camera stands still (GEO-2c-2d). Angles out of range are brought into it.
+    /// with nothing held, a drag held still), a camera whose angles are in range is the camera as it was, exactly equal:
+    /// the 3D view refines its scene once its camera stands still (`==`, GEO-2c-2d). Angles out of range are brought into it.
     pub fn orbit_about(self, around: f64, up: f64, pivot: P3) -> Camera {
         let in_range = self.azimuth > -180.0 && self.azimuth <= 180.0 && self.elevation.abs() <= 89.0;
         if around == 0.0 && up == 0.0 && in_range {
@@ -5957,7 +5957,7 @@ mod tests {
     }
 
     /// GEO-2c-2d: a turn of nothing (fly mode with no key held and the mouse still, a drag held still) leaves the camera as it
-    /// stood, to the bit, frame after frame: the 3D view refines its scene once its camera stands still.
+    /// stood, exactly equal, frame after frame: the 3D view refines its scene once its camera stands still.
     #[test]
     fn a_camera_turned_by_nothing_stands_exactly_where_it_stood() {
         let oblique = Camera::at([-7_313.37, 5_123.91, 4_211.7], [1_234.567, -876.54, 1_003.3], 35.0, 1_280, 720);

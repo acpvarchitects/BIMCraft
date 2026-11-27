@@ -51,7 +51,7 @@ fn zoomed_in_on_a_drum_the_3d_view_refines_its_scene_once_the_camera_settles() {
     assert!(Arc::ptr_eq(&shown(&h), &refined), "nothing refined again");
 }
 
-/// GEO-2c-2d: in fly mode, with no key held and the mouse still, the camera stands still to the bit, so the view refines
+/// GEO-2c-2d: in fly mode, with no key held and the mouse still, the camera stays exactly equal, so the view refines
 /// its scene as it does for any camera that settles (it used to move by a rounding error each frame and never refine).
 #[test]
 fn flying_still_close_to_a_drum_the_3d_view_refines_its_scene() {
