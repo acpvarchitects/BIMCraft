@@ -426,6 +426,8 @@ pub struct Orbit {
     pub(crate) ppp: f32,
     /// The scene of the model shown last, in the 3D view or a section's.
     pub(crate) scene: Option<(Arc<Model>, Arc<Scene>)>,
+    /// Changes when a streamed or refined scene replaces the geometry under the same camera.
+    scene_generation: u64,
     /// What part of its model the scene shown holds, where the model is too big to hold whole (`view3d::stream`); and the height
     /// a job was last asked to stream round.
     pub(crate) streamed: Option<view3d::Streamed>,
@@ -549,6 +551,7 @@ impl Default for Orbit {
             rect: Rect::ZERO,
             ppp: 1.0,
             scene: None,
+            scene_generation: 0,
             streamed: None,
             restream: None,
             extent: None,
@@ -1240,6 +1243,7 @@ impl Orbit {
             return;
         }
         let scene = Arc::clone(scene);
+        self.scene_generation = self.scene_generation.wrapping_add(1);
         self.scene = Some((Arc::clone(model), scene));
         if let Some((held, _)) = &mut self.mesh {
             *held = Arc::clone(model);
@@ -1408,6 +1412,7 @@ impl Orbit {
         }
         self.streamed = done.streamed;
         self.extent = done.scene.bounds();
+        self.scene_generation = self.scene_generation.wrapping_add(1);
         self.scene = Some((done.model, done.scene));
         self.last = None;
         self.fitting = false;
@@ -1644,6 +1649,7 @@ impl Orbit {
             self.requested = None;
         }
         self.refine_asked = Some((Arc::clone(model), Arc::clone(&scene), cam));
+        self.scene_generation = self.scene_generation.wrapping_add(1);
         self.scene = Some((Arc::clone(model), scene));
         self.shown = None;
         self.picker = None;
@@ -2494,7 +2500,7 @@ impl BimApp {
             let at = hover.map(|h| (h.x - rect.min.x, h.y - rect.min.y));
             let target = crate::nested_tab::Target {
                 model: &model,
-                frame: crate::nested_tab::Frame::Orbit(active, cam),
+                frame: crate::nested_tab::Frame::Orbit(active, cam, o.scene_generation, o.shown.as_ref().is_some_and(|s| s.6.is_some())),
                 hovered,
                 at,
                 seen: &nested,
@@ -2504,7 +2510,8 @@ impl BimApp {
                 let pixel = (f64::from(at.0 * ppp), f64::from(at.1 * ppp));
                 let overlays =
                     point_at(rect.min + vec2(at.0, at.1)).chain(dims3d::pick_all(&marks, pixel, f64::from(PICK * ppp))).collect();
-                (overlays, scene.pick_all(&cam, pixel, &look3))
+                let (caps, tints) = o.shown.as_ref().map_or((None, &[][..]), |shot| (shot.6.as_deref(), shot.2.as_slice()));
+                (overlays, scene.pick_all(&cam, pixel, &look3, caps, tints))
             })
         } else {
             self.nested_tab.clear();

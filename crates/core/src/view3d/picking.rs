@@ -13,6 +13,7 @@ struct Ray<'a> {
     camera: &'a Camera,
     section: Option<&'a Clip>,
     look: &'a Look,
+    boxed: Option<Boxed>,
     at: P2,
     project: Projector,
     hits: BTreeMap<Id, PickCandidate>,
@@ -20,7 +21,8 @@ struct Ray<'a> {
 
 impl<'a> Ray<'a> {
     fn new(camera: &'a Camera, section: Option<&'a Clip>, look: &'a Look, (x, y): (f64, f64)) -> Self {
-        Self { camera, section, look, at: P2(x.floor() + 0.5, y.floor() + 0.5), project: camera.projector(), hits: BTreeMap::new() }
+        let boxed = look.section_box().filter(|_| section.is_none()).map(|b| Boxed::new(camera, b));
+        Self { camera, section, look, boxed, at: P2(x.floor() + 0.5, y.floor() + 0.5), project: camera.projector(), hits: BTreeMap::new() }
     }
 
     fn may_hit(&self, bounds: &[P3; 2]) -> bool {
@@ -37,7 +39,7 @@ impl<'a> Ray<'a> {
                         && (c.x.0..=c.x.1).contains(&x)
                         && (c.y.0..=c.y.1).contains(&y)
                 }
-                None => kept(self.look, self.camera.at_depth((x, y), depth)),
+                None => self.boxed.as_ref().is_none_or(|b| b.keeps(x, y, depth)),
             }
     }
 
@@ -57,7 +59,7 @@ impl<'a> Ray<'a> {
     fn line(&self, ends: [P3; 2]) -> Option<([P2; 2], f64)> {
         let [a, b] = match self.section {
             Some(_) => ends,
-            None => self.look.section_box().map_or(Some(ends), |bx| within(ends[0], ends[1], bx))?,
+            None => self.boxed.as_ref().map_or(Some(ends), |b| within(ends[0], ends[1], (b.lo, b.hi)))?,
         };
         let [a, b] = self.camera.in_front(a, b)?;
         let segment = (self.project.at(a), self.project.at(b));
@@ -166,7 +168,7 @@ impl<'a> Ray<'a> {
 
 impl Scene {
     /// On Tab, resolve each distinct owner intersecting this pixel through the displayed 3D camera, nearest first.
-    pub fn pick_all(&self, cam: &Camera, at: (f64, f64), look: &Look) -> Vec<PickCandidate> {
+    pub fn pick_all(&self, cam: &Camera, at: (f64, f64), look: &Look, caps: Option<&Caps>, tints: &[(Id, Rgb)]) -> Vec<PickCandidate> {
         if !(at.0 >= 0. && at.1 >= 0. && at.0 < f64::from(cam.width) && at.1 < f64::from(cam.height)) {
             return Vec::new();
         }
@@ -178,7 +180,31 @@ impl Scene {
         }
         ray.strokes(&self.strokes);
         ray.scans(&self.scans);
-        for mark in level_marks(&self.levels, cam, &|id| look.shows(id).then_some((EDGE, false))) {
+        // Caps are already cut to the box. Level heads sit just outside its clipped datum corners.
+        let bounded = ray.boxed.take().map(|b| levels_in(&self.levels, (b.lo, b.hi)));
+        if let Some(caps) = caps.filter(|_| look.style() != VisualStyle::Wireframe) {
+            let mut hit_caps = BTreeSet::new();
+            for tri in &caps.tris {
+                if look.shows(tri.owner)
+                    && !crate::link::is_linked(tri.owner)
+                    && let Some(z) = ray.face_depth(&tri.p)
+                {
+                    ray.add(tri.owner, z, Vec::new());
+                    hit_caps.insert(tri.owner);
+                }
+            }
+            for &(line, _, owner) in &caps.lines {
+                if hit_caps.contains(&owner)
+                    && let Some((edge, _)) = ray.line(line)
+                    && let Some(candidate) = ray.hits.get_mut(&owner)
+                {
+                    candidate.edges.push(edge);
+                }
+            }
+        }
+        for mark in level_marks(bounded.as_deref().unwrap_or(&self.levels), cam, &|id| {
+            look.shows(id).then(|| (EDGE, tints.iter().any(|(owner, _)| *owner == id)))
+        }) {
             let lines: Vec<_> = mark.lines.iter().filter_map(|(s, _)| ray.line(*s)).collect();
             let [a, b, c, d] = mark.head;
             let z = ray.face_depth(&[a, b, c]).or_else(|| ray.face_depth(&[a, c, d])).or_else(|| {
@@ -230,6 +256,45 @@ mod tests {
         render::{SectionWork, View, section_pick_all},
     };
     use serde_json::json;
+
+    #[test]
+    fn a_perspective_section_box_admits_only_the_owners_at_the_projected_world_point() {
+        let mut s = Session::new();
+        let mut wall = |x| s.execute("wall", &json!({"points":[[x,-1600],[x,1600]]})).unwrap()["ids"][0].as_u64().unwrap();
+        let near = wall(900);
+        let far = wall(300);
+        let clipped = wall(1500);
+        let scene = Scene::new(&s.model);
+        let cam = Camera::at([2000., 0., 1450.], [0., 0., 1450.], 50., 400, 320);
+        let look = Look::default().with_section_box(Some(([-100., -500., 1000.], [1150., 500., 2000.])));
+        let (x, y, _) = cam.project([900., 110., 1480.]);
+        let ids: Vec<_> = scene.pick_all(&cam, (x, y), &look, None, &[]).into_iter().map(|c| c.id).collect();
+        assert_eq!(ids, [near, far], "wall {clipped} is outside the displayed box");
+    }
+
+    #[test]
+    fn the_ray_uses_the_level_head_at_the_clipped_corner_and_filled_cap_under_the_pixel() {
+        let mut scene = Scene::bare(Vec::new());
+        scene.levels = vec![(71, "Ground".into(), [[-5000., -5000., 0.], [5000., -5000., 0.], [5000., 5000., 0.], [-5000., 5000., 0.]])];
+        let mut cam = Camera::at([5000., -6000., 4500.], [0., 0., 0.], 50., 800, 600);
+        cam.lens = None;
+        cam.scale = 0.5;
+        let bx = ([-300., -200., -100.], [300., 200., 300.]);
+        let look = Look::default().with_section_box(Some(bx));
+        let marks = level_marks(&levels_in(&scene.levels, bx), &cam, &|_| Some((EDGE, false)));
+        let head = marks[0].head.map(|p| cam.project(p));
+        let (x, y) = ((head[0].0 + head[2].0) / 2., (head[0].1 + head[2].1) / 2.);
+        assert!(scene.pick_all(&cam, (x, y), &look, None, &[]).iter().any(|c| c.id == 71));
+        let tri = [[-100., -150., 300.], [200., -150., 300.], [100., 150., 300.]];
+        let caps = Caps {
+            tris: vec![CapTri { p: tri, owner: 89, color: EDGE, normal: [0., 0., 1.], cap: 1 }],
+            lines: vec![([tri[0], tri[1]], EDGE, 89)],
+        };
+        let (x, y, _) = cam.project([80., 0., 300.]);
+        let hit = scene.pick_all(&cam, (x, y), &look, Some(&caps), &[]).into_iter().find(|c| c.id == 89).unwrap();
+        assert_eq!(hit.edges.len(), 1);
+        assert!(scene.pick_all(&cam, (x, y), &look, None, &[]).iter().all(|c| c.id != 89));
+    }
 
     #[test]
     fn a_section_ray_orders_the_walls_in_range_and_skips_hidden_and_clipped_owners() {

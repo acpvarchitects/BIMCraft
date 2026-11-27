@@ -10,7 +10,7 @@ use crate::style::canvas_pal;
 /// The view whose projected coordinates are used by the current pick.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum Frame {
-    Orbit(Option<Id>, bimcraft_core::view3d::Camera),
+    Orbit(Option<Id>, bimcraft_core::view3d::Camera, u64, bool),
     Section(Id, render::View, render::View),
 }
 
