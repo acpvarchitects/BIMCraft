@@ -341,3 +341,61 @@ fn distinct_forms_elevation_crossing_and_click_follow_the_visible_part_of_each_e
 }
 
 mod review;
+
+#[test]
+fn a_nested_instances_rim_is_clipped_where_its_two_pieces_trade_depth() {
+    let f: Family = serde_json::from_value(json!({
+        "category":"generic","types":{"A":{}},
+        "nested":[{"name":"Panels","family":{"category":"generic","types":{"T":{}},"forms":[
+            {"profile":[[-180,0],[180,0],[180,12],[-180,12]],"from":0,"to":100},
+            {"profile":[[-220,-121],[220,99],[220,119],[-220,-101]],"from":-50,"to":150}
+        ]}}],
+        "nested_instances":[{"family":"Panels","type":"T","at":[0,0]}]
+    }))
+    .unwrap();
+    let (mut st, values, owner) = staged(&f, "A");
+    for (side, x, expected_depth, visible, intersection) in [
+        // x=10 is behind the sloping panel from the front. From the back the straight rim is still visible at x=3.
+        (Side::Front, 10., -6., false, 22.),
+        (Side::Back, 3., 12., true, 6.),
+    ] {
+        let which = Which::Elevation(side);
+        let rim = st.to_view(which, [x, 0., 100.]);
+        let drawn = zoom_at(&mut st, which, rim, 2., (240, 200));
+        let picture = drawn.picture.unwrap();
+        let (camera, _) = crate::render::section_camera(&st.model, st.elevation(side).unwrap(), drawn.view).unwrap();
+        let (u, v) = drawn.view.px(st.to_view(which, [x, 0., 99.]));
+        assert_eq!(picture.pick(u.into(), v.into()), Some(owner));
+        let surface = picture.point(&camera, u.into(), v.into()).unwrap();
+        assert!((surface[1] - expected_depth).abs() < 0.5, "{side:?}: {surface:?}");
+        let outline = nested_outline_edges(&f, &values, &st, which, 0);
+        let crossing = crate::geom::SelectBox::dragged(rim + P2(0.25, 0.25), rim - P2(0.25, 0.25));
+        assert_eq!(nested_edge_at(&f, &values, &st, which, rim, 0.25), visible.then_some(0), "{side:?} click");
+        assert_eq!(crossing.takes(&outline), visible, "{side:?} crossing");
+        let split = st.to_view(which, [intersection, 0., 100.]);
+        assert!(outline.iter().flat_map(|(a, b)| [*a, *b]).any(|p| p.dist(split) < 0.01), "{side:?}: {outline:?}");
+    }
+}
+
+#[test]
+fn two_flat_pieces_of_one_nested_panel_have_no_selectable_triangulation_seam() {
+    let f = serde_json::from_value(json!({
+        "category":"generic","types":{"A":{}},
+        "nested":[{"name":"Panel","family":{"category":"generic","types":{"T":{}},"forms":[
+            {"mesh":[[[-100,0,0],[100,0,0],[100,0,200]]]},
+            {"mesh":[[[-100,0,0],[100,0,200],[-100,0,200]]]}
+        ]}}],
+        "nested_instances":[{"family":"Panel","type":"T","at":[0,0]}]
+    }))
+    .unwrap();
+    let (mut st, values, _) = staged(&f, "A");
+    let which = Which::Elevation(Side::Front);
+    let seam = st.to_view(which, [0., 0., 100.]);
+    zoom_at(&mut st, which, seam, 1., (240, 240));
+    assert_eq!(nested_at(&f, &values, &st, which, seam), Some(0));
+    assert_eq!(nested_edge_at(&f, &values, &st, which, seam, 0.25), None);
+    let rim = st.to_view(which, [100., 0., 100.]);
+    assert_eq!(nested_edge_at(&f, &values, &st, which, rim, 0.25), Some(0));
+    let crossing = geom::SelectBox::dragged(seam + P2(1., 1.), seam - P2(1., 1.));
+    assert!(!crossing.takes(&nested_outline_edges(&f, &values, &st, which, 0)));
+}
