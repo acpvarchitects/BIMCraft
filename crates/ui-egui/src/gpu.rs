@@ -30,6 +30,8 @@ const STRIDE: u64 = 44;
 const GLOBALS: u64 = (11 + MARKS as u64 * 7) * 16;
 /// How many marks a picture has room for: the work plane and its patch.
 pub(crate) const MARKS: usize = 2;
+/// What every draw's and upload's error begins with once the card's device is lost ([`Gpu::alive`]).
+pub(crate) const LOST: &str = "the card was lost";
 /// A section box: its least corner and its greatest, in the model.
 type Cut = Option<([f64; 3], [f64; 3])>;
 /// An owner's edge, tint and pattern frame, a skin's parts and a segment's ends and colour: 3, 3 and 3 vec4s.
@@ -1064,10 +1066,11 @@ impl Gpu {
         })
     }
 
-    /// Whether the device is still there: once its callback has said it was lost, why, as the error every draw and upload gives.
+    /// Whether the device is still there: once its callback has said it was lost, why, as the error every draw and upload gives
+    /// ([`LOST`] first).
     pub(crate) fn alive(&self) -> Result<(), String> {
         match self.lost.get() {
-            Some(why) => Err(format!("the card was lost: {why}")),
+            Some(why) => Err(format!("{LOST}: {why}")),
             None => Ok(()),
         }
     }

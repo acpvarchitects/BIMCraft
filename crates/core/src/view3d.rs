@@ -5108,8 +5108,14 @@ impl Camera {
     }
 
     /// Turned as [`orbit`](Self::orbit) turns it, but about `pivot` rather than the target: the whole camera turns round
-    /// `pivot` as its axes turn, so `pivot` stays on the pixel it showed at, in perspective too.
+    /// `pivot` as its axes turn, so `pivot` stays on the pixel it showed at, in perspective too. Turned by nothing (fly mode
+    /// with nothing held, a drag held still), a camera whose angles are in range is the camera as it was, exactly equal:
+    /// the 3D view refines its scene once its camera stands still (`==`, GEO-2c-2d). Angles out of range are brought into it.
     pub fn orbit_about(self, around: f64, up: f64, pivot: P3) -> Camera {
+        let in_range = self.azimuth > -180.0 && self.azimuth <= 180.0 && self.elevation.abs() <= 89.0;
+        if around == 0.0 && up == 0.0 && in_range {
+            return self;
+        }
         let turned = self.orbit(around, up);
         let ((b0, r0, u0), (b1, r1, u1)) = (self.axes(), turned.axes());
         let v = sub(self.target, pivot);
@@ -5975,6 +5981,30 @@ mod tests {
         assert!((moved.eye_distance().unwrap() - cam.eye_distance().unwrap()).abs() < 1e-6);
         // What isn't a number moves nothing.
         assert_eq!(cam.flown([f64::NAN, f64::INFINITY, 0.0], f64::NAN, 0.0), cam);
+    }
+
+    /// GEO-2c-2d: a turn of nothing (fly mode with no key held and the mouse still, a drag held still) leaves the camera as it
+    /// stood, exactly equal, frame after frame: the 3D view refines its scene once its camera stands still.
+    #[test]
+    fn a_camera_turned_by_nothing_stands_exactly_where_it_stood() {
+        let oblique = Camera::at([-7_313.37, 5_123.91, 4_211.7], [1_234.567, -876.54, 1_003.3], 35.0, 1_280, 720);
+        let behind = Camera { azimuth: -134.123_456_7, ..oblique };
+        let parallel = Camera { lens: None, ..behind };
+        for cam in [oblique, behind, parallel] {
+            let (mut flown, mut orbited) = (cam, cam);
+            for _ in 0..100 {
+                // Fly mode with nothing held: the mouse's turn is -0.
+                flown = flown.flown([0.0; 3], -0.0, 0.0);
+                // About a point off the target, as the hand orbits about what it grabbed.
+                orbited = orbited.orbit_about(0.0, 0.0, [300.0, 200.0, 0.0]);
+            }
+            assert_eq!(flown, cam, "flown by nothing");
+            assert_eq!(orbited, cam, "orbited by nothing");
+        }
+        // Angles out of the ordinary range are still brought into it, as `orbit` brings them.
+        let wide = Camera { azimuth: 270.0, elevation: 91.0, ..oblique };
+        let still = wide.orbit_about(0.0, 0.0, oblique.target);
+        assert_eq!((still.azimuth, still.elevation, still.target), (-90.0, 89.0, oblique.target));
     }
 
     #[test]

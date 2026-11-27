@@ -59,6 +59,27 @@ fn zoomed_in_on_a_drum_the_3d_view_refines_its_scene_once_the_camera_settles() {
     assert!(Arc::ptr_eq(&shown(&h), &refined), "nothing refined again");
 }
 
+/// GEO-2c-2d: in fly mode, with no key held and the mouse still, the camera stays exactly equal, so the view refines
+/// its scene as it does for any camera that settles (it used to move by a rounding error each frame and never refine).
+#[test]
+fn flying_still_close_to_a_drum_the_3d_view_refines_its_scene() {
+    let mut h = app(DRUM);
+    press(&mut h, "Default 3D View");
+    shortcut(&mut h, "FY");
+    h.run();
+    assert!(h.state().orbit.fly.is_some(), "flying: {:?}", h.state().status);
+    // Looking down at the drum's side from 2 m off, at an angle.
+    let cam = h.state().orbit.camera.unwrap_or_else(|| panic!("the 3D view has shown"));
+    let (w, ht) = (cam.width, cam.height);
+    h.state_mut().orbit.camera = Some(Camera::at([1_500.0, -2_300.0, 1_600.0], [0.0, -800.0, 1_000.0], 35.0, w, ht));
+    h.state_mut().orbit.refines = true;
+    h.step();
+    let still = h.state().orbit.camera;
+    until(&mut h, "the scene refined while flying still", |h| shown(h).refined_count() == 1);
+    assert!(h.state().orbit.fly.is_some(), "still flying");
+    assert_eq!(h.state().orbit.camera, still, "the camera stood where it was");
+}
+
 /// A refinement still being made when the camera moves on is dropped: the view never shows it, and refines for where it
 /// looks now (away from the drum: nothing).
 #[test]
