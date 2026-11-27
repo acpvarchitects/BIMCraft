@@ -138,6 +138,18 @@ impl DisplayedPiece {
     }
 }
 
+impl Staged {
+    /// Component `placement` of the scratch model is a copy of the family placed apart from it (the halftone ghost of what
+    /// its type hides, a form drawn with graphics of its own, FE-18), its forms and nested instances in the family's order: its
+    /// pieces are of the family's forms and nested instances, whatever GUIDs the copy's were given when it was placed.
+    pub fn identify_copy(&mut self, placement: Id) {
+        let Some(Element::Component(c)) = self.model.elements.get(placement) else { return };
+        let Some(copy) = self.model.families.get(&c.family) else { return };
+        self.form_ids.extend(copy.forms.iter().enumerate().filter(|(_, f)| !f.guid.is_nil()).map(|(i, f)| (f.guid, i)));
+        self.instance_ids.extend(copy.nested_instances.iter().enumerate().filter(|(_, n)| !n.guid.is_nil()).map(|(i, n)| (n.guid, i)));
+    }
+}
+
 /// The triangles `tris` (below a plan's cut) less what the wall `wall` (rings in plan) covers: each triangle's plan clipped
 /// and lifted back onto it, so a sloping piece keeps its heights for what lies over what.
 pub(crate) fn exposed_below(tris: Vec<[P3; 3]>, wall: &[Vec<P2>]) -> Vec<[P3; 3]> {

@@ -815,7 +815,7 @@ pub fn nested_outline_edges(family: &Family, values: &BTreeMap<String, Val>, st:
     if let Some(drawn) = st.displayed(which) {
         return drawn.outline(st, which, Part::Nested(i));
     }
-    seen_edges(&nested_drawn(family, values, st, which, i), st, which)
+    draft_outline_edges(family, values, st, which, Part::Nested(i))
 }
 
 /// The corners of form `i`'s solid (sized by `values`), in the family's axes: what a view boxes it by in a frame of its own,
@@ -1051,11 +1051,20 @@ pub fn outline_edges(family: &Family, values: &BTreeMap<String, Val>, st: &Stage
     {
         return drawn.outline(st, which, Part::Form(i));
     }
-    if i >= family.forms.len() {
-        return Vec::new();
+    draft_outline_edges(family, values, st, which, Part::Form(i))
+}
+
+/// The edges `part` of `family` (sized by `values`) is seen with in view `which`, from `family` itself rather than from what
+/// the view drew: a family not drawn yet (a paste's copies, where they would go, FE-14), in the view's frame.
+pub fn draft_outline_edges(family: &Family, values: &BTreeMap<String, Val>, st: &Staged, which: Which, part: Part) -> Vec<(P2, P2)> {
+    match part {
+        Part::Form(i) if i < family.forms.len() => {
+            let Some(piece) = family.solid(i, values, &mut HashMap::new()).ok().flatten() else { return Vec::new() };
+            seen_edges(&piece.tris, st, which)
+        }
+        Part::Form(_) => Vec::new(),
+        Part::Nested(i) => seen_edges(&nested_drawn(family, values, st, which, i), st, which),
     }
-    let Some(piece) = family.solid(i, values, &mut HashMap::new()).ok().flatten() else { return Vec::new() };
-    seen_edges(&piece.tris, st, which)
 }
 
 /// The edges solid `tris` (in the family's axes) is seen with in view `which`, as [`outline_edges`] says.

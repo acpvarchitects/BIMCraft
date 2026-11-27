@@ -520,6 +520,8 @@ impl FamilyEditor {
         // Each placed beside the family, with its override; a door's or a window's where its family's axes are in the wall: its
         // opening's frame.
         let mut overrides: Vec<(bimcraft_core::ids::Guid, Override)> = Vec::new();
+        // Each copy's placement, so what is picked in it is the family's (GEO-2c-2e).
+        let mut copies: Vec<bimcraft_core::ids::Id> = Vec::new();
         if !extra.is_empty() {
             let mut s = Session::new();
             s.model = Arc::new(model);
@@ -536,6 +538,9 @@ impl FamilyEditor {
                 super::at_origin(&f, &mut place);
                 s.model_mut().families.insert(name.clone(), g);
                 let made = s.execute("component", &place)?;
+                if let Some(id) = made["id"].as_u64() {
+                    copies.push(id);
+                }
                 if let Some(guid) = made["id"].as_u64().and_then(|id| s.model.elements.guid(id)) {
                     overrides.push((guid, o));
                 }
@@ -546,6 +551,9 @@ impl FamilyEditor {
         // Its planes where the type's dimensions put them.
         let flexed = f.flexed(&values).map(std::borrow::Cow::into_owned).unwrap_or_else(|_| f.clone());
         let mut st = fv::stage(model, &flexed, &values, &|g| !self.plane_hidden(g));
+        for id in copies {
+            st.identify_copy(id);
+        }
         // What the floor plan sees, once its View Range is set (FE-18).
         if which == Which::Plan {
             st.seen = self.views.kept.seen(which);
@@ -1316,9 +1324,26 @@ impl FamilyEditor {
                     by_face: false,
                     drag_faces: false,
                 };
-                ghost = items.iter().flat_map(|p| s.pieces(*p)).collect();
-                // Held by the middle of what has a size of its own: a plane's trace runs across the view.
-                held = items.iter().filter(|p| !matches!(p, Picked::Plane(_))).flat_map(|p| s.pieces(*p)).collect();
+                // A form's or a nested instance's copy isn't drawn yet: its edges from the trial family itself (GEO-2c-2e).
+                for &item in items {
+                    let part = match item {
+                        Picked::Form(i) => Some(fv::Part::Form(i)),
+                        Picked::Nested(i) => Some(fv::Part::Nested(i)),
+                        _ => None,
+                    };
+                    let edges = match part {
+                        Some(part) => fv::draft_outline_edges(&flexed, &values, &c.staged, which, part)
+                            .into_iter()
+                            .map(|(a, b)| [screen(a), screen(b)])
+                            .collect(),
+                        None => s.pieces(item),
+                    };
+                    // Held by the middle of what has a size of its own: a plane's trace runs across the view.
+                    if !matches!(item, Picked::Plane(_)) {
+                        held.extend_from_slice(&edges);
+                    }
+                    ghost.extend(edges);
+                }
             }
             let by = if held.is_empty() { &ghost } else { &held };
             let anchor = (!by.is_empty()).then(|| {
