@@ -1178,6 +1178,8 @@ mod tests {
     use crate::engine::Session;
     use serde_json::json;
 
+    mod world_plan;
+
     /// A box 500 wide, 300 deep, `[z0, z1]` high, off to the east (+x) and the back (+y), and a plane of the family's own.
     fn boxed(z0: f64, z1: f64) -> Family {
         let mut f: Family = serde_json::from_value(json!({
