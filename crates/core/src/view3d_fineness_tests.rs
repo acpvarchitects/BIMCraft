@@ -504,7 +504,8 @@ fn holed() -> Vec<Value> {
 }
 
 /// A component too fine to cut at the fineness the camera asks for is drawn with its default build (GEO-2c), though the scene
-/// is refined for it: a click on it finds its face in the build it is drawn with, not in one that can't be made.
+/// is refined for it: a click on it finds its face in the build it is drawn with, not in one that can't be made, whatever
+/// fineness the thread it is asked on is building at (ec's review of #103); and a point or a way of no numbers finds none.
 #[test]
 fn a_click_on_a_component_too_fine_to_cut_finds_its_face_in_the_default_build_drawn() {
     let mut s = Session::new();
@@ -523,7 +524,13 @@ fn a_click_on_a_component_too_fine_to_cut_finds_its_face_in_the_default_build_dr
         let Some(hit) = scene.surface_in(&img, &cam, (f64::from(x) + 0.5, 20.5)) else { continue };
         assert_eq!(hit.id, c, "only the disc on the picture");
         scene.component_face(m, c, hit.at, hit.normal).unwrap_or_else(|| panic!("a face at column {x}: {hit:?}"));
+        Fineness::for_view(8.0)
+            .scoped(|| scene.component_face(m, c, hit.at, hit.normal))
+            .unwrap_or_else(|| panic!("a face at column {x}, asked on a thread building at 8 px a mm: {hit:?}"));
         found += 1;
     }
     assert!(found > 380, "the disc across the picture: {found} columns");
+    for (at, normal) in [([f64::NAN, -20_000.0, 500.0], [0.0, -1.0, 0.0]), ([0.0, -20_000.0, 500.0], [0.0, f64::INFINITY, 0.0])] {
+        assert_eq!(scene.component_face(m, c, at, normal), None, "{at:?} {normal:?}");
+    }
 }

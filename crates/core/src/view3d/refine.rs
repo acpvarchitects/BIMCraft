@@ -326,12 +326,14 @@ impl Scene {
     /// draws it (GEO-2c-2c): looked for in its build at the fineness its triangles are at, so a click on a refined curve, which
     /// may lie farther from the default's chords than the millimetre a face is looked for within, finds the face it is on; and
     /// where that build can't be made (too fine to cut), in its default one, which the scene draws then, as the store keeps it.
+    /// Each is built at its own fineness, whatever the thread asking builds at.
     pub fn component_face(&self, m: &Model, id: Id, at: P3, normal: P3) -> Option<crate::paint::FaceAt> {
         let Some(Element::Component(c)) = m.elements.get(id) else { return None };
         let fineness = self.fineness_of(id);
-        let built = fineness.scoped(|| m.component_pieces(c));
-        let pieces = if built.is_empty() && fineness != Fineness::DEFAULT { m.component_pieces(c) } else { built };
-        crate::family::face_among(&pieces, at, normal)
+        crate::family::face_among(at, normal, || {
+            let built = fineness.scoped(|| m.component_pieces(c));
+            if built.is_empty() && fineness != Fineness::DEFAULT { Fineness::DEFAULT.scoped(|| m.component_pieces(c)) } else { built }
+        })
     }
 
     /// How many of its components are drawn finer than the default.

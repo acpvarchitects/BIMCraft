@@ -225,18 +225,23 @@ impl crate::model::Model {
     /// (FE-16c-2), what Paint clicks name. None where `id` is no component or no triangle of it is within a millimetre.
     pub fn component_face(&self, id: crate::model::Id, at: [f64; 3], normal: [f64; 3]) -> Option<crate::paint::FaceAt> {
         let Some(crate::model::Element::Component(c)) = self.elements.get(id) else { return None };
-        face_among(&self.component_pieces(c), at, normal)
+        face_among(at, normal, || self.component_pieces(c))
     }
 }
 
-/// [`crate::model::Model::component_face`] among a component's `pieces`, placed: the build it is looked for in.
-pub(crate) fn face_among(pieces: &[crate::family::Piece], at: [f64; 3], normal: [f64; 3]) -> Option<crate::paint::FaceAt> {
+/// [`crate::model::Model::component_face`] among the pieces `built` gives, a component's placed: the build it is looked for in,
+/// built only once `at` and `normal` are found to be numbers.
+pub(crate) fn face_among(
+    at: [f64; 3],
+    normal: [f64; 3],
+    built: impl FnOnce() -> Vec<crate::family::Piece>,
+) -> Option<crate::paint::FaceAt> {
     use crate::view3d::{cross, dot, sub};
     if !at.iter().chain(&normal).all(|v| v.is_finite()) {
         return None;
     }
     let mut best: Option<(f64, crate::paint::FaceAt)> = None;
-    for piece in pieces {
+    for piece in built() {
         for (t, k) in piece.tris.iter().zip(&piece.faces) {
             let n = cross(sub(t[1], t[0]), sub(t[2], t[0]));
             let len = dot(n, n).sqrt();
