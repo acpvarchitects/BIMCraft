@@ -4623,7 +4623,7 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
         let Some(set) = e(set).filter(|x| x.name == "IFCPROPERTYSET") else { continue };
         // What BIMCraft writes in sets of its own, other than the parameters, it reads into fields.
         let called = text(set.args.get(2)).unwrap_or("");
-        let ours = called == crate::ifc::PARAMETERS;
+        let ours = matches!(called, crate::ifc::PARAMETERS | crate::ifc::FAMILY_PARAMETERS);
         if !ours && !crate::ifc::foreign_set(called) {
             continue;
         }

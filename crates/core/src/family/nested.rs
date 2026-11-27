@@ -335,6 +335,21 @@ impl Family {
         {
             return Ok(None);
         }
+        let (nested, own) = self.chosen_values(inst, values)?;
+        let frame = self.frame(&inst.host).map_err(|e| format!("its host: {e}"))?;
+        let (x_at, y_at) = (number(&inst.at[0], values, &mut read)?, number(&inst.at[1], values, &mut read)?);
+        let offset = number(&inst.offset, values, &mut read)?;
+        let angle = number(&inst.angle, values, &mut read)?;
+        let (s, c) = angle.to_radians().sin_cos();
+        let (x, y, z) = (add(mul(frame.x, c), mul(frame.y, s)), add(mul(frame.x, -s), mul(frame.y, c)), frame.z);
+        // Its family stands by its origin at the point it is placed at (O1), as a component does.
+        let origin = crate::hosting::Placement::by_origin(frame.point(P2(x_at, y_at), offset), [x, y, z], false, nested.origin()).origin;
+        let placed = Placed { origin, x, y, z };
+        Ok(Some((nested, own, placed)))
+    }
+
+    /// The selected child and its evaluated parameter values, including its host's bindings.
+    fn chosen_values(&self, inst: &NestedInstance, values: &BTreeMap<String, Val>) -> Result<(&Family, BTreeMap<String, Val>), String> {
         let (family, type_name) = self.chosen(inst, values);
         let nested = self.nested_family(family).ok_or_else(|| format!("it places `{family}`, which it doesn't nest"))?;
         let seeds = self.instance_seeds(inst, &nested.family, values)?;
@@ -343,17 +358,15 @@ impl Family {
             _ => DEFAULT_WALL,
         };
         let own = nested.family.values_seeded(type_name, &BTreeMap::new(), wall, &seeds).map_err(|e| format!("`{family}`: {e}"))?;
-        let frame = self.frame(&inst.host).map_err(|e| format!("its host: {e}"))?;
-        let (x_at, y_at) = (number(&inst.at[0], values, &mut read)?, number(&inst.at[1], values, &mut read)?);
-        let offset = number(&inst.offset, values, &mut read)?;
-        let angle = number(&inst.angle, values, &mut read)?;
-        let (s, c) = angle.to_radians().sin_cos();
-        let (x, y, z) = (add(mul(frame.x, c), mul(frame.y, s)), add(mul(frame.x, -s), mul(frame.y, c)), frame.z);
-        // Its family stands by its origin at the point it is placed at (O1), as a component does.
-        let origin =
-            crate::hosting::Placement::by_origin(frame.point(P2(x_at, y_at), offset), [x, y, z], false, nested.family.origin()).origin;
-        let placed = Placed { origin, x, y, z };
-        Ok(Some((&nested.family, own, placed)))
+        Ok((&nested.family, own))
+    }
+
+    /// The definition and effective values at a shared project occurrence's authored path.
+    pub(crate) fn nested_values(&self, path: &[Guid], values: &BTreeMap<String, Val>) -> Option<(&Family, BTreeMap<String, Val>)> {
+        let (first, rest) = path.split_first()?;
+        let inst = self.nested_instances.iter().find(|i| i.guid == *first)?;
+        let (child, own) = self.chosen_values(inst, values).ok()?;
+        if rest.is_empty() { Some((child, own)) } else { child.nested_values(rest, &own) }
     }
 
     /// Its nested instances' pieces, sized by `values` (the host's), where each stands in it.
