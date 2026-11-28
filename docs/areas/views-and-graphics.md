@@ -717,6 +717,10 @@ element has no model pattern, or the lines aren't parallel or have no length), s
 sets it with `modify`. `pattern_origin` and `pattern_angle` are in the `modify`, `filled_region` and `floor` command docs, and
 `elements` shows them for a region and a floor even at their defaults.
 
+## Selecting overlapping project elements
+
+In a 3D view, section or elevation, move the pointer over the elements and press Tab to reach the next one underneath it. The status bar names the current candidate. Its geometry lights in the hover colour, including the outline of a concealed element. Click to select it. Further presses cycle back to the first owner. A new pointer position or view starts with the ordinary front pick. Hidden elements and geometry outside the view's clipping limits are skipped. A component's shared nested parts follow their host, and a curtain wall's parts retain their usual order.
+
 ## Reference planes in views
 
 A project's reference plane (`hosting.rs`) is drawn as Revit draws one. In every plan, an upright one is a dashed line along it in

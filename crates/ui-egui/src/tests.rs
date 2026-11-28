@@ -6857,6 +6857,7 @@ mod popup;
 mod presets;
 mod printsets;
 mod profile;
+mod project_tab;
 mod project_templates;
 mod projectinfo;
 mod properties_groups;

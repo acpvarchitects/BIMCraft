@@ -426,6 +426,8 @@ pub struct Orbit {
     pub(crate) ppp: f32,
     /// The scene of the model shown last, in the 3D view or a section's.
     pub(crate) scene: Option<(Arc<Model>, Arc<Scene>)>,
+    /// Changes when a streamed or refined scene replaces the geometry under the same camera.
+    scene_generation: u64,
     /// What part of its model the scene shown holds, where the model is too big to hold whole (`view3d::stream`); and the height
     /// a job was last asked to stream round.
     pub(crate) streamed: Option<view3d::Streamed>,
@@ -549,6 +551,7 @@ impl Default for Orbit {
             rect: Rect::ZERO,
             ppp: 1.0,
             scene: None,
+            scene_generation: 0,
             streamed: None,
             restream: None,
             extent: None,
@@ -1240,6 +1243,7 @@ impl Orbit {
             return;
         }
         let scene = Arc::clone(scene);
+        self.scene_generation = self.scene_generation.wrapping_add(1);
         self.scene = Some((Arc::clone(model), scene));
         if let Some((held, _)) = &mut self.mesh {
             *held = Arc::clone(model);
@@ -1408,6 +1412,7 @@ impl Orbit {
         }
         self.streamed = done.streamed;
         self.extent = done.scene.bounds();
+        self.scene_generation = self.scene_generation.wrapping_add(1);
         self.scene = Some((done.model, done.scene));
         self.last = None;
         self.fitting = false;
@@ -1644,6 +1649,7 @@ impl Orbit {
             self.requested = None;
         }
         self.refine_asked = Some((Arc::clone(model), Arc::clone(&scene), cam));
+        self.scene_generation = self.scene_generation.wrapping_add(1);
         self.scene = Some((Arc::clone(model), scene));
         self.shown = None;
         self.picker = None;
@@ -2436,7 +2442,13 @@ impl BimApp {
         let look3 = o.look(&model);
         let marks = active.map(|v| dims3d::marks(&model, v, &cam, &look3, dims3d::SCREEN * f64::from(ppp))).unwrap_or_default();
         let dim_at = |at: Pos2| dims3d::pick(&marks, px(at), f64::from(PICK) * f64::from(ppp));
-        let lit_dim = hover.filter(|_| modify && o.drag.is_none() && sketch_z.is_none() && !picking).and_then(dim_at);
+        // Site's points the view shows, as marks over the picture; a click on one picks it before what's under it.
+        let points: Vec<(bimcraft_core::coordinates::Point, Pos2)> =
+            shown_points.into_iter().map(|(pt, q)| (pt, on_screen(&cam, rect, ppp, q))).collect();
+        let point_at = |at: Pos2| points.iter().filter(move |(_, c)| c.distance(at) <= 10.0).filter_map(|(pt, _)| pt.id(&model));
+        let overlay = hover
+            .filter(|_| modify && o.drag.is_none() && sketch_z.is_none() && !picking)
+            .and_then(|at| point_at(at).next().or_else(|| dim_at(at)));
         let hovered = hover
             .filter(|_| {
                 (modify || demolish || paint || unpaint || attaching || trimming)
@@ -2446,17 +2458,19 @@ impl BimApp {
                     && sketch_z.is_none()
                     && !picking
             })
-            .filter(|_| lit_dim.is_none())
+            .filter(|_| overlay.is_none())
             .and_then(|at| pick(&o.picker, at))
             .map(|h| h.id)
             .filter(|id| !attaching || attach_target(&model, *id))
-            .filter(|id| !trimming || model.wall(*id).is_some());
+            .filter(|id| !trimming || model.wall(*id).is_some())
+            .or(overlay);
         // On the selected curtain wall under the cursor, Tab goes through its parts there; elsewhere, Tab over a component
         // reaches its shared nested instances after it (T6b), as in a plan.
         let tab = ui.input(|i| i.key_pressed(egui::Key::Tab));
         let tabbed = std::mem::take(&mut self.tab_cycle) | std::mem::take(&mut self.face_cycle) || tab;
         let mut curtain_tabbed = false;
         if tabbed
+            && !self.nested_tab.passed_front(hover.map(|h| (h.x - rect.min.x, h.y - rect.min.y)))
             && let (Some(at), Some(id)) = (hover, hovered)
             && crate::curtain::tab_wall(&model, &selection, &[id], Some(id), self.tool == Tool::Modify) == Some(id)
             && let Some(w) = model.wall(id)
@@ -2474,7 +2488,7 @@ impl BimApp {
             if self.curtain_part.is_some() {
                 self.selection = vec![id];
             }
-            curtain_tabbed = true;
+            curtain_tabbed = self.curtain_part.is_some();
         }
         // The nested instances, seen through the camera, in the view's points from its corner.
         let project = |p: [f64; 3]| {
@@ -2484,8 +2498,23 @@ impl BimApp {
         let nested = crate::nested_tab::seen(&model, hovered, &selection, &project);
         let hovered = if modify {
             let at = hover.map(|h| (h.x - rect.min.x, h.y - rect.min.y));
-            self.nested_tab.step(hovered, &nested, at, tabbed && !curtain_tabbed && hover.is_some())
+            let target = crate::nested_tab::Target {
+                model: &model,
+                frame: crate::nested_tab::Frame::Orbit(active, cam, o.scene_generation, o.shown.as_ref().is_some_and(|s| s.6.is_some())),
+                hovered,
+                at,
+                seen: &nested,
+                project: &project,
+            };
+            self.nested_tab.step(target, tabbed && !curtain_tabbed && fresh, |at| {
+                let pixel = (f64::from(at.0 * ppp), f64::from(at.1 * ppp));
+                let overlays =
+                    point_at(rect.min + vec2(at.0, at.1)).chain(dims3d::pick_all(&marks, pixel, f64::from(PICK * ppp))).collect();
+                let (caps, tints) = o.shown.as_ref().map_or((None, &[][..]), |shot| (shot.6.as_deref(), shot.2.as_slice()));
+                (overlays, scene.pick_all(&cam, pixel, &look3, caps, tints))
+            })
         } else {
+            self.nested_tab.clear();
             hovered
         };
         // The floor or roof being shaped is drawn as it is, not in the selection's colour: edit mode's marks are what's lit.
@@ -2531,11 +2560,13 @@ impl BimApp {
                 ));
             }
         };
+        self.nested_tab.draw(&p, |q| rect.min + vec2(q.0 as f32 / ppp, q.1 as f32 / ppp));
         crate::nested_tab::outline(&p, &nested, hovered, &selection, &|(x, y)| rect.min + vec2(x, y));
+        crate::nested_tab::outline(&p, self.nested_tab.nested(), hovered, &selection, &|(x, y)| rect.min + vec2(x, y));
         draw_marks(&marks, &|owner, c| {
             if selection.contains(&owner) {
                 canvas_pal().accent
-            } else if lit_dim == Some(owner) {
+            } else if hovered == Some(owner) {
                 canvas_pal().hover
             } else {
                 color(c)
@@ -2943,22 +2974,19 @@ impl BimApp {
         // While sketching here a click is the sketch's, with what's under it for Pick Walls and Pick Lines.
         let under = click.filter(|_| sketch_z.is_some()).and_then(|at| pick(&o.picker, at)).map(|h| h.id);
         // A dimension's lines are picked before what the picture shows under them.
-        // Site's points the view shows, as marks over the picture; a click on one picks it before what's under it.
-        let points: Vec<(bimcraft_core::coordinates::Point, Pos2)> =
-            shown_points.into_iter().map(|(pt, q)| (pt, on_screen(&cam, rect, ppp, q))).collect();
         for (pt, c) in &points {
-            let lit = pt.id(&model).is_some_and(|id| lit_ids.contains(&id));
+            let lit = pt.id(&model).is_some_and(|id| lit_ids.contains(&id) || hovered == Some(id));
             crate::coordinates::paint_point(&p, *c, *pt, lit);
         }
         let point_hit = click
             .filter(|_| modify && sketch_z.is_none() && !picking)
-            .and_then(|at| points.iter().find(|(_, c)| c.distance(at) <= 10.0))
-            .and_then(|(pt, _)| pt.id(&model));
+            .and_then(|at| point_at(at).find(|id| Some(at) != hover || hovered.is_none_or(|h| h == *id)));
         let clicked = click.filter(|_| sketch_z.is_none() && !picking && point_hit.is_none()).map(|at| {
-            dim_at(at).filter(|_| modify).or_else(|| {
-                // Where the cursor is, what Tab has reached there.
-                if modify && Some(at) == hover && hovered.is_some() { hovered } else { pick(&o.picker, at).map(|h| h.id) }
-            })
+            if modify && Some(at) == hover && hovered.is_some() {
+                hovered
+            } else {
+                dim_at(at).filter(|_| modify).or_else(|| pick(&o.picker, at).map(|h| h.id))
+            }
         });
 
         let dim_click = click.filter(|_| dimming).map(|at| (px(at), dim_pick(at)));

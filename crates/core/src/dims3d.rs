@@ -265,21 +265,28 @@ pub fn paint(image: &mut Image, marks: &[Mark]) {
     }
 }
 
+fn hits(marks: &[Mark], at: (f64, f64), reach: f64) -> impl Iterator<Item = (Id, f64)> + '_ {
+    use crate::geom::{P2, dist_to_segment};
+    let point = |(x, y): (f32, f32)| P2(x.into(), y.into());
+    marks.iter().flat_map(move |mk| {
+        mk.pts.windows(2).filter_map(move |s| {
+            let distance = dist_to_segment(P2(at.0, at.1), point(s[0]), point(s[1]));
+            (distance <= reach).then_some((mk.owner, distance))
+        })
+    })
+}
+
 /// The dimension whose marks pass nearest pixel `at`, within `reach` pixels.
 pub fn pick(marks: &[Mark], at: (f64, f64), reach: f64) -> Option<Id> {
-    let off = |a: (f32, f32), b: (f32, f32)| {
-        let (a, b) = ((f64::from(a.0), f64::from(a.1)), (f64::from(b.0), f64::from(b.1)));
-        let (dx, dy) = (b.0 - a.0, b.1 - a.1);
-        let l = dx * dx + dy * dy;
-        let t = if l > 0.0 { (((at.0 - a.0) * dx + (at.1 - a.1) * dy) / l).clamp(0.0, 1.0) } else { 0.0 };
-        (a.0 + dx * t - at.0).hypot(a.1 + dy * t - at.1)
-    };
-    marks
-        .iter()
-        .flat_map(|mk| mk.pts.windows(2).map(move |s| (mk.owner, off(s[0], s[1]))))
-        .filter(|(_, d)| *d <= reach)
-        .min_by(|a, b| a.1.total_cmp(&b.1))
-        .map(|(id, _)| id)
+    hits(marks, at, reach).min_by(|a, b| a.1.total_cmp(&b.1)).map(|(id, _)| id)
+}
+
+/// Each dimension under the pointer, nearest mark first, in the same order as ordinary picking.
+pub fn pick_all(marks: &[Mark], at: (f64, f64), reach: f64) -> Vec<Id> {
+    let mut hits: Vec<_> = hits(marks, at, reach).collect();
+    hits.sort_by(|a, b| a.1.total_cmp(&b.1));
+    let mut seen = std::collections::BTreeSet::new();
+    hits.into_iter().map(|(id, _)| id).filter(|id| seen.insert(*id)).collect()
 }
 
 #[cfg(test)]
@@ -289,6 +296,15 @@ mod tests {
     use super::*;
     use crate::engine::Session;
     use crate::view3d::Scene;
+
+    #[test]
+    fn tab_visits_each_dimension_over_the_pointer_in_the_normal_hit_order() {
+        let mark = |owner, y| Mark { owner, pts: vec![(0., y), (25., y)], width: 1., color: Rgb(0, 0, 0) };
+        let marks = [mark(4, 2.), mark(8, 0.), mark(8, 1.), mark(9, 8.)];
+        let at = (12., 0.);
+        assert_eq!(pick(&marks, at, 3.), Some(8));
+        assert_eq!(pick_all(&marks, at, 3.), [8, 4]);
+    }
 
     fn boxed() -> Session {
         let mut s = Session::new();

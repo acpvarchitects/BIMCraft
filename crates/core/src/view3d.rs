@@ -20,6 +20,8 @@ use crate::texture::Sampler;
 use crate::walls::{self, Axis, Plane};
 
 pub mod gpu;
+mod picking;
+pub use picking::PickCandidate;
 
 /// Shared CPU rendering workers, bounded so background work leaves input and I/O capacity.
 fn render_pool() -> Option<&'static rayon::ThreadPool> {
@@ -2642,6 +2644,26 @@ struct Span {
     bounds: [P3; 2],
 }
 
+/// Build the same section geometry when drawing or looking through the occluding surfaces at a pixel.
+fn section_object(
+    m: &Model,
+    id: Id,
+    range: std::ops::Range<usize>,
+    solids: &PreparedSolids,
+    look: &Look,
+    components: &mut crate::component_geometry::Components,
+    tris: &mut Vec<Tri>,
+) {
+    let made = match m.elements.get(id) {
+        Some(e @ Element::Component(_)) => lazy_solids(m, id, e, components),
+        Some(e) if range.is_empty() && e.run().is_some() => lazy_solids(m, id, e, components),
+        _ => solids.painted(range).filter(|s| s.owner() == id && s.seen_in(look)).collect(),
+    };
+    for solid in made.into_iter().flat_map(|s| layered(m, s)) {
+        solid.tris(tris);
+    }
+}
+
 /// What a shape of a scene is the shape of: a family's type, mirrored or not, with the values its family evaluates, at the
 /// fineness it is built at (GEO-2c-2b: copies in one band share it, copies in two are two shapes); or the tube the round runs
 /// of a material are.
@@ -3100,15 +3122,7 @@ impl Scene {
                 if cancelled() {
                     return None;
                 }
-                let made: Vec<Solid> = match m.elements.get(*id) {
-                    Some(e @ Element::Component(_)) => lazy_solids(m, *id, e, &mut components),
-                    // No solids in the list: a round run left until now, or one that has none, which makes none here.
-                    Some(e) if at.is_empty() && e.run().is_some() => lazy_solids(m, *id, e, &mut components),
-                    _ => own(*id, at).collect(),
-                };
-                for solid in made.into_iter().flat_map(|s| layered(m, s)) {
-                    solid.tris(&mut tris);
-                }
+                section_object(m, *id, at.clone(), solids, look, &mut components, &mut tris);
             }
             Some(tris)
         });
@@ -4447,6 +4461,15 @@ fn outline(
     depth: &[f32],
     mut paint: impl FnMut(usize),
 ) {
+    outline_samples(a, b, (w, h), wide, |k, z| {
+        if depth.get(k).is_some_and(|d| f64::from(*d) <= z + slack(z)) {
+            paint(k);
+        }
+    });
+}
+
+/// Each pixel of a projected model line, at its depth before another owner's geometry obscures it.
+fn outline_samples(a: Px, b: Px, (w, h): (usize, usize), wide: u8, mut sample: impl FnMut(usize, f64)) {
     let steps = (b.0 - a.0).abs().max((b.1 - a.1).abs()).ceil();
     if !steps.is_finite() || steps > 4.0 * MAX_SIDE as f64 {
         return;
@@ -4462,9 +4485,7 @@ fn outline(
                 continue;
             }
             let k = py as usize * w + px as usize;
-            if depth.get(k).is_some_and(|d| f64::from(*d) <= z + slack(z)) {
-                paint(k);
-            }
+            sample(k, z);
         }
     }
 }

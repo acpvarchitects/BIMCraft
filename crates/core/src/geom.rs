@@ -320,6 +320,23 @@ pub fn line_outside_convex(line: &[P2], hole: &[P2]) -> Vec<Vec<P2>> {
     out
 }
 
+/// How near the eye triangle `q` (its corners projected: pixel and nearness) is at pixel `p`, where it covers it.
+pub(crate) fn depth_at(q: [(f64, f64, f64); 3], p: (f64, f64)) -> Option<f64> {
+    if q.iter().any(|(x, y, z)| !(x.is_finite() && y.is_finite() && z.is_finite())) {
+        return None;
+    }
+    let [a, b, c] = q;
+    let area = (b.0 - a.0) * (c.1 - a.1) - (b.1 - a.1) * (c.0 - a.0);
+    if area.abs() < 1e-9 {
+        return None;
+    }
+    let wb = ((p.0 - a.0) * (c.1 - a.1) - (p.1 - a.1) * (c.0 - a.0)) / area;
+    let wc = ((b.0 - a.0) * (p.1 - a.1) - (b.1 - a.1) * (p.0 - a.0)) / area;
+    let wa = 1.0 - wb - wc;
+    let e = -1e-9;
+    (wa >= e && wb >= e && wc >= e).then_some(a.2 * wa + b.2 * wb + c.2 * wc)
+}
+
 /// How far along `a`→`b` the point nearest `p` lies, from 0 at `a` to 1 at `b`.
 pub fn param_on_segment(p: P2, a: P2, b: P2) -> f64 {
     let d = b - a;
