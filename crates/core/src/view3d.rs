@@ -725,7 +725,11 @@ impl Solid {
 /// (a frame cut across its face is a ring round its opening). None where no loop closes, which only an open mesh
 /// leaves: the caller then falls back on its hull.
 pub(crate) fn slice(tris: &[[P3; 3]], p: P2, u: P2, len: f64) -> Option<Vec<Vec<P2>>> {
-    let loops = slice_loops(tris, p, u)?;
+    slice_loops(tris, p, u).map(|loops| cut_regions(&loops, Some(len)))
+}
+
+/// Polygonal coverage of the nested cut loops. A section limits it to the length of its cut line.
+pub(crate) fn cut_regions(loops: &[Vec<P2>], len: Option<f64>) -> Vec<Vec<P2>> {
     // How many loops hold each: an even count is solid, an odd one a hole in the loop just round it.
     let depth: Vec<usize> = loops
         .iter()
@@ -737,13 +741,13 @@ pub(crate) fn slice(tris: &[[P3; 3]], p: P2, u: P2, len: f64) -> Option<Vec<Vec<
         let holes = loops.iter().enumerate().filter(|(j, h)| depth[*j] == depth[i] + 1 && geom::contains(outer, h[0]));
         let pieces = holes.fold(vec![outer.clone()], |pieces, (_, h)| walls::minus(&pieces, h));
         for piece in pieces {
-            let piece = geom::clip(&geom::clip(&piece, |q| q.0), |q| len - q.0);
+            let piece = if let Some(len) = len { geom::clip(&geom::clip(&piece, |q| q.0), |q| len - q.0) } else { piece };
             if piece.len() >= 3 && geom::area(&piece).abs() > 1e-6 {
                 out.push(piece);
             }
         }
     }
-    Some(out)
+    out
 }
 
 /// Where the upright plane through the line from `p` along unit `u` cuts closed mesh `tris`, as the loops the plane cuts its
@@ -1083,6 +1087,15 @@ pub(crate) fn solids_and_extremes(m: &Model) -> Made {
 }
 
 pub(crate) fn solids_and_extremes_cancellable(m: &Model, cancelled: &(dyn Fn() -> bool + Sync)) -> Option<Made> {
+    solids_and_extremes_capturing(m, cancelled, None)
+}
+
+/// [`solids_and_extremes_cancellable`], each door's and window's pieces' identities kept in `capture` (GEO-2c-2e).
+pub(crate) fn solids_and_extremes_capturing(
+    m: &Model,
+    cancelled: &(dyn Fn() -> bool + Sync),
+    capture: Option<&crate::render::ElevationCapture>,
+) -> Option<Made> {
     if cancelled() {
         return None;
     }
@@ -1104,7 +1117,7 @@ pub(crate) fn solids_and_extremes_cancellable(m: &Model, cancelled: &(dyn Fn() -
             match e {
                 Element::Component(c) => placed.push((id, components.extremes(c))),
                 _ => {
-                    let own = solids_in_with(m, &[(id, e)], Some(&index), &mut components);
+                    let own = solids_in_capturing(m, &[(id, e)], Some(&index), &mut components, capture);
                     if !own.is_empty() {
                         placed.push((id, extremes(own.iter().flat_map(Solid::corners))));
                     }
@@ -1228,6 +1241,32 @@ fn lazy_run_box(m: &Model, id: Id, e: &Element) -> Option<[P3; 2]> {
         _ => 0.0,
     };
     Some([[lo[0] - past, lo[1] - past, lo[2]], [hi[0] + past, hi[1] + past, hi[2]]])
+}
+
+/// Component `id`, `c`'s solids from `pieces`, its pieces placed: each in its material's colour, a curved one's facets one
+/// surface, as a curved wall's are.
+fn component_solids(m: &Model, id: Id, c: &crate::model::Component, pieces: Vec<crate::family::Piece>) -> Vec<Solid> {
+    let cut = m.families.get(&c.family).is_some_and(crate::family::Family::cuts_in_views);
+    let x = m.component_placement(c).axes[0];
+    pieces
+        .into_iter()
+        .map(|piece| {
+            let color = m.materials.get(&piece.material).map_or(COMPONENT, |x| Rgb(x.color[0], x.color[1], x.color[2]));
+            let tex = skin(m, &piece.material);
+            let skins = component_skins(m, c, &piece, (color, tex));
+            Solid::Mesh {
+                owner: id,
+                color,
+                tex,
+                skins,
+                tris: piece.tris,
+                caps: piece.caps,
+                round: piece.round,
+                cut,
+                vis: crate::family::visibility::packed(piece.vis, P2(x[0], x[1])),
+            }
+        })
+        .collect()
 }
 
 /// The solids of an element whose preparation was deferred: a round run reads no wall, and a component no wall index.
@@ -1660,21 +1699,19 @@ pub(crate) fn host_holes(m: &Model, host: Id, z_at: impl Fn(P2) -> Option<f64>) 
 }
 
 /// Where the level plane at height `z` cuts closed mesh `tris`, as its outlines in plan: each loop, an outline and its holes
-/// alike ([`slice_loops`]), what the cut is drawn with; [`level_slice`]'s regions are what it covers.
-pub(crate) fn level_outlines(tris: &[[P3; 3]], z: f64) -> Vec<Vec<P2>> {
-    const FAR: f64 = 1.0e6;
-    let turned: Vec<[P3; 3]> = tris.iter().map(|t| t.map(|p| [p[0], p[2] - z, p[1]])).collect();
-    let rings = slice_loops(&turned, P2(-FAR, 0.0), P2(1.0, 0.0)).unwrap_or_default();
-    rings.into_iter().map(|r| r.into_iter().map(|q| P2(q.0 - FAR, q.1)).collect()).collect()
+/// alike ([`slice_loops`]), what the cut is drawn with; [`level_slice`]'s regions are what it covers. Empty where the plane
+/// meets none of it (between two closed parts of one form, say); none where it crosses an open skin, which leaves no closed
+/// loop: a hosted plan falls back to the form's outline there (GEO-2c-2e, ec's 0f841ca2a).
+pub(crate) fn level_outlines(tris: &[[P3; 3]], z: f64) -> Option<Vec<Vec<P2>>> {
+    // Turn height into the coordinate normal to the section plane. The loop coordinates are already world XY.
+    let turned: Vec<_> = tris.iter().map(|t| t.map(|p| [p[0], p[2], p[1]])).collect();
+    slice_loops(&turned, P2(0.0, z), P2(1.0, 0.0))
 }
 
-/// Where the level plane at height `z` cuts closed mesh `tris`, as rings in plan: [`slice`] of the mesh turned on its side,
-/// so its upright plane is the level one.
+/// The regions covered by a horizontal mesh cut in world XY.
+/// A plan cut extends across the model, while a section is limited by its cut line.
 pub(crate) fn level_slice(tris: &[[P3; 3]], z: f64) -> Vec<Vec<P2>> {
-    const FAR: f64 = 1.0e6;
-    let turned: Vec<[P3; 3]> = tris.iter().map(|t| t.map(|p| [p[0], p[2] - z, p[1]])).collect();
-    let rings = slice(&turned, P2(-FAR, 0.0), P2(1.0, 0.0), 2.0 * FAR).unwrap_or_default();
-    rings.into_iter().map(|r| r.into_iter().map(|q| P2(q.0 - FAR, q.1)).collect()).collect()
+    level_outlines(tris, z).map_or_else(Vec::new, |loops| cut_regions(&loops, None))
 }
 
 /// The corners of the box round `tris`.
@@ -1811,6 +1848,18 @@ fn solids_in_with(
     index: Option<&walls::Index>,
     components: &mut crate::component_geometry::Components,
 ) -> Vec<Solid> {
+    solids_in_capturing(m, elements, index, components, None)
+}
+
+/// [`solids_in_with`], what a door or a window is of (its form and nested path, piece by piece) kept in `capture` beside the
+/// placed mesh the scene is made of: a family's elevation picks by them (GEO-2c-2e, ec's d381329a2).
+fn solids_in_capturing(
+    m: &Model,
+    elements: &[(Id, &Element)],
+    index: Option<&walls::Index>,
+    components: &mut crate::component_geometry::Components,
+    capture: Option<&crate::render::ElevationCapture>,
+) -> Vec<Solid> {
     let mut out = Vec::new();
     for &(id, e) in elements {
         match e {
@@ -1895,26 +1944,7 @@ fn solids_in_with(
             }
             Element::Mass(ms) => out.push(slab(id, MASS, &ms.footprint(), m.span(ms.level, ms.base_offset, ms.top_level, ms.height))),
             // Each form in its material's colour; a curved one's facets one surface, as a curved wall's are.
-            Element::Component(c) => {
-                let cut = m.families.get(&c.family).is_some_and(crate::family::Family::cuts_in_views);
-                let x = m.component_placement(c).axes[0];
-                for piece in components.solids_of(id, c) {
-                    let color = m.materials.get(&piece.material).map_or(COMPONENT, |x| Rgb(x.color[0], x.color[1], x.color[2]));
-                    let tex = skin(m, &piece.material);
-                    let skins = component_skins(m, c, &piece, (color, tex));
-                    out.push(Solid::Mesh {
-                        owner: id,
-                        color,
-                        tex,
-                        skins,
-                        tris: piece.tris,
-                        caps: piece.caps,
-                        round: piece.round,
-                        cut,
-                        vis: crate::family::visibility::packed(piece.vis, P2(x[0], x[1])),
-                    });
-                }
-            }
+            Element::Component(c) => out.extend(component_solids(m, id, c, components.solids_of(id, c))),
             // Each tread a block from the floor up to it, each landing a slab up to its top; the last
             // riser of a run climbs onto a landing, or the floor above.
             // A stair of a type, built as the type says.
@@ -2013,6 +2043,9 @@ fn solids_in_with(
             // Of a family: each form in its material's colour, cut where a section's line passes through it. Else a door's leaf or a window's glass: a 50 mm panel in the middle of the wall, square to it.
             Element::Door(o) | Element::Window(o) => {
                 let pieces = m.opening_pieces(e);
+                if let Some(capture) = capture {
+                    capture.identify_opening(id, &pieces);
+                }
                 if o.family.is_some() || !pieces.is_empty() {
                     let fallback = if matches!(e, Element::Door(_)) { DOOR } else { GLASS };
                     let cut = o.family.as_ref().and_then(|f| m.families.get(f)).is_none_or(crate::family::Family::cuts_in_views);
@@ -2990,8 +3023,21 @@ impl Scene {
     ///
     /// Its components are built as `fine` asks (GEO-2c-2a: [`crate::component_geometry::section_fine`]), through the builds
     /// kept across drawings.
+    #[cfg(test)]
     pub(crate) fn section(m: &Model, work: Work<'_>, view: (&Camera, &Clip, Option<SectionFine>), look: &Look) -> Scene {
-        Self::section_cancellable(m, work, view, look, &|| false).unwrap_or_else(|| Self::bare(Vec::new()))
+        Self::section_capturing(m, work, view, look, None)
+    }
+
+    /// [`Scene::section`], what it builds of each component, door and window that can show kept in `capture` as it builds
+    /// it: what a family's elevation picks (GEO-2c-2e).
+    pub(crate) fn section_capturing(
+        m: &Model,
+        work: Work<'_>,
+        view: (&Camera, &Clip, Option<SectionFine>),
+        look: &Look,
+        capture: Option<&crate::render::ElevationCapture>,
+    ) -> Scene {
+        Self::section_cancellable(m, work, view, look, &|| false, capture).unwrap_or_else(|| Self::bare(Vec::new()))
     }
 
     pub(crate) fn section_cancellable(
@@ -3000,6 +3046,7 @@ impl Scene {
         (cam, clip, fine): (&Camera, &Clip, Option<SectionFine>),
         look: &Look,
         cancelled: &(dyn Fn() -> bool + Sync),
+        capture: Option<&crate::render::ElevationCapture>,
     ) -> Option<Scene> {
         if cancelled() {
             return None;
@@ -3101,10 +3148,24 @@ impl Scene {
                     return None;
                 }
                 let made: Vec<Solid> = match m.elements.get(*id) {
-                    Some(e @ Element::Component(_)) => lazy_solids(m, *id, e, &mut components),
+                    Some(Element::Component(c)) => {
+                        // Its pieces as they are drawn, placed once for both the picture and what picks (ec's review).
+                        let pieces = components.solids_of(*id, c);
+                        if let Some(capture) = capture {
+                            let x = m.component_placement(c).axes[0];
+                            capture.component(&pieces, P2(x[0], x[1]), look);
+                        }
+                        component_solids(m, *id, c, pieces)
+                    }
                     // No solids in the list: a round run left until now, or one that has none, which makes none here.
                     Some(e) if at.is_empty() && e.run().is_some() => lazy_solids(m, *id, e, &mut components),
-                    _ => own(*id, at).collect(),
+                    other => {
+                        // A door's or a window's mesh as the scene holds it, paired with what each piece is of.
+                        if let (Some(capture), Some(Element::Door(_) | Element::Window(_))) = (capture, other) {
+                            capture.opening(*id, solids.in_range(at.clone()), look);
+                        }
+                        own(*id, at).collect()
+                    }
                 };
                 for solid in made.into_iter().flat_map(|s| layered(m, s)) {
                     solid.tris(&mut tris);
@@ -5450,6 +5511,11 @@ impl Image {
     pub fn point(&self, cam: &Camera, x: f64, y: f64) -> Option<P3> {
         let z = *self.depth.get(self.index(x, y)?)?;
         (z.is_finite()).then(|| cam.at_depth((x.floor() + 0.5, y.floor() + 0.5), f64::from(z)))
+    }
+
+    /// Its pixels' triangles and their owners, shared with what picks in the view it was drawn for (GEO-2c-2e).
+    pub(crate) fn shared_hits(&self) -> (Arc<Vec<u32>>, Arc<Vec<Id>>) {
+        (Arc::clone(&self.hit), Arc::clone(&self.owners))
     }
 
     /// The element the pixel at `(x, y)` shows.

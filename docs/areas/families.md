@@ -2361,6 +2361,19 @@ fineness. Paint in either view finds the face clicked in the build the scene dra
 in the same run, since their bits differ between platforms' maths libraries) and the desktop's `tests/refine3d.rs`;
 `view3d_fineness_bench` in `family_fineness_tests.rs` times the facade.
 
+The family document's plan and elevations pick what they drew (GEO-2c-2e): a click, an edge click (Select Elements by Face off),
+a box and a selected form's outline go by the pieces the view drew, each as the drawing built it (finer for the zoom, or its
+default build where that is too fine to cut), not by the form's default build, which a default chord's 4.8 mm off a 1 m circle
+at 4 px a mm made a click on the drawn curve miss. `render::family_plan` keeps each piece of a component with the strokes it
+was drawn with (`component` hands each on) and its cut's outlines; a door's or a window's in its wall, what the plan sees of
+it: below the cut, less what the wall round the opening covers, and its cut's regions (`opening`, `views::exposed_below`),
+so a hood over the cut, which the plan doesn't draw, is no one's. An elevation keeps the triangles its picture's scene built
+of each component, door and window (`render::family_elevation`, `ElevationCapture`), a nested instance's pieces as one, so its
+nearer forms hide its farther ones' rims as in the picture. `Staged` keeps them with the view last drawn, by each form's and
+nested instance's GUID (`family/views/displayed.rs`), and `form_at_among`, `nested_at`, `form_edge_at_among`, `nested_edge_at`,
+`face_in_box`, `outline_edges` and `nested_outline_edges` read them first; the ceiling plan keeps none and picks as before.
+Ported from the upstream series' picker. Tests: `family/views/pick_tests.rs` and the desktop's `tests/family_view_picks.rs`.
+
 ## Plans of many components (GEO-2g)
 
 A plan of thousands of components, each its own size (a facade's panels), used to build every one of them at every drawing:
@@ -2430,6 +2443,7 @@ planes, components hosted on them or on faces (Place on Face), and where a compo
 - `family/origin.rs`: its origin, the insertion point it stands by, and its instances kept where they stand when it moves (O1).
 - `family/options.rs`: Family Category and Parameters' options.
 - `family/views.rs`: a family's plans and elevations.
+- `family/views/displayed.rs`: what a family's plan or elevation drew, which picks in it go by (GEO-2c-2e).
 - `family/sketch.rs`: forms' sketches. `family/handles.rs`: shape handles on a profile's edges (FE-5).
 - `family/fineness.rs`: how near a build chords its curves, `Fineness`, which a plan, a section or an elevation sets from
   its scale (GEO-2c), and the 3D view from its camera, a band at a time (GEO-2c-2b).
