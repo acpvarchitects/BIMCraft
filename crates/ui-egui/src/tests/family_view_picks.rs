@@ -103,6 +103,12 @@ fn a_wall_in_the_front_elevation_hides_the_flange_until_its_category_is_hidden()
     shortcut(&mut h, "VG");
     pick(&mut h, Role::CheckBox, "Walls");
     press(&mut h, "OK");
+    // The elevation frames what it shows, the wall's 5 m among it: hidden, the frame shrinks and the zoomed frame moves off the
+    // family (as on followups, apart from GEO-2c-2e). Zoomed to the same detail again, the same click.
+    shortcut(&mut h, "ZF");
+    zoom_to_detail(&mut h, [620., 0., 700.]);
+    let pane = editor(&h).views.pane.expect("a view shown");
+    assert!(pane.contains(editor(&h).views.screen_of([750., 0., 700.]).unwrap()), "the flange's point is on the canvas");
     click_family(&mut h, [750., 0., 700.]);
     let revealed = selected(&h);
     capture_pick(&mut h, "flange-with-wall-hidden");
